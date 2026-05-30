@@ -2284,13 +2284,32 @@ function App(){
   );
 }
 
+// ── REACT ERROR BOUNDARY ─────────────────────────────────────
+class ErrorBoundary extends React.Component{
+  constructor(p){super(p);this.state={err:null,info:null};}
+  static getDerivedStateFromError(err){return{err};}
+  componentDidCatch(err,info){this.setState({err,info});console.error("App crashed:",err,info);}
+  render(){
+    if(this.state.err){
+      const e=this.state.err;
+      return React.createElement('div',{style:{padding:"24px",color:"#f85149",background:"#0d1117",fontFamily:"monospace",whiteSpace:"pre-wrap",fontSize:"11px",lineHeight:"1.6"}},
+        "🔴 CHYBA APLIKACE — zkopíruj text níže a pošli ho:\n\n"+
+        (e.message||String(e))+"\n\n"+
+        (e.stack||"")+"\n\n"+
+        (this.state.info?.componentStack||"")
+      );
+    }
+    return this.props.children;
+  }
+}
+
 window.onerror=function(msg,src,line,col,err){
   var el=document.getElementById("root");
   if(el&&el.children.length===0)el.innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:monospace;white-space:pre-wrap;font-size:12px">CHYBA: '+msg+'\nLine: '+line+'\n'+(err&&err.stack?err.stack:'')+'</div>';
   return false;
 };
 try{
-  ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
 }catch(err){
   document.getElementById("root").innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:system-ui">Aplikace spadla při startu: '+(err&&err.message?err.message:err)+'</div>';
 }
