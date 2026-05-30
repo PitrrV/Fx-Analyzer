@@ -1,0 +1,2299 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AT Trading FX Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}
+input,select{outline:none}button{font-family:inherit}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#161b22}::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+a{color:#58a6ff}
+input[type=range]{accent-color:#58a6ff}
+
+/* ── V4.3 PRO VISUAL SKIN ───────────────────────────── */
+.pro-shell{min-height:100vh;background:radial-gradient(circle at 35% -10%,#162033 0,#0b111a 34%,#070b11 100%);}
+.pro-card{background:linear-gradient(180deg,rgba(22,31,45,.92),rgba(10,15,23,.96));border:1px solid #263242;border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.03)}
+.pro-header{background:rgba(8,13,20,.92);backdrop-filter:blur(12px);border-bottom:1px solid #263242;position:sticky;top:0;z-index:20}
+.pro-tab{padding:13px 16px;background:none;border:0;border-bottom:2px solid transparent;color:#8b949e;font-weight:600;font-size:12px;letter-spacing:.02em;cursor:pointer;white-space:nowrap}
+.pro-tab.active{color:#2f9bff;border-bottom-color:#2f9bff}
+.pro-btn{border:1px solid #2b3a4d;background:#111a26;color:#dce6f2;border-radius:8px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer}
+.pro-pill{border-radius:8px;padding:6px 12px;font-weight:900;letter-spacing:.03em}
+.pro-grid{display:grid;grid-template-columns:300px minmax(520px,1fr) 310px;gap:14px;align-items:start}
+.pro-pair-list{max-height:calc(100vh - 190px);overflow:auto;padding-right:4px}
+.pro-pair-row{background:linear-gradient(180deg,#111923,#0d141e);border:1px solid #273341;border-radius:10px;margin-bottom:8px;padding:12px;cursor:pointer;transition:.15s}
+.pro-pair-row:hover{border-color:#2f9bff44;transform:translateY(-1px)}
+.pro-pair-row.selected{border-color:#2f9bff;background:linear-gradient(180deg,#102443,#0d1728);box-shadow:0 0 0 1px #2f9bff22,0 0 22px #2f9bff18}
+.pro-panel-title{font-size:13px;font-weight:900;letter-spacing:.02em;color:#e6edf3;margin-bottom:12px;text-transform:uppercase}
+.pro-muted{color:#8b949e}.blue{color:#2f9bff}.purple{color:#bf4cff}.green{color:#3fb950}.red{color:#ff4d4d}.orange{color:#d29922}
+.pro-stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid #243142;border-bottom:1px solid #243142}
+.pro-stat{padding:12px 16px;border-left:1px solid #243142;text-align:center}.pro-stat:first-child{border-left:0}
+.pro-chart-wrap{padding:18px 20px}
+.pro-chart-toolbar{display:flex;gap:7px}.pro-chart-toolbar span{background:#172233;border:1px solid #26384d;border-radius:7px;padding:6px 10px;font-size:11px;color:#c9d1d9}.pro-chart-toolbar span.active{background:#1f6feb;color:white}
+
+/* ── V4.4 COMMAND CENTER ONLINE SKIN ───────────────────── */
+:root{--cmd-green:#78f236;--cmd-green2:#36c94b;--cmd-red:#ff3f5f;--cmd-blue:#2f9bff;--cmd-purple:#bf4cff;--cmd-panel:#090f17;--cmd-border:#1d2a36;}
+body{background:#05080d;color:#f3f7fb;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+.pro-shell{padding-left:226px;background:radial-gradient(circle at 80% -10%,rgba(63,185,80,.12),transparent 28%),radial-gradient(circle at 10% 20%,rgba(47,155,255,.08),transparent 24%),#05080d;}
+.command-sidebar{position:fixed;left:0;top:0;bottom:0;width:226px;background:linear-gradient(180deg,#080d13,#05080d);border-right:1px solid #182330;z-index:50;padding:18px 14px;display:flex;flex-direction:column;gap:18px;box-shadow:18px 0 40px rgba(0,0,0,.28)}
+.command-logo{display:flex;align-items:center;gap:12px;padding:4px 8px 18px;border-bottom:1px solid #182330}
+.command-logo-mark{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,var(--cmd-green),#0a290d);display:flex;align-items:center;justify-content:center;color:#041007;font-weight:1000;font-size:20px;letter-spacing:-.06em;box-shadow:0 0 28px rgba(120,242,54,.28);position:relative}.command-logo-mark:after{content:"";position:absolute;right:6px;bottom:7px;width:22px;height:9px;border-bottom:3px solid #041007;border-right:3px solid #041007;border-radius:0 0 12px 0;transform:skewX(-20deg)}
+.command-logo-title{font-weight:1000;letter-spacing:.03em;font-size:17px;line-height:1}.command-logo-sub{font-size:10px;color:#8ea0b3;letter-spacing:.26em;margin-top:5px}
+.command-nav{display:flex;flex-direction:column;gap:6px}.command-nav button{display:flex;align-items:center;gap:12px;border:0;background:transparent;color:#b7c3d1;border-radius:10px;padding:12px 14px;text-align:left;font-weight:700;cursor:pointer;font-size:14px}.command-nav button.active,.command-nav button:hover{background:linear-gradient(90deg,rgba(120,242,54,.16),rgba(120,242,54,.03));color:var(--cmd-green);box-shadow:inset 3px 0 0 var(--cmd-green)}
+.command-bias-card{margin-top:auto;background:linear-gradient(180deg,rgba(14,22,31,.95),rgba(8,13,20,.95));border:1px solid #1b2a35;border-radius:14px;padding:16px}.command-bias-card .label{font-size:11px;color:#8ea0b3;text-transform:uppercase}.command-bias-card .value{font-size:22px;font-weight:1000;margin:8px 0}.command-progress{height:8px;background:#1b232d;border-radius:999px;overflow:hidden}.command-progress div{height:100%;background:linear-gradient(90deg,var(--cmd-green2),var(--cmd-green));border-radius:999px}
+.pro-header{background:rgba(5,8,13,.86);border-bottom:1px solid #182330;box-shadow:0 12px 40px rgba(0,0,0,.22)}
+.pro-card{background:linear-gradient(180deg,rgba(12,18,27,.94),rgba(7,11,17,.98));border-color:#1b2a35;border-radius:14px;box-shadow:0 20px 55px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.035)}
+.pro-pair-row{background:linear-gradient(180deg,#0c131c,#080e15);border-color:#1a2633;border-radius:12px}.pro-pair-row.selected{border-color:var(--cmd-green);background:linear-gradient(180deg,rgba(18,45,25,.8),#0a1218);box-shadow:0 0 0 1px rgba(120,242,54,.22),0 0 26px rgba(120,242,54,.12)}
+.pro-tab.active{color:var(--cmd-green);border-bottom-color:var(--cmd-green)}
+.pro-btn{background:#0b141d;border-color:#223242;color:#eaf2f8}.green{color:var(--cmd-green)}.red{color:var(--cmd-red)}
+.command-time{display:flex;align-items:center;gap:12px;color:#cbd6e2;font-weight:800}.command-live{font-size:11px;color:var(--cmd-green);background:rgba(120,242,54,.12);border:1px solid rgba(120,242,54,.25);border-radius:999px;padding:4px 8px}.command-pro{border:1px solid rgba(120,242,54,.45)!important;color:var(--cmd-green)!important;background:rgba(120,242,54,.06)!important;border-radius:10px!important;padding:9px 16px!important;font-weight:1000!important}
+@media(max-width:1200px){.pro-shell{padding-left:0}.command-sidebar{display:none}}
+
+@media(max-width:1200px){.pro-grid{grid-template-columns:1fr}.pro-pair-list{max-height:none}.pro-stat-grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useCallback,useRef}=React;
+
+// ── KONFIGURACE ──────────────────────────────────────────
+const CURRENCIES=["USD","EUR","GBP","JPY","AUD","CAD","CHF","NZD"];
+const FLAGS={USD:"🇺🇸",EUR:"🇪🇺",GBP:"🇬🇧",JPY:"🇯🇵",AUD:"🇦🇺",CAD:"🇨🇦",CHF:"🇨🇭",NZD:"🇳🇿"};
+const NAMES={USD:"US Dollar",EUR:"Euro",GBP:"British Pound",JPY:"Japanese Yen",AUD:"Aus Dollar",CAD:"Canadian Dollar",CHF:"Swiss Franc",NZD:"NZ Dollar"};
+const COUNTRY_FLAGS={US:"🇺🇸",EU:"🇪🇺",DE:"🇩🇪",FR:"🇫🇷",IT:"🇮🇹",ES:"🇪🇸",GB:"🇬🇧",JP:"🇯🇵",AU:"🇦🇺",CA:"🇨🇦",CH:"🇨🇭",NZ:"🇳🇿",CN:"🇨🇳"};
+const CURRENCY_COUNTRIES={USD:["US"],EUR:["EU","DE","FR","IT","ES"],GBP:["GB"],JPY:["JP"],AUD:["AU"],CAD:["CA"],CHF:["CH"],NZD:["NZ"]};
+const INDIRECT_COUNTRIES={AUD:["CN"],NZD:["CN"],CAD:["US"],CHF:["EU","DE","FR","IT","ES","US"]};
+
+const STANDARD_PAIRS=[
+  {pair:"EURUSD",base:"EUR",quote:"USD"},{pair:"USDJPY",base:"USD",quote:"JPY"},
+  {pair:"GBPUSD",base:"GBP",quote:"USD"},{pair:"AUDUSD",base:"AUD",quote:"USD"},
+  {pair:"USDCAD",base:"USD",quote:"CAD"},{pair:"USDCHF",base:"USD",quote:"CHF"},
+  {pair:"NZDUSD",base:"NZD",quote:"USD"},{pair:"EURGBP",base:"EUR",quote:"GBP"},
+  {pair:"EURCHF",base:"EUR",quote:"CHF"},{pair:"EURAUD",base:"EUR",quote:"AUD"},
+  {pair:"EURCAD",base:"EUR",quote:"CAD"},{pair:"EURJPY",base:"EUR",quote:"JPY"},
+  {pair:"EURNZD",base:"EUR",quote:"NZD"},{pair:"GBPCHF",base:"GBP",quote:"CHF"},
+  {pair:"GBPJPY",base:"GBP",quote:"JPY"},{pair:"GBPAUD",base:"GBP",quote:"AUD"},
+  {pair:"GBPCAD",base:"GBP",quote:"CAD"},{pair:"GBPNZD",base:"GBP",quote:"NZD"},
+  {pair:"AUDCAD",base:"AUD",quote:"CAD"},{pair:"AUDJPY",base:"AUD",quote:"JPY"},
+  {pair:"AUDNZD",base:"AUD",quote:"NZD"},{pair:"AUDCHF",base:"AUD",quote:"CHF"},
+  {pair:"NZDCAD",base:"NZD",quote:"CAD"},{pair:"NZDJPY",base:"NZD",quote:"JPY"},
+  {pair:"NZDCHF",base:"NZD",quote:"CHF"},{pair:"CADJPY",base:"CAD",quote:"JPY"},
+  {pair:"CADCHF",base:"CAD",quote:"CHF"},{pair:"CHFJPY",base:"CHF",quote:"JPY"},
+];
+
+const EVENT_RULES=[
+  // direction: 1 = vyšší actual než forecast je bullish; -1 = nižší actual je bullish; "pmi" = kombinuje beat/miss + hranici 50
+  {cat:"Interest Rates",keys:["interest rate","rate decision","funds rate","policy rate","deposit facility rate","refinancing rate","cash rate","overnight rate"],w:3.5,dir:1,cap:3},
+  {cat:"Inflation",keys:["cpi","consumer price index","inflation rate","core inflation","hicp","pce","personal consumption","ppi","producer price"],w:3.0,dir:1,cap:3},
+  {cat:"Labor +Jobs",keys:["non-farm","nonfarm","payroll","employment change","employment","adp","average hourly earnings","wage","earnings"],w:3.0,dir:1,cap:4},
+  {cat:"Labor -Unemployment",keys:["unemployment rate","jobless claims","initial claims","continuing claims","claimant count"],w:3.0,dir:-1,cap:4},
+  {cat:"GDP",keys:["gdp","gross domestic product"],w:2.2,dir:1,cap:2},
+  {cat:"PMI",keys:["manufacturing pmi","services pmi","service pmi","composite pmi","pmi","purchasing managers","ism manufacturing","ism services"],w:1.8,dir:"pmi",cap:2},
+  {cat:"Retail Sales",keys:["retail sales"],w:1.7,dir:1,cap:2},
+  {cat:"External Balance",keys:["trade balance","current account"],w:1.0,dir:1,cap:1},
+  {cat:"Confidence",keys:["consumer confidence","business confidence","sentiment","zew","ifo"],w:1.0,dir:1,cap:1},
+];
+
+function getEventMeta(name=""){
+  const n=name.toLowerCase();
+  for(const r of EVENT_RULES) if(r.keys.some(k=>n.includes(k))) return r;
+  return null;
+}
+function getWeight(name=""){
+  return getEventMeta(name)?.w||0;
+}
+function eventDirection(ev){
+  const meta=getEventMeta(ev.event);if(!meta) return 0;
+  const a=parseFloat(ev.actual),e=parseFloat(ev.estimate),prev=parseFloat(ev.prev||ev.previous);
+  if(isNaN(a)||isNaN(e)) return 0;
+  let dir=0;
+  if(meta.dir==="pmi"){
+    // PMI nad 50 = expanze, pod 50 = kontrakce. Beat/miss je hlavní impuls, hranice 50 upravuje sílu signálu.
+    dir=a>e?1:a<e?-1:0;
+    if(a>=50&&e<50) dir=1;
+    if(a<50&&e>=50) dir=-1;
+    if(dir===0&&!isNaN(prev)) dir=a>prev?1:a<prev?-1:0;
+    return dir;
+  }
+  dir=a>e?1:a<e?-1:0;
+  if(meta.dir===-1) dir*=-1; // unemployment/claims: nižší číslo je bullish
+  return dir;
+}
+function surpriseStrength(ev){
+  const a=parseFloat(ev.actual),e=parseFloat(ev.estimate);
+  if(isNaN(a)||isNaN(e)) return 1;
+  const denom=Math.max(Math.abs(e),1);
+  const pct=Math.min(0.6,Math.abs(a-e)/denom*8); // jemné zvýraznění překvapení, ale bez převrácení celého skóre
+  return 1+pct;
+}
+
+// Sezónní bias měn dle měsíce (Jan=0 ... Dec=11)
+// Zdroj: historické průměrné výnosy za posledních 20 let
+const SEASONALITY={
+  USD:[ 0,-1,-1,-1,-1, 0, 0, 1, 2, 1, 0, 0],
+  EUR:[ 1, 1, 1, 0, 1, 0,-1,-1,-1, 0, 0,-1],
+  GBP:[ 0, 0, 1, 1, 0,-1,-1,-1, 1, 1, 0, 0],
+  JPY:[ 2, 1, 0,-1,-1,-1, 0, 1, 1, 0,-1, 0],
+  AUD:[ 1, 1, 1, 0,-1,-1,-1, 0, 0, 0, 1, 1],
+  CAD:[-1, 0, 0,-1,-1, 0, 1, 1, 1, 1, 0,-1],
+  CHF:[ 1, 0, 0, 0, 1, 1, 0,-1,-1,-1, 0, 1],
+  NZD:[ 1, 1, 0, 0,-1,-1,-1, 0, 0, 0, 1, 1],
+};
+
+
+// ── V5 ENGINE: ÚROKOVÉ SAZBY CB ──────────────────────────────
+let CENTRAL_BANK_RATES={USD:4.25,EUR:2.50,GBP:4.25,JPY:0.75,AUD:3.85,NZD:3.50,CAD:2.75,CHF:0.25};
+try{const usr=localStorage.getItem("v5_cb_rates");if(usr)CENTRAL_BANK_RATES={...CENTRAL_BANK_RATES,...JSON.parse(usr)};}catch(e){}
+
+// ── REAL CPI DATA (pro real yield = CB rate - CPI) ────────────
+// Aktualizuj po CPI datech každý měsíc
+let REAL_CPI_DATA={USD:3.2,EUR:2.3,GBP:2.8,JPY:2.8,AUD:3.5,NZD:3.8,CAD:2.4,CHF:0.9};
+try{const u=localStorage.getItem("v5_real_cpi");if(u)REAL_CPI_DATA={...REAL_CPI_DATA,...JSON.parse(u)};}catch(e){}
+
+// ── CB POLICY CYCLE — nejdůležitější makro faktor ─────────────
+// stance: "aggressive_hike" +3 | "hike" +2 | "hold" 0 | "cut" -1 | "aggressive_cut" -2
+// Aktualizuj po každém zasedání centrální banky
+let CB_POLICY_DATA={
+  USD:{score:0, label:"Fed — plateau, cuts pozastaveny"},
+  EUR:{score:-2,label:"ECB — aktivní cyklus řezů"},
+  GBP:{score:-1,label:"BoE — opatrné snižování"},
+  JPY:{score:2, label:"BoJ — první zvyšování za 17 let"},
+  AUD:{score:-1,label:"RBA — cyklus řezů"},
+  NZD:{score:-2,label:"RBNZ — agresivní řezy"},
+  CAD:{score:-2,label:"BoC — agresivní řezy"},
+  CHF:{score:-1,label:"SNB — blízko nuly"},
+};
+try{const u=localStorage.getItem("v5_cb_policy");if(u){const p=JSON.parse(u);Object.keys(p).forEach(k=>{if(CB_POLICY_DATA[k])CB_POLICY_DATA[k]={...CB_POLICY_DATA[k],...p[k]};});}}catch(e){}
+
+// ── GLOBAL RISK SENTIMENT: -1=risk-off, 0=neutral, +1=risk-on ─
+let g_riskSentiment=0;
+try{g_riskSentiment=parseInt(localStorage.getItem("v5_risk_sent")||"0");}catch(e){}
+// ── V5 ENGINE: KORELAČNÍ SKUPINY FX ──────────────────────────
+const FX_CORRELATION_GROUPS=[
+  ["EURUSD","GBPUSD","AUDUSD","NZDUSD"],
+  ["USDCHF","USDJPY","USDCAD"],
+  ["EURJPY","GBPJPY","AUDJPY","NZDJPY","CADJPY"],
+  ["EURGBP","GBPCHF","GBPAUD"],
+];
+function getSeasonalScore(currency){
+  const month=new Date().getMonth();
+  return (SEASONALITY[currency]||[])[month]||0;
+}
+
+function recency(dateStr){
+  const d=(Date.now()-new Date(dateStr))/86400000;
+  return d<=90?1.8:d<=180?1.4:d<=365?1.0:0.7;
+}
+function eventRelevance(currency,ev){
+  const country=(ev.country||"").toUpperCase();
+  const direct=(CURRENCY_COUNTRIES[currency]||[]).some(c=>country.includes(c));
+  const indirect=(INDIRECT_COUNTRIES[currency]||[]).some(c=>country.includes(c));
+  if(direct) return{type:"direct",factor:1,label:"přímý"};
+  if(indirect) return{type:"indirect",factor:0.45,label:"nepřímý"};
+  return null;
+}
+
+// ── SCORE HISTORY ─────────────────────────────────────────
+function saveScoreHistory(scores){
+  const today=new Date().toISOString().split("T")[0];
+  try{
+    const raw=localStorage.getItem("score_hist")||"{}";
+    const hist=JSON.parse(raw);
+    hist[today]={};
+    CURRENCIES.forEach(c=>{ hist[today][c]=scores[c]?.total_score||scores[c]?.score||0; });
+    const dates=Object.keys(hist).sort().slice(-260);
+    const trimmed={};dates.forEach(d=>trimmed[d]=hist[d]);
+    localStorage.setItem("score_hist",JSON.stringify(trimmed));
+  }catch(e){}
+}
+function getScoreChange(currency,days=7){
+  try{
+    const hist=JSON.parse(localStorage.getItem("score_hist")||"{}");
+    const dates=Object.keys(hist).sort();
+    if(dates.length<2) return 0;
+    const cur=hist[dates[dates.length-1]]?.[currency]||0;
+    const past=hist[dates[Math.max(0,dates.length-1-days)]]?.[currency]||0;
+    return parseFloat((cur-past).toFixed(1));
+  }catch(e){return 0;}
+}
+
+function loadScoreHistory(){try{return JSON.parse(localStorage.getItem("score_hist")||"{}");}catch(e){return{};}}
+function backfillScoreHistoryFromCOTHistory(cotHist){
+  // V4.1: okamžitě vytvoří historickou score křivku z COT historie.
+  // Není to plný makro backtest; je to COT/smart-money historický proxy score,
+  // které se potom dál přepisuje živým kompletním skóre při běžném používání.
+  try{
+    const existing=loadScoreHistory();
+    const hist={...existing};
+    const dates=Object.keys(cotHist||{}).sort();
+    const maxAbsFlow={};
+    for(const d of dates){
+      for(const c of CURRENCIES){
+        const f=Math.abs(cotHist[d]?.raw?.[c]?.flow||0);
+        if(f>0) maxAbsFlow[c]=Math.max(maxAbsFlow[c]||0,f);
+      }
+    }
+    for(const d of dates){
+      hist[d]=hist[d]||{};
+      for(const c of CURRENCIES){
+        const cot=Number(cotHist[d]?.scores?.[c]??0);
+        const flow=Number(cotHist[d]?.raw?.[c]?.flow??0);
+        const denom=maxAbsFlow[c]||1;
+        const flowScore=Math.max(-1.2,Math.min(1.2,(flow/denom)*1.2));
+        const proxy=Math.max(-10,Math.min(10,cot*2.4+flowScore));
+        hist[d][c]=parseFloat(proxy.toFixed(2));
+      }
+      hist[d]._source="COT historical proxy";
+    }
+    const keep=Object.keys(hist).sort().slice(-260);
+    const trimmed={};keep.forEach(d=>trimmed[d]=hist[d]);
+    localStorage.setItem("score_hist",JSON.stringify(trimmed));
+    return keep.length;
+  }catch(e){return 0;}
+}
+function svgPolyline(values,w=360,h=120,pad=16){
+  if(!values.length) return "";
+  const min=Math.min(-10,...values),max=Math.max(10,...values),span=max-min||1;
+  return values.map((v,i)=>{
+    const x=pad+(values.length===1?0:i*(w-2*pad)/(values.length-1));
+    const y=h-pad-((v-min)/span)*(h-2*pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+}
+function biasLabel(score){
+  if(score>=6) return "very bullish"; if(score>=2) return "bullish"; if(score<=-6) return "very bearish"; if(score<=-2) return "bearish"; return "neutral";
+}
+function pairBiasScore(p){return Math.round(Math.max(0,Math.min(100,50+(p.dir==="BUY"?p.diff:-p.diff)*3.5)));}
+
+// ── COT & RETAIL SENTIMENT (auto + fallback localStorage) ─────────
+const COT_DEFAULT=Object.fromEntries(CURRENCIES.map(c=>[c,0]));
+const SENT_DEFAULT=Object.fromEntries(CURRENCIES.map(c=>[c,50]));
+const COT_MARKETS={
+  EUR:"EURO FX",GBP:"BRITISH POUND",JPY:"JAPANESE YEN",AUD:"AUSTRALIAN DOLLAR",
+  CAD:"CANADIAN DOLLAR",CHF:"SWISS FRANC",NZD:"NZ DOLLAR"
+};
+
+function loadCOT(){
+  try{return JSON.parse(localStorage.getItem("cot_data")||"null")||{...COT_DEFAULT};}catch(e){return{...COT_DEFAULT};}
+}
+function saveCOT(data){try{localStorage.setItem("cot_data",JSON.stringify(data));}catch(e){}}
+function loadCOTMeta(){try{return JSON.parse(localStorage.getItem("cot_meta")||"null")||{};}catch(e){return{};}}
+function saveCOTMeta(data){try{localStorage.setItem("cot_meta",JSON.stringify(data));}catch(e){}}
+function loadSentiment(){
+  try{return JSON.parse(localStorage.getItem("sent_data")||"null")||{...SENT_DEFAULT};}catch(e){return{...SENT_DEFAULT};}
+}
+function saveSentiment(data){try{localStorage.setItem("sent_data",JSON.stringify(data));}catch(e){}}
+
+function cotNet(longPos,shortPos){
+  const l=Number(longPos)||0,s=Number(shortPos)||0;
+  return{long:l,short:s,net:l-s,ratio:(l+s)>0?(l-s)/(l+s):0};
+}
+function cotNetScore(longPos,shortPos){
+  const n=cotNet(longPos,shortPos);
+  return parseFloat(Math.max(-3,Math.min(3,n.ratio*6)).toFixed(1));
+}
+function cotExtremeFromRatio(r){
+  const abs=Math.abs(r);
+  if(abs>=0.50) return{level:"EXTREME",label:r>0?"crowded long":"crowded short",color:r>0?"#3fb950":"#f85149"};
+  if(abs>=0.32) return{level:"HIGH",label:r>0?"silně long":"silně short",color:r>0?"#3fb950":"#f85149"};
+  return{level:"NORMAL",label:"bez extrému",color:"#8b949e"};
+}
+function parseNums(line){return (line.match(/-?\d[\d,]*/g)||[]).map(x=>parseInt(x.replace(/,/g,""),10));}
+function firstNumericLine(lines,from,to){
+  for(let j=from;j<Math.min(lines.length,to);j++) if(parseNums(lines[j]).length>=14) return lines[j];
+  return "";
+}
+function parseCOTFinancialText(txt){
+  const lines=txt.split(/\r?\n/);const out={};const raw={};
+  for(const [ccy,market] of Object.entries(COT_MARKETS)){
+    const idx=lines.findIndex(l=>l.toUpperCase().includes(market) && l.toUpperCase().includes("CHICAGO MERCANTILE EXCHANGE"));
+    if(idx<0) continue;
+    const posIdx=lines.findIndex((l,i)=>i>idx&&i<idx+14&&l.trim().toLowerCase()==="positions");
+    if(posIdx<0) continue;
+    const n=parseNums(firstNumericLine(lines,posIdx+1,posIdx+7));
+    if(n.length<14) continue;
+    const chIdx=lines.findIndex((l,i)=>i>posIdx&&i<posIdx+30&&l.toLowerCase().includes("changes from"));
+    const ch=chIdx>0?parseNums(firstNumericLine(lines,chIdx+1,chIdx+7)):[];
+    const assetLong=n[3],assetShort=n[4],levLong=n[6],levShort=n[7];
+    const asset=cotNet(assetLong,assetShort),lev=cotNet(levLong,levShort);
+    const assetScore=cotNetScore(assetLong,assetShort),levScore=cotNetScore(levLong,levShort);
+    const score=parseFloat((levScore*0.70+assetScore*0.30).toFixed(1));
+    const levChange=(ch.length>=9?((ch[6]||0)-(ch[7]||0)):0);
+    const assetChange=(ch.length>=6?((ch[3]||0)-(ch[4]||0)):0);
+    const flow=levChange*0.70+assetChange*0.30;
+    out[ccy]=score;
+    raw[ccy]={market,assetLong,assetShort,levLong,levShort,assetNet:asset.net,levNet:lev.net,levRatio:lev.ratio,assetRatio:asset.ratio,
+      levScore,assetScore,score,levChange,assetChange,flow:Math.round(flow),extreme:cotExtremeFromRatio(lev.ratio)};
+  }
+  const vals=Object.values(out).filter(v=>typeof v==="number"&&!isNaN(v));
+  out.USD=vals.length?parseFloat((-vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1)):0;
+  const flows=Object.values(raw).map(r=>r.flow||0);
+  raw.USD={market:"syntetický USD koš",note:"opačný průměr dostupných non-USD COT měn",score:out.USD,flow:flows.length?Math.round(-flows.reduce((a,b)=>a+b,0)/flows.length):0,extreme:{level:"SYNTH",label:"syntetický koš",color:"#8b949e"}};
+  if(vals.length<5) throw new Error("COT parser našel jen "+vals.length+" měn. Zdroj změnil formát nebo proxy vrátila nekompletní text.");
+  return{scores:{...COT_DEFAULT,...out},raw};
+}
+function loadCOTHistory(){try{return JSON.parse(localStorage.getItem("cot_hist")||"{}");}catch(e){return{};}}
+function saveCOTSnapshot(scores,meta){
+  try{
+    const key=(meta?.asOf||new Date().toISOString().split("T")[0]).replace(/\s+/g," ");
+    const hist=loadCOTHistory();hist[key]={scores,raw:meta?.raw||{},updatedAt:new Date().toISOString()};
+    const keys=Object.keys(hist).sort().slice(-60);const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
+    localStorage.setItem("cot_hist",JSON.stringify(trimmed));
+  }catch(e){}
+}
+async function fetchTextWithFallback(url){
+  const urls=[url,"https://r.jina.ai/"+url,"https://api.allorigins.win/raw?url="+encodeURIComponent(url),"https://corsproxy.io/?"+encodeURIComponent(url)];
+  let lastErr=null;
+  for(const u of urls){
+    try{
+      const r=await fetch(u,{cache:"no-store"});
+      if(r.ok){
+        const t=await r.text();
+        if(t && t.includes("Positions") && (t.includes("EURO FX")||t.includes("CANADIAN DOLLAR"))) return t;
+        lastErr=new Error("Stažený COT text neobsahuje očekávaná data");
+      }else{lastErr=new Error("HTTP "+r.status);}
+    }catch(e){lastErr=e;}
+  }
+  throw lastErr||new Error("COT fetch failed");
+}
+async function fetchCOTAuto(){
+  const url="https://www.cftc.gov/dea/futures/financial_lf.htm";
+  const txt=await fetchTextWithFallback(url);
+  const parsed=parseCOTFinancialText(txt);
+  const asOf=(txt.match(/Positions as of\s+([^\n<]+)/i)||[])[1]?.trim()||new Date().toISOString().split("T")[0];
+  const meta={source:url,asOf,updatedAt:new Date().toISOString(),raw:parsed.raw};
+  saveCOT(parsed.scores);saveCOTMeta(meta);saveCOTSnapshot(parsed.scores,meta);
+  return{scores:parsed.scores,meta};
+}
+
+
+
+// ── AI CHART ANALYZER ─────────────────────────────────────
+function fileToBase64(file){
+  return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});
+}
+const AI_SYSTEM_PROMPT=`You are a professional FX chart analyst with deep expertise in ICT (Inner Circle Trader) / Smart Money Concepts AND classical technical analysis. Analyze the provided forex/index chart image and return ONLY a single valid JSON object — no markdown, no explanation, no text outside the JSON.
+
+Use this exact structure:
+{
+  "bias": "BULLISH"|"BEARISH"|"SIDEWAYS",
+  "confidence": <0-100>,
+  "timeframe_context": "<one sentence>",
+  "market_structure": {
+    "trend": "UPTREND"|"DOWNTREND"|"RANGING",
+    "description": "<2-3 sentences>",
+    "bos_choch": "<BOS/CHoCH description or None visible>",
+    "swing_points": {"hh":<n>,"hl":<n>,"lh":<n>,"ll":<n>}
+  },
+  "key_levels": [{"type":"RESISTANCE"|"SUPPORT","zone":"<label>","strength":"STRONG"|"MEDIUM"|"WEAK","notes":"<why>"}],
+  "ict_smc": {
+    "order_blocks":[{"type":"BULLISH"|"BEARISH","location":"<desc>","status":"UNTESTED"|"TESTED"|"MITIGATED","significance":"HIGH"|"MEDIUM"|"LOW"}],
+    "fvg":[{"type":"BULLISH"|"BEARISH","location":"<desc>","status":"OPEN"|"PARTIALLY_FILLED"|"FILLED"}],
+    "liquidity":[{"type":"BSL"|"SSL","location":"<desc>","notes":"<equal highs/lows etc>"}],
+    "premium_discount":"<price position in range>"
+  },
+  "classical_ta": {
+    "trendlines":"<describe or None identified>",
+    "patterns":"<patterns or None identified>",
+    "ema_structure":"<EMA alignment or Not visible>",
+    "momentum":"<momentum description>"
+  },
+  "entry_setup": {
+    "direction":"BUY"|"SELL"|"WAIT",
+    "entry_zone":"<where to enter>",
+    "entry_trigger":"<confirmation signal>",
+    "stop_loss":"<placement logic>",
+    "tp1":"<first target>",
+    "tp2":"<second target>",
+    "rr_estimate":"<e.g. 1:2>",
+    "confluence_factors":["<factor1>","<factor2>"],
+    "invalidation":"<what invalidates>"
+  },
+  "risk_warnings":["<warning>"],
+  "summary":"<3-4 sentence professional summary>"
+}`;
+
+// ── COT HISTORIE (CFTC Historical Compressed) ─────────────
+function parseCSV(text){
+  const rows=[];let row=[],cur="",q=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i],nx=text[i+1];
+    if(ch==='"'){
+      if(q&&nx==='"'){cur+='"';i++;} else q=!q;
+    }else if(ch===','&&!q){row.push(cur);cur="";}
+    else if((ch==='\n'||ch==='\r')&&!q){
+      if(ch==='\r'&&nx==='\n') i++;
+      row.push(cur);cur="";
+      if(row.some(x=>String(x).trim()!=="")) rows.push(row);
+      row=[];
+    }else cur+=ch;
+  }
+  if(cur||row.length){row.push(cur);if(row.some(x=>String(x).trim()!=="")) rows.push(row);}
+  return rows;
+}
+function normHeader(x){return String(x||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+function pickCol(headers,patterns){
+  const hs=headers.map(normHeader);
+  for(const pat of patterns){
+    const p=normHeader(pat);
+    const idx=hs.findIndex(h=>h===p||h.includes(p));
+    if(idx>=0) return idx;
+  }
+  return -1;
+}
+function numCell(x){return parseFloat(String(x||"0").replace(/,/g,""))||0;}
+function scoreFromHistoricalRow(row,idx){
+  const al=numCell(row[idx.assetLong]),as=numCell(row[idx.assetShort]),ll=numCell(row[idx.levLong]),ls=numCell(row[idx.levShort]);
+  const asset=cotNet(al,as),lev=cotNet(ll,ls);
+  const assetScore=cotNetScore(al,as),levScore=cotNetScore(ll,ls);
+  return {score:parseFloat((levScore*.70+assetScore*.30).toFixed(1)),assetNet:asset.net,levNet:lev.net,levRatio:lev.ratio,assetRatio:asset.ratio,extreme:cotExtremeFromRatio(lev.ratio)};
+}
+function parseCOTHistoricalText(text){
+  const rows=parseCSV(text);
+  if(rows.length<5) throw new Error("Historický COT soubor je prázdný nebo není CSV/TXT.");
+  const h=rows[0];
+  const idx={
+    market:pickCol(h,["Market_and_Exchange_Names","Market and Exchange Names","Market_and_Exchange_Name"]),
+    date:pickCol(h,["Report_Date_as_YYYY-MM-DD","As_of_Date_In_Form_YYMMDD","Report_Date_as_MM_DD_YYYY","As of Date"]),
+    assetLong:pickCol(h,["Asset_Mgr_Positions_Long_All","Asset Manager Long All","Asset_Mgr_Long_All"]),
+    assetShort:pickCol(h,["Asset_Mgr_Positions_Short_All","Asset Manager Short All","Asset_Mgr_Short_All"]),
+    levLong:pickCol(h,["Lev_Money_Positions_Long_All","Leveraged Funds Long All","Lev_Money_Long_All"]),
+    levShort:pickCol(h,["Lev_Money_Positions_Short_All","Leveraged Funds Short All","Lev_Money_Short_All"]),
+  };
+  if(Object.values(idx).some(v=>v<0)) throw new Error("Neznámý formát historického TFF souboru — chybí očekávané sloupce.");
+  const byDate={};
+  for(const row of rows.slice(1)){
+    const market=String(row[idx.market]||"").toUpperCase();
+    const ccy=Object.entries(COT_MARKETS).find(([,m])=>market.includes(m))?.[0];
+    if(!ccy) continue;
+    let date=String(row[idx.date]||"").trim();
+    if(/^\d{6}$/.test(date)) date=`20${date.slice(0,2)}-${date.slice(2,4)}-${date.slice(4,6)}`;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    byDate[date]=byDate[date]||{scores:{},raw:{}};
+    const r=scoreFromHistoricalRow(row,idx);
+    byDate[date].scores[ccy]=r.score;
+    byDate[date].raw[ccy]={market:COT_MARKETS[ccy],score:r.score,levNet:r.levNet,assetNet:r.assetNet,levRatio:r.levRatio,assetRatio:r.assetRatio,flow:0,extreme:r.extreme};
+  }
+  const dates=Object.keys(byDate).sort();
+  for(const date of dates){
+    const vals=Object.values(byDate[date].scores).filter(v=>typeof v==="number"&&!isNaN(v));
+    byDate[date].scores.USD=vals.length?parseFloat((-vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1)):0;
+    byDate[date].raw.USD={market:"syntetický USD koš",score:byDate[date].scores.USD,flow:0,extreme:{level:"SYNTH",label:"syntetický koš",color:"#8b949e"}};
+  }
+  // dopočítat weekly flow z netu LF
+  const prev={};
+  for(const date of dates){
+    for(const c of CURRENCIES){
+      const r=byDate[date].raw[c]; if(!r) continue;
+      const net=r.levNet??r.score;
+      r.flow=prev[c]!==undefined?Math.round(net-prev[c]):0;
+      prev[c]=net;
+    }
+  }
+  return byDate;
+}
+async function fetchBlobAny(urls){
+  let last=null;
+  for(const url of urls){
+    try{const r=await fetch(url,{cache:"no-store"});if(r.ok)return await r.blob();last=new Error("HTTP "+r.status);}catch(e){last=e;}
+  }
+  throw last||new Error("historical fetch failed");
+}
+async function fetchCOTHistoryYears(years){
+  if(!window.JSZip) throw new Error("JSZip knihovna není načtená — zkontroluj internet/CDN.");
+  const hist={};let loaded=0;let lastErr=null;
+  for(const y of years){
+    // Primární CFTC naming pro Traders in Financial Futures; když CFTC změní název, aplikace jen zahlásí konkrétní chybu.
+    const urls=[`https://www.cftc.gov/files/dea/history/fut_fin_txt_${y}.zip`,`https://cftc.gov/files/dea/history/fut_fin_txt_${y}.zip`];
+    try{
+      const blob=await fetchBlobAny(urls);
+      const zip=await JSZip.loadAsync(blob);
+      const file=Object.values(zip.files).find(f=>!f.dir && /\.(txt|csv)$/i.test(f.name)) || Object.values(zip.files).find(f=>!f.dir);
+      if(!file) throw new Error("ZIP neobsahuje textový soubor");
+      const text=await file.async("string");
+      const parsed=parseCOTHistoricalText(text);
+      Object.assign(hist,parsed); loaded++;
+    }catch(e){lastErr=e;}
+  }
+  if(!Object.keys(hist).length) throw new Error("Nepodařilo se načíst historický COT. Pravděpodobně CORS nebo změněný název CFTC ZIPu: "+(lastErr?.message||lastErr));
+  const dates=Object.keys(hist).sort().slice(-260);const trimmed={};dates.forEach(d=>trimmed[d]=hist[d]);
+  localStorage.setItem("cot_hist",JSON.stringify(trimmed));
+  const scoreHistRecords=backfillScoreHistoryFromCOTHistory(trimmed);
+  const last=dates.at(-1),lastRow=trimmed[last];
+  if(lastRow){
+    saveCOT(lastRow.scores);const meta={source:"CFTC Historical Compressed TFF",asOf:last,updatedAt:new Date().toISOString(),raw:lastRow.raw,historical:true,records:dates.length,scoreHistRecords};
+    saveCOTMeta(meta);return{scores:lastRow.scores,meta,records:dates.length,yearsLoaded:loaded,scoreHistRecords};
+  }
+  return{scores:loadCOT(),meta:loadCOTMeta(),records:dates.length,yearsLoaded:loaded};
+}
+
+// V4.2 LOCAL COT: načtení historických COT souborů přímo z PC.
+// Podporuje více souborů najednou: .zip z CFTC nebo rozbalené .txt/.csv.
+async function readLocalCOTFile(file){
+  const name=(file.name||"").toLowerCase();
+  if(name.endsWith(".zip")){
+    if(!window.JSZip) throw new Error("JSZip knihovna není načtená. Rozbal ZIP a nahraj TXT/CSV soubor, nebo zapni internet kvůli CDN.");
+    const buf=await file.arrayBuffer();
+    const zip=await JSZip.loadAsync(buf);
+    const entry=Object.values(zip.files).find(f=>!f.dir && /\.(txt|csv)$/i.test(f.name)) || Object.values(zip.files).find(f=>!f.dir);
+    if(!entry) throw new Error(file.name+": ZIP neobsahuje TXT/CSV soubor.");
+    return await entry.async("string");
+  }
+  return await file.text();
+}
+async function loadCOTHistoryFromLocalFiles(fileList){
+  const files=Array.from(fileList||[]);
+  if(!files.length) throw new Error("Nevybral jsi žádný COT soubor.");
+  const hist={};let loaded=0;const errors=[];
+  for(const file of files){
+    try{
+      const text=await readLocalCOTFile(file);
+      const parsed=parseCOTHistoricalText(text);
+      Object.assign(hist,parsed);
+      loaded++;
+    }catch(e){errors.push((file.name||"soubor")+": "+(e?.message||e));}
+  }
+  if(!Object.keys(hist).length){
+    throw new Error("Nepodařilo se načíst žádný lokální COT soubor. "+errors.slice(0,2).join(" | "));
+  }
+  const dates=Object.keys(hist).sort().slice(-260);
+  const trimmed={};dates.forEach(d=>trimmed[d]=hist[d]);
+  localStorage.setItem("cot_hist",JSON.stringify(trimmed));
+  const scoreHistRecords=backfillScoreHistoryFromCOTHistory(trimmed);
+  const last=dates.at(-1),lastRow=trimmed[last];
+  const meta={source:"Lokální CFTC TFF soubory",asOf:last,updatedAt:new Date().toISOString(),raw:lastRow?.raw||{},historical:true,local:true,records:dates.length,scoreHistRecords,filesLoaded:loaded,errors};
+  if(lastRow?.scores){saveCOT(lastRow.scores);saveCOTMeta(meta);}
+  return{scores:lastRow?.scores||loadCOT(),meta,records:dates.length,filesLoaded:loaded,scoreHistRecords,errors};
+}
+
+
+// COT score: -3..+3, ideálně automaticky z CFTC TFF reportu, ruční slider zůstává jako fallback.
+function getCOTScore(currency,cotData){
+  return parseFloat((cotData[currency]||0).toFixed(1));
+}
+// Retail sentiment score: contrarian — 80%+ long = bearish, 20%- long = bullish. Rozsah držíme -1..+1 dle Trading Analyzer logiky.
+function getSentimentScore(currency,sentData){
+  const pct=sentData[currency]||50;
+  if(pct>=80) return -1;
+  if(pct>=70) return -0.5;
+  if(pct<=20) return 1;
+  if(pct<=30) return 0.5;
+  return 0;
+}
+
+// ── FINNHUB API ───────────────────────────────────────────
+const FH="https://finnhub.io/api/v1";
+async function fetchCalendar(apiKey,months=15){
+  const to=new Date(),from=new Date();
+  from.setMonth(from.getMonth()-months);
+  const f=from.toISOString().split("T")[0],t=to.toISOString().split("T")[0];
+  const res=await fetch(`${FH}/calendar/economic?from=${f}&to=${t}&token=${apiKey}`);
+  if(!res.ok) throw new Error(`Finnhub error ${res.status}`);
+  return(await res.json()).economicCalendar||[];
+}
+async function fetchUpcoming14(apiKey){
+  const from=new Date().toISOString().split("T")[0];
+  const to=new Date(Date.now()+14*86400000).toISOString().split("T")[0];
+  const res=await fetch(`${FH}/calendar/economic?from=${from}&to=${to}&token=${apiKey}`);
+  if(!res.ok) return[];
+  const allCodes=[...new Set([...Object.values(CURRENCY_COUNTRIES).flat(),...Object.values(INDIRECT_COUNTRIES).flat()])];
+  return((await res.json()).economicCalendar||[])
+    .filter(e=>allCodes.some(c=>(e.country||"").toUpperCase().includes(c))&&getWeight(e.event)>0)
+    .sort((a,b)=>new Date(a.time)-new Date(b.time));
+}
+async function fetchTechnical(apiKey,base,quote){
+  const dp=base==="JPY"||quote==="JPY"?3:5;
+  const to=Math.floor(Date.now()/1000),from=to-365*24*3600;
+  const syms=[`OANDA:${base}_${quote}`,`OANDA:${quote}_${base}`];
+  for(let i=0;i<syms.length;i++){
+    try{
+      const res=await fetch(`${FH}/forex/candle?symbol=${encodeURIComponent(syms[i])}&resolution=D&from=${from}&to=${to}&token=${apiKey}`);
+      if(!res.ok) continue;
+      const d=await res.json();
+      if(!d.c||d.c.length<20) continue;
+      let closes=d.c;
+      if(i===1) closes=closes.map(c=>1/c);
+      const cur=closes.at(-1);
+      const h52=Math.max(...closes),l52=Math.min(...closes);
+      const rng=h52-l52,pos=rng>0?(cur-l52)/rng:0.5;
+      const ma20=closes.slice(-20).reduce((a,b)=>a+b)/20;
+      const ma5=closes.slice(-5).reduce((a,b)=>a+b)/5;
+      return{current:cur.toFixed(dp),high52:h52.toFixed(dp),low52:l52.toFixed(dp),
+        pos,trend:ma5>ma20*1.001?"UP":ma5<ma20*0.999?"DOWN":"FLAT",
+        zone:pos<0.35?"DISCOUNT":pos>0.65?"PREMIUM":"NEUTRAL"};
+    }catch(e){continue;}
+  }
+  return null;
+}
+
+// ── MARKET STRUCTURE (Alpha Vantage) ─────────────────────
+async function fetchAVWeekly(avKey,base,quote){
+  const ck="ms_v34_"+base+quote;
+  try{
+    const c=localStorage.getItem(ck);
+    if(c){const{data,ts}=JSON.parse(c);if(Date.now()-ts<12*3600000)return data;}
+  }catch(e){}
+  const fetch1=async(b,q,inv)=>{
+    const u="https://www.alphavantage.co/query?function=FX_WEEKLY&from_symbol="+b+"&to_symbol="+q+"&outputsize=compact&apikey="+avKey;
+    const r=await fetch(u);const j=await r.json();
+    const key=Object.keys(j).find(k=>k.startsWith("Time Series"));
+    if(!key) return null;
+    const candles=Object.entries(j[key]).sort((a,b)=>new Date(b[0])-new Date(a[0])).slice(0,78)
+      .map(([date,v])=>{
+        const o=parseFloat(v["1. open"]),h=parseFloat(v["2. high"]),l=parseFloat(v["3. low"]),c=parseFloat(v["4. close"]);
+        return inv?{date,open:1/o,high:1/l,low:1/h,close:1/c}:{date,open:o,high:h,low:l,close:c};
+      });
+    if(candles.length<20) return null;
+    const closes=candles.map(c=>c.close),highs=candles.map(c=>c.high),lows=candles.map(c=>c.low);
+    const seg=Math.floor(closes.length/5);
+    const avgs=Array.from({length:5},(_,i)=>{const s=closes.slice(i*seg,(i+1)*seg);return s.reduce((a,b)=>a+b,0)/s.length;});
+    const rising=avgs.filter((a,i)=>i>0&&a<avgs[i-1]).length;
+    const falling=avgs.filter((a,i)=>i>0&&a>avgs[i-1]).length;
+    let hh=0,hl=0,lh=0,ll=0;
+    const pH=[],pL=[];
+    for(let i=2;i<candles.length-2;i++){
+      if(highs[i]>highs[i-1]&&highs[i]>highs[i-2]&&highs[i]>highs[i+1]&&highs[i]>highs[i+2]) pH.push(highs[i]);
+      if(lows[i]<lows[i-1]&&lows[i]<lows[i-2]&&lows[i]<lows[i+1]&&lows[i]<lows[i+2]) pL.push(lows[i]);
+    }
+    for(let i=1;i<Math.min(pH.length,6);i++) pH[i-1]>pH[i]?hh++:lh++;
+    for(let i=1;i<Math.min(pL.length,6);i++) pL[i-1]>pL[i]?hl++:ll++;
+    const bull=rising+hh+hl,bear=falling+lh+ll;
+    const structure=bull>bear+1?"BULLISH":bear>bull+1?"BEARISH":"SIDEWAYS";
+    return{structure,bull,bear,hh,hl,lh,ll};
+  };
+  try{
+    const r=await fetch1(base,quote,false)||await fetch1(quote,base,true);
+    if(r){try{localStorage.setItem(ck,JSON.stringify({data:r,ts:Date.now()}));}catch(e){}}
+    return r;
+  }catch(e){return null;}
+}
+
+
+async function fetchFinnhubStructure(fhKey,base,quote){
+  const ck="ms_fh_v34_"+base+quote;
+  try{
+    const c=localStorage.getItem(ck);
+    if(c){const{data,ts}=JSON.parse(c);if(Date.now()-ts<6*3600000)return data;}
+  }catch(e){}
+  const to=Math.floor(Date.now()/1000),from=to-365*24*3600;
+  const syms=[`OANDA:${base}_${quote}`,`OANDA:${quote}_${base}`];
+  for(let si=0;si<syms.length;si++){
+    try{
+      const res=await fetch(`${FH}/forex/candle?symbol=${encodeURIComponent(syms[si])}&resolution=D&from=${from}&to=${to}&token=${fhKey}`);
+      if(!res.ok) continue;
+      const d=await res.json();
+      if(!d.c||d.c.length<80) continue;
+      let candles=d.c.map((c,i)=>({date:d.t?.[i],open:d.o[i],high:d.h[i],low:d.l[i],close:c}));
+      if(si===1){
+        candles=candles.map(x=>({date:x.date,open:1/x.open,high:1/x.low,low:1/x.high,close:1/x.close}));
+      }
+      // převod denních svíček na zjednodušené weekly bloky po 5 dnech
+      const weeks=[];
+      for(let i=0;i<candles.length;i+=5){
+        const chunk=candles.slice(i,i+5); if(chunk.length<3) continue;
+        weeks.push({
+          date:chunk.at(-1).date,
+          open:chunk[0].open,
+          high:Math.max(...chunk.map(x=>x.high)),
+          low:Math.min(...chunk.map(x=>x.low)),
+          close:chunk.at(-1).close
+        });
+      }
+      const recent=weeks.slice(-78).reverse(); // nejnovější první, stejně jako AV funkce
+      const r=calcStructureFromCandles(recent);
+      if(r){r.source="Finnhub fallback";try{localStorage.setItem(ck,JSON.stringify({data:r,ts:Date.now()}));}catch(e){}return r;}
+    }catch(e){continue;}
+  }
+  return null;
+}
+function avgNum(arr){return arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;}
+function emaCalc(values,period){
+  if(!values.length) return 0;
+  const k=2/(period+1); let e=values[0];
+  for(let i=1;i<values.length;i++) e=values[i]*k+e*(1-k);
+  return e;
+}
+function slopeCalc(values){
+  const n=values.length; if(n<2) return 0;
+  const mx=(n-1)/2, my=avgNum(values); let num=0, den=0;
+  for(let i=0;i<n;i++){ num+=(i-mx)*(values[i]-my); den+=(i-mx)*(i-mx); }
+  return den?num/den:0;
+}
+function calcStructureFromCandles(candles){
+  if(!candles||candles.length<30) return null;
+
+  // Input z AV i Finnhub fallbacku je nejnovější → nejstarší. Pro výpočty ho otočíme na staré → nové.
+  const recent=[...candles].reverse().slice(-78).filter(c=>isFinite(c.high)&&isFinite(c.low)&&isFinite(c.close));
+  if(recent.length<30) return null;
+
+  const closes=recent.map(c=>c.close), highs=recent.map(c=>c.high), lows=recent.map(c=>c.low);
+  const current=closes[closes.length-1];
+  const ema13=emaCalc(closes,13), ema26=emaCalc(closes,26);
+  const slope13=slopeCalc(closes.slice(-13));
+  const trs=recent.slice(-14).map((c,i)=>{
+    const prev=i>0?recent[recent.length-14+i-1].close:c.close;
+    return Math.max(c.high-c.low,Math.abs(c.high-prev),Math.abs(c.low-prev));
+  });
+  const atr=avgNum(trs)||Math.abs(current)*0.005;
+  const slopeNorm=atr?slope13/atr:0;
+
+  const lastHighs=highs.slice(-20), lastLows=lows.slice(-20);
+  const high20=Math.max(...lastHighs), low20=Math.min(...lastLows);
+  const high52=Math.max(...highs.slice(-52)), low52=Math.min(...lows.slice(-52));
+  const pos52=(current-low52)/Math.max(high52-low52,Math.abs(current)*0.01);
+
+  let hh=0,hl=0,lh=0,ll=0;
+  const swingH=[], swingL=[];
+  for(let i=2;i<recent.length-2;i++){
+    if(highs[i]>=highs[i-1]&&highs[i]>=highs[i-2]&&highs[i]>=highs[i+1]&&highs[i]>=highs[i+2]) swingH.push(highs[i]);
+    if(lows[i]<=lows[i-1]&&lows[i]<=lows[i-2]&&lows[i]<=lows[i+1]&&lows[i]<=lows[i+2]) swingL.push(lows[i]);
+  }
+  const h=swingH.slice(-5), l=swingL.slice(-5);
+  for(let i=1;i<h.length;i++) h[i]>h[i-1]?hh++:lh++;
+  for(let i=1;i<l.length;i++) l[i]>l[i-1]?hl++:ll++;
+
+  let bull=0, bear=0;
+  if(current>ema13) bull+=1; else bear+=1;
+  if(ema13>ema26) bull+=1.5; else bear+=1.5;
+  if(slopeNorm>0.05) bull+=1.25; else if(slopeNorm<-0.05) bear+=1.25;
+  if(hh>lh) bull+=1; else if(lh>hh) bear+=1;
+  if(hl>ll) bull+=1; else if(ll>hl) bear+=1;
+  if(current>=high20-atr*0.35) bull+=0.75;
+  if(current<=low20+atr*0.35) bear+=0.75;
+  if(pos52>0.6) bull+=0.5; else if(pos52<0.4) bear+=0.5;
+
+  const score=bull-bear;
+  const structure=score>=1.0?"BULLISH":score<=-1.0?"BEARISH":"SIDEWAYS";
+  const confidence=Math.round(Math.min(100,Math.max(0,Math.abs(score)/5*100)));
+  return{
+    structure,
+    bull:parseFloat(bull.toFixed(1)),bear:parseFloat(bear.toFixed(1)),
+    hh,hl,lh,ll,
+    score:parseFloat(score.toFixed(2)),confidence,
+    slope:parseFloat(slopeNorm.toFixed(2)),pos52:parseFloat(pos52.toFixed(2)),
+    source:"Weekly structure v3.4"
+  };
+}
+async function fetchMarketStructure(fhKey,avKey,base,quote){
+  let avError="";
+  if(avKey){
+    try{const av=await fetchAVWeekly(avKey,base,quote); if(av){av.source=av.source||"Alpha Vantage"; return av;}}
+    catch(e){avError=e.message||String(e);}
+  }
+  const fh=await fetchFinnhubStructure(fhKey,base,quote);
+  if(fh){fh.note=avKey?"Alpha Vantage nevrátil data, použit fallback z Finnhub daily." : "Použit fallback z Finnhub daily, protože Alpha Vantage klíč není zadaný.";return fh;}
+  return {structure:"SIDEWAYS",bull:0,bear:0,hh:0,hl:0,lh:0,ll:0,source:"none",error: avError||"Nepodařilo se načíst Alpha Vantage ani Finnhub candles"};
+}
+
+function combinedSignal(fundDir,ms){
+  if(!ms) return{signal:fundDir,strength:"slabý",reason:"Technika nedostupná"};
+  const td=ms.structure==="BULLISH"?"BUY":ms.structure==="BEARISH"?"SELL":null;
+  if(fundDir==="BUY"&&td==="BUY") return{signal:"BUY",strength:"silný ✅",reason:"Fundamenty i tržní struktura shodně BUY"};
+  if(fundDir==="SELL"&&td==="SELL") return{signal:"SELL",strength:"silný ✅",reason:"Fundamenty i tržní struktura shodně SELL"};
+  if(fundDir==="BUY"&&td==="SELL") return{signal:"ČEKEJ",strength:"rozporný ⚠️",reason:"Fundamenty BUY ale struktura BEARISH — čekej"};
+  if(fundDir==="SELL"&&td==="BUY") return{signal:"ČEKEJ",strength:"rozporný ⚠️",reason:"Fundamenty SELL ale struktura BULLISH — čekej"};
+  return{signal:fundDir,strength:"neutrální ➡️",reason:"Tržní struktura sideways"};
+}
+
+// ── SCORING ───────────────────────────────────────────────
+function scoreCurrencyLegacy(events,currency,cotData,sentData){
+  // Původní V2 styl: actual > estimate = bullish pro všechna data. Slouží jen pro kontrolu rozdílu metodiky.
+  const matched=events.filter(e=>eventRelevance(currency,e));
+  let score=0,weight=0;
+  for(const ev of matched){
+    const rel=eventRelevance(currency,ev);if(!rel) continue;
+    const w0=getWeight(ev.event);if(!w0) continue;
+    const a=parseFloat(ev.actual),e2=parseFloat(ev.estimate);
+    if(isNaN(a)||isNaN(e2)) continue;
+    const r=recency(ev.time),dir=a>e2?1:a<e2?-1:0,w=w0*rel.factor;
+    score+=dir*w*r;weight+=w*r;
+  }
+  const fundScore=weight>0?Math.max(-10,Math.min(10,(score/weight)*10)):0;
+  const cotScore=getCOTScore(currency,cotData);
+  const sentScore=getSentimentScore(currency,sentData);
+  const seasonScore=getSeasonalScore(currency);
+  return parseFloat(Math.max(-10,Math.min(10,fundScore+cotScore*0.5+sentScore*0.5+seasonScore*0.3)).toFixed(2));
+}
+
+// ═══════════════ V5 ENGINE HELPERS ═══════════════════════════
+function getYieldDiffScore(currency){
+  const avg=Object.values(CENTRAL_BANK_RATES).reduce((a,b)=>a+b,0)/8;
+  return parseFloat(Math.max(-1.5,Math.min(1.5,((CENTRAL_BANK_RATES[currency]||avg)-avg)*0.35)).toFixed(2));
+}
+function getCOTPercentile(currency){
+  try{
+    const hist=loadCOTHistory();
+    const entries=Object.entries(hist).sort(([a],[b])=>new Date(a)-new Date(b));
+    const scores=entries.map(([,w])=>w[currency]?.score).filter(s=>typeof s==="number");
+    if(scores.length<12) return null;
+    const cur=scores[scores.length-1];
+    const hist2=scores.slice(0,-1);
+    return Math.round((hist2.filter(s=>s<=cur).length/hist2.length)*100);
+  }catch(e){return null;}
+}
+function getCurrencyMomentum(currency){
+  try{
+    const hist=loadScoreHistory();
+    if(!Array.isArray(hist)||hist.length<3) return 0;
+    const recent=hist.slice(-5).map(h=>h[currency]?.score??h[currency]??0);
+    const diffs=recent.slice(1).map((v,i)=>v-recent[i]);
+    return parseFloat(Math.max(-1,Math.min(1,(diffs.reduce((a,b)=>a+b,0)/diffs.length)*0.35)).toFixed(2));
+  }catch(e){return 0;}
+}
+function getDynamicWeights(cotPct,regime){
+  const ext=cotPct!==null&&(cotPct>=85||cotPct<=15);
+  if(regime==="BULLISH"||regime==="BEARISH") return{fund:0.55,cot:ext?0.70:0.35,sent:0.08,sea:0.07};
+  return{fund:0.40,cot:ext?0.80:0.45,sent:0.12,sea:0.08};
+}
+function getHoursToHighImpact(base,quote,upcoming){
+  try{
+    const now=Date.now();
+    const rel=upcoming.filter(ev=>(eventRelevance(base,ev)||eventRelevance(quote,ev))&&(ev.impact==="high"||ev.impact===3||ev.impact==="3"));
+    if(!rel.length) return 999;
+    return Math.max(0,(new Date(rel.sort((a,b)=>new Date(a.time)-new Date(b.time))[0].time)-now)/3600000);
+  }catch(e){return 999;}
+}
+function buildForecastV5(pair,scores,calData,upcoming){
+  const{base,quote}=pair;
+  const upBase=upcoming.filter(e=>eventRelevance(base,e));
+  const upQuote=upcoming.filter(e=>eventRelevance(quote,e));
+  let fwdBase=0,fwdQuote=0;const baseItems=[],quoteItems=[];
+  for(const ev of upBase){const rel=eventRelevance(base,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;const hist=getEventHistoryTrend(ev.event,base,calData);fwdBase+=hist.score*w;baseItems.push({ev,hist,w,rel});}
+  for(const ev of upQuote){const rel=eventRelevance(quote,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;const hist=getEventHistoryTrend(ev.event,quote,calData);fwdQuote+=hist.score*w;quoteItems.push({ev,hist,w,rel});}
+  const curDiff=(scores[base]?.score||0)-(scores[quote]?.score||0);
+  const fwdDiff=fwdBase-fwdQuote;
+  const combined=curDiff*0.70+fwdDiff*3.0*0.30;
+  // Faktor 1: logistická funkce
+  let prob=50+(1/(1+Math.exp(-combined*0.5))-0.5)*60;
+  // Faktor 2: momentum
+  const momAdj=(getCurrencyMomentum(base)-getCurrencyMomentum(quote))*5;
+  prob+=momAdj;
+  // Faktor 3: news risk discount
+  const hoursToNews=getHoursToHighImpact(base,quote,upcoming);
+  const newsDiscount=hoursToNews<12?-12:hoursToNews<24?-8:hoursToNews<48?-4:0;
+  prob+=newsDiscount;
+  // Faktor 4: COT extreme korekce
+  const cotPctB=getCOTPercentile(base);const cotPctQ=getCOTPercentile(quote);
+  let cotAdj=0;
+  if(cotPctB!==null){const d=curDiff>0?1:-1;if(cotPctB>88&&d>0) cotAdj-=7;if(cotPctB<12&&d<0) cotAdj-=7;if(cotPctB>70&&d>0) cotAdj+=3;if(cotPctB<30&&d<0) cotAdj+=3;}
+  if(cotPctQ!==null){const d=curDiff>0?-1:1;if(cotPctQ>88&&d>0) cotAdj-=5;if(cotPctQ<12&&d<0) cotAdj-=5;}
+  prob+=cotAdj;
+  prob=Math.round(Math.max(35,Math.min(75,prob)));
+  const dir=combined>0?"BUY":"SELL";
+  const bTrend=fwdBase>0.3?"posilovat":fwdBase<-0.3?"oslabovat":"být neutrální";
+  const qTrend=fwdQuote>0.3?"posilovat":fwdQuote<-0.3?"oslabovat":"být neutrální";
+  const desc=baseItems.length||quoteItems.length?`Nadcházející data naznačují, že ${base} může ${bTrend} a ${quote} může ${qTrend}.`:"Žádné klíčové eventy v příštích 14 dnech.";
+  const newsLabel=hoursToNews<48?`⚠ ${Math.round(hoursToNews)}h do high-impact news`:"";
+  const cotWarning=cotPctB!==null&&(cotPctB>88||cotPctB<12)?`🚨 COT ${base} na ${cotPctB}.perc. — crowded`:"";
+  return{dir,prob,baseItems,quoteItems,curDiff,fwdDiff,desc,hasEvents:baseItems.length+quoteItems.length>0,newsDiscount,hoursToNews,cotAdj,momAdj,cotWarning,newsLabel};
+}
+
+// ── REAL YIELD = CB rate − CPI ────────────────────────────────
+function getRealYieldScore(currency){
+  const nom=CENTRAL_BANK_RATES[currency]||0;
+  const cpi=REAL_CPI_DATA[currency]||2;
+  const ry=nom-cpi;
+  const n=Object.keys(REAL_CPI_DATA).length;
+  const avgRY=CURRENCIES.reduce((s,cur)=>s+((CENTRAL_BANK_RATES[cur]||0)-(REAL_CPI_DATA[cur]||2)),0)/n;
+  return parseFloat(Math.max(-2,Math.min(2,(ry-avgRY)*0.35)).toFixed(2));
+}
+
+// ── CB POLICY CYCLE SCORE ─────────────────────────────────────
+function getCBPolicyScore(currency){
+  const pol=CB_POLICY_DATA[currency];if(!pol)return 0;
+  const avgPol=CURRENCIES.reduce((s,cur)=>s+(CB_POLICY_DATA[cur]?.score||0),0)/CURRENCIES.length;
+  return parseFloat(Math.max(-1.5,Math.min(1.5,(pol.score-avgPol)*0.4)).toFixed(2));
+}
+
+// ── RISK SENTIMENT ADJUSTMENT ─────────────────────────────────
+function getRiskSentimentAdj(currency){
+  if(g_riskSentiment===0)return 0;
+  const riskOn={AUD:0.8,NZD:0.7,CAD:0.5,JPY:-0.5,CHF:-0.3};
+  const riskOff={AUD:-1.0,NZD:-1.0,CAD:-0.6,JPY:1.2,CHF:1.0};
+  const map=g_riskSentiment>0?riskOn:riskOff;
+  return parseFloat((map[currency]||0).toFixed(2));
+}
+
+// ── CONVICTION SCORE: kolik nezávislých faktorů souhlasí (0–5) ─
+function calcConvictionScore(pair,scores,aiAnalyses){
+  const isBuy=pair.dir==="BUY";let stars=0;const reasons=[];
+  // 1. CB Policy divergence
+  const bPol=CB_POLICY_DATA[pair.base]?.score||0,qPol=CB_POLICY_DATA[pair.quote]?.score||0;
+  if((isBuy&&bPol>qPol)||(!isBuy&&bPol<qPol)){stars++;reasons.push("CB: "+CB_POLICY_DATA[pair.base]?.label);}
+  // 2. Real yield differential
+  const bRY=(CENTRAL_BANK_RATES[pair.base]||0)-(REAL_CPI_DATA[pair.base]||2);
+  const qRY=(CENTRAL_BANK_RATES[pair.quote]||0)-(REAL_CPI_DATA[pair.quote]||2);
+  if((isBuy&&bRY>qRY+0.3)||(!isBuy&&bRY<qRY-0.3)){stars++;reasons.push("Real yield: "+pair.base+" "+bRY.toFixed(1)+"% vs "+pair.quote+" "+qRY.toFixed(1)+"%");}
+  // 3. Fundamental score strength
+  if(pair.diff>=2.0){stars++;reasons.push("Fundamenty: "+(isBuy?"+":"−")+pair.diff.toFixed(1));}
+  // 4. COT not crowded against direction
+  const cotB=scores[pair.base]?.cot_pct;
+  const crowded=cotB!=null&&((isBuy&&cotB>=88)||(!isBuy&&cotB<=12));
+  if(!crowded&&pair.diff>=1){stars++;reasons.push(cotB!=null?"COT "+pair.base+": "+cotB+"p":"COT ok");}
+  // 5. AI Analysis confluence
+  const ai=aiAnalyses?.[pair.pair];
+  if(ai){const ab=ai.bias==="BULLISH"||ai.entry_setup?.direction==="BUY";if(ab===isBuy){stars++;reasons.push("AI "+ai.tf+": "+ai.bias+" "+ai.confidence+"%");}}
+  return{stars,reasons};
+}
+
+function scoreCurrency(events,currency,cotData,sentData){
+  const matched=events.filter(e=>eventRelevance(currency,e));
+  let score=0,weight=0;const used=[];const cats={};
+  for(const ev of matched){
+    const rel=eventRelevance(currency,ev);if(!rel) continue;
+    const meta=getEventMeta(ev.event);if(!meta) continue;
+    const a=parseFloat(ev.actual),e2=parseFloat(ev.estimate);
+    if(isNaN(a)||isNaN(e2)) continue;
+    const baseW=meta.w, dir=eventDirection(ev);if(!dir) continue;
+    const r=recency(ev.time), surprise=surpriseStrength(ev), w=baseW*rel.factor*surprise;
+    const contribution=dir*w*r;
+    score+=contribution;weight+=w*r;
+    cats[meta.cat]=(cats[meta.cat]||0)+contribution;
+    used.push({...ev,dir,w,r,relLabel:rel.label,category:meta.cat,interpretation:meta.dir===-1?"nižší = bullish":meta.dir==="pmi"?"PMI 50 + beat/miss":"vyšší = bullish"});
+  }
+  const fundScoreRaw=weight>0?Math.max(-10,Math.min(10,(score/weight)*10)):0;
+  const yieldAdj=getRealYieldScore(currency);
+  const policyAdj=getCBPolicyScore(currency);
+  const fundScore=parseFloat(Math.max(-10,Math.min(10,fundScoreRaw+yieldAdj+policyAdj)).toFixed(2));
+  const cotScore=getCOTScore(currency,cotData);
+  const sentScore=getSentimentScore(currency,sentData);
+  const seasonScore=getSeasonalScore(currency);
+  const cotPct=getCOTPercentile(currency);
+  const momentumAdj=getCurrencyMomentum(currency);
+  let regime="NEUTRAL";
+  try{const r=JSON.parse(localStorage.getItem("v5_regime")||"{}" );regime=r[currency]||"NEUTRAL";}catch(e){}
+  const wt=getDynamicWeights(cotPct,regime);
+  const riskAdj=getRiskSentimentAdj(currency);
+  const rawTotal=fundScore*wt.fund+cotScore*wt.cot+sentScore*wt.sent+seasonScore*wt.sea+momentumAdj*0.3+riskAdj;
+  const total=parseFloat(Math.max(-10,Math.min(10,rawTotal)).toFixed(2));
+  return{
+    score:total,
+    legacy_score:scoreCurrencyLegacy(events,currency,cotData,sentData),
+    fund_score:fundScore,fund_score_raw:parseFloat(fundScoreRaw.toFixed(2)),yield_adj:yieldAdj,policy_adj:policyAdj,risk_adj:riskAdj,
+    cot_score:cotScore,sent_score:sentScore,season_score:seasonScore,
+    cot_pct:cotPct,momentum_adj:momentumAdj,weights_used:wt,
+    category_scores:Object.fromEntries(Object.entries(cats).map(([k,v])=>[k,parseFloat(v.toFixed(2))])),
+    total:matched.length,counted:used.length,
+    recentEvents:used.sort((a,b)=>new Date(b.time)-new Date(a.time)).slice(0,6),
+  };
+}
+
+// ── FORECAST ─────────────────────────────────────────────
+function getEventHistoryTrend(eventName,currency,calData){
+  const keyword=eventName.toLowerCase().split(" ")[0];
+  const history=calData.filter(e=>{
+    const rel=eventRelevance(currency,e);
+    return rel&&(e.event||"").toLowerCase().includes(keyword)&&e.actual&&e.estimate;
+  }).sort((a,b)=>new Date(b.time)-new Date(a.time)).slice(0,6);
+  if(!history.length) return{trend:"neznámý",score:0};
+  let wS=0,wT=0;
+  history.forEach((ev,idx)=>{
+    const rel=eventRelevance(currency,ev);
+    const a=parseFloat(ev.actual),e2=parseFloat(ev.estimate);
+    if(isNaN(a)||isNaN(e2)||!rel) return;
+    const dir=eventDirection(ev),w=(history.length-idx)*rel.factor;
+    wS+=dir*w;wT+=w;
+  });
+  const norm=wT>0?wS/wT:0;
+  return{trend:norm>0.25?"pozitivní 📈":norm<-0.25?"negativní 📉":"neutrální ➡️",score:parseFloat(norm.toFixed(2))};
+}
+
+function buildForecast(pair,scores,calData,upcoming){
+  const {base,quote}=pair;
+  const upBase=upcoming.filter(e=>eventRelevance(base,e));
+  const upQuote=upcoming.filter(e=>eventRelevance(quote,e));
+  let fwdBase=0,fwdQuote=0;
+  const baseItems=[],quoteItems=[];
+  for(const ev of upBase){
+    const rel=eventRelevance(base,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;
+    const hist=getEventHistoryTrend(ev.event,base,calData);
+    fwdBase+=hist.score*w;baseItems.push({ev,hist,w,rel});
+  }
+  for(const ev of upQuote){
+    const rel=eventRelevance(quote,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;
+    const hist=getEventHistoryTrend(ev.event,quote,calData);
+    fwdQuote+=hist.score*w;quoteItems.push({ev,hist,w,rel});
+  }
+  const curDiff=(scores[base]?.score||0)-(scores[quote]?.score||0);
+  const fwdDiff=fwdBase-fwdQuote;
+  const combined=curDiff*0.70+fwdDiff*3.0*0.30;
+  const prob=Math.round(Math.max(18,Math.min(82,50+combined*4)));
+  const dir=combined>0?"BUY":"SELL";
+  const bTrend=fwdBase>0.3?"posilovat":fwdBase<-0.3?"oslabovat":"být neutrální";
+  const qTrend=fwdQuote>0.3?"posilovat":fwdQuote<-0.3?"oslabovat":"být neutrální";
+  const desc=baseItems.length||quoteItems.length
+    ?`Nadcházející data naznačují, že ${base} může ${bTrend} a ${quote} může ${qTrend}.`
+    :"Žádné klíčové eventy v příštích 14 dnech. Výhled z historické síly měn.";
+  return{dir,prob,baseItems,quoteItems,curDiff,fwdDiff,desc,hasEvents:baseItems.length+quoteItems.length>0};
+}
+
+function rankPairs(scores,aiAnalyses){
+  const ranked=STANDARD_PAIRS.map(({pair,base,quote})=>{
+    const sB=scores[base]?.score||0,sQ=scores[quote]?.score||0,diff=sB-sQ;
+    const corrGroup=FX_CORRELATION_GROUPS.find(g=>g.includes(pair));
+    const cotPctB=scores[base]?.cot_pct,cotPctQ=scores[quote]?.cot_pct;
+    const cotCrowded=(cotPctB!=null&&(cotPctB>=88||cotPctB<=12))||(cotPctQ!=null&&(cotPctQ>=88||cotPctQ<=12));
+    const yieldDiffRaw=(CENTRAL_BANK_RATES[base]||0)-(CENTRAL_BANK_RATES[quote]||0);
+    const yieldLabel=Math.abs(yieldDiffRaw)>=1.5?(yieldDiffRaw>0?`${base} +${yieldDiffRaw.toFixed(2)}%`:`${quote} +${Math.abs(yieldDiffRaw).toFixed(2)}%`):"";
+    const pairObj={pair,base,quote,dir:diff>0?"BUY":"SELL",strong:diff>0?base:quote,weak:diff>0?quote:base,
+      diff:parseFloat(Math.abs(diff).toFixed(2)),s1:sB,s2:sQ,
+      corrGroup:corrGroup||null,cotCrowded,yieldLabel,cotPctBase:cotPctB,cotPctQuote:cotPctQ};
+    const cv=calcConvictionScore(pairObj,scores,aiAnalyses||{});
+    return{...pairObj,conviction:cv.stars,convictionReasons:cv.reasons};
+  }).sort((a,b)=>b.diff-a.diff);
+  const seen=new Set();
+  return ranked.map((p,i)=>{
+    if(i>=5) return{...p,corrDuplicate:false};
+    const gKey=p.corrGroup?[...p.corrGroup].sort().join(","):null;
+    if(gKey&&seen.has(gKey)) return{...p,corrDuplicate:true};
+    if(gKey) seen.add(gKey);
+    return{...p,corrDuplicate:false};
+  });
+}
+
+// ── SETUP ─────────────────────────────────────────────────
+function Setup({onSave}){
+  const [fh,setFh]=useState(localStorage.getItem("fh")||"");
+  const [av,setAv]=useState(localStorage.getItem("av")||"");
+  function save(){
+    if(!fh.trim()){alert("Zadej Finnhub API klíč");return;}
+    localStorage.setItem("fh",fh.trim());localStorage.setItem("av",av.trim());
+    if(typeof antKeySetup!=="undefined"&&antKeySetup.trim()) localStorage.setItem("ant_key",antKeySetup.trim());
+    onSave(fh.trim(),av.trim());
+  }
+  const inp={width:"100%",padding:"9px 12px",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:14,marginBottom:14,display:"block"};
+  return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+      <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"2rem",maxWidth:500,width:"100%"}}>
+        <div style={{fontSize:28,marginBottom:8}}>📊</div>
+        <h1 style={{fontSize:22,marginBottom:6}}>FX Fundamental Analyzer</h1>
+        <p style={{color:"#8b949e",fontSize:13,marginBottom:20}}>Fundamenty · COT · Sentiment · Seasonalita · Tržní struktura</p>
+        <label style={{color:"#8b949e",fontSize:12,display:"block",marginBottom:5}}>
+          Finnhub API klíč <span style={{color:"#f85149"}}>*</span> — <a href="https://finnhub.io/register" target="_blank">finnhub.io/register</a> (zdarma)
+        </label>
+        <input value={fh} onChange={e=>setFh(e.target.value)} placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxx" style={inp}/>
+        <label style={{color:"#8b949e",fontSize:12,display:"block",marginBottom:5}}>
+          Alpha Vantage klíč — <a href="https://alphavantage.co/support/#api-key" target="_blank">alphavantage.co</a> (zdarma) — tržní struktura
+        </label>
+        <input value={av} onChange={e=>setAv(e.target.value)} placeholder="ABCDEF123456" style={{...inp,marginBottom:20}}/>
+        <button onClick={save} style={{width:"100%",padding:"10px",background:"#238636",border:"none",borderRadius:6,color:"#fff",fontSize:14,fontWeight:500,cursor:"pointer"}}>Spustit →</button>
+      </div>
+    </div>
+  );
+}
+
+function SettingsOverlay({fhKey,avKey,onSave,onClose}){
+  const [fh,setFh]=useState(fhKey);const [av,setAv]=useState(avKey||"");
+  const [orKey,setOrKey]=useState(localStorage.getItem("or_key")||"");
+  const [orModel,setOrModel]=useState(localStorage.getItem("or_model")||"");
+  const [cbRates,setCbRates]=useState(()=>JSON.stringify(CENTRAL_BANK_RATES));
+  const [cbPolicyJson,setCbPolicyJson]=useState(()=>JSON.stringify(Object.fromEntries(Object.entries(CB_POLICY_DATA).map(([k,v])=>[k,{score:v.score,label:v.label}]))));
+  const [cpiJson,setCpiJson]=useState(()=>JSON.stringify(REAL_CPI_DATA));
+  const inp={width:"100%",padding:"8px 12px",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:13,marginBottom:10,display:"block"};
+  function saveAll(){
+    localStorage.setItem("fh",fh.trim());localStorage.setItem("av",av.trim());
+    if(orKey.trim()) localStorage.setItem("or_key",orKey.trim());
+    try{const p=JSON.parse(cbPolicyJson);localStorage.setItem("v5_cb_policy",JSON.stringify(p));Object.keys(p).forEach(k=>{if(CB_POLICY_DATA[k])CB_POLICY_DATA[k]={...CB_POLICY_DATA[k],...p[k]};});}catch(e){}
+    try{const p=JSON.parse(cpiJson);localStorage.setItem("v5_real_cpi",JSON.stringify(p));Object.assign(REAL_CPI_DATA,p);}catch(e){}
+    if(orModel.trim()) localStorage.setItem("or_model",orModel.trim()); else localStorage.removeItem("or_model");
+    try{const p=JSON.parse(cbRates);localStorage.setItem("v5_cb_rates",JSON.stringify(p));Object.assign(CENTRAL_BANK_RATES,p);}catch(e){alert("Neplatný JSON v CB sazbách");}
+    onSave(fh.trim(),av.trim());onClose();
+  }
+  return(
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.7)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"1.5rem",maxWidth:460,width:"92%",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
+          <h3>⚙️ Nastavení</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#8b949e",fontSize:18,cursor:"pointer"}}>✕</button>
+        </div>
+        <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Finnhub API klíč</label>
+        <input value={fh} onChange={e=>setFh(e.target.value)} style={inp}/>
+        <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Alpha Vantage klíč</label>
+        <input value={av} onChange={e=>setAv(e.target.value)} style={{...inp,marginBottom:14}}/>
+        <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>
+          🤖 OpenRouter API klíč <span style={{color:"#3fb950",fontWeight:700}}>✓ ZDARMA</span>
+        </label>
+        <div style={{fontSize:10,color:"#8b949e",marginBottom:6}}>
+          1. Jdi na <a href="https://openrouter.ai" target="_blank" style={{color:"#58a6ff"}}>openrouter.ai</a> → Sign up (Google účet) → <b style={{color:"#e6edf3"}}>Keys</b> → <b style={{color:"#e6edf3"}}>Create Key</b><br/>
+          2. Zkopíruj klíč sem (začíná <b style={{color:"#e6edf3"}}>sk-or-v1-...</b>)
+        </div>
+        <input value={orKey} onChange={e=>setOrKey(e.target.value)} placeholder="sk-or-v1-..." style={{...inp,marginBottom:10}}/>
+        <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>
+          Model pro AI analýzu <span style={{color:"#8b949e"}}>(nechej prázdné = auto fallback)</span>
+        </label>
+        <div style={{fontSize:10,color:"#8b949e",marginBottom:5}}>
+          Dostupné free modely: <a href="https://openrouter.ai/models?q=%3Afree" target="_blank" style={{color:"#58a6ff"}}>openrouter.ai/models?q=:free</a>
+        </div>
+        <select value={orModel} onChange={e=>setOrModel(e.target.value)} style={{...inp,cursor:"pointer",marginBottom:6}}>
+          <option value="">🔄 Auto — stáhne aktuální live seznam z OpenRouter</option>
+          <option value="meta-llama/llama-3.2-11b-vision-instruct:free">llama-3.2-11b-vision (Llama Vision)</option>
+          <option value="meta-llama/llama-3.2-90b-vision-instruct:free">llama-3.2-90b-vision (Llama Vision velký)</option>
+          <option value="qwen/qwen-2-vl-7b-instruct:free">qwen-2-vl-7b (Qwen Vision)</option>
+          <option value="meta-llama/llama-4-maverick:free">llama-4-maverick (zkus pokud auto selže)</option>
+          <option value="meta-llama/llama-4-scout:free">llama-4-scout (zkus pokud auto selže)</option>
+        </select>
+        <div style={{fontSize:10,color:"#8b949e",marginBottom:14}}>
+          Aktuální free modely: <a href="https://openrouter.ai/models?q=%3Afree&supported_parameters=vision" target="_blank" style={{color:"#58a6ff"}}>openrouter.ai/models (filtr: free + vision)</a>
+        </div>
+        <div style={{borderTop:"1px solid #21262d",paddingTop:12,marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#e6edf3",marginBottom:4}}>⚡ V5 Sazby centrálních bank (%)</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:8}}>
+            {Object.entries(CENTRAL_BANK_RATES).map(([cur,rate])=>(
+              <div key={cur} style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"4px 6px",textAlign:"center"}}>
+                <div style={{fontSize:9,color:"#8b949e"}}>{FLAGS[cur]} {cur}</div>
+                <div style={{fontSize:13,fontWeight:700,color:"#e6edf3"}}>{rate}%</div>
+              </div>
+            ))}
+          </div>
+          <textarea value={cbRates} onChange={e=>setCbRates(e.target.value)} style={{...inp,minHeight:48,resize:"vertical",fontSize:11,fontFamily:"monospace"}}/>
+        </div>
+        <div style={{borderTop:"1px solid #21262d",paddingTop:12,marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#e6edf3",marginBottom:8}}>🏦 CB Policy Cycle — aktualizuj po zasedání</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:6}}>
+            {Object.entries(CB_POLICY_DATA).map(([cur,pol])=>(
+              <div key={cur} style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"4px 6px",textAlign:"center"}}>
+                <div style={{fontSize:9,color:"#8b949e"}}>{FLAGS[cur]} {cur}</div>
+                <div style={{fontSize:12,fontWeight:700,color:pol.score>0?"#3fb950":pol.score<0?"#f85149":"#8b949e"}}>{pol.score>0?"+":""}{pol.score}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:9,color:"#8b949e",marginBottom:4}}>+2=agr.hike · +1=hike · 0=hold · -1=cut · -2=agr.cut</div>
+          <textarea value={cbPolicyJson} onChange={e=>setCbPolicyJson(e.target.value)}
+            style={{...inp,minHeight:45,fontSize:10,fontFamily:"monospace",resize:"vertical",marginBottom:10}}/>
+          <div style={{fontSize:12,fontWeight:700,color:"#e6edf3",marginBottom:5}}>📊 CPI % (pro Real Yield výpočet)</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5,marginBottom:5}}>
+            {Object.entries(REAL_CPI_DATA).map(([cur,cpi])=>(
+              <div key={cur} style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"4px 6px",textAlign:"center"}}>
+                <div style={{fontSize:9,color:"#8b949e"}}>{FLAGS[cur]} {cur}</div>
+                <div style={{fontSize:11,fontWeight:700,color:"#d29922"}}>{cpi}%</div>
+              </div>
+            ))}
+          </div>
+          <textarea value={cpiJson} onChange={e=>setCpiJson(e.target.value)}
+            style={{...inp,minHeight:35,fontSize:10,fontFamily:"monospace",resize:"vertical"}}/>
+        </div>
+        <button onClick={saveAll} style={{width:"100%",padding:"8px",background:"#238636",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>Uložit →</button>
+      </div>
+    </div>
+  );
+}
+
+// ── STRENGTH BAR ─────────────────────────────────────────
+function StrengthBar({currency,score,change7d}){
+  const pct=((score+10)/20)*100;
+  const color=score>2?"#3fb950":score<-2?"#f85149":"#d29922";
+  const changeColor=change7d>0?"#3fb950":change7d<0?"#f85149":"#8b949e";
+  const changeArrow=change7d>0?"↑":change7d<0?"↓":"→";
+  return(
+    <div style={{marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+        <span style={{fontWeight:500}}>{FLAGS[currency]} {currency} <span style={{color:"#8b949e",fontSize:12,fontWeight:400}}>{NAMES[currency]}</span></span>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {change7d!==0&&<span style={{fontSize:11,color:changeColor}}>{changeArrow} {Math.abs(change7d).toFixed(1)} (7d)</span>}
+          <span style={{fontSize:12,color,fontWeight:600}}>{score>0?"+":""}{score.toFixed(1)}</span>
+        </div>
+      </div>
+      <div style={{height:7,background:"#21262d",borderRadius:4,overflow:"hidden"}}>
+        <div style={{width:`${pct}%`,height:"100%",background:color,borderRadius:4,transition:"width .5s"}}/>
+      </div>
+    </div>
+  );
+}
+
+// ── PAIR ROW ─────────────────────────────────────────────
+
+
+// ── CONVICTION CARD ────────────────────────────────────────────
+function ConvictionCard({p,forecast,onClick,aiData}){
+  const buy=p.dir==="BUY",ac=buy?"#3fb950":"#f85149";
+  const stars=p.conviction||0;
+  const f=forecast||{};
+  return(
+    <div onClick={onClick} style={{background:`linear-gradient(135deg,${ac}08,rgba(7,12,19,.98))`,border:`1px solid ${ac}30`,borderLeft:`3px solid ${ac}`,borderRadius:10,padding:"12px 14px",cursor:"pointer",transition:"all .2s"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
+        <div style={{display:"flex",alignItems:"center",gap:9}}>
+          <span style={{fontSize:14,fontWeight:900}}>{FLAGS[p.base]}{FLAGS[p.quote]} {p.pair}</span>
+          <span style={{background:`${ac}18`,border:`1px solid ${ac}44`,color:ac,borderRadius:5,padding:"2px 8px",fontSize:11,fontWeight:900}}>{p.dir}</span>
+          <span style={{color:"#f0b429",fontSize:13,letterSpacing:1}}>{"★".repeat(stars)}{"☆".repeat(5-stars)}</span>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div style={{fontSize:10,color:ac,fontWeight:700}}>{stars}/5 faktorů</div>
+          {f.prob&&<div style={{fontSize:10,color:"#8b949e"}}>{f.prob}% {f.dir}</div>}
+        </div>
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:aiData?6:0}}>
+        {p.convictionReasons?.map((r,i)=>(
+          <span key={i} style={{fontSize:9,background:"rgba(255,255,255,.04)",border:"1px solid #1d2a36",borderRadius:4,padding:"1px 6px",color:"#8b949e"}}>✓ {r}</span>
+        ))}
+      </div>
+      {aiData&&(()=>{const ab=aiData.bias==="BULLISH"||aiData.entry_setup?.direction==="BUY";const cf=ab===buy;return<div style={{fontSize:9,color:cf?"#3fb950":"#f85149",background:cf?"rgba(63,185,80,.07)":"rgba(248,81,73,.07)",border:`1px solid ${cf?"rgba(63,185,80,.2)":"rgba(248,81,73,.2)"}`,borderRadius:5,padding:"2px 8px",display:"inline-flex",gap:5}}><span>{cf?"🟢 AI CONFLUENCE":"⚠ AI DIVERGENCE"}</span><span style={{color:"#8b949e"}}>{aiData.tf} {aiData.confidence}%</span></div>;})()}
+    </div>
+  );
+}
+
+// ── COPY BUTTON ────────────────────────────────────────────────
+function CopyBtn({text}){
+  const [copied,setCopied]=useState(false);
+  function doCopy(){
+    const str=String(text||"");
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(str).catch(()=>fallback(str));
+    } else { fallback(str); }
+    setCopied(true);
+    setTimeout(()=>setCopied(false),1500);
+  }
+  function fallback(str){
+    const ta=document.createElement("textarea");
+    ta.value=str;ta.style.position="fixed";ta.style.opacity="0";
+    document.body.appendChild(ta);ta.select();
+    document.execCommand("copy");document.body.removeChild(ta);
+  }
+  return(
+    <span onClick={doCopy} title={"Kopírovat: "+text} style={{cursor:"pointer",fontSize:9,padding:"1px 5px",borderRadius:3,marginLeft:4,userSelect:"none",flexShrink:0,
+      color:copied?"#3fb950":"#4a6a88",
+      background:copied?"rgba(63,185,80,.12)":"rgba(255,255,255,.04)",
+      border:`1px solid ${copied?"#3fb95033":"#1d2a3688"}`,
+      transition:"all .2s",display:"inline-block"}}>
+      {copied?"✓":"⧉"}
+    </span>
+  );
+}
+
+function PairRow({p,rank,selected,onClick,forecast,aiData}){
+  const buy=p.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
+  const conf=Math.min(100,(p.diff/15)*100);
+  const f=forecast||{};
+  const probColor=f.prob>=65?"#3fb950":f.prob<=35?"#ff4d4d":"#d29922";
+  return(
+    <div onClick={onClick} className={"pro-pair-row "+(selected?"selected":"")}> 
+      <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
+        <div>
+          <div style={{fontWeight:900,fontSize:14,display:"flex",alignItems:"center",gap:6}}>{FLAGS[p.base]}{FLAGS[p.quote]} {p.pair}{p.conviction>=3&&<span style={{color:"#f0b429",fontSize:11,letterSpacing:1}}>{"★".repeat(p.conviction)}</span>}<span className="pro-muted" style={{fontSize:10}}>#{rank}</span></div>
+          <div style={{fontSize:11,marginTop:5}}>
+            <span className="pro-muted">score </span><b style={{color:p.diff>=0?"#3fb950":"#ff4d4d"}}>{p.dir==="BUY"?"+":"-"}{p.diff.toFixed(1)}</b>
+            <span className="pro-muted"> · 14d </span>{f.prob&&<b style={{color:probColor}}>{f.prob}% {f.dir}{f.newsDiscount&&f.newsDiscount<0?" ⚡":""}</b>}
+          </div>
+        </div>
+        <span className="pro-pill" style={{background:buy?"#113b20":"#431819",color:ac,border:`1px solid ${ac}33`}}>{p.dir}</span>
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:8,fontSize:10,color:"#8b949e",flexWrap:"wrap",alignItems:"center"}}>
+        <span>{p.base} <b style={{color:p.s1>=0?"#3fb950":"#ff4d4d"}}>{p.s1>0?"+":""}{p.s1.toFixed(1)}</b></span>
+        <span>{p.quote} <b style={{color:p.s2>=0?"#3fb950":"#ff4d4d"}}>{p.s2>0?"+":""}{p.s2.toFixed(1)}</b></span>
+        {p.cotCrowded&&<span style={{background:"rgba(240,180,41,.10)",border:"1px solid rgba(240,180,41,.28)",color:"#d29922",borderRadius:3,padding:"0 4px"}}>🚨 CROWDED</span>}
+        {p.corrDuplicate&&<span style={{background:"rgba(248,81,73,.08)",border:"1px solid rgba(248,81,73,.22)",color:"#f85149",borderRadius:3,padding:"0 4px"}}>≈ KOREL.</span>}
+        {p.yieldLabel&&<span style={{background:"rgba(47,155,255,.08)",border:"1px solid rgba(47,155,255,.22)",color:"#58a6ff",borderRadius:3,padding:"0 4px"}}>💰 {p.yieldLabel}</span>}
+        {p.cotPctBase!=null&&<span style={{color:"#8b949e"}}>COT: <b style={{color:p.cotPctBase>=88||p.cotPctBase<=12?"#d29922":p.cotPctBase>=70?"#3fb950":"#8b949e"}}>{p.cotPctBase}p</b></span>}
+        {aiData&&(()=>{const ab=aiData.bias==="BULLISH"||aiData.entry_setup?.direction==="BUY";const cf=ab===(p.dir==="BUY");const ah=Math.round((Date.now()-aiData.savedAt)/3600000);const as2=ah<1?"<1h":ah<24?ah+"h":Math.round(ah/24)+"d";return<span style={{display:"inline-flex",gap:4,alignItems:"center",background:cf?"rgba(63,185,80,.08)":"rgba(248,81,73,.08)",border:`1px solid ${cf?"rgba(63,185,80,.25)":"rgba(248,81,73,.25)"}`,borderRadius:5,padding:"1px 7px"}}><span style={{fontSize:9,color:cf?"#3fb950":"#f85149",fontWeight:700}}>{cf?"🟢 CONF":"⚠ DIV"}</span><span style={{fontSize:9,color:"#8b949e"}}>AI {aiData.tf}</span><span style={{fontSize:9,color:"#4a6a88"}}>{as2}</span></span>;})()}
+      </div>
+      <div style={{height:4,background:"#1a2432",borderRadius:4,marginTop:9,overflow:"hidden"}}>
+        <div style={{width:`${conf}%`,height:"100%",background:ac,borderRadius:4}}/>
+      </div>
+    </div>
+  );
+}
+
+// ── SCORE BREAKDOWN (jako v TradingAnalyzer PDF) ──────────
+function ScoreBreakdown({currency,scores}){
+  const s=scores[currency];if(!s) return null;
+  const items=[
+    {label:"Fundamenty (data)",value:s.fund_score,max:10},
+    ...(s.yield_adj!==undefined?[{label:"Real yield diff",value:s.yield_adj,max:1.5}]:[]),
+    ...(s.policy_adj!==undefined&&s.policy_adj!==0?[{label:`CB politika (${CB_POLICY_DATA[currency]?.label||""})`,value:s.policy_adj,max:1.5}]:[]),
+    ...(s.risk_adj!==undefined&&s.risk_adj!==0?[{label:`Risk sentiment (${g_riskSentiment>0?"risk-on":g_riskSentiment<0?"risk-off":"neutral"})`,value:s.risk_adj,max:1.2}]:[]),
+    {label:"COT (velcí hráči)",value:s.cot_score,max:3},
+    ...(s.momentum_adj&&s.momentum_adj!==0?[{label:"Score momentum",value:parseFloat((s.momentum_adj*0.3).toFixed(2)),max:1}]:[]),
+    {label:"Retail sentiment",value:s.sent_score,max:2},
+    {label:"Seasonalita",value:s.season_score,max:2},
+  ];
+  const total=s.score;
+  const tc=total>2?"#3fb950":total<-2?"#f85149":"#d29922";
+  return(
+    <div style={{background:"#0d1117",borderRadius:6,padding:"10px 12px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <span style={{fontSize:12,fontWeight:500}}>{FLAGS[currency]} {currency}</span>
+        <span style={{fontSize:16,fontWeight:700,color:tc}}>{total>0?"+":""}{total.toFixed(1)}</span>
+      </div>
+      {items.map(({label,value,max})=>{
+        const c=value>0?"#3fb950":value<0?"#f85149":"#8b949e";
+        const pct=((value+max)/(max*2))*100;
+        return(
+          <div key={label} style={{marginBottom:6}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}}>
+              <span style={{color:"#8b949e"}}>{label}</span>
+              <span style={{color:c,fontWeight:600}}>{value>0?"+":""}{value.toFixed(1)}</span>
+            </div>
+            <div style={{height:3,background:"#21262d",borderRadius:2,overflow:"hidden"}}>
+              <div style={{width:`${pct}%`,height:"100%",background:c,borderRadius:2}}/>
+            </div>
+          </div>
+        );
+      })}
+      {s.cot_pct!==null&&s.cot_pct!==undefined&&(
+        <div style={{marginTop:8,paddingTop:7,borderTop:"1px solid #21262d",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontSize:10,color:"#8b949e"}}>COT Percentil (3+ roky)</span>
+          <div style={{display:"flex",alignItems:"center",gap:5}}>
+            <div style={{width:50,height:4,background:"#21262d",borderRadius:2,overflow:"hidden"}}><div style={{width:`${s.cot_pct}%`,height:"100%",background:s.cot_pct>=85||s.cot_pct<=15?"#d29922":"#58a6ff",borderRadius:2}}/></div>
+            <span style={{fontSize:11,fontWeight:700,color:s.cot_pct>=88||s.cot_pct<=12?"#d29922":"#8b949e"}}>{s.cot_pct}p{s.cot_pct>=88?" 🚨":s.cot_pct<=12?" 🚨":""}</span>
+          </div>
+        </div>
+      )}
+      {s.weights_used&&(
+        <div style={{marginTop:5,fontSize:9,color:"#8b949e",display:"flex",gap:6,flexWrap:"wrap"}}>
+          <span>Dyn. váhy:</span>
+          <span>fund <b style={{color:"#58a6ff"}}>{(s.weights_used.fund*100).toFixed(0)}%</b></span>
+          <span>COT <b style={{color:"#58a6ff"}}>{(s.weights_used.cot*100).toFixed(0)}%</b></span>
+          <span>sent <b style={{color:"#58a6ff"}}>{(s.weights_used.sent*100).toFixed(0)}%</b></span>
+          <span>sea <b style={{color:"#58a6ff"}}>{(s.weights_used.sea*100).toFixed(0)}%</b></span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+function MiniLineChart({values=[],height=120,color="#d29922"}){
+  const w=520,h=height,pad=18;
+  const pts=svgPolyline(values,w,h,pad);
+  const min=Math.min(-10,...values),max=Math.max(10,...values),span=max-min||1;
+  return <svg viewBox={`0 0 ${w} ${h}`} style={{width:"100%",height,display:"block",background:"transparent",borderRadius:6}}>
+    <line x1={pad} x2={w-pad} y1={h/2} y2={h/2} stroke="#30363d" strokeDasharray="4 4"/>
+    <line x1={pad} x2={w-pad} y1={pad} y2={pad} stroke="#21262d"/>
+    <line x1={pad} x2={w-pad} y1={h-pad} y2={h-pad} stroke="#21262d"/>
+    <polyline points={pts} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+    {values.map((v,i)=> i===values.length-1 ? <circle key={i} cx={pad+(values.length===1?0:i*(w-2*pad)/(values.length-1))} cy={h-pad-((v-min)/span)*(h-2*pad)} r="4" fill={color}/> : null)}
+  </svg>;
+}
+function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",labelA="BASE",labelB="QUOTE",unit="score"}){
+  const w=760,h=height,padL=46,padR=22,padT=22,padB=32;
+  const vals=[...a,...b].filter(v=>Number.isFinite(v));
+  const min=Math.min(-10,...vals),max=Math.max(10,...vals),span=max-min||1;
+  const x=(i,n)=>padL+(n<=1?0:i*(w-padL-padR)/(n-1));
+  const y=v=>h-padB-((v-min)/span)*(h-padT-padB);
+  const pts=arr=>arr.map((v,i)=>`${x(i,arr.length)},${y(v)}`).join(' ');
+  const grid=[0,.25,.5,.75,1];
+  return <svg viewBox={`0 0 ${w} ${h}`} style={{width:"100%",height,display:"block"}}>
+    <defs>
+      <linearGradient id="fillA" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={colorA} stopOpacity=".24"/><stop offset="100%" stopColor={colorA} stopOpacity="0"/></linearGradient>
+      <linearGradient id="fillB" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={colorB} stopOpacity=".20"/><stop offset="100%" stopColor={colorB} stopOpacity="0"/></linearGradient>
+    </defs>
+    <rect x="0" y="0" width={w} height={h} fill="transparent"/>
+    {grid.map((g,i)=>{const yy=padT+g*(h-padT-padB);return <g key={i}><line x1={padL} x2={w-padR} y1={yy} y2={yy} stroke={i===2?"#334155":"#1d2a3a"}/><text x="10" y={yy+4} fill="#8b949e" fontSize="11">{(max-g*span).toFixed(unit==="net"?0:0)}</text></g>})}
+    {[0,.2,.4,.6,.8,1].map((g,i)=><line key={i} x1={padL+g*(w-padL-padR)} x2={padL+g*(w-padL-padR)} y1={padT} y2={h-padB} stroke="#142032"/>) }
+    {a.length>1&&<polyline points={`${padL},${h-padB} ${pts(a)} ${x(a.length-1,a.length)},${h-padB}`} fill="url(#fillA)"/>}
+    {b.length>1&&<polyline points={`${padL},${h-padB} ${pts(b)} ${x(b.length-1,b.length)},${h-padB}`} fill="url(#fillB)"/>}
+    {a.length>1&&<polyline points={pts(a)} fill="none" stroke={colorA} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>}
+    {b.length>1&&<polyline points={pts(b)} fill="none" stroke={colorB} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>}
+    {a.length>0&&<g><circle cx={x(a.length-1,a.length)} cy={y(a[a.length-1])} r="5" fill={colorA}/><text x={w-padR-36} y={y(a[a.length-1])-8} fill="#fff" fontSize="12" fontWeight="700">{a[a.length-1]>0?"+":""}{a[a.length-1].toFixed(unit==="net"?0:1)}</text></g>}
+    {b.length>0&&<g><circle cx={x(b.length-1,b.length)} cy={y(b[b.length-1])} r="5" fill={colorB}/><text x={w-padR-36} y={y(b[b.length-1])+18} fill="#fff" fontSize="12" fontWeight="700">{b[b.length-1]>0?"+":""}{b[b.length-1].toFixed(unit==="net"?0:1)}</text></g>}
+    <text x={padL} y={h-10} fill="#8b949e" fontSize="11">starší</text><text x={w-padR-42} y={h-10} fill="#8b949e" fontSize="11">aktuální</text>
+  </svg>;
+}
+function getScoreSeries(currency,limit=104){
+  const hist=loadScoreHistory();
+  const dates=Object.keys(hist).sort().slice(-limit);
+  return {dates,values:dates.map(d=>hist[d]?.[currency]??0)};
+}
+function getCOTNetSeries(currency,limit=104){
+  const hist=loadCOTHistory();
+  const dates=Object.keys(hist).sort().slice(-limit);
+  const values=dates.map(d=>{
+    const r=hist[d]?.raw?.[currency];
+    if(r&&Number.isFinite(r.levNet)) return r.levNet/10000;
+    return hist[d]?.scores?.[currency]??0;
+  });
+  return {dates,values};
+}
+function PairScoreHistoryPanel({pair}){
+  const base=getScoreSeries(pair.base,104), quote=getScoreSeries(pair.quote,104);
+  const n=Math.max(base.values.length,quote.values.length);
+  return <div className="pro-card pro-chart-wrap" style={{marginBottom:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:12}}>
+      <div>
+        <div className="pro-panel-title" style={{marginBottom:4}}>Score historie — obě měny</div>
+        <div style={{display:"flex",gap:18,fontSize:12}}>
+          <span><b style={{color:"#2f9bff"}}>■ {pair.base}</b> {NAMES[pair.base]}</span>
+          <span><b style={{color:"#bf4cff"}}>■ {pair.quote}</b> {NAMES[pair.quote]}</span>
+        </div>
+      </div>
+      <div className="pro-chart-toolbar"><span>3M</span><span>6M</span><span className="active">1Y</span><span>2Y</span><span>ALL</span></div>
+    </div>
+    {n>1?<DualLineChart a={base.values} b={quote.values} labelA={pair.base} labelB={pair.quote}/>:<div style={{fontSize:12,color:"#8b949e",padding:18}}>Score historie se doplní po importu COT historie nebo dalších refreshích.</div>}
+    <div style={{fontSize:11,color:"#8b949e",marginTop:6}}>Modrá = {pair.base}, fialová = {pair.quote}. Čím větší rozestup, tím silnější bias páru.</div>
+  </div>;
+}
+function COTNetPairPanel({pair,cotMeta,cotData}){
+  const b=getCOTNetSeries(pair.base,104), q=getCOTNetSeries(pair.quote,104);
+  const bRaw=cotMeta?.raw?.[pair.base]||{}, qRaw=cotMeta?.raw?.[pair.quote]||{};
+  const bScore=cotData[pair.base]??0,qScore=cotData[pair.quote]??0;
+  return <div className="pro-card pro-chart-wrap" style={{marginBottom:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:12}}>
+      <div>
+        <div className="pro-panel-title" style={{marginBottom:4}}>COT Net positioning — Leveraged Funds</div>
+        <div style={{display:"flex",gap:18,fontSize:12}}><span><b style={{color:"#2f9bff"}}>■ {pair.base}</b> net pozice</span><span><b style={{color:"#bf4cff"}}>■ {pair.quote}</b> net pozice</span></div>
+      </div>
+      <div className="pro-chart-toolbar"><span>3M</span><span>6M</span><span className="active">1Y</span><span>2Y</span><span>ALL</span></div>
+    </div>
+    {(b.values.length>1||q.values.length>1)?<DualLineChart a={b.values} b={q.values} unit="net"/>:<div style={{fontSize:12,color:"#8b949e",padding:18}}>COT graf se zobrazí po importu historických fut_fin_txt_YYYY.zip souborů.</div>}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
+      {[{c:pair.base,s:bScore,r:bRaw,col:"#2f9bff"},{c:pair.quote,s:qScore,r:qRaw,col:"#bf4cff"}].map(x=>{
+        const f=x.r.flow||0;const ex=x.r.extreme||cotExtremeFromRatio((x.s||0)/6);
+        return <div key={x.c} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
+          <div style={{fontSize:20,fontWeight:900,color:x.col}}>{x.c} <span style={{fontSize:15,color:x.s>=0?"#3fb950":"#ff4d4d"}}>{x.s>0?"+":""}{x.s.toFixed(1)}</span></div>
+          <div style={{fontSize:11,color:"#8b949e",marginTop:6}}>Net LF: <b style={{color:"#e6edf3"}}>{x.r.levNet?Math.round(x.r.levNet).toLocaleString("cs"):"—"}</b></div>
+          <div style={{fontSize:11,color:"#8b949e"}}>Flow: <b style={{color:f>=0?"#3fb950":"#ff4d4d"}}>{f>0?"+":""}{f?Math.round(f).toLocaleString("cs"):"—"}</b></div>
+          <div style={{fontSize:11,color:"#8b949e"}}>Extreme: <b style={{color:ex.color}}>{ex.label}</b></div>
+        </div>
+      })}
+    </div>
+  </div>;
+}
+
+function COTMiniHistory({currency}){
+  const hist=loadCOTHistory();
+  const dates=Object.keys(hist).sort().slice(-26);
+  const values=dates.map(d=>hist[d]?.scores?.[currency]??0);
+  if(values.length<2) return <div style={{fontSize:10,color:"#8b949e",marginTop:6}}>COT line graf se začne kreslit po dalších týdenních načteních.</div>;
+  return <div style={{marginTop:6}}><MiniLineChart values={values} height={48}/></div>;
+}
+function COTFlowCards({cotMeta,cotData}){
+  const raw=cotMeta?.raw||{};
+  return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(210px,1fr))",gap:8,marginBottom:14}}>
+    {CURRENCIES.map(c=>{
+      const r=raw[c]||{};const v=cotData[c]||0;const flow=r.flow||0;const ex=r.extreme||cotExtremeFromRatio((v||0)/6);
+      const col=v>0?"#3fb950":v<0?"#f85149":"#8b949e";
+      const fcol=flow>0?"#3fb950":flow<0?"#f85149":"#8b949e";
+      return <div key={c} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:8,padding:"9px 10px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+          <b>{FLAGS[c]} {c}</b><span style={{color:col,fontWeight:800}}>{v>0?"+":""}{v.toFixed(1)}</span>
+        </div>
+        <div style={{fontSize:11,color:"#8b949e",display:"grid",gap:3}}>
+          <span>Net LF: <b style={{color:"#e6edf3"}}>{r.levNet?Math.round(r.levNet).toLocaleString("cs"):"—"}</b></span>
+          <span>Weekly flow: <b style={{color:fcol}}>{flow>0?"+":""}{flow?Math.round(flow).toLocaleString("cs"):"—"}</b></span>
+          <span>Extreme: <b style={{color:ex.color}}>{ex.label}</b></span>
+        </div>
+        <COTMiniHistory currency={c}/>
+      </div>;
+    })}
+  </div>;
+}
+
+// ── COT & SENTIMENT PANEL ─────────────────────────────────
+function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onLoadCOTHistory,onLoadLocalCOT,cotLoading,historyLoading}){
+  const [saved,setSaved]=useState(false);
+  const localCotInput=useRef(null);
+  function saveCurrent(){
+    saveCOT(cotData);saveSentiment(sentData);
+    setSaved(true);setTimeout(()=>setSaved(false),2000);
+  }
+  const sm={fontSize:11,color:"#8b949e"};
+  const month=new Date().toLocaleString("cs",{month:"long"});
+  return(
+    <div style={{maxWidth:900}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontWeight:500,fontSize:15}}>📊 COT + Retail Sentiment</div>
+          <div style={{fontSize:12,color:"#8b949e",marginTop:2}}>COT = net positioning + weekly flow + crowding extrémy · retail je kontrariánský filtr</div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {cotMeta?.asOf&&<span style={{fontSize:11,color:"#8b949e"}}>COT: {cotMeta.asOf}</span>}
+          {saved&&<span style={{fontSize:12,color:"#3fb950"}}>✓ Uloženo</span>}
+          <button onClick={onAutoCOT} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#1f6feb",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{cotLoading?"⏳ Tahám COT":"⚡ Aktuální COT"}</button>
+          <button onClick={onLoadCOTHistory} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#8957e5",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{historyLoading?"⏳ Tahám historii":"📈 COT historie 5 let"}</button>
+          <input ref={localCotInput} type="file" multiple accept=".zip,.txt,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files?.length) onLoadLocalCOT(e.target.files); e.target.value="";}}/>
+          <button onClick={()=>localCotInput.current?.click()} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#6e7681",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{historyLoading?"⏳ Importuji":"📂 Import COT z PC"}</button>
+          <button onClick={saveCurrent} style={{padding:"6px 14px",background:"#238636",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>💾 Uložit</button>
+        </div>
+      </div>
+
+      {cotMeta?.raw&&<COTFlowCards cotMeta={cotMeta} cotData={cotData}/>}
+
+      <div style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:8,padding:"9px 12px",marginBottom:12,fontSize:11,color:"#8b949e",lineHeight:1.5}}>
+        <b style={{color:"#58a6ff"}}>Lokální COT import:</b> stáhni CFTC historické soubory <b>fut_fin_txt_YYYY.zip</b>, nech je klidně zabalené a nahraj je přes <b>📂 Import COT z PC</b>. Tím se obejde CORS a grafy se doplní hned.
+      </div>
+
+      {/* Seasonalita info */}
+      <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12}}>
+        <span style={{color:"#58a6ff",fontWeight:500}}>🌊 Aktuální seasonalita ({month}):</span>{" "}
+        {CURRENCIES.map(c=>{
+          const s=getSeasonalScore(c);
+          const col=s>0?"#3fb950":s<0?"#f85149":"#8b949e";
+          return <span key={c} style={{marginRight:12}}>{FLAGS[c]}<span style={{color:col,fontWeight:600}}>{c} {s>0?"+":""}{s}</span></span>;
+        })}
+        <div style={{color:"#8b949e",marginTop:4}}>Automaticky dle měsíce · Váha 30% v celkovém skóre</div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        {/* COT */}
+        <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:14}}>
+          <div style={{fontWeight:500,fontSize:13,marginBottom:4}}>COT — Velcí spekulanti</div>
+          <div style={{...sm,marginBottom:12}}>-3 = silně short · 0 = neutrální · +3 = silně long<br/>Zdroj: CFTC Traders in Financial Futures — Leveraged Funds 70 % + Asset Managers 30 %</div>
+          {CURRENCIES.map(c=>{
+            const v=cotData[c]||0;
+            const col=v>0?"#3fb950":v<0?"#f85149":"#8b949e";
+            return(
+              <div key={c} style={{marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{fontSize:12}}>{FLAGS[c]} {c}</span>
+                  <span style={{fontSize:12,fontWeight:600,color:col,minWidth:24,textAlign:"right"}}>{v>0?"+":""}{v}</span>
+                </div>
+                <input type="range" min="-3" max="3" step="0.5" value={v}
+                  onChange={e=>setCotData(prev=>({...prev,[c]:parseFloat(e.target.value)}))}
+                  style={{width:"100%",height:4}}/>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Retail Sentiment */}
+        <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:14}}>
+          <div style={{fontWeight:500,fontSize:13,marginBottom:4}}>Retail Sentiment (% long)</div>
+          <div style={{...sm,marginBottom:12}}>&gt;70% long = contrarian bearish · &lt;30% long = contrarian bullish<br/>Zdroj: OANDA orderbook · MyFxBook · broker sentiment</div>
+          {CURRENCIES.map(c=>{
+            const v=sentData[c]||50;
+            const sentScore=getSentimentScore(c,sentData);
+            const col=sentScore>0?"#3fb950":sentScore<0?"#f85149":"#8b949e";
+            const signal=sentScore>=1?"BULL ↑":sentScore>0?"bull ↑":sentScore<=-1?"BEAR ↓":sentScore<0?"bear ↓":"neutr";
+            return(
+              <div key={c} style={{marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                  <span style={{fontSize:12}}>{FLAGS[c]} {c}</span>
+                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                    <span style={{fontSize:11,color:col}}>{signal}</span>
+                    <span style={{fontSize:12,fontWeight:600,color:"#e6edf3"}}>{v}% long</span>
+                  </div>
+                </div>
+                <input type="range" min="0" max="100" step="5" value={v}
+                  onChange={e=>setSentData(prev=>({...prev,[c]:parseInt(e.target.value)}))}
+                  style={{width:"100%",height:4}}/>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DETAIL ───────────────────────────────────────────────
+
+function Detail({pair,scores,fhKey,avKey,forecast,calData,cotMeta,cotData}){
+  const [tech,setTech]=useState(null);const [techLoad,setTechLoad]=useState(true);
+  const [ms,setMs]=useState(null);const [msLoad,setMsLoad]=useState(false);
+  useEffect(()=>{
+    setTech(null);setTechLoad(true);setMs(null);
+    fetchTechnical(fhKey,pair.base,pair.quote).then(t=>{setTech(t);setTechLoad(false);}).catch(()=>setTechLoad(false));
+    setMsLoad(true);
+    fetchMarketStructure(fhKey,avKey,pair.base,pair.quote).then(m=>{setMs(m);setMsLoad(false);}).catch(e=>{setMs({structure:"SIDEWAYS",bull:0,bear:0,hh:0,hl:0,lh:0,ll:0,source:"error",error:e.message||String(e)});setMsLoad(false);});
+  },[pair.pair,avKey,fhKey]);
+  const buy=pair.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
+  const fProb=forecast?.prob||50;
+  const probC=fProb>=65?"#3fb950":fProb<=35?"#ff4d4d":"#d29922";
+  const combined=combinedSignal(pair.dir,ms);
+  const structColor=combined.signal==="BUY"?"#3fb950":combined.signal==="SELL"?"#ff4d4d":"#d29922";
+  return <div>
+    <div className="pro-card" style={{padding:0,overflow:"hidden",marginBottom:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 370px",gap:0,alignItems:"stretch"}}>
+        <div style={{padding:"18px 22px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <div style={{fontSize:30}}>{FLAGS[pair.base]}{FLAGS[pair.quote]}</div>
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}><h2 style={{fontSize:24,margin:0}}>{pair.pair}</h2><span className="pro-pill" style={{background:buy?"#113b20":"#431819",color:ac,border:`1px solid ${ac}55`}}>{pair.dir}</span></div>
+              <div style={{color:"#8b949e",fontSize:13,marginTop:4}}>{NAMES[pair.base]} / {NAMES[pair.quote]}</div>
+            </div>
+          </div>
+        </div>
+        <div className="pro-stat-grid">
+          <div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Skóre páru</div><b style={{fontSize:19,color:ac}}>{pair.dir==="BUY"?"+":"-"}{pair.diff.toFixed(1)}</b></div>
+          <div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Rank</div><b style={{fontSize:19}}>#{pairsIndexSafe(pair)}</b></div>
+          <div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Struktura</div><b style={{fontSize:15,color:structColor}}>{msLoad?"...":(ms?.structure||"—")}</b></div>
+          <div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>14d výhled</div><b style={{fontSize:15,color:probC}}>{fProb}% {forecast?.dir}</b></div>
+          <div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Bias</div><b style={{fontSize:15,color:ac}}>{pairBiasScore(pair)}/100</b></div>
+        </div>
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 330px",gap:14}}>
+      <div>
+        <PairScoreHistoryPanel pair={pair}/>
+        <COTNetPairPanel pair={pair} cotMeta={cotMeta||{}} cotData={cotData||{}}/>
+      </div>
+      <div>
+        <div className="pro-card" style={{padding:16,marginBottom:14}}>
+          <div className="pro-panel-title">Score komponenty</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {[pair.base,pair.quote].map(c=><ScoreBreakdown key={c} currency={c} scores={scores}/>) }
+            {aiAnalyses[pair.pair]&&(()=>{const ai=aiAnalyses[pair.pair];const ab=ai.bias==="BULLISH"||ai.entry_setup?.direction==="BUY";const cf=ab===(pair.dir==="BUY");const ah=Math.round((Date.now()-ai.savedAt)/3600000);const bc=ai.bias==="BULLISH"?"#3fb950":ai.bias==="BEARISH"?"#f85149":"#d29922";return<div style={{marginTop:10,background:"#080d14",border:"1px solid #1d2a36",borderRadius:8,padding:12}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:11,fontWeight:700,color:"#c8d8ea"}}>📊 AI Analýza — {ai.tf}</span><div style={{display:"flex",gap:5}}><span style={{fontSize:9,color:cf?"#3fb950":"#f85149",background:cf?"rgba(63,185,80,.1)":"rgba(248,81,73,.1)",border:`1px solid ${cf?"#3fb95040":"#f8514940"}`,borderRadius:4,padding:"1px 6px",fontWeight:700}}>{cf?"🟢 CONFLUENCE":"⚠ DIVERGENCE"}</span><span style={{fontSize:9,color:"#4a6a88"}}>{ah<1?"<1h":ah+"h ago"}</span></div></div><div style={{display:"flex",gap:7,marginBottom:8}}><div style={{background:`${bc}12`,border:`1px solid ${bc}33`,borderRadius:6,padding:"4px 9px",textAlign:"center"}}><div style={{fontSize:8,color:"#8b949e"}}>AI BIAS</div><div style={{fontSize:13,fontWeight:900,color:bc}}>{ai.bias}</div></div><div style={{background:"#0b1420",border:"1px solid #1d2a36",borderRadius:6,padding:"4px 9px",textAlign:"center"}}><div style={{fontSize:8,color:"#8b949e"}}>KONF.</div><div style={{fontSize:13,fontWeight:900,color:ai.confidence>=70?"#3fb950":ai.confidence>=45?"#d29922":"#f85149"}}>{ai.confidence}</div></div>{ai.entry_setup&&<div style={{background:"#0b1420",border:"1px solid #1d2a36",borderRadius:6,padding:"4px 9px",textAlign:"center"}}><div style={{fontSize:8,color:"#8b949e"}}>SETUP</div><div style={{fontSize:12,fontWeight:900,color:ai.entry_setup.direction==="BUY"?"#3fb950":ai.entry_setup.direction==="SELL"?"#f85149":"#d29922"}}>{ai.entry_setup.direction}</div><div style={{fontSize:9,color:"#8b949e"}}>RR {ai.entry_setup.rr_estimate||"—"}</div></div>}</div>{ai.key_levels?.length>0&&<div style={{marginBottom:8}}><div style={{fontSize:9,color:"#4a6a88",marginBottom:4,letterSpacing:".06em"}}>KEY LEVELS</div>{ai.key_levels.slice(0,4).map((l,i)=>{const lc=l.type==="RESISTANCE"?"#f85149":"#3fb950";const sm={STRONG:"●●●",MEDIUM:"●●○",WEAK:"●○○"};return<div key={i} style={{display:"flex",gap:6,fontSize:10,padding:"2px 0",borderBottom:"1px solid #0d1421"}}><span style={{color:lc,fontWeight:700,minWidth:10}}>{l.type==="RESISTANCE"?"R":"S"}</span><span style={{color:"#5a7a66",fontSize:9}}>{sm[l.strength]||"●○○"}</span><span style={{color:"#c0d0e0",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.zone}</span><CopyBtn text={l.zone}/></div>;})}  </div>}{ai.entry_setup&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,marginBottom:8}}>{[{l:"ENTRY",v:ai.entry_setup.entry_zone,cx:"#58a6ff"},{l:"SL",v:ai.entry_setup.stop_loss,cx:"#f85149"},{l:"TP1",v:ai.entry_setup.tp1,cx:"#3fb950"},{l:"TP2",v:ai.entry_setup.tp2,cx:"#3fb95077"}].map(({l,v,cx})=><div key={l} style={{background:"#0a1220",border:`1px solid ${cx}22`,borderRadius:5,padding:"4px 7px"}}><div style={{fontSize:8,color:cx,fontWeight:700}}>{l}</div><div style={{fontSize:10,color:"#8aaccc",lineHeight:1.3,marginTop:1,display:"flex",alignItems:"center",justifyContent:"space-between",gap:3}}><span style={{flex:1}}>{v||"—"}</span>{v&&<CopyBtn text={v}/>}</div></div>)}</div>}{ai.summary&&<div style={{fontSize:10,color:"#8b949e",lineHeight:1.6,borderTop:"1px solid #0d1421",paddingTop:6,display:"flex",justifyContent:"space-between",gap:4,alignItems:"flex-start"}}><span style={{flex:1}}>{ai.summary}</span><CopyBtn text={ai.summary}/></div>}</div>;})()}
+          </div>
+        </div>
+        <div className="pro-card" style={{padding:16,marginBottom:14}}>
+          <div className="pro-panel-title">Struktura trhu</div>
+          {msLoad?<div className="pro-muted">Načítám...</div>:<>
+            <div style={{display:"grid",gap:8,fontSize:13}}>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span className="pro-muted">Trend weekly</span><b style={{color:structColor}}>{ms?.structure||"—"}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span className="pro-muted">HH / HL</span><b className="green">{ms?.hh??0}/{ms?.hl??0}</b></div>
+              <div style={{display:"flex",justifyContent:"space-between"}}><span className="pro-muted">LH / LL</span><b className="red">{ms?.lh??0}/{ms?.ll??0}</b></div>
+              <div style={{fontSize:11,color:"#8b949e",marginTop:6}}>Zdroj: {ms?.source||"unknown"}{ms?.note?" · "+ms.note:""}</div>
+            </div>
+            <div style={{marginTop:12,padding:"9px 10px",background:structColor+"18",borderLeft:"3px solid "+structColor,borderRadius:6,fontSize:12}}><b style={{color:structColor}}>{combined.strength} — </b>{combined.reason}</div>
+          </>}
+        </div>
+        {forecast&&<div className="pro-card" style={{padding:16,marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div className="pro-panel-title" style={{margin:0}}>Výhled na 14 dní</div><b style={{fontSize:22,color:probC}}>{fProb}% {forecast.dir}</b></div>
+          <div style={{height:9,background:"#243142",borderRadius:9,overflow:"hidden",margin:"13px 0"}}><div style={{height:"100%",width:`${Math.abs(fProb-50)*2}%`,marginLeft:forecast.dir==="BUY"?"50%":`${50-(50-fProb)*2}%`,background:probC,borderRadius:9}}/></div>
+          <div style={{fontSize:12,color:"#c9d1d9",lineHeight:1.55}}>{forecast.desc}</div>
+          <div style={{marginTop:10,fontSize:11,color:"#8b949e"}}>{forecast.hasEvents?"Nejbližší události jsou níže v kalendáři.":"Bez klíčových eventů v příštích 14 dnech."}</div>
+        </div>}
+        {!techLoad&&tech&&<div className="pro-card" style={{padding:16}}>
+          <div className="pro-panel-title">Technická pozice</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:12,color:"#8b949e"}}>
+            <div>Cena <b style={{color:"#e6edf3"}}>{tech.current}</b></div><div>Trend <b style={{color:tech.trend==="UP"?"#3fb950":tech.trend==="DOWN"?"#ff4d4d":"#d29922"}}>{tech.trend}</b></div>
+            <div>52W High <b style={{color:"#e6edf3"}}>{tech.high52}</b></div><div>52W Low <b style={{color:"#e6edf3"}}>{tech.low52}</b></div>
+            <div>Pozice <b style={{color:"#e6edf3"}}>{(tech.pos*100).toFixed(0)}%</b></div><div>Zóna <b style={{color:tech.zone==="DISCOUNT"?"#3fb950":tech.zone==="PREMIUM"?"#ff4d4d":"#d29922"}}>{tech.zone}</b></div>
+          </div>
+        </div>}
+      </div>
+    </div>
+  </div>;
+}
+function pairsIndexSafe(pair){return pair?.rankLabel||"";}
+
+// ── CALENDAR ─────────────────────────────────────────────
+function CalendarPanel({events}){
+  if(!events?.length) return <div style={{color:"#8b949e",fontSize:13}}>Načítám...</div>;
+  return <div>{events.map((e,i)=>{
+    const dt=new Date(e.time),past=dt<new Date();
+    const dot=(e.impact||"").toLowerCase()==="high"?"#f85149":"#d29922";
+    const cur=Object.entries(CURRENCY_COUNTRIES).find(([,c])=>c.some(x=>(e.country||"").toUpperCase().includes(x)))?.[0]||e.country;
+    const beat=past&&e.actual&&e.estimate?eventDirection(e)>0:null;
+    return <div key={i} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:"1px solid #21262d"}}>
+      <div style={{width:6,height:6,borderRadius:"50%",background:dot,marginTop:5,flexShrink:0}}/>
+      <div style={{flex:1}}>
+        <div style={{display:"flex",justifyContent:"space-between"}}>
+          <span style={{fontWeight:500}}>{COUNTRY_FLAGS[(e.country||"").toUpperCase()]||FLAGS[cur]||""} {e.event}</span>
+          {past&&beat!==null&&<span style={{fontSize:11,fontWeight:700,color:beat?"#3fb950":"#f85149",marginLeft:8}}>{beat?"BEAT":"MISS"}</span>}
+        </div>
+        <div style={{fontSize:11,color:"#8b949e",marginTop:2,display:"flex",gap:10,flexWrap:"wrap"}}>
+          <span>{dt.toLocaleDateString("cs")} {dt.toLocaleTimeString("cs",{hour:"2-digit",minute:"2-digit"})}</span>
+          {e.estimate&&<span>Forecast: {e.estimate}</span>}
+          {past&&e.actual&&<span style={{color:"#e6edf3"}}>Actual: {e.actual}</span>}
+        </div>
+      </div>
+    </div>;
+  })}</div>;
+}
+
+
+// ── AI ANALYZER TAB ───────────────────────────────────────
+function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
+  const TF_LIST=["M1","M5","M15","M30","H1","H4","D1","W1"];
+  const [imgFile,setImgFile]=useState(null);
+  const [imgSrc,setImgSrc]=useState(null);
+  const [selPair,setSelPair]=useState(selected?.pair||"EURUSD");
+  const [tf,setTf]=useState("H4");
+  const [price,setPrice]=useState("");
+  const [notes,setNotes]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [result,setResult]=useState(null);
+  const [error,setError]=useState("");
+  const [drag,setDrag]=useState(false);
+  const aiFileRef=useRef();
+
+  useEffect(()=>{if(selected?.pair)setSelPair(selected.pair);},[selected?.pair]);
+
+  const pairData=pairs.find(p=>p.pair===selPair);
+
+  const handleAIFile=useCallback(f=>{
+    if(!f||!f.type.startsWith("image/")){setError("Nahrej obrázek (PNG/JPG/WebP)");return;}
+    setImgFile(f);setError("");setImgSrc(URL.createObjectURL(f));setResult(null);
+  },[]);
+
+  const onAIDrop=useCallback(e=>{e.preventDefault();setDrag(false);handleAIFile(e.dataTransfer.files[0]);},[handleAIFile]);
+
+  async function runAIAnalysis(){
+    if(!imgFile){setError("Nejprve nahrej screenshot grafu.");return;}
+    setLoading(true);setError("");setResult(null);
+    try{
+      const b64=await fileToBase64(imgFile);
+      const mt=imgFile.type||"image/png";
+      const ctx=[
+        `Pair: ${selPair}, Timeframe: ${tf}`,
+        price?`Current price: ${price}`:null,
+        pairData?`Fundamental bias from FX Analyzer: ${pairData.dir}, diff: ${pairData.diff.toFixed(2)}, ${pairData.base} score: ${(scores[pairData.base]?.score||0).toFixed(1)}, ${pairData.quote} score: ${(scores[pairData.quote]?.score||0).toFixed(1)}`:null,
+        notes?`Context: ${notes}`:null,
+        "Return ONLY the JSON."
+      ].filter(Boolean).join("\n");
+      const orKey=localStorage.getItem("or_key")||"";
+      if(!orKey){setError("Chybí OpenRouter API klíč — přidej ho v ⚙️ Settings (zdarma na openrouter.ai)");setLoading(false);return;}
+
+      // ── Krok 1: Stáhni aktuální seznam free vision modelů z OpenRouter ──
+      let visionModels=[];
+      try{
+        const mResp=await fetch("https://openrouter.ai/api/v1/models",{
+          headers:{"Authorization":`Bearer ${orKey}`}
+        });
+        const mData=await mResp.json();
+        visionModels=(mData.data||[])
+          .filter(m=>m.id.endsWith(":free")&&(m.architecture?.modality||"").includes("image"))
+          .sort((a,b)=>(b.context_length||0)-(a.context_length||0))
+          .map(m=>m.id);
+      }catch(e){console.warn("Models fetch failed:",e);}
+
+      // ── Krok 2: Sestav seznam — manuální výběr + live modely + záloha ──
+      const manualModel=localStorage.getItem("or_model")||"";
+      const FALLBACK=["meta-llama/llama-3.2-11b-vision-instruct:free","meta-llama/llama-3.2-90b-vision-instruct:free","qwen/qwen-2-vl-7b-instruct:free"];
+      const OR_MODELS=[manualModel,...visionModels,...FALLBACK]
+        .filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+
+      if(OR_MODELS.length===0){setError("OpenRouter nemá momentálně žádné free vision modely. Zkus to za chvíli.");setLoading(false);return;}
+
+      // ── Krok 3: Zkus modely postupně ──
+      let raw="",usedModel="",lastErr="";
+      for(const model of OR_MODELS){
+        try{
+          const r=await fetch("https://openrouter.ai/api/v1/chat/completions",{
+            method:"POST",
+            headers:{"Content-Type":"application/json","Authorization":`Bearer ${orKey}`,"HTTP-Referer":"https://attrading.netlify.app","X-Title":"AT Trading FX Analyzer"},
+            body:JSON.stringify({model,messages:[{role:"system",content:AI_SYSTEM_PROMPT},{role:"user",content:[{type:"image_url",image_url:{url:`data:${mt};base64,${b64}`}},{type:"text",text:ctx}]}],max_tokens:2048})
+          });
+          const d=await r.json();
+          if(d.error){lastErr=`${model}: ${d.error.message||JSON.stringify(d.error)}`;continue;}
+          const candidate=d.choices?.[0]?.message?.content||"";
+          if(candidate){raw=candidate;usedModel=model;break;}
+        }catch(e){lastErr=`${model}: ${e.message}`;continue;}
+      }
+      if(!raw) throw new Error("Žádný free vision model není momentálně dostupný. Zkus to znovu za pár minut nebo zvol model ručně v Settings.\nDetail: "+lastErr);
+      console.log("✓ AI analýza dokončena, model:",usedModel);
+      const clean=raw.replace(/```json|```/g,"").trim();
+      const si=clean.indexOf("{"),ei=clean.lastIndexOf("}");
+      const parsed=JSON.parse(si>=0&&ei>si?clean.slice(si,ei+1):clean);
+      setResult(parsed);
+      if(onSave&&parsed){onSave(selPair,tf,parsed);}
+    }catch(e){setError("Analýza selhala: "+(e?.message||String(e)));}
+    setLoading(false);
+  }
+
+  const biasColor=result?.bias==="BULLISH"?"var(--cmd-green)":result?.bias==="BEARISH"?"var(--cmd-red)":"#d29922";
+  const inp={width:"100%",padding:"7px 10px",background:"#080d14",border:"1px solid #1d2a36",borderRadius:6,color:"#e6edf3",fontSize:12,outline:"none",fontFamily:"inherit"};
+
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"300px 1fr",gap:14,alignItems:"start"}}>
+      {/* ── LEFT: Controls ── */}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+
+        {/* Upload */}
+        <div className="pro-card" style={{padding:14}}>
+          <div className="pro-panel-title" style={{marginBottom:9}}>📊 Screenshot grafu</div>
+          <div onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)} onDrop={onAIDrop}
+            onClick={()=>aiFileRef.current?.click()}
+            style={{border:`2px dashed ${drag?"var(--cmd-green)":imgSrc?"rgba(120,242,54,.4)":"#263242"}`,borderRadius:9,minHeight:imgSrc?0:110,padding:imgSrc?0:"18px 12px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"border-color .2s",background:drag?"rgba(120,242,54,.04)":"transparent",overflow:"hidden"}}>
+            {imgSrc?<img src={imgSrc} alt="chart" style={{width:"100%",borderRadius:7,display:"block"}}/>
+              :<><div style={{fontSize:24,marginBottom:5}}>📈</div><div style={{fontSize:11,color:"#8b949e",textAlign:"center"}}>Přetáhni screenshot<br/>nebo klikni pro výběr</div></>}
+          </div>
+          <input ref={aiFileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAIFile(e.target.files[0]);e.target.value="";}}/>
+          {imgSrc&&<button onClick={()=>{setImgSrc(null);setImgFile(null);setResult(null);}} style={{marginTop:4,background:"none",border:"none",color:"#8b949e",fontSize:10,cursor:"pointer"}}>✕ Odebrat</button>}
+          <div style={{marginTop:6,fontSize:10,color:"#8b949e"}}>PNG · JPG · WebP · TradingView / MT4/5</div>
+        </div>
+
+        {/* Pair + TF */}
+        <div className="pro-card" style={{padding:14}}>
+          <div className="pro-panel-title" style={{marginBottom:9}}>⚙️ Parametry</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+            <div><div style={{fontSize:10,color:"#8b949e",marginBottom:3}}>PÁR</div>
+              <select value={selPair} onChange={e=>setSelPair(e.target.value)} style={{...inp,cursor:"pointer"}}>
+                {STANDARD_PAIRS.map(p=><option key={p.pair} value={p.pair}>{FLAGS[p.base]}{FLAGS[p.quote]} {p.pair}</option>)}
+              </select></div>
+            <div><div style={{fontSize:10,color:"#8b949e",marginBottom:3}}>TIMEFRAME</div>
+              <select value={tf} onChange={e=>setTf(e.target.value)} style={{...inp,cursor:"pointer"}}>
+                {TF_LIST.map(t=><option key={t} value={t}>{t}</option>)}
+              </select></div>
+          </div>
+          <div><div style={{fontSize:10,color:"#8b949e",marginBottom:3}}>AKTUÁLNÍ CENA (volitelné)</div>
+            <input value={price} onChange={e=>setPrice(e.target.value)} placeholder="1.08450" style={inp}/></div>
+        </div>
+
+        {/* Fund context auto-filled */}
+        {pairData&&<div style={{background:"#0b1420",border:"1px solid #1d2a36",borderRadius:10,padding:12}}>
+          <div style={{fontSize:10,color:"#8b949e",marginBottom:5}}>AUTO — FUNDAMENTÁLNÍ KONTEXT</div>
+          <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:3}}>
+            <span style={{fontSize:12,fontWeight:700}}>{FLAGS[pairData.base]}{FLAGS[pairData.quote]} {pairData.pair}</span>
+            <span style={{fontWeight:900,color:pairData.dir==="BUY"?"var(--cmd-green)":"var(--cmd-red)"}}>{pairData.dir}</span>
+            <span style={{fontSize:11,color:"#8b949e"}}>diff {pairData.diff.toFixed(2)}</span>
+          </div>
+          <div style={{fontSize:10,color:"#8b949e"}}>
+            {pairData.base}: <b style={{color:"#e6edf3"}}>{(scores[pairData.base]?.score||0).toFixed(1)}</b>
+            {" · "}{pairData.quote}: <b style={{color:"#e6edf3"}}>{(scores[pairData.quote]?.score||0).toFixed(1)}</b>
+          </div>
+        </div>}
+
+        {/* Notes */}
+        <div className="pro-card" style={{padding:14}}>
+          <div style={{fontSize:10,color:"#8b949e",marginBottom:4}}>POZNÁMKY PRO AI (volitelné)</div>
+          <textarea value={notes} onChange={e=>setNotes(e.target.value)}
+            placeholder="Čekám na retest, news ve 14:30, minulý týden bearish..."
+            style={{...inp,minHeight:56,resize:"vertical"}}/>
+        </div>
+
+        <button onClick={runAIAnalysis} disabled={loading||!imgFile}
+          style={{padding:"11px",borderRadius:9,border:"none",cursor:loading||!imgFile?"not-allowed":"pointer",background:!loading&&imgFile?"linear-gradient(135deg,var(--cmd-green),#36c94b)":"#111a26",color:!loading&&imgFile?"#041007":"#4a6a88",fontSize:13,fontWeight:900,letterSpacing:".03em",boxShadow:!loading&&imgFile?"0 0 22px rgba(120,242,54,.28)":"none",transition:"all .2s"}}>
+          {loading?"⟳ Analyzuji...":"⚡ SPUSTIT AI ANALÝZU"}
+        </button>
+        {aiAnalyses[selPair]&&(()=>{const s=aiAnalyses[selPair];const ah=Math.round((Date.now()-s.savedAt)/3600000);return<div style={{background:"rgba(63,185,80,.07)",border:"1px solid rgba(63,185,80,.2)",borderRadius:7,padding:"6px 9px",fontSize:10,color:"#3fb950",display:"flex",justifyContent:"space-between",alignItems:"center"}}><span>✓ Uložena: {s.tf} · {ah<1?"<1h":ah+"h zpět"}</span><span style={{color:"#4a6a88"}}>{s.bias} {s.confidence}%</span></div>;})()}
+
+        {error&&<div style={{background:"rgba(248,81,73,.08)",border:"1px solid rgba(248,81,73,.22)",borderRadius:7,padding:"8px 11px",fontSize:11,color:"#f85149"}}>⚠ {error}</div>}
+      </div>
+
+      {/* ── RIGHT: Results ── */}
+      <div>
+        {!result&&!loading&&<div className="pro-card" style={{padding:44,textAlign:"center",minHeight:440,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+          <div style={{fontSize:38,marginBottom:11}}>🤖</div>
+          <div style={{fontSize:14,fontWeight:700,color:"#4a6a88",marginBottom:5}}>Nahrej graf a spusť analýzu</div>
+          <div style={{fontSize:11,color:"#263242",maxWidth:320,lineHeight:1.7,marginBottom:16}}>AI (Claude Vision) identifikuje tržní strukturu, order bloky, FVG, liquidity pools a navrhne entry setup s SL a TP.</div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"center"}}>
+            {["Market Structure","Order Blocks","FVG","Liquidity","S/R Zones","BOS/CHoCH","Entry Setup","RR Ratio"].map(t=>(
+              <span key={t} style={{background:"rgba(120,242,54,.06)",border:"1px solid rgba(120,242,54,.14)",color:"rgba(120,242,54,.45)",borderRadius:5,padding:"2px 7px",fontSize:9}}>✓ {t}</span>
+            ))}
+          </div>
+        </div>}
+
+        {loading&&<div className="pro-card" style={{padding:44,textAlign:"center",minHeight:440,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14}}>
+          <style>{`@keyframes ai-spin{to{transform:rotate(360deg)}}`}</style>
+          <div style={{width:48,height:48,borderRadius:"50%",border:"3px solid #1d2a36",borderTop:"3px solid var(--cmd-green)",animation:"ai-spin 1s linear infinite"}}/>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:"var(--cmd-green)",marginBottom:3}}>AI analyzuje graf...</div>
+            <div style={{fontSize:11,color:"#8b949e"}}>Market Structure · Order Blocks · FVG · Liquidity · Entry</div>
+          </div>
+        </div>}
+
+        {result&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+          {/* Bias + Confidence + Summary */}
+          <div className="pro-card" style={{padding:15}}>
+            <div style={{display:"flex",gap:11,alignItems:"flex-start",flexWrap:"wrap",marginBottom:11}}>
+              <div style={{background:result.bias==="BULLISH"?"rgba(120,242,54,.11)":result.bias==="BEARISH"?"rgba(255,63,95,.11)":"rgba(240,180,41,.11)",border:`1px solid ${biasColor}44`,borderRadius:9,padding:"9px 15px",textAlign:"center",minWidth:85,flexShrink:0}}>
+                <div style={{fontSize:9,color:"#8b949e",letterSpacing:".06em"}}>AI BIAS</div>
+                <div style={{fontSize:17,fontWeight:900,color:biasColor,marginTop:2}}>{result.bias==="BULLISH"?"▲ BULL":result.bias==="BEARISH"?"▼ BEAR":"◆ SIDE"}</div>
+              </div>
+              <div style={{background:"#0b1420",border:"1px solid #1d2a36",borderRadius:9,padding:"9px 13px",textAlign:"center",flexShrink:0,minWidth:68}}>
+                <div style={{fontSize:9,color:"#8b949e"}}>KONF.</div>
+                <div style={{fontSize:20,fontWeight:900,color:result.confidence>=70?"var(--cmd-green)":result.confidence>=45?"#d29922":"var(--cmd-red)"}}>{result.confidence}</div>
+                <div style={{fontSize:9,color:"#8b949e"}}>/100</div>
+              </div>
+              <div style={{flex:1,minWidth:160}}>
+                <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:6}}>
+                  <span style={{background:"rgba(47,155,255,.1)",border:"1px solid rgba(47,155,255,.28)",color:"#2f9bff",borderRadius:4,padding:"1px 7px",fontSize:9,fontWeight:700}}>{selPair}</span>
+                  <span style={{background:"rgba(47,155,255,.1)",border:"1px solid rgba(47,155,255,.28)",color:"#2f9bff",borderRadius:4,padding:"1px 7px",fontSize:9,fontWeight:700}}>{tf}</span>
+                  {pairData&&<span style={{background:pairData.dir==="BUY"?"rgba(120,242,54,.09)":"rgba(255,63,95,.09)",border:`1px solid ${pairData.dir==="BUY"?"rgba(120,242,54,.25)":"rgba(255,63,95,.25)"}`,color:pairData.dir==="BUY"?"var(--cmd-green)":"var(--cmd-red)",borderRadius:4,padding:"1px 7px",fontSize:9,fontWeight:700}}>Fund: {pairData.dir}</span>}
+                </div>
+                <div style={{fontSize:11,color:"#8b949e",lineHeight:1.65}}>{result.summary}</div>
+              </div>
+            </div>
+            {result.risk_warnings?.length>0&&<div style={{background:"rgba(240,180,41,.05)",border:"1px solid rgba(240,180,41,.18)",borderRadius:6,padding:"6px 10px",display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+              <span style={{fontSize:10,color:"#d29922",fontWeight:700}}>⚠</span>
+              {result.risk_warnings.map((w,i)=><span key={i} style={{fontSize:10,color:"#b07a28"}}>{i>0?"· ":""}{w}</span>)}
+            </div>}
+          </div>
+
+          {/* Market Structure + Classical TA */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div className="pro-card" style={{padding:14}}>
+              <div className="pro-panel-title" style={{marginBottom:9}}>🏗 Market Structure</div>
+              {result.market_structure?.trend&&<div style={{marginBottom:7}}>
+                <span style={{background:result.market_structure.trend==="UPTREND"?"rgba(120,242,54,.11)":result.market_structure.trend==="DOWNTREND"?"rgba(255,63,95,.11)":"rgba(240,180,41,.11)",border:`1px solid ${result.market_structure.trend==="UPTREND"?"rgba(120,242,54,.28)":result.market_structure.trend==="DOWNTREND"?"rgba(255,63,95,.28)":"rgba(240,180,41,.28)"}`,color:result.market_structure.trend==="UPTREND"?"var(--cmd-green)":result.market_structure.trend==="DOWNTREND"?"var(--cmd-red)":"#d29922",borderRadius:5,padding:"3px 9px",fontSize:11,fontWeight:700}}>
+                  {result.market_structure.trend}
+                </span>
+              </div>}
+              <div style={{fontSize:11,color:"#8b949e",lineHeight:1.6,marginBottom:7}}>{result.market_structure?.description}</div>
+              {result.market_structure?.bos_choch&&result.market_structure.bos_choch!=="None visible"&&
+                <div style={{background:"rgba(47,155,255,.06)",border:"1px solid rgba(47,155,255,.18)",borderRadius:6,padding:"6px 9px",fontSize:10,color:"#58a6ff",marginBottom:7}}>🔷 {result.market_structure.bos_choch}</div>}
+              {result.market_structure?.swing_points&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:5}}>
+                {[{l:"HH",v:result.market_structure.swing_points.hh,c:"#3fb950"},{l:"HL",v:result.market_structure.swing_points.hl,c:"#3fb95088"},{l:"LH",v:result.market_structure.swing_points.lh,c:"#f8514988"},{l:"LL",v:result.market_structure.swing_points.ll,c:"#f85149"}].map(({l,v,c})=>(
+                  <div key={l} style={{background:"#080d14",border:`1px solid ${c}30`,borderRadius:6,padding:"5px 0",textAlign:"center"}}>
+                    <div style={{fontSize:9,color:c,fontWeight:700}}>{l}</div>
+                    <div style={{fontSize:15,fontWeight:900,color:c}}>{v??"—"}</div>
+                  </div>
+                ))}
+              </div>}
+            </div>
+            <div className="pro-card" style={{padding:14}}>
+              <div className="pro-panel-title" style={{marginBottom:9}}>📐 Classical TA</div>
+              {[{l:"TRENDLINES",v:result.classical_ta?.trendlines},{l:"PATTERNS",v:result.classical_ta?.patterns},{l:"EMA STRUKTURA",v:result.classical_ta?.ema_structure},{l:"MOMENTUM",v:result.classical_ta?.momentum}].map(({l,v})=>
+                v&&v!=="None identified"&&!v.toLowerCase().includes("not visible")?
+                <div key={l} style={{marginBottom:8}}>
+                  <div style={{fontSize:8,color:"#8b949e88",letterSpacing:".06em",fontWeight:700,marginBottom:2}}>{l}</div>
+                  <div style={{fontSize:11,color:"#c0d0e0",lineHeight:1.5}}>{v}</div>
+                </div>:null
+              )}
+            </div>
+          </div>
+
+          {/* Key Levels */}
+          {result.key_levels?.length>0&&<div className="pro-card" style={{padding:14}}>
+            <div className="pro-panel-title" style={{marginBottom:9}}>📏 Key Levels — S/R Zóny</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div><div style={{fontSize:9,color:"#f8514966",letterSpacing:".06em",marginBottom:5}}>RESISTANCE</div>
+                {result.key_levels.filter(l=>l.type==="RESISTANCE").map((l,i)=>(
+                  <div key={i} style={{background:"rgba(248,81,73,.04)",border:"1px solid rgba(248,81,73,.18)",borderLeft:"3px solid rgba(248,81,73,.6)",borderRadius:"0 6px 6px 0",padding:"5px 9px",marginBottom:5}}>
+                    <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:9,fontWeight:700,color:"#f85149"}}>RES</span><span style={{fontSize:9,color:"#f8514955"}}>{l.strength==="STRONG"?"●●●":l.strength==="MEDIUM"?"●●○":"●○○"}</span></div>
+                    <div style={{fontSize:11,color:"#c0d0e0",marginTop:2}}>{l.zone}</div>
+                    {l.notes&&<div style={{fontSize:9,color:"#8b949e",marginTop:1}}>{l.notes}</div>}
+                  </div>
+                ))}</div>
+              <div><div style={{fontSize:9,color:"#3fb95066",letterSpacing:".06em",marginBottom:5}}>SUPPORT</div>
+                {result.key_levels.filter(l=>l.type==="SUPPORT").map((l,i)=>(
+                  <div key={i} style={{background:"rgba(63,185,80,.04)",border:"1px solid rgba(63,185,80,.18)",borderLeft:"3px solid rgba(63,185,80,.6)",borderRadius:"0 6px 6px 0",padding:"5px 9px",marginBottom:5}}>
+                    <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:9,fontWeight:700,color:"#3fb950"}}>SUP</span><span style={{fontSize:9,color:"#3fb95055"}}>{l.strength==="STRONG"?"●●●":l.strength==="MEDIUM"?"●●○":"●○○"}</span></div>
+                    <div style={{fontSize:11,color:"#c0d0e0",marginTop:2}}>{l.zone}</div>
+                    {l.notes&&<div style={{fontSize:9,color:"#8b949e",marginTop:1}}>{l.notes}</div>}
+                  </div>
+                ))}</div>
+            </div>
+          </div>}
+
+          {/* ICT/SMC Row */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+            <div className="pro-card" style={{padding:14}}>
+              <div className="pro-panel-title" style={{marginBottom:9}}>🟦 Order Blocks</div>
+              {result.ict_smc?.order_blocks?.length?result.ict_smc.order_blocks.map((ob,i)=>{
+                const bull=ob.type==="BULLISH",c=bull?"#3fb950":"#f85149";
+                const sc=ob.significance==="HIGH"?"#d29922":ob.significance==="MEDIUM"?"#58a6ff":"#8b949e";
+                return <div key={i} style={{background:"#080d14",border:`1px solid ${c}20`,borderRadius:7,padding:"6px 8px",marginBottom:5}}>
+                  <div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:3}}>
+                    <span style={{background:`${c}14`,border:`1px solid ${c}30`,color:c,borderRadius:3,padding:"0 5px",fontSize:9,fontWeight:700}}>{bull?"🟢 BULL OB":"🔴 BEAR OB"}</span>
+                    <span style={{background:`${sc}14`,border:`1px solid ${sc}28`,color:sc,borderRadius:3,padding:"0 5px",fontSize:9,fontWeight:700}}>{ob.significance}</span>
+                    <span style={{background:"rgba(139,148,158,.08)",color:"#8b949e",borderRadius:3,padding:"0 5px",fontSize:9}}>{(ob.status||"").replace("_"," ")}</span>
+                  </div>
+                  <div style={{fontSize:10,color:"#8b949e"}}>{ob.location}</div>
+                </div>;
+              }):<div style={{fontSize:11,color:"#263242"}}>Žádné OB identifikovány</div>}
+              {result.ict_smc?.premium_discount&&<div style={{background:"rgba(47,155,255,.05)",border:"1px solid rgba(47,155,255,.15)",borderRadius:6,padding:"5px 8px",marginTop:7}}>
+                <div style={{fontSize:8,color:"#58a6ff77",fontWeight:700,letterSpacing:".06em"}}>PREMIUM/DISCOUNT</div>
+                <div style={{fontSize:10,color:"#58a6ff",marginTop:1}}>{result.ict_smc.premium_discount}</div>
+              </div>}
+            </div>
+            <div className="pro-card" style={{padding:14}}>
+              <div className="pro-panel-title" style={{marginBottom:9}}>⬜ Fair Value Gaps</div>
+              {result.ict_smc?.fvg?.length?result.ict_smc.fvg.map((fvg,i)=>{
+                const bull=fvg.type==="BULLISH",c=bull?"#3fb950":"#f85149";
+                const sc=fvg.status==="OPEN"?"#d29922":fvg.status==="PARTIALLY_FILLED"?"#58a6ff":"#8b949e";
+                return <div key={i} style={{background:"#080d14",border:`1px solid ${c}18`,borderRadius:7,padding:"6px 8px",marginBottom:5}}>
+                  <div style={{display:"flex",gap:3,marginBottom:3}}>
+                    <span style={{background:`${c}14`,border:`1px solid ${c}28`,color:c,borderRadius:3,padding:"0 5px",fontSize:9,fontWeight:700}}>{bull?"FVG ▲":"FVG ▼"}</span>
+                    <span style={{background:`${sc}14`,border:`1px solid ${sc}28`,color:sc,borderRadius:3,padding:"0 5px",fontSize:9}}>{(fvg.status||"").replace("_"," ")}</span>
+                  </div>
+                  <div style={{fontSize:10,color:"#8b949e"}}>{fvg.location}</div>
+                </div>;
+              }):<div style={{fontSize:11,color:"#263242"}}>Žádné FVG identifikovány</div>}
+            </div>
+            <div className="pro-card" style={{padding:14}}>
+              <div className="pro-panel-title" style={{marginBottom:9}}>💧 Liquidity Pools</div>
+              {result.ict_smc?.liquidity?.length?result.ict_smc.liquidity.map((liq,i)=>{
+                const isBSL=liq.type==="BSL",c=isBSL?"#58a6ff":"#bf4cff";
+                return <div key={i} style={{background:"#080d14",border:`1px solid ${c}20`,borderRadius:7,padding:"6px 8px",marginBottom:5}}>
+                  <span style={{background:`${c}14`,border:`1px solid ${c}28`,color:c,borderRadius:3,padding:"0 6px",fontSize:9,fontWeight:700}}>{isBSL?"💧 BSL":"💧 SSL"}</span>
+                  <div style={{fontSize:10,color:"#8b949e",marginTop:3}}>{liq.location}</div>
+                  {liq.notes&&<div style={{fontSize:9,color:"#8b949e55",marginTop:1}}>{liq.notes}</div>}
+                </div>;
+              }):<div style={{fontSize:11,color:"#263242"}}>Žádné liquidity pools</div>}
+            </div>
+          </div>
+
+          {/* Entry Setup */}
+          {result.entry_setup&&<div className="pro-card" style={{padding:15}}>
+            <div className="pro-panel-title" style={{marginBottom:11}}>🎯 Entry Setup</div>
+            <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:13}}>
+              <div style={{background:result.entry_setup.direction==="BUY"?"rgba(120,242,54,.09)":result.entry_setup.direction==="SELL"?"rgba(255,63,95,.09)":"rgba(240,180,41,.09)",border:`2px solid ${result.entry_setup.direction==="BUY"?"rgba(120,242,54,.36)":result.entry_setup.direction==="SELL"?"rgba(255,63,95,.36)":"rgba(240,180,41,.36)"}`,borderRadius:9,padding:"9px 16px",textAlign:"center",flexShrink:0,minWidth:76}}>
+                <div style={{fontSize:9,color:"#8b949e"}}>DIR</div>
+                <div style={{fontSize:18,fontWeight:900,color:result.entry_setup.direction==="BUY"?"var(--cmd-green)":result.entry_setup.direction==="SELL"?"var(--cmd-red)":"#d29922",marginTop:2}}>{result.entry_setup.direction}</div>
+                <div style={{fontSize:10,color:"#8b949e",marginTop:2}}>RR {result.entry_setup.rr_estimate||"—"}</div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:9,color:"#8b949e",marginBottom:2}}>ENTRY TRIGGER</div>
+                <div style={{fontSize:11,color:"#e6edf3",marginBottom:9,lineHeight:1.5}}>{result.entry_setup.entry_trigger||"—"}</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                  {[{l:"ENTRY ZONE",v:result.entry_setup.entry_zone,c:"#58a6ff"},{l:"STOP LOSS",v:result.entry_setup.stop_loss,c:"#f85149"},{l:"TP1",v:result.entry_setup.tp1,c:"#3fb950"},{l:"TP2",v:result.entry_setup.tp2,c:"#3fb95066"}].map(({l,v,c})=>(
+                    <div key={l} style={{background:"#080d14",border:`1px solid ${c}22`,borderRadius:6,padding:"5px 8px"}}>
+                      <div style={{fontSize:8,color:c,fontWeight:700,letterSpacing:".06em"}}>{l}</div>
+                      <div style={{fontSize:10,color:"#a0b8d0",marginTop:2,lineHeight:1.4}}>{v||"—"}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {result.entry_setup.confluence_factors?.length>0&&<div style={{marginBottom:9}}>
+              <div style={{fontSize:9,color:"#8b949e",marginBottom:4,letterSpacing:".06em"}}>CONFLUENCE FAKTORY</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                {result.entry_setup.confluence_factors.map((f,i)=>(
+                  <span key={i} style={{background:"rgba(120,242,54,.05)",border:"1px solid rgba(120,242,54,.15)",color:"rgba(120,242,54,.75)",borderRadius:4,padding:"1px 6px",fontSize:9}}>✓ {f}</span>
+                ))}
+              </div>
+            </div>}
+            {result.entry_setup.invalidation&&<div style={{background:"rgba(248,81,73,.05)",border:"1px solid rgba(248,81,73,.16)",borderRadius:6,padding:"6px 9px"}}>
+              <div style={{fontSize:8,color:"#f85149",fontWeight:700,letterSpacing:".06em",marginBottom:1}}>⚠ INVALIDATION</div>
+              <div style={{fontSize:10,color:"#c07080"}}>{result.entry_setup.invalidation}</div>
+            </div>}
+          </div>}
+
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+// ── HLAVNÍ APP ────────────────────────────────────────────
+function App(){
+  const [fhKey,setFhKey]=useState(null);
+  const [avKey,setAvKey]=useState(null);
+  const [showSet,setShowSet]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const [scores,setScores]=useState({});
+  const [pairs,setPairs]=useState([]);
+  const [forecasts,setForecasts]=useState({});
+  const [selected,setSelected]=useState(null);
+  const [upcoming,setUpcoming]=useState([]);
+  const [calData,setCalData]=useState([]);
+  const [lastUp,setLastUp]=useState(null);
+  const [tab,setTab]=useState("pairs");
+  const [cotData,setCotData]=useState(loadCOT());
+  const [riskSentimentUI,setRiskSentimentUI]=useState(g_riskSentiment);
+  function setRiskSent(v){g_riskSentiment=v;setRiskSentimentUI(v);localStorage.setItem("v5_risk_sent",String(v));}
+
+  const [aiAnalyses,setAiAnalyses]=useState(()=>{try{return JSON.parse(localStorage.getItem("ai_analyses_v1")||"{}");}catch(e){return {};}});
+  function saveAIResult(pair,tf,result){const u={...aiAnalyses,[pair]:{...result,pair,tf,savedAt:Date.now()}};setAiAnalyses(u);try{localStorage.setItem("ai_analyses_v1",JSON.stringify(u));}catch(e){}}
+  const [cotMeta,setCotMeta]=useState(loadCOTMeta());
+  const [cotLoading,setCotLoading]=useState(false);
+  const [historyLoading,setHistoryLoading]=useState(false);
+  const [sentData,setSentData]=useState(loadSentiment());
+  const timer=useRef(null);
+
+  useEffect(()=>{
+    const fh=localStorage.getItem("fh"),av=localStorage.getItem("av")||"";
+    if(fh){setFhKey(fh);setAvKey(av);}
+  },[]);
+
+  const loadData=useCallback(async(key,cot,sent)=>{
+    setLoading(true);setError("");
+    try{
+      const cal=await fetchCalendar(key,15);
+      setCalData(cal);
+      const sc={};
+      CURRENCIES.forEach(c=>{sc[c]=scoreCurrency(cal,c,cot,sent);});
+      setScores(sc);
+      saveScoreHistory(sc);
+      const ranked=rankPairs(sc,aiAnalyses);
+      setPairs(ranked);
+      setSelected(p=>p||ranked[0]);
+      const up=await fetchUpcoming14(key);
+      setUpcoming(up);
+      const fc={};ranked.forEach(p=>{fc[p.pair]=buildForecastV5(p,sc,cal,up);});
+      setForecasts(fc);
+      setLastUp(new Date());
+    }catch(e){setError(e.message);}
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{
+    if(!fhKey) return;
+    loadData(fhKey,cotData,sentData);
+    timer.current=setInterval(()=>loadData(fhKey,cotData,sentData),5*60*1000);
+    return()=>clearInterval(timer.current);
+  },[fhKey]);
+
+  async function autoCOT(){
+    setCotLoading(true);setError("");
+    try{
+      const {scores:cs,meta}=await fetchCOTAuto();
+      setCotData(cs);setCotMeta(meta);
+      if(fhKey) await loadData(fhKey,cs,sentData);
+    }catch(e){setError("COT auto selhal: "+(e?.message||e));}
+    setCotLoading(false);
+  }
+
+
+  async function loadCOTHistoryNow(){
+    setHistoryLoading(true);setError("");
+    try{
+      const y=new Date().getFullYear();
+      const years=Array.from({length:6},(_,i)=>y-i); // aktuální rok + 5 let zpět
+      const {scores:cs,meta,records,yearsLoaded}=await fetchCOTHistoryYears(years);
+      setCotData(cs);setCotMeta(meta);
+      setError(`COT historie načtena: ${records} týdnů, ${yearsLoaded} ročních souborů. Score historie doplněna zpětně.`);
+      if(fhKey) await loadData(fhKey,cs,sentData);
+    }catch(e){setError("Online COT historie selhala. Použij 📂 Import COT z PC. Detail: "+(e?.message||e));}
+    setHistoryLoading(false);
+  }
+
+  async function loadLocalCOTHistory(files){
+    setHistoryLoading(true);setError("");
+    try{
+      const {scores:cs,meta,records,filesLoaded,errors}=await loadCOTHistoryFromLocalFiles(files);
+      setCotData(cs);setCotMeta(meta);
+      const warn=errors?.length?` (${errors.length} souborů přeskočeno)` : "";
+      setError(`Lokální COT historie načtena: ${records} týdnů, ${filesLoaded} souborů${warn}. Score historie doplněna zpětně.`);
+      if(fhKey) await loadData(fhKey,cs,sentData);
+    }catch(e){setError("Lokální COT import selhal: "+(e?.message||e));}
+    setHistoryLoading(false);
+  }
+
+  if(!fhKey) return <Setup onSave={(fh,av)=>{setFhKey(fh);setAvKey(av);}}/>;
+
+  const top=pairs,topPair=top[0];
+
+  return(
+    <div className="pro-shell">
+      {showSet&&<SettingsOverlay fhKey={fhKey} avKey={avKey} onSave={(fh,av)=>{setFhKey(fh);setAvKey(av);}} onClose={()=>setShowSet(false)}/>}
+      <aside className="command-sidebar">
+        <div className="command-logo"><div className="command-logo-mark">AT</div><div><div className="command-logo-title">AT TRADING</div><div className="command-logo-sub">FX ANALYZER</div></div></div>
+        <div className="command-nav">
+          <button type="button" className={tab==="pairs"?"active":""} onClick={()=>{setTab("pairs");}}>📊 Dashboard</button>
+          <button type="button" className={tab==="cot"?"active":""} onClick={()=>{setTab("cot");}}>📈 COT & Sentiment</button>
+          <button type="button" className={tab==="strength"?"active":""} onClick={()=>{setTab("strength");}}>⚡ Síla měn</button>
+          <button type="button" className={tab==="calendar"?"active":""} onClick={()=>{setTab("calendar");}}>🗓️ Calendar</button>
+          <button type="button" className={tab==="ai"?"active":""} onClick={()=>{setTab("ai");}}>🤖 AI Analýza</button>
+          <button type="button" onClick={()=>setShowSet(true)}>⚙️ Settings</button>
+        </div>
+        <div className="command-bias-card">
+          <div className="label">Overall FX Bias</div>
+          <div className="value" style={{color:topPair?.dir==="BUY"?"var(--cmd-green)":"var(--cmd-red)"}}>{topPair?topPair.dir:"WAIT"}</div>
+          <div className="label">Confidence</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}><b style={{fontSize:20,color:"var(--cmd-green)"}}>{topPair?Math.min(100,Math.round((topPair.diff/10)*100)):0}%</b><div className="command-progress" style={{flex:1}}><div style={{width:(topPair?Math.min(100,Math.round((topPair.diff/10)*100)):0)+"%"}}></div></div></div>
+        </div>
+      </aside>
+
+      {/* HEADER */}
+      <div className="pro-header" style={{padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:18}}>📊</span>
+          <div>
+            <div style={{fontWeight:900,fontSize:18}}>AT Trading FX Command Center <span className="command-live">● LIVE</span></div>
+            <div style={{fontSize:12,color:"#8b949e"}}>FX bias engine · score, COT, sentiment, struktura · FX bias engine</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {loading&&<span style={{fontSize:11,color:"#58a6ff"}}>⟳ Načítám...</span>}
+          {error&&<span style={{fontSize:11,color:"#f85149",maxWidth:260}}>{error}</span>}
+          <button onClick={()=>loadData(fhKey,cotData,sentData)} disabled={loading}
+            style={{padding:"5px 11px",background:"#21262d",border:"1px solid #30363d",borderRadius:5,color:"#e6edf3",fontSize:12,cursor:"pointer"}}>↻ Refresh</button>
+          <button onClick={()=>setShowSet(true)} className="command-pro">PRO MODE</button>
+        </div>
+      </div>
+
+      {/* TOP BANNER */}
+      {topPair&&(
+        <div style={{background:topPair.dir==="BUY"?"#0d2a1a":"#2a0d0d",padding:"8px 16px",borderBottom:"1px solid #30363d",display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontSize:11,color:"#8b949e"}}>TOP DOPORUČENÍ:</span>
+          <span style={{fontWeight:700,fontSize:14,color:topPair.dir==="BUY"?"#3fb950":"#f85149"}}>{FLAGS[topPair.base]}{FLAGS[topPair.quote]} {topPair.pair} {topPair.dir}</span>
+          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=65?"#3fb950":forecasts[topPair.pair].prob<=35?"#f85149":"#d29922"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}}
+          {top[1]&&<span style={{fontSize:11,color:"#8b949e"}}>| #2: {FLAGS[top[1].base]}{FLAGS[top[1].quote]} {top[1].pair} {top[1].dir}{forecasts[top[1].pair]?` ${forecasts[top[1].pair].prob}%`:""}</span>}
+          {top[2]&&<span style={{fontSize:11,color:"#8b949e"}}>| #3: {FLAGS[top[2].base]}{FLAGS[top[2].quote]} {top[2].pair} {top[2].dir}{forecasts[top[2].pair]?` ${forecasts[top[2].pair].prob}%`:""}</span>}
+        </div>
+      )}
+
+      <div style={{background:"#0d1117",borderBottom:"1px solid #30363d",padding:"7px 16px",fontSize:11,color:"#8b949e"}}>
+        Metodika V4: všechny hlavní FX páry jsou zobrazené v rankingu. COT umí aktuální report i historický 5letý kontext; makro zůstává z Finnhub kalendáře za posledních 15 měsíců.
+      </div>
+
+      {/* TABS */}
+      <div style={{display:"flex",borderBottom:"1px solid #30363d",padding:"0 16px",background:"#0d1117",overflowX:"auto"}}>
+        {[["pairs","🎯 Všechny páry"],["cot","📊 COT & Sentiment"],["strength","💪 Síla měn"],["calendar","📅 Kalendář"],["ai","🤖 AI Analýza"]].map(([id,lbl])=>(
+          <button key={id} onClick={()=>setTab(id)}
+            style={{padding:"10px 14px",background:"none",border:"none",borderBottom:tab===id?"2px solid #58a6ff":"2px solid transparent",
+              color:tab===id?"#58a6ff":"#8b949e",fontSize:13,cursor:"pointer",fontWeight:tab===id?500:400,whiteSpace:"nowrap"}}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {/* CONTENT */}
+      <div style={{padding:16,maxWidth:1540,margin:"0 auto"}}>
+
+        {tab==="pairs"&&(
+          <div className="pro-grid">
+            {/* ── RISK SENTIMENT TOGGLE ── */}
+            <div style={{gridColumn:"1 / -1",display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,color:"#8b949e",letterSpacing:".06em"}}>RISK SENTIMENT:</span>
+              {[{v:-1,l:"⛔ RISK-OFF",c:"#f85149"},{v:0,l:"○ NEUTRAL",c:"#8b949e"},{v:1,l:"🟢 RISK-ON",c:"#3fb950"}].map(({v,l,c})=>(
+                <button key={v} onClick={()=>setRiskSent(v)} style={{padding:"3px 10px",fontSize:10,borderRadius:5,border:`1px solid ${riskSentimentUI===v?c:"#1d2a36"}`,background:riskSentimentUI===v?`${c}18`:"transparent",color:riskSentimentUI===v?c:"#4a6a88",cursor:"pointer",fontWeight:riskSentimentUI===v?700:400}}>
+                  {l}
+                </button>
+              ))}
+              {riskSentimentUI!==0&&<span style={{fontSize:9,color:"#4a6a88"}}>
+                {riskSentimentUI<0?"↑ JPY/CHF · ↓ AUD/NZD":"↑ AUD/NZD · ↓ JPY/CHF"}
+              </span>}
+            </div>
+            {/* ── HIGH CONVICTION SETY ── */}
+            {(()=>{const hc=top.filter(p=>p.conviction>=3).slice(0,3);if(!hc.length)return null;return(
+              <div style={{gridColumn:"1 / -1",marginBottom:4}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                  <span className="pro-panel-title" style={{margin:0}}>⭐ HIGH CONVICTION</span>
+                  <span style={{fontSize:10,color:"#8b949e"}}>{hc.length} pár{hc.length>1?"y":""} — 3+ faktorů v souladu</span>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                  {hc.map(p=><ConvictionCard key={p.pair} p={p} forecast={forecasts[p.pair]} onClick={()=>setSelected({...p,rankLabel:p.pair})} aiData={aiAnalyses[p.pair]}/>)}
+                </div>
+              </div>
+            );})()}
+            <div className="pro-card" style={{padding:14}}>
+              <div className="pro-panel-title">Měnové páry</div>
+              <div className="pro-pair-list">
+                {loading&&!top.length?<div style={{color:"#8b949e",padding:"20px 0"}}>⏳ Načítám 15 měsíců dat...</div>
+                  :top.map((p,i)=><PairRow key={p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:(i+1)+" / "+top.length})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]}/>) }
+              </div>
+              <div style={{borderTop:"1px solid #263242",paddingTop:12,marginTop:10,display:"flex",justifyContent:"space-between",fontSize:12,color:"#8b949e"}}><span>Celkem párů: {top.length}</span><button className="pro-btn" onClick={()=>loadData(fhKey,cotData,sentData)}>Aktualizovat</button></div>
+            </div>
+            <div style={{gridColumn:"span 2"}}>{selected&&<Detail pair={selected} scores={scores} fhKey={fhKey} avKey={avKey} forecast={forecasts[selected.pair]} calData={calData} cotMeta={cotMeta} cotData={cotData}/>}</div>
+          </div>
+        )}
+
+        {tab==="cot"&&(
+          <COTPanel cotData={cotData} setCotData={setCotData} sentData={sentData} setSentData={setSentData} cotMeta={cotMeta} onAutoCOT={autoCOT} onLoadCOTHistory={loadCOTHistoryNow} onLoadLocalCOT={loadLocalCOTHistory} cotLoading={cotLoading} historyLoading={historyLoading}/>
+        )}
+
+        {tab==="strength"&&(
+          <div>
+            <div style={{fontSize:11,color:"#8b949e",marginBottom:14}}>
+              Celkové skóre = chytré fundamenty + auto COT + contrarian retail + seasonalita · Posledních 15 měsíců
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:10,marginBottom:16}}>
+              {CURRENCIES.map(c=><ScoreBreakdown key={c} currency={c} scores={scores}/>)}
+            </div>
+            <div style={{maxWidth:620}}>
+              {CURRENCIES.map(c=><StrengthBar key={c} currency={c} score={scores[c]?.score??0} change7d={getScoreChange(c,7)}/>)}
+            </div>
+          </div>
+        )}
+
+        {tab==="calendar"&&(
+          <div style={{maxWidth:700}}>
+            <div style={{fontSize:11,color:"#8b949e",marginBottom:14}}>Příštích 14 dní · HIGH & MEDIUM impact</div>
+            <CalendarPanel events={upcoming}/>
+          </div>
+        )}
+
+        {tab==="ai"&&(
+          <AIAnalyzerTab scores={scores} selected={selected} pairs={top} onSave={saveAIResult} aiAnalyses={aiAnalyses}/>
+        )}
+      </div>
+    </div>
+  );
+}
+
+window.onerror=function(msg,src,line,col,err){
+  var el=document.getElementById("root");
+  if(el&&el.children.length===0)el.innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:monospace;white-space:pre-wrap;font-size:12px">CHYBA: '+msg+'\nLine: '+line+'\n'+(err&&err.stack?err.stack:'')+'</div>';
+  return false;
+};
+try{
+  ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+}catch(err){
+  document.getElementById("root").innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:system-ui">Aplikace spadla při startu: '+(err&&err.message?err.message:err)+'</div>';
+}
+</script>
+</body>
+</html>
