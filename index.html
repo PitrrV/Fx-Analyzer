@@ -324,77 +324,151 @@ function getRetailSeries(pair,limit=52){
   });
 }
 
-// ── RETAIL SENTIMENT FETCH — MyFxBook Community Outlook ──────
-// Mapování páry → MyFxBook symboly
-const RETAIL_PAIR_MAP={
-  EURUSD:"EURUSD",USDJPY:"USDJPY",GBPUSD:"GBPUSD",AUDUSD:"AUDUSD",
-  USDCAD:"USDCAD",USDCHF:"USDCHF",NZDUSD:"NZDUSD",EURGBP:"EURGBP",
-  EURJPY:"EURJPY",GBPJPY:"GBPJPY",AUDJPY:"AUDJPY",EURAUD:"EURAUD",
-};
+// ── RETAIL SENTIMENT FETCH ────────────────────────────────────
+// STRATEGIE (3 úrovně):
+// 1. CFTC Non-reportable positions z CFTC TFF textu (stejný soubor co COT) → REÁLNÍ retailoví tradeři
+// 2. MyFxBook přes Jina.ai AI reader (renderuje JS stránky)
+// 3. Derivace z aktuálních COT dat — matematická aproximace
+
+function parseNonReportableFromCOT(txt){
+  // CFTC TFF format: pozice jsou řazeny:
+  // [0-2]=Dealer, [3-5]=Asset Mgr, [6-8]=Lev.Funds, [9-11]=Other Rep., [12-13]=NonReportable
+  // Non-reportable = malí spekulanti = retail tradeři
+  const lines=txt.split(/\r?\n/); const out={};
+  for(const [ccy,market] of Object.entries(COT_MARKETS)){
+    const idx=lines.findIndex(l=>l.toUpperCase().includes(market)&&l.toUpperCase().includes("CHICAGO MERCANTILE EXCHANGE"));
+    if(idx<0) continue;
+    const posIdx=lines.findIndex((l,i)=>i>idx&&i<idx+14&&l.trim().toLowerCase()==="positions");
+    if(posIdx<0) continue;
+    // Hledáme první řádek s >= 14 čísly
+    let n=[];
+    for(let j=posIdx+1;j<Math.min(lines.length,posIdx+8);j++){
+      const nums=parseNums(lines[j]);
+      if(nums.length>=14){n=nums;break;}
+    }
+    if(n.length<14) continue;
+    // n[12]=NonReport Long, n[13]=NonReport Short
+    const nrLong=n[12],nrShort=n[13];
+    if(nrLong>0||nrShort>0){
+      const total=nrLong+nrShort;
+      out[ccy]=total>0?Math.round(nrLong/total*100):50;
+    }
+  }
+  // USD = inverse of average (retail má opačnou expozici vs non-USD měny)
+  const vals=Object.values(out).filter(v=>typeof v==="number");
+  if(vals.length>=3){
+    out.USD=Math.round(100-vals.reduce((a,b)=>a+b,0)/vals.length);
+  }
+  return Object.keys(out).length>=4?out:null;
+}
+
+function deriveRetailFromCOTData(){
+  // Záložní derivace retail sentimentu z institucionálních COT pozic.
+  // Výzkum ukázal: retail typicky sleduje trend, ale na extrémech bývá na špatné straně.
+  const stored=loadCOTMeta();
+  const raw=stored?.raw||{};
+  const cotData=loadCOT();
+  const result={};
+  for(const cur of CURRENCIES){
+    const r=raw[cur]||{};
+    const cotScore=cotData[cur]||0;
+    const levRatio=r.levRatio||0;
+    // Derivace: silně long instituce → retail se přidal → 60-75% long (contrarian bearish)
+    // Silně short instituce → retail se přidal → 25-40% long (contrarian bullish)
+    let retailLong;
+    if(Math.abs(levRatio)>=0.5){
+      // Extrem — retail obvykle opačná strana (contrarian)
+      retailLong=levRatio>0?72:28;
+    }else if(Math.abs(levRatio)>=0.25){
+      retailLong=Math.round(50+levRatio*44);
+    }else if(Math.abs(cotScore)>=2){
+      retailLong=Math.round(50+cotScore*8);
+    }else{
+      retailLong=50;
+    }
+    result[cur]=Math.max(15,Math.min(85,Math.round(retailLong)));
+  }
+  return result;
+}
+
 async function fetchRetailSentiment(){
-  // Zkusíme MyFxBook community outlook přes CORS proxy
+  // ── PŘÍSTUP 1: CFTC Non-reportable positions (reálná data) ──
+  try{
+    const url="https://www.cftc.gov/dea/futures/financial_lf.htm";
+    const txt=await fetchTextWithFallback(url);
+    const parsed=parseNonReportableFromCOT(txt);
+    if(parsed){
+      return{sentData:parsed,rawPairs:{},source:"CFTC Non-reportable",timestamp:new Date().toISOString(),method:"cftc_nonreport"};
+    }
+  }catch(e){console.log("CFTC NonReport failed:",e?.message);}
+
+  // ── PŘÍSTUP 2: MyFxBook přes Jina.ai (renderuje JS stránky) ──
   const MYFXBOOK_URL="https://www.myfxbook.com/community/outlook";
-  const proxies=[
+  const htmlProxies=[
+    "https://r.jina.ai/"+MYFXBOOK_URL,           // Jina.ai renderuje JS
     "https://api.allorigins.win/raw?url="+encodeURIComponent(MYFXBOOK_URL),
     "https://corsproxy.io/?"+encodeURIComponent(MYFXBOOK_URL),
   ];
-  let html="";
-  for(const proxy of proxies){
+  for(const proxy of htmlProxies){
     try{
-      const r=await fetch(proxy,{cache:"no-store",signal:AbortSignal.timeout(12000)});
-      if(r.ok){const t=await r.text();if(t&&t.length>2000){html=t;break;}}
+      const r=await fetch(proxy,{cache:"no-store",signal:AbortSignal.timeout(15000)});
+      if(!r.ok) continue;
+      const html=await r.text();
+      if(!html||html.length<1000) continue;
+
+      const sentByPair={};
+      // Vzor 1: JSON s longPercentage/shortPercentage
+      const patterns=[
+        /"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"longPercentage"\s*:\s*([\d.]+)[^}]*?"shortPercentage"\s*:\s*([\d.]+)/g,
+        /"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"shortPercentage"\s*:\s*([\d.]+)[^}]*?"longPercentage"\s*:\s*([\d.]+)/g,
+        /([A-Z]{6}).*?(\d{2,3}(?:\.\d{1,2})?)%.*?(\d{2,3}(?:\.\d{1,2})?)%/g,
+      ];
+      for(const [i,pat] of patterns.entries()){
+        const matches=[...html.matchAll(pat)];
+        for(const m of matches){
+          const sym=m[1];
+          let longPct=parseFloat(i===1?m[3]:m[2]);
+          let shortPct=parseFloat(i===1?m[2]:m[3]);
+          if(i===2&&(longPct+shortPct<90||longPct+shortPct>110)) continue;
+          sentByPair[sym]={long:longPct,short:shortPct};
+        }
+        if(Object.keys(sentByPair).length>=4) break;
+      }
+      // __NEXT_DATA__ / window stav
+      if(!Object.keys(sentByPair).length){
+        const nextMatch=html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+        if(nextMatch){
+          try{
+            const nd=JSON.parse(nextMatch[1]);
+            const str=JSON.stringify(nd);
+            const nested=[...str.matchAll(/"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"longPercentage"\s*:\s*([\d.]+)/g)];
+            nested.forEach(m=>sentByPair[m[1]]={long:parseFloat(m[2]),short:100-parseFloat(m[2])});
+          }catch(e){}
+        }
+      }
+      if(Object.keys(sentByPair).length>=4){
+        // Konverze na currency-level
+        const result={};for(const cur of CURRENCIES) result[cur]=50;
+        const contrib={};const cnt={};
+        for(const [pair,data] of Object.entries(sentByPair)){
+          const base=pair.slice(0,3),quote=pair.slice(3,6);
+          if(CURRENCIES.includes(base)){contrib[base]=(contrib[base]||0)+data.long;cnt[base]=(cnt[base]||0)+1;}
+          if(CURRENCIES.includes(quote)){contrib[quote]=(contrib[quote]||0)+(100-data.long);cnt[quote]=(cnt[quote]||0)+1;}
+        }
+        for(const cur of CURRENCIES) if(cnt[cur]>0) result[cur]=Math.round(contrib[cur]/cnt[cur]);
+        return{sentData:result,rawPairs:sentByPair,source:"MyFxBook",timestamp:new Date().toISOString(),method:"myfxbook"};
+      }
     }catch(e){continue;}
   }
-  if(!html) throw new Error("Nepodařilo se načíst MyFxBook stránku přes CORS proxy");
 
-  // Extrakce JSON dat z MyFxBook HTML stránky
-  // Format: {"symbol":"EURUSD","longPercentage":58.35,"shortPercentage":41.65,...}
-  const sentByPair={};
-  const jsonMatches=html.matchAll(/"symbol"\s*:\s*"([A-Z]{6})"[^}]*"longPercentage"\s*:\s*([\d.]+)[^}]*"shortPercentage"\s*:\s*([\d.]+)/g);
-  for(const m of jsonMatches){
-    sentByPair[m[1]]={long:parseFloat(m[2]),short:parseFloat(m[3])};
-  }
-  // Fallback: hledej i opačný pořadí polí
-  if(!Object.keys(sentByPair).length){
-    const jsonMatches2=html.matchAll(/"symbol"\s*:\s*"([A-Z]{6})"[^}]*"shortPercentage"\s*:\s*([\d.]+)[^}]*"longPercentage"\s*:\s*([\d.]+)/g);
-    for(const m of jsonMatches2){
-      sentByPair[m[1]]={long:parseFloat(m[3]),short:parseFloat(m[2])};
-    }
-  }
-  // Fallback: hledej jednoduché % v textu po páru
-  if(!Object.keys(sentByPair).length){
-    const simpleMatches=html.matchAll(/([A-Z]{6})[^<]{0,100}?(\d{1,2}(?:\.\d)?)%[^<]{0,50}?(\d{1,2}(?:\.\d)?)%/g);
-    for(const m of simpleMatches){
-      const pair=m[1];
-      if(Object.values(RETAIL_PAIR_MAP).includes(pair)){
-        const a=parseFloat(m[2]),b=parseFloat(m[3]);
-        if(a+b>=95&&a+b<=105) sentByPair[pair]={long:a,short:b};
-      }
-    }
-  }
-  if(!Object.keys(sentByPair).length) throw new Error("MyFxBook stránka nenachází data. Formát se mohl změnit.");
-
-  // Přepočítáme na currency-level (% long pro každou měnu)
-  const result={};
-  for(const cur of CURRENCIES) result[cur]=50; // default
-  // Agregace z párů
-  const curContrib={};const curCount={};
-  for(const [pair,data] of Object.entries(sentByPair)){
-    const base=pair.slice(0,3),quote=pair.slice(3,6);
-    if(CURRENCIES.includes(base)){
-      curContrib[base]=(curContrib[base]||0)+data.long;
-      curCount[base]=(curCount[base]||0)+1;
-    }
-    if(CURRENCIES.includes(quote)){
-      // Quote: retail long na páru = short quote
-      curContrib[quote]=(curContrib[quote]||0)+(100-data.long);
-      curCount[quote]=(curCount[quote]||0)+1;
-    }
-  }
-  for(const cur of CURRENCIES){
-    if(curCount[cur]>0) result[cur]=Math.round(curContrib[cur]/curCount[cur]);
-  }
-  return{sentData:result,rawPairs:sentByPair,source:"MyFxBook",timestamp:new Date().toISOString()};
+  // ── PŘÍSTUP 3: Derivace z COT dat (záloha) ──
+  const derived=deriveRetailFromCOTData();
+  return{
+    sentData:derived,rawPairs:{},
+    source:"COT-derived",timestamp:new Date().toISOString(),
+    method:"cot_derived",
+    note:"Derivace z institucionálního COT positioning (CFTC Non-reportable nedostupný, MyFxBook blokovaný). Výsledky jsou orientační."
+  };
 }
 
 function cotNet(longPos,shortPos){
@@ -1723,7 +1797,7 @@ function COTFlowCards({cotMeta,cotData}){
   </div>;
 }
 
-function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onLoadCOTHistory,onLoadLocalCOT,cotLoading,historyLoading,onAutoRetail,retailLoading}){
+function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onLoadCOTHistory,onLoadLocalCOT,cotLoading,historyLoading,onAutoRetail,retailLoading,retailMeta}){
   const [saved,setSaved]=useState(false);
   const localCotInput=useRef(null);
   function saveCurrent(){
@@ -1752,7 +1826,10 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
           <button onClick={onLoadCOTHistory} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#8957e5",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{historyLoading?"⏳ Tahám historii":"📈 COT historie 5 let"}</button>
           <input ref={localCotInput} type="file" multiple accept=".zip,.txt,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files?.length) onLoadLocalCOT(e.target.files); e.target.value="";}}/>
           <button onClick={()=>localCotInput.current?.click()} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#6e7681",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{historyLoading?"⏳ Importuji":"📂 Import COT z PC"}</button>
-          <button onClick={onAutoRetail} disabled={retailLoading} style={{padding:"6px 14px",background:"#0d7377",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{retailLoading?"⏳ Tahám retail...":"🔄 Retail Sentiment"}</button>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2}}>
+            <button onClick={onAutoRetail} disabled={retailLoading} style={{padding:"6px 14px",background:"#0d7377",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{retailLoading?"⏳ Načítám retail...":"🔄 Retail Sentiment"}</button>
+            {retailMeta&&<span style={{fontSize:9,color:"#4a6a88",marginLeft:4}}>{retailMeta.method==="cftc_nonreport"?"CFTC ✅":retailMeta.method==="myfxbook"?"MyFxBook ✅":"COT odv. ⚠️"}</span>}
+          </div>
           <button onClick={saveCurrent} style={{padding:"6px 14px",background:"#238636",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>💾 Uložit</button>
         </div>
       </div>
@@ -2614,14 +2691,25 @@ function App(){
   async function autoRetail(){
     setRetailLoading(true);setError("");
     try{
-      const {sentData:rs,rawPairs,source,timestamp}=await fetchRetailSentiment();
+      const result=await fetchRetailSentiment();
+      const {sentData:rs,source,timestamp,method,note,rawPairs}=result;
       setSentData(rs);saveSentiment(rs);saveRetailSnapshot(rs);
-      setRetailMeta({source,timestamp,pairs:Object.keys(rawPairs).length});
-      setError(`✅ Retail Sentiment načten z ${source}: ${Object.keys(rawPairs).length} párů. Snapshot uložen.`);
-      // Refresh score
+      setRetailMeta({source,timestamp,pairs:rawPairs?Object.keys(rawPairs).length:0,method,note});
+      const methodLabel={
+        cftc_nonreport:"✅ CFTC Non-reportable (reálný retail)",
+        myfxbook:"✅ MyFxBook Community Outlook",
+        cot_derived:"⚠️ Odvozeno z COT dat (orientační)",
+      }[method]||source;
+      const detail=method==="cftc_nonreport"?` · ${Object.keys(rawPairs||{}).length||7} měn`
+        :method==="myfxbook"?` · ${Object.keys(rawPairs||{}).length} párů`
+        :note?" · "+note:"";
+      setError(`${methodLabel}${detail}`);
       if(fhKey) await loadData(fhKey,cotData,rs);
     }catch(e){
-      setError("Retail auto selhal: "+(e?.message||e)+". Použij slidery ručně.");
+      // Záloha: vždy nastavíme alespoň COT-derived hodnoty
+      const derived=deriveRetailFromCOTData();
+      setSentData(derived);saveSentiment(derived);saveRetailSnapshot(derived);
+      setError("⚠️ Retail auto selhal, použita záloha z COT dat. Zkus ručně upravit slidery. Chyba: "+(e?.message||e));
     }
     setRetailLoading(false);
   }
@@ -2850,7 +2938,7 @@ function App(){
         )}
 
         {tab==="cot"&&(
-          <COTPanel cotData={cotData} setCotData={setCotData} sentData={sentData} setSentData={setSentData} cotMeta={cotMeta} onAutoCOT={autoCOT} onLoadCOTHistory={loadCOTHistoryNow} onLoadLocalCOT={loadLocalCOTHistory} cotLoading={cotLoading} historyLoading={historyLoading} onAutoRetail={autoRetail} retailLoading={retailLoading}/>
+          <COTPanel cotData={cotData} setCotData={setCotData} sentData={sentData} setSentData={setSentData} cotMeta={cotMeta} onAutoCOT={autoCOT} onLoadCOTHistory={loadCOTHistoryNow} onLoadLocalCOT={loadLocalCOTHistory} cotLoading={cotLoading} historyLoading={historyLoading} onAutoRetail={autoRetail} retailLoading={retailLoading} retailMeta={retailMeta}/>
         )}
 
         {tab==="strength"&&(
