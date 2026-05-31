@@ -2018,6 +2018,417 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
   );
 }
 
+
+// ════════════════════════════════════════════════════════════════
+// AI COACH — Trading Mentor Chat
+// ════════════════════════════════════════════════════════════════
+function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming}){
+  const [messages,setMessages]=useState([{
+    role:"assistant",
+    content:"Ahoj! Jsem tvůj AI trading mentor. Mám přístup ke všem datům aplikace — fundamentálnímu scoringu, COT, conviction skóre i výsledkům AI analýzy grafů.\n\nNa co se chceš zeptat?",
+    ts:Date.now()
+  }]);
+  const [input,setInput]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [activePair,setActivePair]=useState(selected?.pair||"");
+  const bottomRef=useRef();
+  const inputRef=useRef();
+
+  // Auto-scroll
+  useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[messages]);
+
+  // Sync selected pair
+  useEffect(()=>{if(selected?.pair)setActivePair(selected.pair);},[selected?.pair]);
+
+  // ── Build context for AI ──────────────────────────────────────
+  function buildContext(){
+    const topPairs=(pairs||[]).slice(0,12).map(p=>{
+      const f=forecasts?.[p.pair]||{};
+      const ai=aiAnalyses?.[p.pair];
+      return {
+        pair:p.pair,
+        direction:p.dir,
+        diff:Number(p.diff||0),
+        scoreBase:Number(p.baseScore||0),
+        scoreQuote:Number(p.quoteScore||0),
+        conviction:p.conviction||0,
+        convictionReasons:(p.convictionReasons||[]).slice(0,5),
+        forecast14d:f?{direction:f.dir,probability:f.prob,description:f.desc,newsRisk:f.newsLabel||""}:null,
+        cot:{crowded:!!p.cotCrowded, percentileBase:p.cotPctBase??null, percentileQuote:p.cotPctQuote??null},
+        correlationDuplicate:!!p.corrDuplicate,
+        aiAnalysis:ai?{
+          timeframe:ai.tf,
+          bias:ai.bias,
+          confidence:ai.confidence,
+          trend:ai.market_structure?.trend,
+          structure:ai.market_structure?.description,
+          keyLevels:(ai.key_levels||[]).slice(0,5),
+          entrySetup:ai.entry_setup||null,
+          invalidation:ai.entry_setup?.invalidation||null,
+          summary:ai.summary||""
+        }:null
+      };
+    });
+
+    const currencyScores={};
+    const CURR=["USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF"];
+    CURR.forEach(c=>{
+      const s=scores?.[c];
+      if(s){
+        currencyScores[c]={
+          total:Number(s.score||0),
+          fund:Number(s.fund_score||0),
+          cot:Number(s.cot_score||0),
+          cotPercentile:s.cot_pct??null,
+          policy:Number(s.policy_adj||0),
+          realYield:Number(s.yield_adj||s.real_yield_adj||0),
+          momentum:Number(s.momentum_adj||0),
+          sentiment:Number(s.sent_score||s.sentiment_score||0),
+          seasonal:Number(s.season_score||s.seasonal_score||0),
+          label:s.label||""
+        };
+      }
+    });
+
+    const activePairData=activePair?(pairs||[]).find(x=>x.pair===activePair):null;
+    const activeForecast=activePair?forecasts?.[activePair]:null;
+    const activeAI=activePair?aiAnalyses?.[activePair]:null;
+
+    const cbPolicy={};
+    CURR.forEach(c=>{
+      if(typeof CB_POLICY_DATA!=="undefined"&&CB_POLICY_DATA[c]){
+        cbPolicy[c]={score:CB_POLICY_DATA[c].score,label:CB_POLICY_DATA[c].label};
+      }
+    });
+
+    const cbRates=typeof CENTRAL_BANK_RATES!=="undefined"?CENTRAL_BANK_RATES:{};
+    const cpi=typeof REAL_CPI_DATA!=="undefined"?REAL_CPI_DATA:{};
+    const riskSentiment=typeof g_riskSentiment!=="undefined"?
+      (g_riskSentiment>0?"RISK-ON":g_riskSentiment<0?"RISK-OFF":"NEUTRAL"):"NEUTRAL";
+
+    return {
+      app:"AT Trading FX Command Center",
+      timestamp:new Date().toISOString(),
+      role:"AI Coach context",
+      riskSentiment,
+      activePair:activePair||null,
+      activePairData:activePairData?{
+        pair:activePairData.pair,
+        direction:activePairData.dir,
+        diff:Number(activePairData.diff||0),
+        conviction:activePairData.conviction||0,
+        reasons:activePairData.convictionReasons||[],
+        base:activePairData.base,
+        quote:activePairData.quote,
+        baseScore:Number(activePairData.baseScore||0),
+        quoteScore:Number(activePairData.quoteScore||0),
+        crowded:!!activePairData.cotCrowded
+      }:null,
+      activeForecast14d:activeForecast||null,
+      activeAIAnalysis:activeAI?{
+        pair:activePair,
+        timeframe:activeAI.tf,
+        bias:activeAI.bias,
+        confidence:activeAI.confidence,
+        marketStructure:activeAI.market_structure,
+        keyLevels:activeAI.key_levels,
+        ictSmc:activeAI.ict_smc,
+        classicalTA:activeAI.classical_ta,
+        entrySetup:activeAI.entry_setup,
+        riskWarnings:activeAI.risk_warnings,
+        summary:activeAI.summary
+      }:null,
+      currencyScores,
+      cotScores:cotData||{},
+      cbPolicy,
+      cbRates,
+      cpi,
+      upcomingEvents:(upcoming||[]).slice(0,12).map(e=>({
+        time:e.time,country:e.country,event:e.event,impact:e.impact,actual:e.actual,estimate:e.estimate,previous:e.prev||e.previous
+      })),
+      topPairs
+    };
+  }
+
+  // ── System prompt ─────────────────────────────────────────────
+  function buildSystemPrompt(ctx){
+    return `Jsi AI Trading Coach uvnitř aplikace AT Trading FX Command Center. Odpovídáš česky, věcně a jako zkušený FX mentor.
+
+Máš k dispozici aktuální stav aplikace:
+${JSON.stringify(ctx,null,2)}
+
+JAK ODPOVÍDAT:
+1. Nejsi signální služba. Nikdy nepiš "kup/prodej hned". Vždy piš podmínky.
+2. Používej rámec: Bias → proč → co musí potvrdit cena → invalidace → riziko.
+3. Pokud je aktivní pár a existuje AI analýza grafu, používej její supporty, rezistence, entry zone, SL, TP a invalidaci.
+4. Pokud AI analýza grafu chybí, jasně řekni, že chybí technický kontext.
+5. Pokud se fundamenty, COT, 14d výhled a AI graf rozcházejí, upozorni na konflikt a doporuč čekat.
+6. Preferuj HIGH CONVICTION logiku: slabé diff/signály jsou spíš šum.
+7. Odpověď drž praktickou, stručnou a obchodovatelnou: max 5 odstavců.
+8. Pokud se uživatel ptá obecně, vysvětli princip aplikace jednoduše.
+9. Pokud se ptá na konkrétní pár, pracuj primárně s activePairData, activeForecast14d a activeAIAnalysis.
+10. Vždy přidej "Co bych sledoval dál" v 1–3 bodech.
+
+Styl: přímý, férový, žádné přikrášlování.`;
+  }
+
+  // ── Send message ──────────────────────────────────────────────
+  async function sendMessage(text){
+    const msg=(text||input).trim();
+    if(!msg||loading) return;
+    setInput("");
+
+    const userMsg={role:"user",content:msg,ts:Date.now()};
+    const history=[...messages,userMsg];
+    setMessages(history);
+    setLoading(true);
+
+    const orKey=localStorage.getItem("or_key")||"";
+    if(!orKey){
+      setMessages([...history,{role:"assistant",content:"⚠ Chybí OpenRouter API klíč. Přidej ho v Settings → OpenRouter API klíč. Bez klíče AI Coach nemůže odpovídat.",ts:Date.now()}]);
+      setLoading(false);
+      return;
+    }
+
+    try{
+      const ctx=buildContext();
+      const sysPrompt=buildSystemPrompt(ctx);
+      const apiMessages=history.slice(-8).map(m=>({
+        role:m.role==="assistant"?"assistant":"user",
+        content:String(m.content||"")
+      }));
+
+      const manualModel=localStorage.getItem("or_coach_model")||localStorage.getItem("or_model")||"";
+      let models=[];
+      if(manualModel) models.push(manualModel);
+
+      // Zkusit načíst aktuální free text modely z OpenRouter, aby Coach nespadl na zastaralém modelu.
+      try{
+        const mr=await fetch("https://openrouter.ai/api/v1/models",{headers:{"Authorization":"Bearer "+orKey}});
+        const mj=await mr.json();
+        const live=(mj.data||[])
+          .map(m=>m.id)
+          .filter(id=>id&&id.includes(":free"))
+          .filter(id=>!id.toLowerCase().includes("vision"))
+          .slice(0,12);
+        models=[...models,...live];
+      }catch(e){}
+
+      models=[
+        ...models,
+        "meta-llama/llama-3.1-8b-instruct:free",
+        "meta-llama/llama-3.2-3b-instruct:free",
+        "mistralai/mistral-7b-instruct:free",
+        "google/gemma-2-9b-it:free",
+        "qwen/qwen-2.5-7b-instruct:free",
+        "deepseek/deepseek-chat:free"
+      ].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+
+      let reply="",usedModel="",lastErr="";
+      for(const model of models){
+        try{
+          const resp=await fetch("https://openrouter.ai/api/v1/chat/completions",{
+            method:"POST",
+            headers:{
+              "Content-Type":"application/json",
+              "Authorization":"Bearer "+orKey,
+              "HTTP-Referer":location.origin||"https://attrading.netlify.app",
+              "X-Title":"AT Trading AI Coach"
+            },
+            body:JSON.stringify({
+              model,
+              messages:[{role:"system",content:sysPrompt},...apiMessages],
+              max_tokens:900,
+              temperature:0.35
+            })
+          });
+
+          const data=await resp.json().catch(()=>({}));
+          if(!resp.ok||data.error){
+            lastErr=data?.error?.message||("HTTP "+resp.status);
+            continue;
+          }
+          const content=data.choices?.[0]?.message?.content;
+          if(content&&content.trim()){
+            reply=content.trim();
+            usedModel=model;
+            break;
+          }
+          lastErr="Model nevrátil obsah";
+        }catch(e){
+          lastErr=e.message||String(e);
+        }
+      }
+
+      if(!reply) throw new Error(lastErr||"Žádný OpenRouter model neodpověděl.");
+
+      setMessages([...history,{role:"assistant",content:reply+(usedModel?`\n\n_Model: ${usedModel}_`:""),ts:Date.now()}]);
+    }catch(e){
+      setMessages([...history,{role:"assistant",content:"⚠ AI Coach chyba: "+(e.message||e)+". Zkontroluj OpenRouter klíč, kredit/free limit a dostupnost modelů.",ts:Date.now()}]);
+    }
+    setLoading(false);
+  }
+
+  // ── Quick buttons ─────────────────────────────────────────────
+  const QUICK=[
+    {icon:"🎯",label:"Top 3 páry dnes",q:"Který jsou dnes top 3 páry s největší konvikcí a proč?"},
+    {icon:"⚔️",label:"Hraj opačnou stranu",q:`Proč by ${activePair||"top pár"} NEMĚL jít ve směru biasu? Argumentuj opačně.`},
+    {icon:"✅",label:"Pre-trade checklist",q:`Projdi pre-trade checklist pro ${activePair||"top pár"} — zkontroluj všechny faktory před vstupem.`},
+    {icon:"⚠️",label:"Rizika a konflikty",q:`Jaké jsou hlavní konflikty a rizika v aktuálních datech? Kde vidíš nesoulad?`},
+    {icon:"📊",label:"Vysvětli COT",q:`Vysvětli mi aktuální COT pozice — kde jsou hedge fondy a co to znamená?`},
+    {icon:"🔄",label:"Scénář invalidace",q:`Pro ${activePair||"top pár"} — co musí cena udělat, aby se setup stal neplatným?`},
+  ];
+
+  // ── Format message content ────────────────────────────────────
+  function formatMsg(text){
+    // Convert **bold** and line breaks
+    return text.split("\n").map((line,i)=>{
+      const parts=line.split(/(\*\*[^*]+\*\*)/g);
+      return(
+        <span key={i}>
+          {parts.map((p,j)=>p.startsWith("**")&&p.endsWith("**")?
+            <b key={j} style={{color:"#e6edf3"}}>{p.slice(2,-2)}</b>:
+            <span key={j}>{p}</span>
+          )}
+          {i<text.split("\n").length-1&&<br/>}
+        </span>
+      );
+    });
+  }
+
+  const inp={
+    flex:1,background:"#0d1117",border:"1px solid #30363d",borderRadius:8,
+    color:"#e6edf3",fontSize:13,padding:"10px 14px",outline:"none",
+    fontFamily:"inherit",resize:"none",lineHeight:1.5
+  };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 120px)",maxWidth:860,margin:"0 auto",gap:12}}>
+
+      {/* ── Header ── */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontSize:15,fontWeight:700,color:"#e6edf3"}}>🧠 AI Trading Coach</div>
+          <div style={{fontSize:11,color:"#8b949e"}}>Přístup ke všem datům aplikace · OpenRouter · volný chat</div>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          <span style={{fontSize:10,color:"#8b949e"}}>Aktivní pár:</span>
+          <select value={activePair} onChange={e=>setActivePair(e.target.value)}
+            style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:12,padding:"4px 8px",cursor:"pointer"}}>
+            <option value="">— žádný —</option>
+            {(pairs||[]).slice(0,15).map(p=>(
+              <option key={p.pair} value={p.pair}>
+                {p.pair} {p.dir} {p.conviction>=3?"★".repeat(p.conviction):""}
+              </option>
+            ))}
+          </select>
+          {activePair&&aiAnalyses?.[activePair]&&(
+            <span style={{fontSize:9,background:"rgba(63,185,80,.1)",border:"1px solid rgba(63,185,80,.25)",color:"#3fb950",borderRadius:4,padding:"2px 7px"}}>
+              AI analýza {aiAnalyses[activePair].tf} načtena ✓
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Context preview ── */}
+      {activePair&&(()=>{
+        const p=(pairs||[]).find(x=>x.pair===activePair);
+        const ai=aiAnalyses?.[activePair];
+        const f=forecasts?.[activePair];
+        if(!p) return null;
+        return(
+          <div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"8px 12px",display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{fontWeight:700,color:"#e6edf3",fontSize:12}}>{p.pair}</span>
+            <span style={{color:p.dir==="BUY"?"#3fb950":"#f85149",fontWeight:700,fontSize:11}}>{p.dir} diff:{p.diff}</span>
+            <span style={{color:"#f0b429",fontSize:11}}>{"★".repeat(p.conviction||0)}{"☆".repeat(5-(p.conviction||0))} {p.conviction}/5</span>
+            {f&&<span style={{fontSize:11,color:"#8b949e"}}>Forecast {f.prob}%</span>}
+            {ai&&<span style={{fontSize:11,color:"#3fb950"}}>AI {ai.tf}: {ai.bias} {ai.confidence}%</span>}
+            {(!ai)&&<span style={{fontSize:11,color:"#4a6a88"}}>⚠ Bez AI analýzy grafu</span>}
+            <span style={{fontSize:10,color:"#4a6a88",marginLeft:"auto"}}>Coach vidí všechna tato data</span>
+          </div>
+        );
+      })()}
+
+      {/* ── Messages ── */}
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,paddingRight:4}}>
+        {messages.map((m,i)=>(
+          <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",
+            flexDirection:m.role==="user"?"row-reverse":"row"}}>
+            <div style={{
+              width:32,height:32,borderRadius:"50%",flexShrink:0,display:"flex",
+              alignItems:"center",justifyContent:"center",fontSize:14,
+              background:m.role==="user"?"rgba(47,155,255,.2)":"rgba(120,242,54,.15)",
+              border:`1px solid ${m.role==="user"?"rgba(47,155,255,.3)":"rgba(120,242,54,.3)"}`
+            }}>
+              {m.role==="user"?"👤":"🧠"}
+            </div>
+            <div style={{
+              maxWidth:"80%",background:m.role==="user"?"rgba(47,155,255,.08)":"rgba(13,20,30,.95)",
+              border:`1px solid ${m.role==="user"?"rgba(47,155,255,.2)":"#21262d"}`,
+              borderRadius:m.role==="user"?"12px 4px 12px 12px":"4px 12px 12px 12px",
+              padding:"10px 14px",fontSize:13,color:"#c9d1d9",lineHeight:1.65
+            }}>
+              {formatMsg(m.content)}
+              <div style={{fontSize:9,color:"#4a6a88",marginTop:4,textAlign:m.role==="user"?"right":"left"}}>
+                {new Date(m.ts).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})}
+              </div>
+            </div>
+          </div>
+        ))}
+        {loading&&(
+          <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+            <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(120,242,54,.15)",border:"1px solid rgba(120,242,54,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🧠</div>
+            <div style={{background:"rgba(13,20,30,.95)",border:"1px solid #21262d",borderRadius:"4px 12px 12px 12px",padding:"10px 14px",display:"flex",gap:5,alignItems:"center"}}>
+              <span style={{animation:"coach-pulse 1.2s ease-in-out infinite",display:"inline-block",width:7,height:7,borderRadius:"50%",background:"var(--cmd-green)"}}></span>
+              <span style={{animation:"coach-pulse 1.2s ease-in-out .3s infinite",display:"inline-block",width:7,height:7,borderRadius:"50%",background:"var(--cmd-green)"}}></span>
+              <span style={{animation:"coach-pulse 1.2s ease-in-out .6s infinite",display:"inline-block",width:7,height:7,borderRadius:"50%",background:"var(--cmd-green)"}}></span>
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef}/>
+      </div>
+
+      {/* ── Quick buttons ── */}
+      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+        {QUICK.map((q,i)=>(
+          <button key={i} onClick={()=>sendMessage(q.q)} disabled={loading}
+            style={{background:"rgba(255,255,255,.04)",border:"1px solid #21262d",borderRadius:6,
+              color:"#8b949e",fontSize:11,padding:"5px 10px",cursor:loading?"not-allowed":"pointer",
+              display:"flex",gap:4,alignItems:"center",transition:"all .15s"}}
+            onMouseEnter={e=>{if(!loading){e.target.style.borderColor="#58a6ff";e.target.style.color="#58a6ff";}}}
+            onMouseLeave={e=>{e.target.style.borderColor="#21262d";e.target.style.color="#8b949e";}}>
+            {q.icon} {q.label}
+          </button>
+        ))}
+        <button onClick={()=>setMessages([{role:"assistant",content:"Chat vymazán. Na co se chceš zeptat?",ts:Date.now()}])}
+          style={{marginLeft:"auto",background:"transparent",border:"1px solid #21262d",borderRadius:6,color:"#4a6a88",fontSize:11,padding:"5px 10px",cursor:"pointer"}}>
+          🗑 Smazat
+        </button>
+      </div>
+
+      {/* ── Input ── */}
+      <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+        <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();}}}
+          placeholder="Napiš otázku... (Enter = odeslat, Shift+Enter = nový řádek)"
+          style={inp} rows={2}/>
+        <button onClick={()=>sendMessage()} disabled={loading||!input.trim()}
+          style={{padding:"10px 18px",borderRadius:8,border:"none",
+            cursor:loading||!input.trim()?"not-allowed":"pointer",
+            background:!loading&&input.trim()?"linear-gradient(135deg,var(--cmd-green),#36c94b)":"#21262d",
+            color:!loading&&input.trim()?"#041007":"#4a6a88",fontWeight:900,fontSize:13,
+            transition:"all .2s",flexShrink:0}}>
+          {loading?"...":"▶"}
+        </button>
+      </div>
+
+      <style>{`
+        @keyframes coach-pulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+      `}</style>
+    </div>
+  );
+}
+
 // ── HLAVNÍ APP ────────────────────────────────────────────
 function App(){
   const [fhKey,setFhKey]=useState(null);
@@ -2129,6 +2540,7 @@ function App(){
           <button type="button" className={tab==="strength"?"active":""} onClick={()=>{setTab("strength");}}>⚡ Síla měn</button>
           <button type="button" className={tab==="calendar"?"active":""} onClick={()=>{setTab("calendar");}}>🗓️ Calendar</button>
           <button type="button" className={tab==="ai"?"active":""} onClick={()=>{setTab("ai");}}>🤖 AI Analýza</button>
+          <button type="button" className={tab==="coach"?"active":""} onClick={()=>{setTab("coach");}}>🧠 AI Coach</button>
           <button type="button" onClick={()=>setShowSet(true)}>⚙️ Settings</button>
         </div>
         <div className="command-bias-card">
@@ -2174,7 +2586,7 @@ function App(){
 
       {/* TABS */}
       <div style={{display:"flex",borderBottom:"1px solid #30363d",padding:"0 16px",background:"#0d1117",overflowX:"auto"}}>
-        {[["pairs","🎯 Všechny páry"],["cot","📊 COT & Sentiment"],["strength","💪 Síla měn"],["calendar","📅 Kalendář"],["ai","🤖 AI Analýza"]].map(([id,lbl])=>(
+        {[["pairs","🎯 Všechny páry"],["cot","📊 COT & Sentiment"],["strength","💪 Síla měn"],["calendar","📅 Kalendář"],["ai","🤖 AI Analýza"],["coach","🧠 AI Coach"]].map(([id,lbl])=>(
           <button key={id} onClick={()=>setTab(id)}
             style={{padding:"10px 14px",background:"none",border:"none",borderBottom:tab===id?"2px solid #58a6ff":"2px solid transparent",
               color:tab===id?"#58a6ff":"#8b949e",fontSize:13,cursor:"pointer",fontWeight:tab===id?500:400,whiteSpace:"nowrap"}}>
@@ -2257,6 +2669,10 @@ function App(){
 
         {tab==="ai"&&(
           <AIAnalyzerTab scores={scores} selected={selected} pairs={top} onSave={saveAIResult} aiAnalyses={aiAnalyses}/>
+        )}
+
+        {tab==="coach"&&(
+          <AICoachTab scores={scores} pairs={top} forecasts={forecasts} aiAnalyses={aiAnalyses} cotData={cotData} selected={selected} upcoming={upcoming}/>
         )}
       </div>
     </div>
