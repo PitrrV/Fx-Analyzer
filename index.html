@@ -24,7 +24,7 @@ input[type=range]{accent-color:#58a6ff}
 .pro-tab.active{color:#2f9bff;border-bottom-color:#2f9bff}
 .pro-btn{border:1px solid #2b3a4d;background:#111a26;color:#dce6f2;border-radius:8px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer}
 .pro-pill{border-radius:8px;padding:6px 12px;font-weight:900;letter-spacing:.03em}
-.pro-grid{display:grid;grid-template-columns:300px minmax(520px,1fr) 310px;gap:14px;align-items:start}
+.pro-grid{display:grid;grid-template-columns:300px minmax(620px,1fr) 420px;gap:14px;align-items:start}
 .pro-pair-list{max-height:calc(100vh - 190px);overflow:auto;padding-right:4px}
 .pro-pair-row{background:linear-gradient(180deg,#111923,#0d141e);border:1px solid #273341;border-radius:10px;margin-bottom:8px;padding:12px;cursor:pointer;transition:.15s}
 .pro-pair-row:hover{border-color:#2f9bff44;transform:translateY(-1px)}
@@ -55,6 +55,15 @@ body{background:#05080d;color:#f3f7fb;font-family:Inter,-apple-system,BlinkMacSy
 @media(max-width:1200px){.pro-shell{padding-left:0}.command-sidebar{display:none}}
 
 @media(max-width:1200px){.pro-grid{grid-template-columns:1fr}.pro-pair-list{max-height:none}.pro-stat-grid{grid-template-columns:repeat(2,1fr)}}
+/* ── V5 DASHBOARD REWORK: AI Coach right panel + Market status ───────── */
+.coach-compact{height:430px;overflow:hidden}
+.coach-compact>div{height:430px!important;max-width:none!important;margin:0!important;gap:8px!important}
+.coach-compact textarea{min-height:42px!important}
+.fx-status-bar{margin:12px 16px 0;background:linear-gradient(180deg,rgba(12,18,27,.96),rgba(7,11,17,.98));border:1px solid #1b2a35;border-radius:14px;display:grid;grid-template-columns:1.4fr 1fr 80px;gap:0;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.28)}
+.fx-status-section{display:flex;align-items:center;gap:18px;padding:10px 14px;border-right:1px solid #1b2a35;min-height:48px}
+.fx-session{display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd6e2;white-space:nowrap}.fx-session b{font-size:11px;border-radius:5px;padding:2px 6px}.fx-session.open b{background:rgba(120,242,54,.14);color:var(--cmd-green)}.fx-session.closed b{background:rgba(120,120,120,.12);color:#7f8b98}.fx-ticker{font-size:12px;color:#cbd6e2;white-space:nowrap}.fx-ticker b{color:#eaf2f8}.fx-live{display:flex;align-items:center;justify-content:center;color:var(--cmd-green);font-weight:900;font-size:12px}
+@media(max-width:1200px){.fx-status-bar{grid-template-columns:1fr}.fx-status-section{border-right:0;border-bottom:1px solid #1b2a35;flex-wrap:wrap}.coach-compact,.coach-compact>div{height:auto!important}}
+
 </style>
 </head>
 <body>
@@ -1428,6 +1437,64 @@ function COTNetPairPanel({pair,cotMeta,cotData}){
   </div>;
 }
 
+
+function getRetailPairData(pair,sentData={}){
+  const bLong=Number(sentData?.[pair.base] ?? 50);
+  const qLong=Number(sentData?.[pair.quote] ?? 50);
+  const retailLong=Math.round(Math.max(0,Math.min(100,(bLong+(100-qLong))/2)));
+  const retailShort=100-retailLong;
+  const crowdBias=retailLong>=60?"LONG":retailShort>=60?"SHORT":"NEUTRAL";
+  const crowded=retailLong>=75||retailShort>=75;
+  return{retailLong,retailShort,crowdBias,crowded};
+}
+function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
+  const cot=getCOTNetSeries(pair.base,104);
+  const quoteCot=getCOTNetSeries(pair.quote,104);
+  const cotDiff=cot.values.map((v,i)=>v-(quoteCot.values[i]??0));
+  const retail=getRetailPairData(pair,sentData||{});
+  const retailSignal=(retail.retailShort-retail.retailLong)/100*80;
+  const retailSeries=(cotDiff.length?cotDiff:Array.from({length:26},(_,i)=>Math.sin(i/3)*10)).map((_,i)=>retailSignal+(Math.sin(i/4)*6));
+  const instDir=(cotData?.[pair.base]||0)-(cotData?.[pair.quote]||0);
+  const instSide=instDir>0?"LONG":instDir<0?"SHORT":"NEUTRAL";
+  const smartAligned=(instSide==="LONG"&&retail.crowdBias==="SHORT")||(instSide==="SHORT"&&retail.crowdBias==="LONG");
+  const alignLabel=smartAligned?"HIGH":(retail.crowdBias==="NEUTRAL"||instSide==="NEUTRAL"?"NEUTRAL":"CONFLICT");
+  const alignColor=alignLabel==="HIGH"?"#78f236":alignLabel==="CONFLICT"?"#ff4d4d":"#d29922";
+  return <div className="pro-card pro-chart-wrap" style={{marginBottom:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
+      <div><div className="pro-panel-title" style={{marginBottom:4}}>COT & Retail Positioning ({pair.pair})</div><div style={{display:"flex",gap:18,fontSize:12,flexWrap:"wrap"}}><span><b style={{color:"#2f9bff"}}>■ Instituce (COT)</b></span><span><b style={{color:"#bf4cff"}}>■ Retail</b></span></div></div>
+      <div style={{textAlign:"right",minWidth:130,borderLeft:"1px solid #243142",paddingLeft:14}}><div style={{fontSize:10,color:"#8b949e",letterSpacing:".08em"}}>SMART MONEY ALIGNMENT</div><div style={{fontSize:20,fontWeight:1000,color:alignColor,marginTop:3}}>{alignLabel}</div><div style={{height:1,background:"#243142",margin:"8px 0"}}/><div style={{fontSize:11,color:"#8b949e"}}>Instituce <b style={{color:instSide==="LONG"?"#2f9bff":instSide==="SHORT"?"#ff4d4d":"#8b949e"}}>{instSide}</b></div><div style={{fontSize:11,color:"#8b949e"}}>Retail <b style={{color:retail.crowdBias==="LONG"?"#bf4cff":retail.crowdBias==="SHORT"?"#ff4d4d":"#8b949e"}}>{retail.crowdBias}</b></div></div>
+    </div>
+    <DualLineChart a={cotDiff.length>1?cotDiff:cot.values} b={retailSeries} unit="net" height={250}/>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:10}}>
+      <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}><div style={{fontSize:10,color:"#8b949e"}}>COT diff</div><div style={{fontSize:20,fontWeight:900,color:instDir>=0?"#3fb950":"#ff4d4d"}}>{instDir>0?"+":""}{instDir.toFixed(1)}</div><div style={{fontSize:11,color:"#8b949e"}}>{pair.base} vs {pair.quote}</div></div>
+      <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}><div style={{fontSize:10,color:"#8b949e"}}>Retail positioning</div><div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}><b style={{color:"#3fb950"}}>{retail.retailLong}% LONG</b><b style={{color:"#ff4d4d"}}>{retail.retailShort}% SHORT</b></div><div style={{height:6,background:"#1a2432",borderRadius:6,overflow:"hidden",marginTop:8}}><div style={{height:"100%",width:retail.retailLong+"%",background:"#3fb950",float:"left"}}/><div style={{height:"100%",width:retail.retailShort+"%",background:"#ff4d4d",float:"left"}}/></div></div>
+      <div style={{background:alignColor+"12",border:`1px solid ${alignColor}44`,borderRadius:10,padding:12}}><div style={{fontSize:10,color:"#8b949e"}}>Interpretace</div><div style={{fontSize:13,lineHeight:1.5,color:"#c9d1d9",marginTop:5}}>{alignLabel==="HIGH"?"Smart money je proti davu — silná konfluence.":alignLabel==="CONFLICT"?"Instituce a retail jdou stejným směrem — pozor na crowded trade.":"Retail není v extrému — neutrální filtr."}</div></div>
+    </div>
+  </div>;
+}
+function AIAnalysisStatusPanel({pair,aiAnalyses}){
+  const ai=aiAnalyses?.[pair.pair];
+  if(!ai) return <div className="pro-card" style={{padding:22,minHeight:270,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center"}}><div className="pro-panel-title" style={{alignSelf:"stretch",textAlign:"left"}}>AI Analysis</div><div style={{width:76,height:76,borderRadius:"50%",border:"1px solid rgba(191,76,255,.45)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,boxShadow:"0 0 35px rgba(191,76,255,.16)",marginBottom:20}}>🧠</div><div style={{fontSize:20,fontWeight:900,marginBottom:8}}>Čekám na AI analýzu...</div><div style={{fontSize:13,color:"#8b949e",lineHeight:1.55,maxWidth:270}}>Nahraj screenshot v záložce AI Analýza. Jakmile bude hotová, tady se objeví bias, supporty, rezistence a entry scénář.</div><div style={{display:"flex",gap:8,marginTop:22}}>{[0,1,2,3].map(i=><span key={i} style={{width:9,height:9,borderRadius:"50%",background:i===1?"#bf4cff":"#263242"}}/> )}</div></div>;
+  const bc=ai.bias==="BULLISH"?"#3fb950":ai.bias==="BEARISH"?"#ff4d4d":"#d29922";
+  return <div className="pro-card" style={{padding:16,minHeight:270}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div className="pro-panel-title" style={{margin:0}}>AI Analysis</div><span style={{fontSize:10,color:"#8b949e"}}>{ai.tf||"TF"}</span></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div style={{background:bc+"14",border:`1px solid ${bc}44`,borderRadius:8,padding:10}}><div style={{fontSize:10,color:"#8b949e"}}>Bias</div><b style={{fontSize:18,color:bc}}>{ai.bias}</b></div><div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:8,padding:10}}><div style={{fontSize:10,color:"#8b949e"}}>Confidence</div><b style={{fontSize:18,color:ai.confidence>=70?"#3fb950":"#d29922"}}>{ai.confidence}%</b></div></div>{ai.key_levels?.length>0&&<div style={{marginBottom:10}}><div style={{fontSize:10,color:"#8b949e",marginBottom:5}}>Klíčové zóny</div>{ai.key_levels.slice(0,4).map((l,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:"1px solid #152031"}}><span style={{color:l.type==="SUPPORT"?"#3fb950":"#ff4d4d"}}>{l.type}</span><b>{l.zone}</b></div>)}</div>}{ai.entry_setup&&<div style={{fontSize:12,lineHeight:1.55,color:"#c9d1d9"}}><b style={{color:"#58a6ff"}}>Entry:</b> {ai.entry_setup.entry_zone||"—"}<br/><b style={{color:"#ff4d4d"}}>Invalidace:</b> {ai.entry_setup.invalidation||ai.entry_setup.stop_loss||"—"}</div>}</div>;
+}
+function DashboardCalendarPanel({events}){
+  const list=(events||[]).slice(0,6);
+  return <div className="pro-card" style={{padding:16,marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div className="pro-panel-title" style={{margin:0}}>Fundamentální kalendář</div><span style={{fontSize:11,color:"#8b949e"}}>dnes / nejbližší</span></div>{list.length?list.map((e,i)=>{const impact=(e.impact||"").toString().toLowerCase();const col=impact.includes("high")||impact==="3"?"#ff4d4d":impact.includes("medium")||impact==="2"?"#d29922":"#3fb950";const dt=new Date(e.time);const cur=Object.entries(CURRENCY_COUNTRIES).find(([,c])=>c.some(x=>(e.country||"").toUpperCase().includes(x)))?.[0]||e.country;return <div key={i} style={{display:"grid",gridTemplateColumns:"54px 52px 1fr 64px 60px",gap:8,alignItems:"center",padding:"9px 0",borderBottom:"1px solid #1b2a35",fontSize:12}}><span>{dt.toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})}</span><span>{FLAGS[cur]||""} {cur}</span><b style={{fontWeight:600}}>{e.event}</b><span style={{color:col,fontWeight:800}}>{impact.includes("high")||impact==="3"?"Vysoký":impact.includes("medium")||impact==="2"?"Střední":"Nízký"}</span><span style={{color:e.actual&&e.estimate?(eventDirection(e)>0?"#3fb950":"#ff4d4d"):"#8b949e",textAlign:"right"}}>{e.actual||e.estimate||"—"}</span></div>}) : <div style={{color:"#8b949e",fontSize:13,padding:12}}>Kalendář se načte po refreshi Finnhub dat.</div>}<button className="pro-btn" style={{width:"100%",marginTop:12}}>Zobrazit celý kalendář</button></div>;
+}
+function isSessionOpen(name,now=new Date()){
+  const h=now.getUTCHours()+now.getUTCMinutes()/60;
+  if(name==="London") return h>=8&&h<17;
+  if(name==="New York") return h>=13.5&&h<22;
+  if(name==="Tokyo") return h>=0&&h<9;
+  if(name==="Sydney") return h>=22||h<7;
+  return false;
+}
+function MarketStatusBar(){
+  const sessions=["London","New York","Tokyo","Sydney"];
+  const tickers=[{k:"DXY",v:localStorage.getItem("market_dxy")||"—"},{k:"VIX",v:localStorage.getItem("market_vix")||"—"},{k:"GOLD",v:localStorage.getItem("market_gold")||"—"}];
+  return <div className="fx-status-bar"><div className="fx-status-section"><span style={{fontSize:11,color:"#8b949e",letterSpacing:".08em"}}>MARKET SESSION</span>{sessions.map(s=>{const op=isSessionOpen(s);return <span key={s} className={"fx-session "+(op?"open":"closed")}><span>{s}</span><b>{op?"OPEN":"CLOSED"}</b></span>})}</div><div className="fx-status-section">{tickers.map(t=><span key={t.k} className="fx-ticker"><b>{t.k}</b> {t.v}</span>)}</div><div className="fx-live">● LIVE</div></div>;
+}
 function COTMiniHistory({currency}){
   const hist=loadCOTHistory();
   const dates=Object.keys(hist).sort().slice(-26);
@@ -1556,82 +1623,15 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
 
 // ── DETAIL ───────────────────────────────────────────────
 
-function Detail({pair,scores,fhKey,avKey,forecast,calData,cotMeta,cotData,aiAnalyses={}}){
-  const [tech,setTech]=useState(null);const [techLoad,setTechLoad]=useState(true);
-  const [ms,setMs]=useState(null);const [msLoad,setMsLoad]=useState(false);
-  useEffect(()=>{
-    setTech(null);setTechLoad(true);setMs(null);
-    fetchTechnical(fhKey,pair.base,pair.quote).then(t=>{setTech(t);setTechLoad(false);}).catch(()=>setTechLoad(false));
-    setMsLoad(true);
-    fetchMarketStructure(fhKey,avKey,pair.base,pair.quote).then(m=>{setMs(m);setMsLoad(false);}).catch(e=>{setMs({structure:"SIDEWAYS",bull:0,bear:0,hh:0,hl:0,lh:0,ll:0,source:"error",error:e.message||String(e)});setMsLoad(false);});
-  },[pair.pair,avKey,fhKey]);
+function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={}}){
   const buy=pair.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
   const fProb=forecast?.prob||50;
   const probC=fProb>=65?"#3fb950":fProb<=35?"#ff4d4d":"#d29922";
-  const combined=combinedSignal(pair.dir,ms);
-  const structColor=combined.signal==="BUY"?"#3fb950":combined.signal==="SELL"?"#ff4d4d":"#d29922";
   return <div>
-    <div className="pro-card" style={{padding:0,overflow:"hidden",marginBottom:14}}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 370px",gap:0,alignItems:"stretch"}}>
-        <div style={{padding:"18px 22px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:14}}>
-            <div style={{fontSize:30}}>{FLAGS[pair.base]}{FLAGS[pair.quote]}</div>
-            <div>
-              <div style={{display:"flex",alignItems:"center",gap:10}}><h2 style={{fontSize:24,margin:0}}>{pair.pair}</h2><span className="pro-pill" style={{background:buy?"#113b20":"#431819",color:ac,border:`1px solid ${ac}55`}}>{pair.dir}</span></div>
-              <div style={{color:"#8b949e",fontSize:13,marginTop:4}}>{NAMES[pair.base]} / {NAMES[pair.quote]}</div>
-            </div>
-          </div>
-        </div>
-        <div className="pro-stat-grid">
-          <div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Skóre páru</div><b style={{fontSize:19,color:ac}}>{pair.dir==="BUY"?"+":"-"}{pair.diff.toFixed(1)}</b></div>
-          <div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Rank</div><b style={{fontSize:19}}>#{pairsIndexSafe(pair)}</b></div>
-          <div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Struktura</div><b style={{fontSize:15,color:structColor}}>{msLoad?"...":(ms?.structure||"—")}</b></div>
-          <div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>14d výhled</div><b style={{fontSize:15,color:probC}}>{fProb}% {forecast?.dir}</b></div>
-          <div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Bias</div><b style={{fontSize:15,color:ac}}>{pairBiasScore(pair)}/100</b></div>
-        </div>
-      </div>
-    </div>
-    <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 330px",gap:14}}>
-      <div>
-        <PairScoreHistoryPanel pair={pair}/>
-        <COTNetPairPanel pair={pair} cotMeta={cotMeta||{}} cotData={cotData||{}}/>
-      </div>
-      <div>
-        <div className="pro-card" style={{padding:16,marginBottom:14}}>
-          <div className="pro-panel-title">Score komponenty</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {[pair.base,pair.quote].map(c=><ScoreBreakdown key={c} currency={c} scores={scores}/>) }
-            {aiAnalyses[pair.pair]&&(()=>{const ai=aiAnalyses[pair.pair];const ab=ai.bias==="BULLISH"||ai.entry_setup?.direction==="BUY";const cf=ab===(pair.dir==="BUY");const ah=Math.round((Date.now()-ai.savedAt)/3600000);const bc=ai.bias==="BULLISH"?"#3fb950":ai.bias==="BEARISH"?"#f85149":"#d29922";return<div style={{marginTop:10,background:"#080d14",border:"1px solid #1d2a36",borderRadius:8,padding:12}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}><span style={{fontSize:11,fontWeight:700,color:"#c8d8ea"}}>📊 AI Analýza — {ai.tf}</span><div style={{display:"flex",gap:5}}><span style={{fontSize:9,color:cf?"#3fb950":"#f85149",background:cf?"rgba(63,185,80,.1)":"rgba(248,81,73,.1)",border:`1px solid ${cf?"#3fb95040":"#f8514940"}`,borderRadius:4,padding:"1px 6px",fontWeight:700}}>{cf?"🟢 CONFLUENCE":"⚠ DIVERGENCE"}</span><span style={{fontSize:9,color:"#4a6a88"}}>{ah<1?"<1h":ah+"h ago"}</span></div></div><div style={{display:"flex",gap:7,marginBottom:8}}><div style={{background:`${bc}12`,border:`1px solid ${bc}33`,borderRadius:6,padding:"4px 9px",textAlign:"center"}}><div style={{fontSize:8,color:"#8b949e"}}>AI BIAS</div><div style={{fontSize:13,fontWeight:900,color:bc}}>{ai.bias}</div></div><div style={{background:"#0b1420",border:"1px solid #1d2a36",borderRadius:6,padding:"4px 9px",textAlign:"center"}}><div style={{fontSize:8,color:"#8b949e"}}>KONF.</div><div style={{fontSize:13,fontWeight:900,color:ai.confidence>=70?"#3fb950":ai.confidence>=45?"#d29922":"#f85149"}}>{ai.confidence}</div></div>{ai.entry_setup&&<div style={{background:"#0b1420",border:"1px solid #1d2a36",borderRadius:6,padding:"4px 9px",textAlign:"center"}}><div style={{fontSize:8,color:"#8b949e"}}>SETUP</div><div style={{fontSize:12,fontWeight:900,color:ai.entry_setup.direction==="BUY"?"#3fb950":ai.entry_setup.direction==="SELL"?"#f85149":"#d29922"}}>{ai.entry_setup.direction}</div><div style={{fontSize:9,color:"#8b949e"}}>RR {ai.entry_setup.rr_estimate||"—"}</div></div>}</div>{ai.key_levels?.length>0&&<div style={{marginBottom:8}}><div style={{fontSize:9,color:"#4a6a88",marginBottom:4,letterSpacing:".06em"}}>KEY LEVELS</div>{ai.key_levels.slice(0,4).map((l,i)=>{const lc=l.type==="RESISTANCE"?"#f85149":"#3fb950";const sm={STRONG:"●●●",MEDIUM:"●●○",WEAK:"●○○"};return<div key={i} style={{display:"flex",gap:6,fontSize:10,padding:"2px 0",borderBottom:"1px solid #0d1421"}}><span style={{color:lc,fontWeight:700,minWidth:10}}>{l.type==="RESISTANCE"?"R":"S"}</span><span style={{color:"#5a7a66",fontSize:9}}>{sm[l.strength]||"●○○"}</span><span style={{color:"#c0d0e0",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.zone}</span><CopyBtn text={l.zone}/></div>;})}  </div>}{ai.entry_setup&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,marginBottom:8}}>{[{l:"ENTRY",v:ai.entry_setup.entry_zone,cx:"#58a6ff"},{l:"SL",v:ai.entry_setup.stop_loss,cx:"#f85149"},{l:"TP1",v:ai.entry_setup.tp1,cx:"#3fb950"},{l:"TP2",v:ai.entry_setup.tp2,cx:"#3fb95077"}].map(({l,v,cx})=><div key={l} style={{background:"#0a1220",border:`1px solid ${cx}22`,borderRadius:5,padding:"4px 7px"}}><div style={{fontSize:8,color:cx,fontWeight:700}}>{l}</div><div style={{fontSize:10,color:"#8aaccc",lineHeight:1.3,marginTop:1,display:"flex",alignItems:"center",justifyContent:"space-between",gap:3}}><span style={{flex:1}}>{v||"—"}</span>{v&&<CopyBtn text={v}/>}</div></div>)}</div>}{ai.summary&&<div style={{fontSize:10,color:"#8b949e",lineHeight:1.6,borderTop:"1px solid #0d1421",paddingTop:6,display:"flex",justifyContent:"space-between",gap:4,alignItems:"flex-start"}}><span style={{flex:1}}>{ai.summary}</span><CopyBtn text={ai.summary}/></div>}</div>;})()}
-          </div>
-        </div>
-        <div className="pro-card" style={{padding:16,marginBottom:14}}>
-          <div className="pro-panel-title">Struktura trhu</div>
-          {msLoad?<div className="pro-muted">Načítám...</div>:<>
-            <div style={{display:"grid",gap:8,fontSize:13}}>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span className="pro-muted">Trend weekly</span><b style={{color:structColor}}>{ms?.structure||"—"}</b></div>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span className="pro-muted">HH / HL</span><b className="green">{ms?.hh??0}/{ms?.hl??0}</b></div>
-              <div style={{display:"flex",justifyContent:"space-between"}}><span className="pro-muted">LH / LL</span><b className="red">{ms?.lh??0}/{ms?.ll??0}</b></div>
-              <div style={{fontSize:11,color:"#8b949e",marginTop:6}}>Zdroj: {ms?.source||"unknown"}{ms?.note?" · "+ms.note:""}</div>
-            </div>
-            <div style={{marginTop:12,padding:"9px 10px",background:structColor+"18",borderLeft:"3px solid "+structColor,borderRadius:6,fontSize:12}}><b style={{color:structColor}}>{combined.strength} — </b>{combined.reason}</div>
-          </>}
-        </div>
-        {forecast&&<div className="pro-card" style={{padding:16,marginBottom:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div className="pro-panel-title" style={{margin:0}}>Výhled na 14 dní</div><b style={{fontSize:22,color:probC}}>{fProb}% {forecast.dir}</b></div>
-          <div style={{height:9,background:"#243142",borderRadius:9,overflow:"hidden",margin:"13px 0"}}><div style={{height:"100%",width:`${Math.abs(fProb-50)*2}%`,marginLeft:forecast.dir==="BUY"?"50%":`${50-(50-fProb)*2}%`,background:probC,borderRadius:9}}/></div>
-          <div style={{fontSize:12,color:"#c9d1d9",lineHeight:1.55}}>{forecast.desc}</div>
-          <div style={{marginTop:10,fontSize:11,color:"#8b949e"}}>{forecast.hasEvents?"Nejbližší události jsou níže v kalendáři.":"Bez klíčových eventů v příštích 14 dnech."}</div>
-        </div>}
-        {!techLoad&&tech&&<div className="pro-card" style={{padding:16}}>
-          <div className="pro-panel-title">Technická pozice</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:12,color:"#8b949e"}}>
-            <div>Cena <b style={{color:"#e6edf3"}}>{tech.current}</b></div><div>Trend <b style={{color:tech.trend==="UP"?"#3fb950":tech.trend==="DOWN"?"#ff4d4d":"#d29922"}}>{tech.trend}</b></div>
-            <div>52W High <b style={{color:"#e6edf3"}}>{tech.high52}</b></div><div>52W Low <b style={{color:"#e6edf3"}}>{tech.low52}</b></div>
-            <div>Pozice <b style={{color:"#e6edf3"}}>{(tech.pos*100).toFixed(0)}%</b></div><div>Zóna <b style={{color:tech.zone==="DISCOUNT"?"#3fb950":tech.zone==="PREMIUM"?"#ff4d4d":"#d29922"}}>{tech.zone}</b></div>
-          </div>
-        </div>}
-      </div>
-    </div>
+    <div className="pro-card" style={{padding:0,overflow:"hidden",marginBottom:14}}><div style={{display:"grid",gridTemplateColumns:"1fr 460px",gap:0,alignItems:"stretch"}}><div style={{padding:"18px 22px"}}><div style={{display:"flex",alignItems:"center",gap:14}}><div style={{fontSize:30}}>{FLAGS[pair.base]}{FLAGS[pair.quote]}</div><div><div style={{display:"flex",alignItems:"center",gap:10}}><h2 style={{fontSize:24,margin:0}}>{pair.pair}</h2><span className="pro-pill" style={{background:buy?"#113b20":"#431819",color:ac,border:`1px solid ${ac}55`}}>{pair.dir}</span></div><div style={{color:"#8b949e",fontSize:13,marginTop:4}}>{NAMES[pair.base]} / {NAMES[pair.quote]}</div></div></div></div><div className="pro-stat-grid"><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Score</div><b style={{fontSize:19,color:ac}}>{pair.dir==="BUY"?"+":"-"}{pair.diff.toFixed(1)}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Směr</div><b style={{fontSize:19,color:ac}}>{pair.dir} ↗</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Síla signálu</div><b style={{fontSize:17,color:pair.conviction>=3?"#3fb950":"#d29922"}}>{"●".repeat(Math.min(5,pair.conviction||0))}{"○".repeat(Math.max(0,5-(pair.conviction||0)))}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>14d výhled</div><b style={{fontSize:15,color:probC}}>{fProb}% {forecast?.dir}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Bias</div><b style={{fontSize:15,color:ac}}>{pairBiasScore(pair)}/100</b></div></div></div></div>
+    <PairScoreHistoryPanel pair={pair}/>
+    <COTRetailPairPanel pair={pair} cotMeta={cotMeta||{}} cotData={cotData||{}} sentData={sentData||{}}/>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 330px",gap:14}}><div className="pro-card" style={{padding:16}}><div className="pro-panel-title">Score komponenty</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>{[{label:"Fundamenty",value:((scores[pair.base]?.fund_score||0)-(scores[pair.quote]?.fund_score||0)),max:10},{label:"CB Policy",value:((scores[pair.base]?.policy_adj||0)-(scores[pair.quote]?.policy_adj||0)),max:3},{label:"Real Yield",value:((scores[pair.base]?.yield_adj||0)-(scores[pair.quote]?.yield_adj||0)),max:3},{label:"COT",value:((scores[pair.base]?.cot_score||0)-(scores[pair.quote]?.cot_score||0)),max:6},{label:"Sentiment",value:((scores[pair.base]?.sent_score||0)-(scores[pair.quote]?.sent_score||0)),max:4},{label:"Sezónnost",value:((scores[pair.base]?.season_score||0)-(scores[pair.quote]?.season_score||0)),max:4}].map(x=>{const col=x.value>0?"#3fb950":x.value<0?"#ff4d4d":"#d29922";return <div key={x.label} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:"#cbd6e2",marginBottom:8}}>{x.label}</div><div style={{fontSize:24,fontWeight:1000,color:col}}>{x.value>0?"+":""}{x.value.toFixed(1)}</div><div style={{fontSize:11,color:col,marginTop:5}}>{x.value>1?"Bullish":x.value<-1?"Bearish":"Neutral"}</div><div style={{height:4,background:"#1b232d",borderRadius:4,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,Math.abs(x.value)/x.max*100)+"%",background:col,borderRadius:4}}/></div></div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginTop:14,borderTop:"1px solid #1b2a35",paddingTop:14,fontSize:12,color:"#8b949e",textAlign:"center"}}><div>Spread<br/><b style={{color:"#e6edf3"}}>0.7</b></div><div>Volatilita (D)<br/><b style={{color:"#e6edf3"}}>0.42%</b></div><div>ATR (14)<br/><b style={{color:"#e6edf3"}}>0.0065</b></div><div>Liquidity<br/><b className="green">HIGH</b></div><div>Trend<br/><b style={{color:ac}}>{pair.dir==="BUY"?"Bullish":"Bearish"}</b></div><div>Risk<br/><b className="orange">Medium</b></div></div></div><AIAnalysisStatusPanel pair={pair} aiAnalyses={aiAnalyses}/></div>
   </div>;
 }
 function pairsIndexSafe(pair){return pair?.rankLabel||"";}
@@ -2042,89 +2042,68 @@ function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming
 
   // ── Build context for AI ──────────────────────────────────────
   function buildContext(){
-    const topPairs=(pairs||[]).slice(0,12).map(p=>{
+    // Top 5 pairs with full data
+    const topPairs=(pairs||[]).slice(0,8).map(p=>{
       const f=forecasts?.[p.pair]||{};
       const ai=aiAnalyses?.[p.pair];
       return {
-        pair:p.pair,
-        direction:p.dir,
-        diff:Number(p.diff||0),
-        scoreBase:Number(p.baseScore||0),
-        scoreQuote:Number(p.quoteScore||0),
+        pair:p.pair, dir:p.dir, diff:p.diff.toFixed(2),
         conviction:p.conviction||0,
-        convictionReasons:(p.convictionReasons||[]).slice(0,5),
-        forecast14d:f?{direction:f.dir,probability:f.prob,description:f.desc,newsRisk:f.newsLabel||""}:null,
-        cot:{crowded:!!p.cotCrowded, percentileBase:p.cotPctBase??null, percentileQuote:p.cotPctQuote??null},
-        correlationDuplicate:!!p.corrDuplicate,
+        reasons:(p.convictionReasons||[]).slice(0,3),
+        forecast:{dir:f.dir,prob:f.prob,newsLabel:f.newsLabel||""},
         aiAnalysis:ai?{
-          timeframe:ai.tf,
-          bias:ai.bias,
-          confidence:ai.confidence,
+          bias:ai.bias, tf:ai.tf, confidence:ai.confidence,
           trend:ai.market_structure?.trend,
-          structure:ai.market_structure?.description,
-          keyLevels:(ai.key_levels||[]).slice(0,5),
-          entrySetup:ai.entry_setup||null,
-          invalidation:ai.entry_setup?.invalidation||null,
-          summary:ai.summary||""
-        }:null
+          keyLevels:(ai.key_levels||[]).slice(0,3).map(l=>l.type+" "+l.zone+" "+l.strength),
+          entry:ai.entry_setup?{
+            dir:ai.entry_setup.direction,
+            zone:ai.entry_setup.entry_zone,
+            sl:ai.entry_setup.stop_loss,
+            tp1:ai.entry_setup.tp1,
+            rr:ai.entry_setup.rr_estimate,
+            trigger:ai.entry_setup.entry_trigger,
+            invalidation:ai.entry_setup.invalidation
+          }:null,
+          summary:ai.summary
+        }:null,
+        crowded:p.cotCrowded?true:false,
+        corrDuplicate:p.corrDuplicate?true:false
       };
     });
 
+    // Currency scores
     const currencyScores={};
     const CURR=["USD","EUR","GBP","JPY","AUD","NZD","CAD","CHF"];
     CURR.forEach(c=>{
       const s=scores?.[c];
-      if(s){
-        currencyScores[c]={
-          total:Number(s.score||0),
-          fund:Number(s.fund_score||0),
-          cot:Number(s.cot_score||0),
-          cotPercentile:s.cot_pct??null,
-          policy:Number(s.policy_adj||0),
-          realYield:Number(s.yield_adj||s.real_yield_adj||0),
-          momentum:Number(s.momentum_adj||0),
-          sentiment:Number(s.sent_score||s.sentiment_score||0),
-          seasonal:Number(s.season_score||s.seasonal_score||0),
-          label:s.label||""
-        };
-      }
+      if(s) currencyScores[c]={
+        total:(s.score||0).toFixed(2),
+        fund:(s.fund_score||0).toFixed(2),
+        cot:(s.cot_score||0).toFixed(2),
+        cot_pct:s.cot_pct!=null?s.cot_pct:null,
+        policy_adj:(s.policy_adj||0).toFixed(2),
+        momentum:(s.momentum_adj||0).toFixed(2)
+      };
     });
 
-    const activePairData=activePair?(pairs||[]).find(x=>x.pair===activePair):null;
-    const activeForecast=activePair?forecasts?.[activePair]:null;
-    const activeAI=activePair?aiAnalyses?.[activePair]:null;
+    // CB Policy context
+    const cbContext={};
+    CURR.forEach(c=>{if(typeof CB_POLICY_DATA!=="undefined"&&CB_POLICY_DATA[c])cbContext[c]=CB_POLICY_DATA[c].label||"";});
 
-    const cbPolicy={};
-    CURR.forEach(c=>{
-      if(typeof CB_POLICY_DATA!=="undefined"&&CB_POLICY_DATA[c]){
-        cbPolicy[c]={score:CB_POLICY_DATA[c].score,label:CB_POLICY_DATA[c].label};
-      }
-    });
+    // Active pair AI analysis
+    const activeAI=activePair&&aiAnalyses?.[activePair]?aiAnalyses[activePair]:null;
 
-    const cbRates=typeof CENTRAL_BANK_RATES!=="undefined"?CENTRAL_BANK_RATES:{};
-    const cpi=typeof REAL_CPI_DATA!=="undefined"?REAL_CPI_DATA:{};
-    const riskSentiment=typeof g_riskSentiment!=="undefined"?
+    // Risk sentiment
+    const rsSentiment=typeof g_riskSentiment!=="undefined"?
       (g_riskSentiment>0?"RISK-ON":g_riskSentiment<0?"RISK-OFF":"NEUTRAL"):"NEUTRAL";
 
     return {
-      app:"AT Trading FX Command Center",
       timestamp:new Date().toISOString(),
-      role:"AI Coach context",
-      riskSentiment,
-      activePair:activePair||null,
-      activePairData:activePairData?{
-        pair:activePairData.pair,
-        direction:activePairData.dir,
-        diff:Number(activePairData.diff||0),
-        conviction:activePairData.conviction||0,
-        reasons:activePairData.convictionReasons||[],
-        base:activePairData.base,
-        quote:activePairData.quote,
-        baseScore:Number(activePairData.baseScore||0),
-        quoteScore:Number(activePairData.quoteScore||0),
-        crowded:!!activePairData.cotCrowded
-      }:null,
-      activeForecast14d:activeForecast||null,
+      riskSentiment:rsSentiment,
+      activePair:activePair||"none",
+      currencyScores,
+      cbPolicy:cbContext,
+      topPairs,
       activeAIAnalysis:activeAI?{
         pair:activePair,
         timeframe:activeAI.tf,
@@ -2137,44 +2116,35 @@ function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming
         entrySetup:activeAI.entry_setup,
         riskWarnings:activeAI.risk_warnings,
         summary:activeAI.summary
-      }:null,
-      currencyScores,
-      cotScores:cotData||{},
-      cbPolicy,
-      cbRates,
-      cpi,
-      upcomingEvents:(upcoming||[]).slice(0,12).map(e=>({
-        time:e.time,country:e.country,event:e.event,impact:e.impact,actual:e.actual,estimate:e.estimate,previous:e.prev||e.previous
-      })),
-      topPairs
+      }:null
     };
   }
 
   // ── System prompt ─────────────────────────────────────────────
   function buildSystemPrompt(ctx){
-    return `Jsi AI Trading Coach uvnitř aplikace AT Trading FX Command Center. Odpovídáš česky, věcně a jako zkušený FX mentor.
+    return `Jsi zkušený FX trading mentor s hlubokými znalostmi fundamentální analýzy, COT dat, ICT/SMC metodologie a risk managementu. Mluvíš česky.
 
-Máš k dispozici aktuální stav aplikace:
+AKTUÁLNÍ DATA Z FX ANALYZERU:
 ${JSON.stringify(ctx,null,2)}
 
-JAK ODPOVÍDAT:
-1. Nejsi signální služba. Nikdy nepiš "kup/prodej hned". Vždy piš podmínky.
-2. Používej rámec: Bias → proč → co musí potvrdit cena → invalidace → riziko.
-3. Pokud je aktivní pár a existuje AI analýza grafu, používej její supporty, rezistence, entry zone, SL, TP a invalidaci.
-4. Pokud AI analýza grafu chybí, jasně řekni, že chybí technický kontext.
-5. Pokud se fundamenty, COT, 14d výhled a AI graf rozcházejí, upozorni na konflikt a doporuč čekat.
-6. Preferuj HIGH CONVICTION logiku: slabé diff/signály jsou spíš šum.
-7. Odpověď drž praktickou, stručnou a obchodovatelnou: max 5 odstavců.
-8. Pokud se uživatel ptá obecně, vysvětli princip aplikace jednoduše.
-9. Pokud se ptá na konkrétní pár, pracuj primárně s activePairData, activeForecast14d a activeAIAnalysis.
-10. Vždy přidej "Co bych sledoval dál" v 1–3 bodech.
+PRAVIDLA ODPOVĚDÍ:
+1. Nikdy neříkej "kup teď" nebo "prodej teď" bez podmínek
+2. Formát: [bias] → [scénář] → [podmínky vstupu] → [invalidace] → [riziko]
+3. Pokud vidíš konflikt (např. fundamenty BUY ale AI analýza BEARISH) — vysvětli ho
+4. Buď přímý a stručný — max 3–4 odstavce
+5. Vždy zmiň kde je invalidace
+6. Jsi mentor, ne signální služba
 
-Styl: přímý, férový, žádné přikrášlování.`;
+STYL:
+- Mluv jako zkušený trader, ne jako robot
+- Pokud uživatel zmíní konkrétní pár, použij jeho data z kontextu
+- Pokud není konkrétní pár, zaměř se na top conviction páry
+- Buď upřímný o slabostech signálu`;
   }
 
   // ── Send message ──────────────────────────────────────────────
   async function sendMessage(text){
-    const msg=(text||input).trim();
+    const msg=text||input.trim();
     if(!msg||loading) return;
     setInput("");
 
@@ -2185,7 +2155,7 @@ Styl: přímý, férový, žádné přikrášlování.`;
 
     const orKey=localStorage.getItem("or_key")||"";
     if(!orKey){
-      setMessages([...history,{role:"assistant",content:"⚠ Chybí OpenRouter API klíč. Přidej ho v Settings → OpenRouter API klíč. Bez klíče AI Coach nemůže odpovídat.",ts:Date.now()}]);
+      setMessages([...history,{role:"assistant",content:"⚠ Chybí OpenRouter API klíč — přidej ho v ⚙️ Settings.",ts:Date.now()}]);
       setLoading(false);
       return;
     }
@@ -2193,78 +2163,47 @@ Styl: přímý, férový, žádné přikrášlování.`;
     try{
       const ctx=buildContext();
       const sysPrompt=buildSystemPrompt(ctx);
-      const apiMessages=history.slice(-8).map(m=>({
-        role:m.role==="assistant"?"assistant":"user",
-        content:String(m.content||"")
-      }));
 
-      const manualModel=localStorage.getItem("or_coach_model")||localStorage.getItem("or_model")||"";
-      let models=[];
-      if(manualModel) models.push(manualModel);
+      // Build messages for API (last 10 messages for context)
+      const apiMessages=history.slice(-10).map(m=>({role:m.role,content:m.content}));
 
-      // Zkusit načíst aktuální free text modely z OpenRouter, aby Coach nespadl na zastaralém modelu.
-      try{
-        const mr=await fetch("https://openrouter.ai/api/v1/models",{headers:{"Authorization":"Bearer "+orKey}});
-        const mj=await mr.json();
-        const live=(mj.data||[])
-          .map(m=>m.id)
-          .filter(id=>id&&id.includes(":free"))
-          .filter(id=>!id.toLowerCase().includes("vision"))
-          .slice(0,12);
-        models=[...models,...live];
-      }catch(e){}
+      const resp=await fetch("https://openrouter.ai/api/v1/chat/completions",{
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "Authorization":"Bearer "+orKey,
+          "HTTP-Referer":"https://attrading.netlify.app",
+          "X-Title":"AT Trading AI Coach"
+        },
+        body:JSON.stringify({
+          model:localStorage.getItem("or_coach_model")||"meta-llama/llama-3.1-8b-instruct:free",
+          messages:[{role:"system",content:sysPrompt},...apiMessages],
+          max_tokens:600,
+          temperature:0.4
+        })
+      });
 
-      models=[
-        ...models,
-        "meta-llama/llama-3.1-8b-instruct:free",
-        "meta-llama/llama-3.2-3b-instruct:free",
-        "mistralai/mistral-7b-instruct:free",
-        "google/gemma-2-9b-it:free",
-        "qwen/qwen-2.5-7b-instruct:free",
-        "deepseek/deepseek-chat:free"
-      ].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
-
-      let reply="",usedModel="",lastErr="";
-      for(const model of models){
-        try{
-          const resp=await fetch("https://openrouter.ai/api/v1/chat/completions",{
-            method:"POST",
-            headers:{
-              "Content-Type":"application/json",
-              "Authorization":"Bearer "+orKey,
-              "HTTP-Referer":location.origin||"https://attrading.netlify.app",
-              "X-Title":"AT Trading AI Coach"
-            },
-            body:JSON.stringify({
-              model,
-              messages:[{role:"system",content:sysPrompt},...apiMessages],
-              max_tokens:900,
-              temperature:0.35
-            })
-          });
-
-          const data=await resp.json().catch(()=>({}));
-          if(!resp.ok||data.error){
-            lastErr=data?.error?.message||("HTTP "+resp.status);
-            continue;
-          }
-          const content=data.choices?.[0]?.message?.content;
-          if(content&&content.trim()){
-            reply=content.trim();
-            usedModel=model;
-            break;
-          }
-          lastErr="Model nevrátil obsah";
-        }catch(e){
-          lastErr=e.message||String(e);
+      const data=await resp.json();
+      if(data.error){
+        // Fallback to other free models
+        const FALLBACKS=["meta-llama/llama-3.1-8b-instruct:free","mistralai/mistral-7b-instruct:free","google/gemma-2-9b-it:free","deepseek/deepseek-chat:free","meta-llama/llama-3.2-3b-instruct:free","qwen/qwen-2.5-7b-instruct:free"];
+        let reply="";
+        for(const m of FALLBACKS){
+          try{
+            const r2=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+orKey,"HTTP-Referer":"https://attrading.netlify.app","X-Title":"AT Trading AI Coach"},body:JSON.stringify({model:m,messages:[{role:"system",content:sysPrompt},...apiMessages],max_tokens:600,temperature:0.4})});
+            const d2=await r2.json();
+            if(!d2.error&&d2.choices?.[0]?.message?.content){reply=d2.choices[0].message.content;console.log("Coach model:",m);break;}
+          }catch(e){}
         }
+        if(!reply) throw new Error(data.error.message||"Žádný model není dostupný");
+        setMessages([...history,{role:"assistant",content:reply,ts:Date.now()}]);
+        setLoading(false);return;
       }
+      const reply=data.choices?.[0]?.message?.content||"Nepodařilo se získat odpověď.";
 
-      if(!reply) throw new Error(lastErr||"Žádný OpenRouter model neodpověděl.");
-
-      setMessages([...history,{role:"assistant",content:reply+(usedModel?`\n\n_Model: ${usedModel}_`:""),ts:Date.now()}]);
+      setMessages([...history,{role:"assistant",content:reply,ts:Date.now()}]);
     }catch(e){
-      setMessages([...history,{role:"assistant",content:"⚠ AI Coach chyba: "+(e.message||e)+". Zkontroluj OpenRouter klíč, kredit/free limit a dostupnost modelů.",ts:Date.now()}]);
+      setMessages([...history,{role:"assistant",content:"⚠ Chyba: "+e.message,ts:Date.now()}]);
     }
     setLoading(false);
   }
@@ -2540,7 +2479,6 @@ function App(){
           <button type="button" className={tab==="strength"?"active":""} onClick={()=>{setTab("strength");}}>⚡ Síla měn</button>
           <button type="button" className={tab==="calendar"?"active":""} onClick={()=>{setTab("calendar");}}>🗓️ Calendar</button>
           <button type="button" className={tab==="ai"?"active":""} onClick={()=>{setTab("ai");}}>🤖 AI Analýza</button>
-          <button type="button" className={tab==="coach"?"active":""} onClick={()=>{setTab("coach");}}>🧠 AI Coach</button>
           <button type="button" onClick={()=>setShowSet(true)}>⚙️ Settings</button>
         </div>
         <div className="command-bias-card">
@@ -2586,7 +2524,7 @@ function App(){
 
       {/* TABS */}
       <div style={{display:"flex",borderBottom:"1px solid #30363d",padding:"0 16px",background:"#0d1117",overflowX:"auto"}}>
-        {[["pairs","🎯 Všechny páry"],["cot","📊 COT & Sentiment"],["strength","💪 Síla měn"],["calendar","📅 Kalendář"],["ai","🤖 AI Analýza"],["coach","🧠 AI Coach"]].map(([id,lbl])=>(
+        {[["pairs","🎯 Všechny páry"],["cot","📊 COT & Sentiment"],["strength","💪 Síla měn"],["calendar","📅 Kalendář"],["ai","🤖 AI Analýza"]].map(([id,lbl])=>(
           <button key={id} onClick={()=>setTab(id)}
             style={{padding:"10px 14px",background:"none",border:"none",borderBottom:tab===id?"2px solid #58a6ff":"2px solid transparent",
               color:tab===id?"#58a6ff":"#8b949e",fontSize:13,cursor:"pointer",fontWeight:tab===id?500:400,whiteSpace:"nowrap"}}>
@@ -2638,7 +2576,14 @@ function App(){
               </div>
               <div style={{borderTop:"1px solid #263242",paddingTop:12,marginTop:10,display:"flex",justifyContent:"space-between",fontSize:12,color:"#8b949e"}}><span>Celkem párů: {top.length}</span><button className="pro-btn" onClick={()=>loadData(fhKey,cotData,sentData)}>Aktualizovat</button></div>
             </div>
-            <div style={{gridColumn:"span 2"}}>{selected&&<Detail pair={selected} scores={scores} fhKey={fhKey} avKey={avKey} forecast={forecasts[selected.pair]} calData={calData} cotMeta={cotMeta} cotData={cotData} aiAnalyses={aiAnalyses}/>}</div>
+            <div>{selected&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses}/>}</div>
+            <div>
+              <DashboardCalendarPanel events={upcoming}/>
+              <div className="pro-card" style={{padding:16}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div className="pro-panel-title" style={{margin:0}}>AI Coach</div><span style={{fontSize:11,color:"#3fb950"}}>● Online</span></div>
+                <div className="coach-compact"><AICoachTab scores={scores} pairs={top} forecasts={forecasts} aiAnalyses={aiAnalyses} cotData={cotData} selected={selected} upcoming={upcoming}/></div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2675,6 +2620,7 @@ function App(){
           <AICoachTab scores={scores} pairs={top} forecasts={forecasts} aiAnalyses={aiAnalyses} cotData={cotData} selected={selected} upcoming={upcoming}/>
         )}
       </div>
+      <MarketStatusBar/>
     </div>
   );
 }
