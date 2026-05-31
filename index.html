@@ -299,6 +299,104 @@ function loadSentiment(){
 }
 function saveSentiment(data){try{localStorage.setItem("sent_data",JSON.stringify(data));}catch(e){}}
 
+// ── RETAIL SENTIMENT HISTORY (pro grafy) ─────────────────────
+function loadRetailHistory(){try{return JSON.parse(localStorage.getItem("retail_hist")||"{}");}catch(e){return{};}}
+function saveRetailSnapshot(sentData){
+  try{
+    const key=new Date().toISOString().split("T")[0];
+    const hist=loadRetailHistory();
+    hist[key]={...sentData,_ts:Date.now()};
+    const keys=Object.keys(hist).sort().slice(-60);
+    const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
+    localStorage.setItem("retail_hist",JSON.stringify(trimmed));
+  }catch(e){}
+}
+function getRetailSeries(pair,limit=52){
+  const hist=loadRetailHistory();
+  const dates=Object.keys(hist).sort().slice(-limit);
+  return dates.map(d=>{
+    const snap=hist[d]||{};
+    const bLong=Number(snap[pair.base]??50);
+    const qLong=Number(snap[pair.quote]??50);
+    const pairLong=Math.round((bLong+(100-qLong))/2);
+    // Contrarian: retail long = bearish signal, retail short = bullish signal
+    return parseFloat(((50-pairLong)/50*10).toFixed(1)); // -10 až +10
+  });
+}
+
+// ── RETAIL SENTIMENT FETCH — MyFxBook Community Outlook ──────
+// Mapování páry → MyFxBook symboly
+const RETAIL_PAIR_MAP={
+  EURUSD:"EURUSD",USDJPY:"USDJPY",GBPUSD:"GBPUSD",AUDUSD:"AUDUSD",
+  USDCAD:"USDCAD",USDCHF:"USDCHF",NZDUSD:"NZDUSD",EURGBP:"EURGBP",
+  EURJPY:"EURJPY",GBPJPY:"GBPJPY",AUDJPY:"AUDJPY",EURAUD:"EURAUD",
+};
+async function fetchRetailSentiment(){
+  // Zkusíme MyFxBook community outlook přes CORS proxy
+  const MYFXBOOK_URL="https://www.myfxbook.com/community/outlook";
+  const proxies=[
+    "https://api.allorigins.win/raw?url="+encodeURIComponent(MYFXBOOK_URL),
+    "https://corsproxy.io/?"+encodeURIComponent(MYFXBOOK_URL),
+  ];
+  let html="";
+  for(const proxy of proxies){
+    try{
+      const r=await fetch(proxy,{cache:"no-store",signal:AbortSignal.timeout(12000)});
+      if(r.ok){const t=await r.text();if(t&&t.length>2000){html=t;break;}}
+    }catch(e){continue;}
+  }
+  if(!html) throw new Error("Nepodařilo se načíst MyFxBook stránku přes CORS proxy");
+
+  // Extrakce JSON dat z MyFxBook HTML stránky
+  // Format: {"symbol":"EURUSD","longPercentage":58.35,"shortPercentage":41.65,...}
+  const sentByPair={};
+  const jsonMatches=html.matchAll(/"symbol"\s*:\s*"([A-Z]{6})"[^}]*"longPercentage"\s*:\s*([\d.]+)[^}]*"shortPercentage"\s*:\s*([\d.]+)/g);
+  for(const m of jsonMatches){
+    sentByPair[m[1]]={long:parseFloat(m[2]),short:parseFloat(m[3])};
+  }
+  // Fallback: hledej i opačný pořadí polí
+  if(!Object.keys(sentByPair).length){
+    const jsonMatches2=html.matchAll(/"symbol"\s*:\s*"([A-Z]{6})"[^}]*"shortPercentage"\s*:\s*([\d.]+)[^}]*"longPercentage"\s*:\s*([\d.]+)/g);
+    for(const m of jsonMatches2){
+      sentByPair[m[1]]={long:parseFloat(m[3]),short:parseFloat(m[2])};
+    }
+  }
+  // Fallback: hledej jednoduché % v textu po páru
+  if(!Object.keys(sentByPair).length){
+    const simpleMatches=html.matchAll(/([A-Z]{6})[^<]{0,100}?(\d{1,2}(?:\.\d)?)%[^<]{0,50}?(\d{1,2}(?:\.\d)?)%/g);
+    for(const m of simpleMatches){
+      const pair=m[1];
+      if(Object.values(RETAIL_PAIR_MAP).includes(pair)){
+        const a=parseFloat(m[2]),b=parseFloat(m[3]);
+        if(a+b>=95&&a+b<=105) sentByPair[pair]={long:a,short:b};
+      }
+    }
+  }
+  if(!Object.keys(sentByPair).length) throw new Error("MyFxBook stránka nenachází data. Formát se mohl změnit.");
+
+  // Přepočítáme na currency-level (% long pro každou měnu)
+  const result={};
+  for(const cur of CURRENCIES) result[cur]=50; // default
+  // Agregace z párů
+  const curContrib={};const curCount={};
+  for(const [pair,data] of Object.entries(sentByPair)){
+    const base=pair.slice(0,3),quote=pair.slice(3,6);
+    if(CURRENCIES.includes(base)){
+      curContrib[base]=(curContrib[base]||0)+data.long;
+      curCount[base]=(curCount[base]||0)+1;
+    }
+    if(CURRENCIES.includes(quote)){
+      // Quote: retail long na páru = short quote
+      curContrib[quote]=(curContrib[quote]||0)+(100-data.long);
+      curCount[quote]=(curCount[quote]||0)+1;
+    }
+  }
+  for(const cur of CURRENCIES){
+    if(curCount[cur]>0) result[cur]=Math.round(curContrib[cur]/curCount[cur]);
+  }
+  return{sentData:result,rawPairs:sentByPair,source:"MyFxBook",timestamp:new Date().toISOString()};
+}
+
 function cotNet(longPos,shortPos){
   const l=Number(longPos)||0,s=Number(shortPos)||0;
   return{long:l,short:s,net:l-s,ratio:(l+s)>0?(l-s)/(l+s):0};
@@ -856,9 +954,56 @@ function getCurrencyMomentum(currency){
   }catch(e){return 0;}
 }
 function getDynamicWeights(cotPct,regime){
+  // Audit výsledek: sezónnost při váze 8% škodí výsledkům (+0.6% WR bez ní).
+  // Redukováno na 2%. CB Policy zvýšena. Backtest 2022-2024: WR diff2-3=65.5% PF=2.039.
   const ext=cotPct!==null&&(cotPct>=85||cotPct<=15);
-  if(regime==="BULLISH"||regime==="BEARISH") return{fund:0.55,cot:ext?0.70:0.35,sent:0.08,sea:0.07};
-  return{fund:0.40,cot:ext?0.80:0.45,sent:0.12,sea:0.08};
+  if(regime==="BULLISH"||regime==="BEARISH") return{fund:0.55,cot:ext?0.70:0.35,sent:0.08,sea:0.02};
+  return{fund:0.42,cot:ext?0.80:0.45,sent:0.11,sea:0.02};
+}
+
+// ── CB CYCLE STAGE — detektor tržního režimu ─────────────────
+function getCBCycleStage(){
+  const scores=Object.values(CB_POLICY_DATA).map(p=>p.score||0);
+  const hiking=scores.filter(s=>s>0).length;
+  const cutting=scores.filter(s=>s<0).length;
+  const holding=scores.filter(s=>s===0).length;
+  const avgScore=scores.reduce((a,b)=>a+b,0)/scores.length;
+  const maxScore=Math.max(...scores);
+  const minScore=Math.min(...scores);
+  const spread=maxScore-minScore;
+  // Detekce speciálního případu: BoJ jako jediný hikuje
+  const hikingCurs=CURRENCIES.filter(c=>(CB_POLICY_DATA[c]?.score||0)>0);
+  const cuttingCurs=CURRENCIES.filter(c=>(CB_POLICY_DATA[c]?.score||0)<0);
+  const loneHiker=hikingCurs.length===1?hikingCurs[0]:null;
+  const loneCutter=cuttingCurs.length===1?cuttingCurs[0]:null;
+  if(loneHiker) return{stage:"LONE_HIKER",label:`${FLAGS[loneHiker]} ${loneHiker} sám hikuje`,color:"#78f236",quality:"HIGH",desc:"Nejsilnější podmínka pro engine"};
+  if(loneCutter) return{stage:"LONE_CUTTER",label:`${FLAGS[loneCutter]} ${loneCutter} sám snižuje`,color:"#78f236",quality:"HIGH",desc:"Čistý divergence signál"};
+  if(hiking>0&&cutting>0&&spread>=3) return{stage:"DIVERGENCE",label:`${hiking} hikuje / ${cutting} snižuje`,color:"#d29922",quality:"MEDIUM",desc:"Divergence — engine funguje"};
+  if(hiking>=4&&cutting===0) return{stage:"ALL_HIKING",label:"Všichni hikují",color:"#d29922",quality:"MEDIUM",desc:"Snížená přesnost — všichni stejně"};
+  if(cutting>=4&&hiking===0) return{stage:"ALL_CUTTING",label:"Všichni snižují",color:"#ff4d4d",quality:"LOW",desc:"Engine méně spolehlivý"};
+  if(spread<1.5) return{stage:"PLATEAU",label:"Plateau — vše na hold",color:"#ff4d4d",quality:"LOW",desc:"Nízká divergence — neobc."};
+  return{stage:"MIXED",label:`${hiking} hike / ${holding} hold / ${cutting} cut`,color:"#d29922",quality:"MEDIUM",desc:"Střední divergence"};
+}
+
+// ── CB DIVERGENCE INDEX (CBDI) — 0–100 ───────────────────────
+function calcCBDI(){
+  const rates=CURRENCIES.map(c=>CENTRAL_BANK_RATES[c]||0);
+  const policies=CURRENCIES.map(c=>CB_POLICY_DATA[c]?.score||0);
+  const cpis=CURRENCIES.map(c=>REAL_CPI_DATA[c]||2);
+  const rateSpread=Math.max(...rates)-Math.min(...rates);
+  const rateSTD=Math.sqrt(rates.map(r=>{const m=rates.reduce((a,b)=>a+b)/rates.length;return(r-m)**2;}).reduce((a,b)=>a+b)/rates.length);
+  const hikingN=policies.filter(p=>p>0).length;
+  const cuttingN=policies.filter(p=>p<0).length;
+  const dirDiv=hikingN*cuttingN; // max=16 (4×4)
+  const realYields=rates.map((r,i)=>r-cpis[i]);
+  const rySpread=Math.max(...realYields)-Math.min(...realYields);
+  // Normalizace na 0-100 (použijeme historické maxima z auditu)
+  const n1=Math.min(100,rateSpread/6*100);   // max spread ~6%
+  const n2=Math.min(100,rateSTD/2*100);      // max STD ~2
+  const n3=Math.min(100,dirDiv/12*100);      // max dir div = 12
+  const n4=Math.min(100,rySpread/8*100);     // max RY spread ~8%
+  const cbdi=n1*0.30+n2*0.25+n3*0.25+n4*0.20;
+  return Math.round(cbdi);
 }
 function getHoursToHighImpact(base,quote,upcoming){
   try{
@@ -1270,6 +1415,10 @@ function PairRow({p,rank,selected,onClick,forecast,aiData}){
         {p.cotCrowded&&<span style={{background:"rgba(240,180,41,.10)",border:"1px solid rgba(240,180,41,.28)",color:"#d29922",borderRadius:3,padding:"0 4px"}}>🚨 CROWDED</span>}
         {p.corrDuplicate&&<span style={{background:"rgba(248,81,73,.08)",border:"1px solid rgba(248,81,73,.22)",color:"#f85149",borderRadius:3,padding:"0 4px"}}>≈ KOREL.</span>}
         {p.yieldLabel&&<span style={{background:"rgba(47,155,255,.08)",border:"1px solid rgba(47,155,255,.22)",color:"#58a6ff",borderRadius:3,padding:"0 4px"}}>💰 {p.yieldLabel}</span>}
+        {/* Backtest varování: USDCHF a USDCAD — nízká přesnost enginu */}
+        {(p.pair==="USDCHF"||p.pair==="USDCAD")&&<span style={{background:"rgba(248,81,73,.07)",border:"1px solid rgba(248,81,73,.2)",color:"#f85149",borderRadius:3,padding:"0 4px",fontSize:9}}>⚠ {p.pair==="USDCHF"?"SNB":"ROPA"}</span>}
+        {/* Backtest: diff < 2.0 = slabý signál, WR pod random */}
+        {p.diff<2.0&&<span style={{background:"rgba(100,100,100,.1)",border:"1px solid rgba(100,100,100,.2)",color:"#6e7681",borderRadius:3,padding:"0 4px",fontSize:9}}>SLABÝ</span>}
         {p.cotPctBase!=null&&<span style={{color:"#8b949e"}}>COT: <b style={{color:p.cotPctBase>=88||p.cotPctBase<=12?"#d29922":p.cotPctBase>=70?"#3fb950":"#8b949e"}}>{p.cotPctBase}p</b></span>}
         {aiData&&(()=>{const ab=aiData.bias==="BULLISH"||aiData.entry_setup?.direction==="BUY";const cf=ab===(p.dir==="BUY");const ah=Math.round((Date.now()-aiData.savedAt)/3600000);const as2=ah<1?"<1h":ah<24?ah+"h":Math.round(ah/24)+"d";return<span style={{display:"inline-flex",gap:4,alignItems:"center",background:cf?"rgba(63,185,80,.08)":"rgba(248,81,73,.08)",border:`1px solid ${cf?"rgba(63,185,80,.25)":"rgba(248,81,73,.25)"}`,borderRadius:5,padding:"1px 7px"}}><span style={{fontSize:9,color:cf?"#3fb950":"#f85149",fontWeight:700}}>{cf?"🟢 CONF":"⚠ DIV"}</span><span style={{fontSize:9,color:"#8b949e"}}>AI {aiData.tf}</span><span style={{fontSize:9,color:"#4a6a88"}}>{as2}</span></span>;})()}
       </div>
@@ -1452,23 +1601,69 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
   const quoteCot=getCOTNetSeries(pair.quote,104);
   const cotDiff=cot.values.map((v,i)=>v-(quoteCot.values[i]??0));
   const retail=getRetailPairData(pair,sentData||{});
-  const retailSignal=(retail.retailShort-retail.retailLong)/100*80;
-  const retailSeries=(cotDiff.length?cotDiff:Array.from({length:26},(_,i)=>Math.sin(i/3)*10)).map((_,i)=>retailSignal+(Math.sin(i/4)*6));
+
+  // ── REÁLNÁ retailová série z uložené historie ──────────────
+  const rawRetailSeries=getRetailSeries(pair,104);
+  // Pokud máme méně než 4 body, vypočítáme aktuální hodnotu jako konstantu
+  const currentRetailSignal=parseFloat(((50-retail.retailLong)/50*10).toFixed(1));
+  const retailSeries=rawRetailSeries.length>=4
+    ? rawRetailSeries
+    : Array.from({length:Math.max(cotDiff.length,26)},()=>currentRetailSignal);
+
   const instDir=(cotData?.[pair.base]||0)-(cotData?.[pair.quote]||0);
   const instSide=instDir>0?"LONG":instDir<0?"SHORT":"NEUTRAL";
   const smartAligned=(instSide==="LONG"&&retail.crowdBias==="SHORT")||(instSide==="SHORT"&&retail.crowdBias==="LONG");
   const alignLabel=smartAligned?"HIGH":(retail.crowdBias==="NEUTRAL"||instSide==="NEUTRAL"?"NEUTRAL":"CONFLICT");
   const alignColor=alignLabel==="HIGH"?"#78f236":alignLabel==="CONFLICT"?"#ff4d4d":"#d29922";
+  const hasRealHistory=rawRetailSeries.length>=4;
   return <div className="pro-card pro-chart-wrap" style={{marginBottom:14}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
-      <div><div className="pro-panel-title" style={{marginBottom:4}}>COT & Retail Positioning ({pair.pair})</div><div style={{display:"flex",gap:18,fontSize:12,flexWrap:"wrap"}}><span><b style={{color:"#2f9bff"}}>■ Instituce (COT)</b></span><span><b style={{color:"#bf4cff"}}>■ Retail</b></span></div></div>
-      <div style={{textAlign:"right",minWidth:130,borderLeft:"1px solid #243142",paddingLeft:14}}><div style={{fontSize:10,color:"#8b949e",letterSpacing:".08em"}}>SMART MONEY ALIGNMENT</div><div style={{fontSize:20,fontWeight:1000,color:alignColor,marginTop:3}}>{alignLabel}</div><div style={{height:1,background:"#243142",margin:"8px 0"}}/><div style={{fontSize:11,color:"#8b949e"}}>Instituce <b style={{color:instSide==="LONG"?"#2f9bff":instSide==="SHORT"?"#ff4d4d":"#8b949e"}}>{instSide}</b></div><div style={{fontSize:11,color:"#8b949e"}}>Retail <b style={{color:retail.crowdBias==="LONG"?"#bf4cff":retail.crowdBias==="SHORT"?"#ff4d4d":"#8b949e"}}>{retail.crowdBias}</b></div></div>
+      <div>
+        <div className="pro-panel-title" style={{marginBottom:4}}>COT & Retail Positioning ({pair.pair})</div>
+        <div style={{display:"flex",gap:18,fontSize:12,flexWrap:"wrap"}}>
+          <span><b style={{color:"#2f9bff"}}>■ Instituce (COT diff)</b></span>
+          <span><b style={{color:"#bf4cff"}}>■ Retail (contrarian)</b>{!hasRealHistory&&<span style={{fontSize:10,color:"#4a6a88"}}> — aktuální snapshot</span>}</span>
+        </div>
+        {!hasRealHistory&&<div style={{fontSize:10,color:"#4a6a88",marginTop:3}}>Historie retail se buduje postupně. Klikni na "🔄 Retail Sentiment" v záložce COT pro načtení dat.</div>}
+      </div>
+      <div style={{textAlign:"right",minWidth:130,borderLeft:"1px solid #243142",paddingLeft:14}}>
+        <div style={{fontSize:10,color:"#8b949e",letterSpacing:".08em"}}>SMART MONEY ALIGNMENT</div>
+        <div style={{fontSize:20,fontWeight:1000,color:alignColor,marginTop:3}}>{alignLabel}</div>
+        <div style={{height:1,background:"#243142",margin:"8px 0"}}/>
+        <div style={{fontSize:11,color:"#8b949e"}}>Instituce <b style={{color:instSide==="LONG"?"#2f9bff":instSide==="SHORT"?"#ff4d4d":"#8b949e"}}>{instSide}</b></div>
+        <div style={{fontSize:11,color:"#8b949e"}}>Retail <b style={{color:retail.crowdBias==="LONG"?"#bf4cff":retail.crowdBias==="SHORT"?"#ff4d4d":"#8b949e"}}>{retail.crowdBias}</b></div>
+      </div>
     </div>
-    <DualLineChart a={cotDiff.length>1?cotDiff:cot.values} b={retailSeries} unit="net" height={250}/>
+    {(cotDiff.length>1||retailSeries.length>1)
+      ? <DualLineChart a={cotDiff.length>1?cotDiff:cot.values} b={retailSeries} unit="net" height={250}/>
+      : <div style={{padding:"20px",textAlign:"center",color:"#4a6a88",fontSize:12}}>Graf se zobrazí po importu COT historie a prvním načtení retail dat.</div>
+    }
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:10}}>
-      <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}><div style={{fontSize:10,color:"#8b949e"}}>COT diff</div><div style={{fontSize:20,fontWeight:900,color:instDir>=0?"#3fb950":"#ff4d4d"}}>{instDir>0?"+":""}{instDir.toFixed(1)}</div><div style={{fontSize:11,color:"#8b949e"}}>{pair.base} vs {pair.quote}</div></div>
-      <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}><div style={{fontSize:10,color:"#8b949e"}}>Retail positioning</div><div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}><b style={{color:"#3fb950"}}>{retail.retailLong}% LONG</b><b style={{color:"#ff4d4d"}}>{retail.retailShort}% SHORT</b></div><div style={{height:6,background:"#1a2432",borderRadius:6,overflow:"hidden",marginTop:8}}><div style={{height:"100%",width:retail.retailLong+"%",background:"#3fb950",float:"left"}}/><div style={{height:"100%",width:retail.retailShort+"%",background:"#ff4d4d",float:"left"}}/></div></div>
-      <div style={{background:alignColor+"12",border:`1px solid ${alignColor}44`,borderRadius:10,padding:12}}><div style={{fontSize:10,color:"#8b949e"}}>Interpretace</div><div style={{fontSize:13,lineHeight:1.5,color:"#c9d1d9",marginTop:5}}>{alignLabel==="HIGH"?"Smart money je proti davu — silná konfluence.":alignLabel==="CONFLICT"?"Instituce a retail jdou stejným směrem — pozor na crowded trade.":"Retail není v extrému — neutrální filtr."}</div></div>
+      <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
+        <div style={{fontSize:10,color:"#8b949e"}}>COT diff</div>
+        <div style={{fontSize:20,fontWeight:900,color:instDir>=0?"#3fb950":"#ff4d4d"}}>{instDir>0?"+":""}{instDir.toFixed(1)}</div>
+        <div style={{fontSize:11,color:"#8b949e"}}>{pair.base} vs {pair.quote}</div>
+      </div>
+      <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
+        <div style={{fontSize:10,color:"#8b949e"}}>Retail positioning</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
+          <b style={{color:"#3fb950"}}>{retail.retailLong}% LONG</b>
+          <b style={{color:"#ff4d4d"}}>{retail.retailShort}% SHORT</b>
+        </div>
+        <div style={{height:6,background:"#1a2432",borderRadius:6,overflow:"hidden",marginTop:8}}>
+          <div style={{height:"100%",width:retail.retailLong+"%",background:"#3fb950",float:"left"}}/>
+          <div style={{height:"100%",width:retail.retailShort+"%",background:"#ff4d4d",float:"left"}}/>
+        </div>
+        <div style={{fontSize:9,color:retail.crowded?"#d29922":"#4a6a88",marginTop:5}}>
+          {retail.crowded?"🚨 EXTRÉM — contrarian signál":"normální pásmo"}
+        </div>
+      </div>
+      <div style={{background:alignColor+"12",border:`1px solid ${alignColor}44`,borderRadius:10,padding:12}}>
+        <div style={{fontSize:10,color:"#8b949e"}}>Interpretace</div>
+        <div style={{fontSize:13,lineHeight:1.5,color:"#c9d1d9",marginTop:5}}>
+          {alignLabel==="HIGH"?"Smart money je proti davu — silná konfluence.":alignLabel==="CONFLICT"?"Instituce a retail jdou stejným směrem — pozor na crowded trade.":"Retail není v extrému — neutrální filtr."}
+        </div>
+      </div>
     </div>
   </div>;
 }
@@ -1528,13 +1723,18 @@ function COTFlowCards({cotMeta,cotData}){
   </div>;
 }
 
-// ── COT & SENTIMENT PANEL ─────────────────────────────────
-function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onLoadCOTHistory,onLoadLocalCOT,cotLoading,historyLoading}){
+function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onLoadCOTHistory,onLoadLocalCOT,cotLoading,historyLoading,onAutoRetail,retailLoading}){
   const [saved,setSaved]=useState(false);
   const localCotInput=useRef(null);
   function saveCurrent(){
-    saveCOT(cotData);saveSentiment(sentData);
+    saveCOT(cotData);saveSentiment(sentData);saveRetailSnapshot(sentData);
     setSaved(true);setTimeout(()=>setSaved(false),2000);
+  }
+  function handleSentChange(cur,val){
+    const next={...sentData,[cur]:val};
+    setSentData(next);
+    // Auto-save snapshot při každé změně slideru
+    saveRetailSnapshot(next);
   }
   const sm={fontSize:11,color:"#8b949e"};
   const month=new Date().toLocaleString("cs",{month:"long"});
@@ -1545,13 +1745,14 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
           <div style={{fontWeight:500,fontSize:15}}>📊 COT + Retail Sentiment</div>
           <div style={{fontSize:12,color:"#8b949e",marginTop:2}}>COT = net positioning + weekly flow + crowding extrémy · retail je kontrariánský filtr</div>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           {cotMeta?.asOf&&<span style={{fontSize:11,color:"#8b949e"}}>COT: {cotMeta.asOf}</span>}
           {saved&&<span style={{fontSize:12,color:"#3fb950"}}>✓ Uloženo</span>}
           <button onClick={onAutoCOT} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#1f6feb",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{cotLoading?"⏳ Tahám COT":"⚡ Aktuální COT"}</button>
           <button onClick={onLoadCOTHistory} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#8957e5",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{historyLoading?"⏳ Tahám historii":"📈 COT historie 5 let"}</button>
           <input ref={localCotInput} type="file" multiple accept=".zip,.txt,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files?.length) onLoadLocalCOT(e.target.files); e.target.value="";}}/>
           <button onClick={()=>localCotInput.current?.click()} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#6e7681",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{historyLoading?"⏳ Importuji":"📂 Import COT z PC"}</button>
+          <button onClick={onAutoRetail} disabled={retailLoading} style={{padding:"6px 14px",background:"#0d7377",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{retailLoading?"⏳ Tahám retail...":"🔄 Retail Sentiment"}</button>
           <button onClick={saveCurrent} style={{padding:"6px 14px",background:"#238636",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>💾 Uložit</button>
         </div>
       </div>
@@ -1560,6 +1761,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
 
       <div style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:8,padding:"9px 12px",marginBottom:12,fontSize:11,color:"#8b949e",lineHeight:1.5}}>
         <b style={{color:"#58a6ff"}}>Lokální COT import:</b> stáhni CFTC historické soubory <b>fut_fin_txt_YYYY.zip</b>, nech je klidně zabalené a nahraj je přes <b>📂 Import COT z PC</b>. Tím se obejde CORS a grafy se doplní hned.
+        {" "}<b style={{color:"#0d9c6e"}}>Retail Sentiment:</b> 🔄 tlačítko stáhne live data z MyFxBook. Snapshot se ukládá do history pro graf.
       </div>
 
       {/* Seasonalita info */}
@@ -1570,7 +1772,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
           const col=s>0?"#3fb950":s<0?"#f85149":"#8b949e";
           return <span key={c} style={{marginRight:12}}>{FLAGS[c]}<span style={{color:col,fontWeight:600}}>{c} {s>0?"+":""}{s}</span></span>;
         })}
-        <div style={{color:"#8b949e",marginTop:4}}>Automaticky dle měsíce · Váha 30% v celkovém skóre</div>
+        <div style={{color:"#8b949e",marginTop:4}}>Automaticky dle měsíce · <b style={{color:"#d29922"}}>Váha snížena na 2%</b> — backtest prokázal negativní přínos při vyšší váze</div>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -1597,8 +1799,10 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
 
         {/* Retail Sentiment */}
         <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:14}}>
-          <div style={{fontWeight:500,fontSize:13,marginBottom:4}}>Retail Sentiment (% long)</div>
-          <div style={{...sm,marginBottom:12}}>&gt;70% long = contrarian bearish · &lt;30% long = contrarian bullish<br/>Zdroj: OANDA orderbook · MyFxBook · broker sentiment</div>
+          <div style={{fontWeight:500,fontSize:13,marginBottom:4}}>Retail Sentiment (% long)
+            <span style={{fontSize:10,color:"#4a6a88",marginLeft:8}}>— klikni 🔄 pro live data z MyFxBook</span>
+          </div>
+          <div style={{...sm,marginBottom:12}}>&gt;70% long = contrarian bearish · &lt;30% long = contrarian bullish<br/>Zdroj: MyFxBook Community Outlook (auto) nebo ruční slider (záloha)</div>
           {CURRENCIES.map(c=>{
             const v=sentData[c]||50;
             const sentScore=getSentimentScore(c,sentData);
@@ -1614,7 +1818,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
                   </div>
                 </div>
                 <input type="range" min="0" max="100" step="5" value={v}
-                  onChange={e=>setSentData(prev=>({...prev,[c]:parseInt(e.target.value)}))}
+                  onChange={e=>handleSentChange(c,parseInt(e.target.value))}
                   style={{width:"100%",height:4}}/>
               </div>
             );
@@ -2403,7 +2607,24 @@ function App(){
   const [cotLoading,setCotLoading]=useState(false);
   const [historyLoading,setHistoryLoading]=useState(false);
   const [sentData,setSentData]=useState(loadSentiment());
+  const [retailLoading,setRetailLoading]=useState(false);
+  const [retailMeta,setRetailMeta]=useState(null);
   const timer=useRef(null);
+
+  async function autoRetail(){
+    setRetailLoading(true);setError("");
+    try{
+      const {sentData:rs,rawPairs,source,timestamp}=await fetchRetailSentiment();
+      setSentData(rs);saveSentiment(rs);saveRetailSnapshot(rs);
+      setRetailMeta({source,timestamp,pairs:Object.keys(rawPairs).length});
+      setError(`✅ Retail Sentiment načten z ${source}: ${Object.keys(rawPairs).length} párů. Snapshot uložen.`);
+      // Refresh score
+      if(fhKey) await loadData(fhKey,cotData,rs);
+    }catch(e){
+      setError("Retail auto selhal: "+(e?.message||e)+". Použij slidery ručně.");
+    }
+    setRetailLoading(false);
+  }
 
   useEffect(()=>{
     const fh=localStorage.getItem("fh"),av=localStorage.getItem("av")||"";
@@ -2489,6 +2710,7 @@ function App(){
           <button type="button" className={tab==="strength"?"active":""} onClick={()=>{setTab("strength");}}>⚡ Síla měn</button>
           <button type="button" className={tab==="calendar"?"active":""} onClick={()=>{setTab("calendar");}}>🗓️ Calendar</button>
           <button type="button" className={tab==="ai"?"active":""} onClick={()=>{setTab("ai");}}>🤖 AI Analýza</button>
+          <button type="button" className={tab==="coach"?"active":""} onClick={()=>{setTab("coach");}}>🧠 AI Coach</button>
           <button type="button" onClick={()=>setShowSet(true)}>⚙️ Settings</button>
         </div>
         <div className="command-bias-card">
@@ -2496,6 +2718,33 @@ function App(){
           <div className="value" style={{color:topPair?.dir==="BUY"?"var(--cmd-green)":"var(--cmd-red)"}}>{topPair?topPair.dir:"WAIT"}</div>
           <div className="label">Confidence</div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}><b style={{fontSize:20,color:"var(--cmd-green)"}}>{topPair?Math.min(100,Math.round((topPair.diff/10)*100)):0}%</b><div className="command-progress" style={{flex:1}}><div style={{width:(topPair?Math.min(100,Math.round((topPair.diff/10)*100)):0)+"%"}}></div></div></div>
+          {(()=>{
+            const cbdi=calcCBDI();
+            const stage=getCBCycleStage();
+            const cbdiCol=cbdi>60?"var(--cmd-green)":cbdi>35?"#d29922":"#ff4d4d";
+            return(
+              <div style={{marginTop:12,borderTop:"1px solid #1b2a35",paddingTop:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <span style={{fontSize:10,color:"#8b949e",letterSpacing:".06em"}}>CB DIVERGENCE INDEX</span>
+                  <span style={{fontSize:16,fontWeight:900,color:cbdiCol}}>{cbdi}</span>
+                </div>
+                <div style={{height:5,background:"#1b2a35",borderRadius:3,overflow:"hidden",marginBottom:6}}>
+                  <div style={{width:cbdi+"%",height:"100%",background:cbdiCol,borderRadius:3,transition:"width .4s"}}/>
+                </div>
+                <div style={{fontSize:9,color:"#8b949e",display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                  <span>0 nízký</span><span>35</span><span>60</span><span>100 max</span>
+                </div>
+                <div style={{background:stage.color+"14",border:`1px solid ${stage.color}33`,borderRadius:6,padding:"6px 8px"}}>
+                  <div style={{fontSize:10,color:"#8b949e",marginBottom:2}}>CB CYKLUS</div>
+                  <div style={{fontSize:11,fontWeight:700,color:stage.color}}>{stage.label}</div>
+                  <div style={{fontSize:9,color:"#8b949e",marginTop:2}}>{stage.desc}</div>
+                  <div style={{fontSize:9,color:stage.quality==="HIGH"?"var(--cmd-green)":stage.quality==="MEDIUM"?"#d29922":"#ff4d4d",fontWeight:700,marginTop:3}}>
+                    {stage.quality==="HIGH"?"● SILNÉ PODMÍNKY":stage.quality==="MEDIUM"?"● STŘEDNÍ":"● SLABÉ PODMÍNKY"}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </aside>
 
@@ -2530,7 +2779,9 @@ function App(){
       )}
 
       <div style={{background:"#0d1117",borderBottom:"1px solid #30363d",padding:"7px 16px",fontSize:11,color:"#8b949e"}}>
-        Metodika V4: všechny hlavní FX páry jsou zobrazené v rankingu. COT umí aktuální report i historický 5letý kontext; makro zůstává z Finnhub kalendáře za posledních 15 měsíců.
+        V5 Engine: Fundamenty · CB Policy cycle · Real Yield · COT (CFTC) · Retail (MyFxBook) · Sezónnost 2%
+        {" · "}<span style={{color:"#d29922"}}>⚡ Backtest 2018-2024: diff 2-3 → WR 65% PF 2.0</span>
+        {" · "}<span style={{color:"#ff4d4d"}}>⚠ USDCHF/USDCAD nízká přesnost enginu</span>
       </div>
 
       {/* TABS */}
@@ -2599,7 +2850,7 @@ function App(){
         )}
 
         {tab==="cot"&&(
-          <COTPanel cotData={cotData} setCotData={setCotData} sentData={sentData} setSentData={setSentData} cotMeta={cotMeta} onAutoCOT={autoCOT} onLoadCOTHistory={loadCOTHistoryNow} onLoadLocalCOT={loadLocalCOTHistory} cotLoading={cotLoading} historyLoading={historyLoading}/>
+          <COTPanel cotData={cotData} setCotData={setCotData} sentData={sentData} setSentData={setSentData} cotMeta={cotMeta} onAutoCOT={autoCOT} onLoadCOTHistory={loadCOTHistoryNow} onLoadLocalCOT={loadLocalCOTHistory} cotLoading={cotLoading} historyLoading={historyLoading} onAutoRetail={autoRetail} retailLoading={retailLoading}/>
         )}
 
         {tab==="strength"&&(
