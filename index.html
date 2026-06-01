@@ -7,14 +7,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-<script>
-window.addEventListener("error", function(e){
-  var root=document.getElementById("root");
-  if(root && (!window.React || !window.ReactDOM || !window.Babel)){
-    root.innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:monospace;white-space:pre-wrap">CHYBA NAČÍTÁNÍ KNIHOVEN\nZkontroluj internet/CDN.\n\n'+(e.message||'Script load error')+'</div>';
-  }
-}, true);
-</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -75,7 +67,7 @@ body{background:#05080d;color:#f3f7fb;font-family:Inter,-apple-system,BlinkMacSy
 </style>
 </head>
 <body>
-<div id="root"><div style="padding:24px;color:#8b949e;font-family:system-ui">Načítám AT Trading FX Analyzer...</div></div>
+<div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef}=React;
 
@@ -3471,33 +3463,15 @@ class ErrorBoundary extends React.Component{
   }
 }
 
-window.addEventListener("unhandledrejection", function(e){
-  console.error("Unhandled promise rejection:", e.reason);
-});
-
 window.onerror=function(msg,src,line,col,err){
   var el=document.getElementById("root");
   if(el)el.innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:monospace;white-space:pre-wrap;font-size:12px">CHYBA: '+msg+'\nLine: '+line+'\n'+(err&&err.stack?err.stack:'')+'</div>';
   return false;
 };
 try{
-  const rootEl=document.getElementById("root");
-  const app=<ErrorBoundary><App/></ErrorBoundary>;
-  if(!window.React || !window.ReactDOM){
-    throw new Error("React/ReactDOM knihovna se nenačetla — zkontroluj internet nebo CDN.");
-  }
-  if(ReactDOM.createRoot){
-    ReactDOM.createRoot(rootEl).render(app);
-  }else if(ReactDOM.render){
-    ReactDOM.render(app, rootEl);
-  }else{
-    throw new Error("ReactDOM nemá createRoot ani render — špatně načtená ReactDOM knihovna.");
-  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
 }catch(err){
-  const rootEl=document.getElementById("root");
-  if(rootEl){
-    rootEl.innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:monospace;white-space:pre-wrap;font-size:12px;line-height:1.6">🔴 APLIKACE SPADLA PŘI STARTU\n\n'+(err&&err.message?err.message:err)+'\n\n'+(err&&err.stack?err.stack:'')+'</div>';
-  }
+  document.getElementById("root").innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:system-ui">Aplikace spadla při startu: '+(err&&err.message?err.message:err)+'</div>';
 }
 </script>
 </body>
