@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AT Trading FX Analyzer</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/react@18/umd/react.production.min.js'"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/react-dom@18/umd/react-dom.production.min.js'"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/@babel/standalone/babel.min.js'"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}
@@ -67,7 +67,7 @@ body{background:#05080d;color:#f3f7fb;font-family:Inter,-apple-system,BlinkMacSy
 </style>
 </head>
 <body>
-<div id="root"><div style="padding:24px;color:#8b949e;font-family:system-ui">Načítám AT Trading FX Analyzer...</div></div>
+<div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef}=React;
 
@@ -1597,6 +1597,8 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose}){
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>
           🤖 OpenRouter API klíč <span style={{color:"#3fb950",fontWeight:700}}>✓ ZDARMA</span>
         </label>
+          🤖 OpenRouter API klíč <span style={{color:"#3fb950",fontWeight:700}}>✓ ZDARMA</span>
+        </label>
         <div style={{fontSize:10,color:"#8b949e",marginBottom:6}}>
           1. Jdi na <a href="https://openrouter.ai" target="_blank" style={{color:"#58a6ff"}}>openrouter.ai</a> → Sign up (Google účet) → <b style={{color:"#e6edf3"}}>Keys</b> → <b style={{color:"#e6edf3"}}>Create Key</b><br/>
           2. Zkopíruj klíč sem (začíná <b style={{color:"#e6edf3"}}>sk-or-v1-...</b>)
@@ -1832,6 +1834,67 @@ function MiniLineChart({values=[],height=120,color="#d29922"}){
   </svg>;
 }
 function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",labelA="BASE",labelB="QUOTE",unit="score",independentScale=false}){
+  const w=760,h=height,padL=46,padR=22,padT=22,padB=32;
+  // Pokud independentScale=true, každá série má vlastní normalizaci (jiné škály)
+  let minA,maxA,minB,maxB,min,max,span;
+  if(independentScale&&a.length>1&&b.length>1){
+    minA=Math.min(...a.filter(Number.isFinite));maxA=Math.max(...a.filter(Number.isFinite));
+    minB=Math.min(...b.filter(Number.isFinite));maxB=Math.max(...b.filter(Number.isFinite));
+    min=Math.min(minA,minB-(maxB-minB)*0.1);max=Math.max(maxA,maxB+(maxB-minB)*0.1);
+    span=max-min||1;
+  }else{
+    const vals=[...a,...b].filter(v=>Number.isFinite(v));
+    min=Math.min(-10,...vals);max=Math.max(10,...vals);span=max-min||1;
+  }
+  const x=(i,n)=>padL+(n<=1?0:i*(w-padL-padR)/(n-1));
+  const yA=v=>h-padB-((v-min)/span)*(h-padT-padB);
+  const yB=independentScale
+    ? v=>h-padB-((v-minB)/(maxB-minB||1))*(h-padT-padB)
+    : yA;
+  const ptsA=arr=>arr.map((v,i)=>`${x(i,arr.length)},${yA(v)}`).join(' ');
+  const ptsB=arr=>arr.map((v,i)=>`${x(i,arr.length)},${yB(v)}`).join(' ');
+  const grid=[0,.25,.5,.75,1];
+  return <svg viewBox={`0 0 ${w} ${h}`} style={{width:"100%",height,display:"block"}}>
+    <defs>
+      <linearGradient id="fillA" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={colorA} stopOpacity=".24"/><stop offset="100%" stopColor={colorA} stopOpacity="0"/></linearGradient>
+      <linearGradient id="fillB" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={colorB} stopOpacity=".20"/><stop offset="100%" stopColor={colorB} stopOpacity="0"/></linearGradient>
+    </defs>
+    <rect x="0" y="0" width={w} height={h} fill="transparent"/>
+    {grid.map((g,i)=>{const yy=padT+g*(h-padT-padB);return <g key={i}><line x1={padL} x2={w-padR} y1={yy} y2={yy} stroke={i===2?"#334155":"#1d2a3a"}/><text x="10" y={yy+4} fill="#8b949e" fontSize="11">{(max-g*span).toFixed(unit==="net"?0:0)}</text></g>})}
+    {[0,.2,.4,.6,.8,1].map((g,i)=><line key={i} x1={padL+g*(w-padL-padR)} x2={padL+g*(w-padL-padR)} y1={padT} y2={h-padB} stroke="#142032"/>)}
+    {a.length>1&&<polyline points={`${padL},${h-padB} ${ptsA(a)} ${x(a.length-1,a.length)},${h-padB}`} fill="url(#fillA)"/>}
+    {b.length>1&&<polyline points={`${padL},${h-padB} ${ptsB(b)} ${x(b.length-1,b.length)},${h-padB}`} fill="url(#fillB)"/>}
+    {a.length>1&&<polyline points={ptsA(a)} fill="none" stroke={colorA} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>}
+    {b.length>1&&<polyline points={ptsB(b)} fill="none" stroke={colorB} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>}
+    {a.length>0&&<g><circle cx={x(a.length-1,a.length)} cy={yA(a[a.length-1])} r="5" fill={colorA}/><text x={w-padR-36} y={yA(a[a.length-1])-8} fill="#fff" fontSize="12" fontWeight="700">{a[a.length-1]>0?"+":""}{a[a.length-1].toFixed(unit==="net"?0:1)}</text></g>}
+    {b.length>0&&<g><circle cx={x(b.length-1,b.length)} cy={yB(b[b.length-1])} r="5" fill={colorB}/><text x={w-padR-36} y={yB(b[b.length-1])+18} fill="#fff" fontSize="12" fontWeight="700">{independentScale?b[b.length-1].toFixed(0)+"%":(b[b.length-1]>0?"+":"")+b[b.length-1].toFixed(1)}</text></g>}
+    <text x={padL} y={h-10} fill="#8b949e" fontSize="11">starší</text><text x={w-padR-42} y={h-10} fill="#8b949e" fontSize="11">aktuální</text>
+  </svg>;
+}
+  const w=760,h=height,padL=46,padR=22,padT=22,padB=32;
+  const vals=[...a,...b].filter(v=>Number.isFinite(v));
+  const min=Math.min(-10,...vals),max=Math.max(10,...vals),span=max-min||1;
+  const x=(i,n)=>padL+(n<=1?0:i*(w-padL-padR)/(n-1));
+  const y=v=>h-padB-((v-min)/span)*(h-padT-padB);
+  const pts=arr=>arr.map((v,i)=>`${x(i,arr.length)},${y(v)}`).join(' ');
+  const grid=[0,.25,.5,.75,1];
+  return <svg viewBox={`0 0 ${w} ${h}`} style={{width:"100%",height,display:"block"}}>
+    <defs>
+      <linearGradient id="fillA" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={colorA} stopOpacity=".24"/><stop offset="100%" stopColor={colorA} stopOpacity="0"/></linearGradient>
+      <linearGradient id="fillB" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={colorB} stopOpacity=".20"/><stop offset="100%" stopColor={colorB} stopOpacity="0"/></linearGradient>
+    </defs>
+    <rect x="0" y="0" width={w} height={h} fill="transparent"/>
+    {grid.map((g,i)=>{const yy=padT+g*(h-padT-padB);return <g key={i}><line x1={padL} x2={w-padR} y1={yy} y2={yy} stroke={i===2?"#334155":"#1d2a3a"}/><text x="10" y={yy+4} fill="#8b949e" fontSize="11">{(max-g*span).toFixed(unit==="net"?0:0)}</text></g>})}
+    {[0,.2,.4,.6,.8,1].map((g,i)=><line key={i} x1={padL+g*(w-padL-padR)} x2={padL+g*(w-padL-padR)} y1={padT} y2={h-padB} stroke="#142032"/>) }
+    {a.length>1&&<polyline points={`${padL},${h-padB} ${pts(a)} ${x(a.length-1,a.length)},${h-padB}`} fill="url(#fillA)"/>}
+    {b.length>1&&<polyline points={`${padL},${h-padB} ${pts(b)} ${x(b.length-1,b.length)},${h-padB}`} fill="url(#fillB)"/>}
+    {a.length>1&&<polyline points={pts(a)} fill="none" stroke={colorA} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>}
+    {b.length>1&&<polyline points={pts(b)} fill="none" stroke={colorB} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>}
+    {a.length>0&&<g><circle cx={x(a.length-1,a.length)} cy={y(a[a.length-1])} r="5" fill={colorA}/><text x={w-padR-36} y={y(a[a.length-1])-8} fill="#fff" fontSize="12" fontWeight="700">{a[a.length-1]>0?"+":""}{a[a.length-1].toFixed(unit==="net"?0:1)}</text></g>}
+    {b.length>0&&<g><circle cx={x(b.length-1,b.length)} cy={y(b[b.length-1])} r="5" fill={colorB}/><text x={w-padR-36} y={y(b[b.length-1])+18} fill="#fff" fontSize="12" fontWeight="700">{b[b.length-1]>0?"+":""}{b[b.length-1].toFixed(unit==="net"?0:1)}</text></g>}
+    <text x={padL} y={h-10} fill="#8b949e" fontSize="11">starší</text><text x={w-padR-42} y={h-10} fill="#8b949e" fontSize="11">aktuální</text>
+  </svg>;
+}
 function getScoreSeries(currency,limit=104){
   const hist=loadScoreHistory();
   const dates=Object.keys(hist).sort().slice(-limit);
@@ -1969,6 +2032,7 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
   const smartAligned=(instSide==="LONG"&&retail.crowdBias==="SHORT")||(instSide==="SHORT"&&retail.crowdBias==="LONG");
   const alignLabel=smartAligned?"HIGH":(retail.crowdBias==="NEUTRAL"||instSide==="NEUTRAL"?"NEUTRAL":"CONFLICT");
   const alignColor=alignLabel==="HIGH"?"#78f236":alignLabel==="CONFLICT"?"#ff4d4d":"#d29922";
+  const hasRealHistory=rawRetailSeries.length>=4;
   return <div className="pro-card pro-chart-wrap" style={{marginBottom:14}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
       <div>
@@ -3265,8 +3329,7 @@ function App(){
         <div style={{background:topPair.dir==="BUY"?"#0d2a1a":"#2a0d0d",padding:"8px 16px",borderBottom:"1px solid #30363d",display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"#8b949e"}}>TOP DOPORUČENÍ:</span>
           <span style={{fontWeight:700,fontSize:14,color:topPair.dir==="BUY"?"#3fb950":"#f85149"}}>{FLAGS[topPair.base]}{FLAGS[topPair.quote]} {topPair.pair} {topPair.dir}</span>
-          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=65?"#3fb950":forecasts[topPair.pair].prob<=35?"#f85149":"#d29922"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}
-          {forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}
+          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=65?"#3fb950":forecasts[topPair.pair].prob<=35?"#f85149":"#d29922"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}}
           {top[1]&&<span style={{fontSize:11,color:"#8b949e"}}>| #2: {FLAGS[top[1].base]}{FLAGS[top[1].quote]} {top[1].pair} {top[1].dir}{forecasts[top[1].pair]?` ${forecasts[top[1].pair].prob}%`:""}</span>}
           {top[2]&&<span style={{fontSize:11,color:"#8b949e"}}>| #3: {FLAGS[top[2].base]}{FLAGS[top[2].quote]} {top[2].pair} {top[2].dir}{forecasts[top[2].pair]?` ${forecasts[top[2].pair].prob}%`:""}</span>}
         </div>
@@ -3406,32 +3469,10 @@ window.onerror=function(msg,src,line,col,err){
   return false;
 };
 try{
-  const rootEl=document.getElementById("root");
-  const appNode=React.createElement(ErrorBoundary,null,React.createElement(App,null));
-  if(ReactDOM.createRoot){
-    ReactDOM.createRoot(rootEl).render(appNode);
-  }else{
-    ReactDOM.render(appNode, rootEl);
-  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
 }catch(err){
   document.getElementById("root").innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:system-ui">Aplikace spadla při startu: '+(err&&err.message?err.message:err)+'</div>';
 }
-</script>
-
-<script>
-setTimeout(function(){
-  var root=document.getElementById('root');
-  if(root && root.innerText && root.innerText.includes('Načítám AT Trading FX Analyzer')){
-    root.innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:monospace;white-space:pre-wrap;font-size:12px;line-height:1.6">Aplikace se nespustila do 20 sekund.
-Nejčastější příčina: CDN/Babel se nenačetl nebo prohlížeč blokuje externí skripty.
-Zkus Ctrl+F5 a zkontroluj Console (F12).
-
-Stav knihoven:
-React: '+(window.React?'OK':'CHYBÍ')+'
-ReactDOM: '+(window.ReactDOM?'OK':'CHYBÍ')+'
-Babel: '+(window.Babel?'OK':'CHYBÍ')+'</div>';
-  }
-},20000);
 </script>
 </body>
 </html>
