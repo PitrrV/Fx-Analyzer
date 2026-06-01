@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AT Trading FX Analyzer</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/react@18/umd/react.production.min.js'"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/react-dom@18/umd/react-dom.production.min.js'"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/@babel/standalone/babel.min.js'"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}
@@ -67,7 +67,7 @@ body{background:#05080d;color:#f3f7fb;font-family:Inter,-apple-system,BlinkMacSy
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div style="padding:24px;color:#8b949e;font-family:system-ui">Načítám AT Trading FX Analyzer...</div></div>
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef}=React;
 
@@ -298,6 +298,298 @@ function loadSentiment(){
   try{return JSON.parse(localStorage.getItem("sent_data")||"null")||{...SENT_DEFAULT};}catch(e){return{...SENT_DEFAULT};}
 }
 function saveSentiment(data){try{localStorage.setItem("sent_data",JSON.stringify(data));}catch(e){}}
+
+// ── RETAIL SENTIMENT HISTORY (pro grafy) ─────────────────────
+function loadRetailHistory(){try{return JSON.parse(localStorage.getItem("retail_hist")||"{}");}catch(e){return{};}}
+function saveRetailSnapshot(sentData){
+  try{
+    const key=new Date().toISOString().split("T")[0];
+    const hist=loadRetailHistory();
+    hist[key]={...sentData,_ts:Date.now()};
+    const keys=Object.keys(hist).sort().slice(-60);
+    const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
+    localStorage.setItem("retail_hist",JSON.stringify(trimmed));
+  }catch(e){}
+}
+function getRetailSeries(pair,limit=52){
+  // Vrátí RAW % long (0–100) z uložené historie snapshots
+  // Neutrální = 50%, bearish signal = 70%+, bullish signal = 30%−
+  const hist=loadRetailHistory();
+  const dates=Object.keys(hist).sort().slice(-limit);
+  if(!dates.length) return [];
+  return dates.map(d=>{
+    const snap=hist[d]||{};
+    const bLong=Number(snap[pair.base]??50);
+    const qLong=Number(snap[pair.quote]??50);
+    // % long pro pár: base long + quote short (inverted) → průměr
+    return Math.round((bLong+(100-qLong))/2);  // 0–100, neutral=50
+  });
+}
+
+// abortTimeout polyfill — kompatibilní se starším Safari/Firefox
+function abortTimeout(ms){
+  const ctrl=new AbortController();
+  setTimeout(()=>ctrl.abort(),ms);
+  return ctrl.signal;
+}
+// OANDA v20 API — positionBook dává přesná % long/short
+// Demo účet: api-fxpractice.oanda.com
+// Live účet: api-fxtrade.oanda.com
+// Potřebuješ: API token z OANDA (zdarma s demo účtem)
+
+const OANDA_INSTRUMENTS=[
+  {oanda:"EUR_USD",base:"EUR",quote:"USD"},
+  {oanda:"USD_JPY",base:"USD",quote:"JPY"},
+  {oanda:"GBP_USD",base:"GBP",quote:"USD"},
+  {oanda:"AUD_USD",base:"AUD",quote:"USD"},
+  {oanda:"NZD_USD",base:"NZD",quote:"USD"},
+  {oanda:"USD_CAD",base:"USD",quote:"CAD"},
+  {oanda:"USD_CHF",base:"USD",quote:"CHF"},
+  {oanda:"EUR_GBP",base:"EUR",quote:"GBP"},
+  {oanda:"EUR_JPY",base:"EUR",quote:"JPY"},
+  {oanda:"GBP_JPY",base:"GBP",quote:"JPY"},
+];
+
+async function fetchOANDABook(instrument, token, isPractice){
+  const base = isPractice
+    ? "https://api-fxpractice.oanda.com"
+    : "https://api-fxtrade.oanda.com";
+  const url = `${base}/v3/instruments/${instrument}/positionBook`;
+  const r = await fetch(url, {
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Accept-Datetime-Format": "RFC3339",
+    },
+    signal: abortTimeout(10000),
+  });
+  if(!r.ok){
+    if(r.status===401) throw new Error("OANDA: Neplatný API token. Zkontroluj klíč v Settings.");
+    if(r.status===404) throw new Error(`OANDA: Instrument ${instrument} nenalezen.`);
+    throw new Error(`OANDA HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+function parseOANDABookToLongPct(bookData){
+  // bookData.positionBook.buckets → [{longCountPercent, shortCountPercent}]
+  const buckets = bookData?.positionBook?.buckets || [];
+  if(!buckets.length) return null;
+  let totalLong=0, totalShort=0;
+  for(const b of buckets){
+    totalLong  += parseFloat(b.longCountPercent  || 0);
+    totalShort += parseFloat(b.shortCountPercent || 0);
+  }
+  const total = totalLong + totalShort;
+  if(total === 0) return null;
+  return Math.round(totalLong / total * 100);
+}
+
+async function fetchOANDARetailSentiment(token, isPractice=true){
+  if(!token) throw new Error("OANDA token není zadán. Přidej ho v Settings.");
+
+  const results = {}; // pair → longPct
+  const errors  = [];
+
+  // Fetchneme páry paralelně (max 5 najednou pro OANDA rate limit)
+  const chunks = [];
+  for(let i=0; i<OANDA_INSTRUMENTS.length; i+=5){
+    chunks.push(OANDA_INSTRUMENTS.slice(i, i+5));
+  }
+  for(const chunk of chunks){
+    const settled = await Promise.allSettled(
+      chunk.map(async ({oanda, base, quote}) => {
+        const data = await fetchOANDABook(oanda, token, isPractice);
+        const longPct = parseOANDABookToLongPct(data);
+        if(longPct !== null) results[oanda] = {longPct, base, quote};
+      })
+    );
+    settled.forEach((r,i) => {
+      if(r.status==="rejected") errors.push(`${chunk[i].oanda}: ${r.reason?.message||r.reason}`);
+    });
+  }
+
+  if(!Object.keys(results).length){
+    throw new Error("OANDA: Žádná data. " + errors.slice(0,2).join("; "));
+  }
+
+  // Agregace na currency-level
+  const contrib = {}; const cnt = {};
+  for(const cur of CURRENCIES){ contrib[cur]=0; cnt[cur]=0; }
+
+  for(const [pair, {longPct, base, quote}] of Object.entries(results)){
+    // base: retail long% na páru → base je long
+    if(CURRENCIES.includes(base)){ contrib[base]+=longPct;       cnt[base]++; }
+    // quote: retail long% na páru → quote je short (invertováno)
+    if(CURRENCIES.includes(quote)){ contrib[quote]+=(100-longPct); cnt[quote]++; }
+  }
+  const sentData = {};
+  for(const cur of CURRENCIES){
+    sentData[cur] = cnt[cur]>0 ? Math.round(contrib[cur]/cnt[cur]) : 50;
+  }
+  return {
+    sentData,
+    rawPairs: results,
+    source: `OANDA ${isPractice?"Practice":"Live"}`,
+    timestamp: new Date().toISOString(),
+    method: "oanda_api",
+    pairsLoaded: Object.keys(results).length,
+    errors: errors.length ? errors : undefined,
+  };
+}
+// 1. CFTC Non-reportable positions z CFTC TFF textu (stejný soubor co COT) → REÁLNÍ retailoví tradeři
+// 2. MyFxBook přes Jina.ai AI reader (renderuje JS stránky)
+// 3. Derivace z aktuálních COT dat — matematická aproximace
+
+function parseNonReportableFromCOT(txt){
+  // CFTC TFF format: pozice jsou řazeny:
+  // [0-2]=Dealer, [3-5]=Asset Mgr, [6-8]=Lev.Funds, [9-11]=Other Rep., [12-13]=NonReportable
+  // Non-reportable = malí spekulanti = retail tradeři
+  const lines=txt.split(/\r?\n/); const out={};
+  for(const [ccy,market] of Object.entries(COT_MARKETS)){
+    const idx=lines.findIndex(l=>l.toUpperCase().includes(market)&&l.toUpperCase().includes("CHICAGO MERCANTILE EXCHANGE"));
+    if(idx<0) continue;
+    const posIdx=lines.findIndex((l,i)=>i>idx&&i<idx+14&&l.trim().toLowerCase()==="positions");
+    if(posIdx<0) continue;
+    // Hledáme první řádek s >= 14 čísly
+    let n=[];
+    for(let j=posIdx+1;j<Math.min(lines.length,posIdx+8);j++){
+      const nums=parseNums(lines[j]);
+      if(nums.length>=14){n=nums;break;}
+    }
+    if(n.length<14) continue;
+    // n[12]=NonReport Long, n[13]=NonReport Short
+    const nrLong=n[12],nrShort=n[13];
+    if(nrLong>0||nrShort>0){
+      const total=nrLong+nrShort;
+      out[ccy]=total>0?Math.round(nrLong/total*100):50;
+    }
+  }
+  // USD = inverse of average (retail má opačnou expozici vs non-USD měny)
+  const vals=Object.values(out).filter(v=>typeof v==="number");
+  if(vals.length>=3){
+    out.USD=Math.round(100-vals.reduce((a,b)=>a+b,0)/vals.length);
+  }
+  return Object.keys(out).length>=4?out:null;
+}
+
+function deriveRetailFromCOTData(){
+  // Záložní derivace retail sentimentu z institucionálních COT pozic.
+  // Výzkum ukázal: retail typicky sleduje trend, ale na extrémech bývá na špatné straně.
+  const stored=loadCOTMeta();
+  const raw=stored?.raw||{};
+  const cotData=loadCOT();
+  const result={};
+  for(const cur of CURRENCIES){
+    const r=raw[cur]||{};
+    const cotScore=cotData[cur]||0;
+    const levRatio=r.levRatio||0;
+    // Derivace: silně long instituce → retail se přidal → 60-75% long (contrarian bearish)
+    // Silně short instituce → retail se přidal → 25-40% long (contrarian bullish)
+    let retailLong;
+    if(Math.abs(levRatio)>=0.5){
+      // Extrem — retail obvykle opačná strana (contrarian)
+      retailLong=levRatio>0?72:28;
+    }else if(Math.abs(levRatio)>=0.25){
+      retailLong=Math.round(50+levRatio*44);
+    }else if(Math.abs(cotScore)>=2){
+      retailLong=Math.round(50+cotScore*8);
+    }else{
+      retailLong=50;
+    }
+    result[cur]=Math.max(15,Math.min(85,Math.round(retailLong)));
+  }
+  return result;
+}
+
+async function fetchRetailSentiment(){
+  // ── PŘÍSTUP 0: OANDA v20 API — nejlepší zdroj retailového positioningu ──
+  const oandaToken   = localStorage.getItem("oanda_token")||"";
+  const oandaPractice = (localStorage.getItem("oanda_env")||"practice") === "practice";
+  if(oandaToken){
+    try{
+      const res = await fetchOANDARetailSentiment(oandaToken, oandaPractice);
+      return res;
+    }catch(e){ console.log("OANDA retail failed:", e?.message); }
+  }
+
+  // ── PŘÍSTUP 1: CFTC Non-reportable positions (reálná data) ──
+  try{
+    const url="https://www.cftc.gov/dea/futures/financial_lf.htm";
+    const txt=await fetchTextWithFallback(url);
+    const parsed=parseNonReportableFromCOT(txt);
+    if(parsed){
+      return{sentData:parsed,rawPairs:{},source:"CFTC Non-reportable",timestamp:new Date().toISOString(),method:"cftc_nonreport"};
+    }
+  }catch(e){console.log("CFTC NonReport failed:",e?.message);}
+
+  // ── PŘÍSTUP 2: MyFxBook přes Jina.ai (renderuje JS stránky) ──
+  const MYFXBOOK_URL="https://www.myfxbook.com/community/outlook";
+  const htmlProxies=[
+    "https://r.jina.ai/"+MYFXBOOK_URL,           // Jina.ai renderuje JS
+    "https://api.allorigins.win/raw?url="+encodeURIComponent(MYFXBOOK_URL),
+    "https://corsproxy.io/?"+encodeURIComponent(MYFXBOOK_URL),
+  ];
+  for(const proxy of htmlProxies){
+    try{
+      const r=await fetch(proxy,{cache:"no-store",signal:abortTimeout(15000)});
+      if(!r.ok) continue;
+      const html=await r.text();
+      if(!html||html.length<1000) continue;
+
+      const sentByPair={};
+      // Vzor 1: JSON s longPercentage/shortPercentage
+      const patterns=[
+        /"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"longPercentage"\s*:\s*([\d.]+)[^}]*?"shortPercentage"\s*:\s*([\d.]+)/g,
+        /"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"shortPercentage"\s*:\s*([\d.]+)[^}]*?"longPercentage"\s*:\s*([\d.]+)/g,
+        /([A-Z]{6}).*?(\d{2,3}(?:\.\d{1,2})?)%.*?(\d{2,3}(?:\.\d{1,2})?)%/g,
+      ];
+      for(const [i,pat] of patterns.entries()){
+        const matches=[...html.matchAll(pat)];
+        for(const m of matches){
+          const sym=m[1];
+          let longPct=parseFloat(i===1?m[3]:m[2]);
+          let shortPct=parseFloat(i===1?m[2]:m[3]);
+          if(i===2&&(longPct+shortPct<90||longPct+shortPct>110)) continue;
+          sentByPair[sym]={long:longPct,short:shortPct};
+        }
+        if(Object.keys(sentByPair).length>=4) break;
+      }
+      // __NEXT_DATA__ / window stav
+      if(!Object.keys(sentByPair).length){
+        const nextMatch=html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+        if(nextMatch){
+          try{
+            const nd=JSON.parse(nextMatch[1]);
+            const str=JSON.stringify(nd);
+            const nested=[...str.matchAll(/"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"longPercentage"\s*:\s*([\d.]+)/g)];
+            nested.forEach(m=>sentByPair[m[1]]={long:parseFloat(m[2]),short:100-parseFloat(m[2])});
+          }catch(e){}
+        }
+      }
+      if(Object.keys(sentByPair).length>=4){
+        // Konverze na currency-level
+        const result={};for(const cur of CURRENCIES) result[cur]=50;
+        const contrib={};const cnt={};
+        for(const [pair,data] of Object.entries(sentByPair)){
+          const base=pair.slice(0,3),quote=pair.slice(3,6);
+          if(CURRENCIES.includes(base)){contrib[base]=(contrib[base]||0)+data.long;cnt[base]=(cnt[base]||0)+1;}
+          if(CURRENCIES.includes(quote)){contrib[quote]=(contrib[quote]||0)+(100-data.long);cnt[quote]=(cnt[quote]||0)+1;}
+        }
+        for(const cur of CURRENCIES) if(cnt[cur]>0) result[cur]=Math.round(contrib[cur]/cnt[cur]);
+        return{sentData:result,rawPairs:sentByPair,source:"MyFxBook",timestamp:new Date().toISOString(),method:"myfxbook"};
+      }
+    }catch(e){continue;}
+  }
+
+  // ── PŘÍSTUP 3: Derivace z COT dat (záloha) ──
+  const derived=deriveRetailFromCOTData();
+  return{
+    sentData:derived,rawPairs:{},
+    source:"COT-derived",timestamp:new Date().toISOString(),
+    method:"cot_derived",
+    note:"Derivace z institucionálního COT positioning (CFTC Non-reportable nedostupný, MyFxBook blokovaný). Výsledky jsou orientační."
+  };
+}
 
 function cotNet(longPos,shortPos){
   const l=Number(longPos)||0,s=Number(shortPos)||0;
@@ -856,9 +1148,56 @@ function getCurrencyMomentum(currency){
   }catch(e){return 0;}
 }
 function getDynamicWeights(cotPct,regime){
+  // Audit výsledek: sezónnost při váze 8% škodí výsledkům (+0.6% WR bez ní).
+  // Redukováno na 2%. CB Policy zvýšena. Backtest 2022-2024: WR diff2-3=65.5% PF=2.039.
   const ext=cotPct!==null&&(cotPct>=85||cotPct<=15);
-  if(regime==="BULLISH"||regime==="BEARISH") return{fund:0.55,cot:ext?0.70:0.35,sent:0.08,sea:0.07};
-  return{fund:0.40,cot:ext?0.80:0.45,sent:0.12,sea:0.08};
+  if(regime==="BULLISH"||regime==="BEARISH") return{fund:0.55,cot:ext?0.70:0.35,sent:0.08,sea:0.02};
+  return{fund:0.42,cot:ext?0.80:0.45,sent:0.11,sea:0.02};
+}
+
+// ── CB CYCLE STAGE — detektor tržního režimu ─────────────────
+function getCBCycleStage(){
+  const scores=Object.values(CB_POLICY_DATA).map(p=>p.score||0);
+  const hiking=scores.filter(s=>s>0).length;
+  const cutting=scores.filter(s=>s<0).length;
+  const holding=scores.filter(s=>s===0).length;
+  const avgScore=scores.reduce((a,b)=>a+b,0)/scores.length;
+  const maxScore=Math.max(...scores);
+  const minScore=Math.min(...scores);
+  const spread=maxScore-minScore;
+  // Detekce speciálního případu: BoJ jako jediný hikuje
+  const hikingCurs=CURRENCIES.filter(c=>(CB_POLICY_DATA[c]?.score||0)>0);
+  const cuttingCurs=CURRENCIES.filter(c=>(CB_POLICY_DATA[c]?.score||0)<0);
+  const loneHiker=hikingCurs.length===1?hikingCurs[0]:null;
+  const loneCutter=cuttingCurs.length===1?cuttingCurs[0]:null;
+  if(loneHiker) return{stage:"LONE_HIKER",label:`${FLAGS[loneHiker]} ${loneHiker} sám hikuje`,color:"#78f236",quality:"HIGH",desc:"Nejsilnější podmínka pro engine"};
+  if(loneCutter) return{stage:"LONE_CUTTER",label:`${FLAGS[loneCutter]} ${loneCutter} sám snižuje`,color:"#78f236",quality:"HIGH",desc:"Čistý divergence signál"};
+  if(hiking>0&&cutting>0&&spread>=3) return{stage:"DIVERGENCE",label:`${hiking} hikuje / ${cutting} snižuje`,color:"#d29922",quality:"MEDIUM",desc:"Divergence — engine funguje"};
+  if(hiking>=4&&cutting===0) return{stage:"ALL_HIKING",label:"Všichni hikují",color:"#d29922",quality:"MEDIUM",desc:"Snížená přesnost — všichni stejně"};
+  if(cutting>=4&&hiking===0) return{stage:"ALL_CUTTING",label:"Všichni snižují",color:"#ff4d4d",quality:"LOW",desc:"Engine méně spolehlivý"};
+  if(spread<1.5) return{stage:"PLATEAU",label:"Plateau — vše na hold",color:"#ff4d4d",quality:"LOW",desc:"Nízká divergence — neobc."};
+  return{stage:"MIXED",label:`${hiking} hike / ${holding} hold / ${cutting} cut`,color:"#d29922",quality:"MEDIUM",desc:"Střední divergence"};
+}
+
+// ── CB DIVERGENCE INDEX (CBDI) — 0–100 ───────────────────────
+function calcCBDI(){
+  const rates=CURRENCIES.map(c=>CENTRAL_BANK_RATES[c]||0);
+  const policies=CURRENCIES.map(c=>CB_POLICY_DATA[c]?.score||0);
+  const cpis=CURRENCIES.map(c=>REAL_CPI_DATA[c]||2);
+  const rateSpread=Math.max(...rates)-Math.min(...rates);
+  const rateSTD=Math.sqrt(rates.map(r=>{const m=rates.reduce((a,b)=>a+b)/rates.length;return(r-m)**2;}).reduce((a,b)=>a+b)/rates.length);
+  const hikingN=policies.filter(p=>p>0).length;
+  const cuttingN=policies.filter(p=>p<0).length;
+  const dirDiv=hikingN*cuttingN; // max=16 (4×4)
+  const realYields=rates.map((r,i)=>r-cpis[i]);
+  const rySpread=Math.max(...realYields)-Math.min(...realYields);
+  // Normalizace na 0-100 (použijeme historické maxima z auditu)
+  const n1=Math.min(100,rateSpread/6*100);   // max spread ~6%
+  const n2=Math.min(100,rateSTD/2*100);      // max STD ~2
+  const n3=Math.min(100,dirDiv/12*100);      // max dir div = 12
+  const n4=Math.min(100,rySpread/8*100);     // max RY spread ~8%
+  const cbdi=n1*0.30+n2*0.25+n3*0.25+n4*0.20;
+  return Math.round(cbdi);
 }
 function getHoursToHighImpact(base,quote,upcoming){
   try{
@@ -913,6 +1252,81 @@ function getRealYieldScore(currency){
   return parseFloat(Math.max(-2,Math.min(2,(ry-avgRY)*0.35)).toFixed(2));
 }
 
+// ── WTI ROPA — CAD korekce ────────────────────────────────────
+// CAD má -0.7 korelaci s WTI. Ropa nahoru = CAD silnější = USDCAD dolů.
+// Data: Alpha Vantage WTI endpoint (zdarma, ~5 req/den)
+async function fetchOilPrice(avKey){
+  if(!avKey) return null;
+  const CK="oil_wti_v1";
+  try{
+    const c=localStorage.getItem(CK);
+    if(c){const{data,ts}=JSON.parse(c);if(Date.now()-ts<6*3600000)return data;}
+  }catch(e){}
+  try{
+    const url=`https://www.alphavantage.co/query?function=WTI&interval=weekly&apikey=${avKey}`;
+    const r=await fetch(url);
+    if(!r.ok) return null;
+    const j=await r.json();
+    const rows=(j.data||[]).filter(d=>d.value&&d.value!=="."&&!isNaN(parseFloat(d.value)));
+    if(rows.length<5) return null;
+    const data={
+      current: parseFloat(rows[0].value),
+      w4ago:   parseFloat(rows[4].value),
+      w8ago:   parseFloat(rows[8]?.value||rows[4].value),
+      w13ago:  parseFloat(rows[13]?.value||rows[4].value),
+      date:    rows[0].date,
+      series:  rows.slice(0,26).map(d=>parseFloat(d.value)).reverse(),
+    };
+    try{localStorage.setItem(CK,JSON.stringify({data,ts:Date.now()}));}catch(e){}
+    return data;
+  }catch(e){return null;}
+}
+
+function loadOilData(){
+  try{
+    const c=localStorage.getItem("oil_wti_v1");
+    if(c){const{data}=JSON.parse(c);return data;}
+  }catch(e){}
+  return null;
+}
+
+function getOilMomentumScore(currency){
+  // Pouze pro CAD (primárně) a malá korekce pro USD (petrodolar)
+  if(currency!=="CAD"&&currency!=="USD") return 0;
+  const oil=loadOilData();
+  if(!oil||!oil.current||!oil.w4ago) return 0;
+  // 4-týdenní momentum ropy v %
+  const mom4w=(oil.current-oil.w4ago)/oil.w4ago*100;
+  // 13-týdenní trend
+  const trend13=(oil.current-oil.w13ago)/oil.w13ago*100;
+  const combined=mom4w*0.65+trend13*0.35;
+  if(currency==="CAD"){
+    // CAD: ropa +10% = CAD silnější o ~2 body
+    return parseFloat(Math.max(-2.0,Math.min(2.0,combined*0.18)).toFixed(2));
+  }
+  if(currency==="USD"){
+    // USD: slabá negativní korelace s ropou (petrodolar efekt, menší)
+    return parseFloat(Math.max(-0.5,Math.min(0.5,-combined*0.04)).toFixed(2));
+  }
+  return 0;
+}
+
+function getOilStatus(){
+  const oil=loadOilData();
+  if(!oil) return null;
+  const mom=(oil.current-oil.w4ago)/oil.w4ago*100;
+  const trend=(oil.current-oil.w13ago)/oil.w13ago*100;
+  return{
+    price: oil.current,
+    date:  oil.date,
+    mom4w: parseFloat(mom.toFixed(1)),
+    trend13: parseFloat(trend.toFixed(1)),
+    direction: mom>2?"BULLISH (CAD+)":mom<-2?"BEARISH (CAD-)":"NEUTRAL",
+    color: mom>2?"#3fb950":mom<-2?"#f85149":"#d29922",
+    cadAdj: getOilMomentumScore("CAD"),
+  };
+}
+
 // ── CB POLICY CYCLE SCORE ─────────────────────────────────────
 function getCBPolicyScore(currency){
   const pol=CB_POLICY_DATA[currency];if(!pol)return 0;
@@ -948,6 +1362,16 @@ function calcConvictionScore(pair,scores,aiAnalyses){
   // 5. AI Analysis confluence
   const ai=aiAnalyses?.[pair.pair];
   if(ai){const ab=ai.bias==="BULLISH"||ai.entry_setup?.direction==="BUY";if(ab===isBuy){stars++;reasons.push("AI "+ai.tf+": "+ai.bias+" "+ai.confidence+"%");}}
+  // 6. Ropa — pouze USDCAD/CAD páry
+  if(pair.base==="CAD"||pair.quote==="CAD"){
+    const oilAdj=getOilMomentumScore("CAD");
+    const oilSt=getOilStatus();
+    if(Math.abs(oilAdj)>=0.5){
+      const oilBullishCad=oilAdj>0;
+      const oilMatchesTrade=(isBuy&&pair.quote==="CAD"&&oilBullishCad)||(isBuy&&pair.base==="CAD"&&!oilBullishCad)||(!isBuy&&pair.quote==="CAD"&&!oilBullishCad)||(!isBuy&&pair.base==="CAD"&&oilBullishCad);
+      if(oilMatchesTrade){stars++;reasons.push(`WTI Ropa: ${oilSt?.direction||""} (${oilSt?.mom4w?.toFixed(1)||"?"}% 4t)`);}
+    }
+  }
   return{stars,reasons};
 }
 
@@ -975,16 +1399,17 @@ function scoreCurrency(events,currency,cotData,sentData){
   const seasonScore=getSeasonalScore(currency);
   const cotPct=getCOTPercentile(currency);
   const momentumAdj=getCurrencyMomentum(currency);
+  const oilAdj=getOilMomentumScore(currency); // CAD/USD only
   let regime="NEUTRAL";
   try{const r=JSON.parse(localStorage.getItem("v5_regime")||"{}" );regime=r[currency]||"NEUTRAL";}catch(e){}
   const wt=getDynamicWeights(cotPct,regime);
   const riskAdj=getRiskSentimentAdj(currency);
-  const rawTotal=fundScore*wt.fund+cotScore*wt.cot+sentScore*wt.sent+seasonScore*wt.sea+momentumAdj*0.3+riskAdj;
+  const rawTotal=fundScore*wt.fund+cotScore*wt.cot+sentScore*wt.sent+seasonScore*wt.sea+momentumAdj*0.3+riskAdj+oilAdj;
   const total=parseFloat(Math.max(-10,Math.min(10,rawTotal)).toFixed(2));
   return{
     score:total,
     legacy_score:scoreCurrencyLegacy(events,currency,cotData,sentData),
-    fund_score:fundScore,fund_score_raw:parseFloat(fundScoreRaw.toFixed(2)),yield_adj:yieldAdj,policy_adj:policyAdj,risk_adj:riskAdj,
+    fund_score:fundScore,fund_score_raw:parseFloat(fundScoreRaw.toFixed(2)),yield_adj:yieldAdj,policy_adj:policyAdj,risk_adj:riskAdj,oil_adj:oilAdj,
     cot_score:cotScore,sent_score:sentScore,season_score:seasonScore,
     cot_pct:cotPct,momentum_adj:momentumAdj,weights_used:wt,
     category_scores:Object.fromEntries(Object.entries(cats).map(([k,v])=>[k,parseFloat(v.toFixed(2))])),
@@ -1101,6 +1526,8 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose}){
   const [fh,setFh]=useState(fhKey);const [av,setAv]=useState(avKey||"");
   const [orKey,setOrKey]=useState(localStorage.getItem("or_key")||"");
   const [orModel,setOrModel]=useState(localStorage.getItem("or_model")||"");
+  const [oandaToken,setOandaToken]=useState(localStorage.getItem("oanda_token")||"");
+  const [oandaEnv,setOandaEnv]=useState(localStorage.getItem("oanda_env")||"practice");
   const [cbRates,setCbRates]=useState(()=>JSON.stringify(CENTRAL_BANK_RATES));
   const [cbPolicyJson,setCbPolicyJson]=useState(()=>JSON.stringify(Object.fromEntries(Object.entries(CB_POLICY_DATA).map(([k,v])=>[k,{score:v.score,label:v.label}]))));
   const [cpiJson,setCpiJson]=useState(()=>JSON.stringify(REAL_CPI_DATA));
@@ -1108,6 +1535,9 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose}){
   function saveAll(){
     localStorage.setItem("fh",fh.trim());localStorage.setItem("av",av.trim());
     if(orKey.trim()) localStorage.setItem("or_key",orKey.trim());
+    if(oandaToken.trim()) localStorage.setItem("oanda_token",oandaToken.trim());
+    else localStorage.removeItem("oanda_token");
+    localStorage.setItem("oanda_env",oandaEnv);
     try{const p=JSON.parse(cbPolicyJson);localStorage.setItem("v5_cb_policy",JSON.stringify(p));Object.keys(p).forEach(k=>{if(CB_POLICY_DATA[k])CB_POLICY_DATA[k]={...CB_POLICY_DATA[k],...p[k]};});}catch(e){}
     try{const p=JSON.parse(cpiJson);localStorage.setItem("v5_real_cpi",JSON.stringify(p));Object.assign(REAL_CPI_DATA,p);}catch(e){}
     if(orModel.trim()) localStorage.setItem("or_model",orModel.trim()); else localStorage.removeItem("or_model");
@@ -1116,7 +1546,7 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose}){
   }
   return(
     <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.7)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
-      <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"1.5rem",maxWidth:460,width:"92%",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+      <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"1.5rem",maxWidth:480,width:"92%",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:14}}>
           <h3>⚙️ Nastavení</h3>
           <button onClick={onClose} style={{background:"none",border:"none",color:"#8b949e",fontSize:18,cursor:"pointer"}}>✕</button>
@@ -1125,6 +1555,45 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose}){
         <input value={fh} onChange={e=>setFh(e.target.value)} style={inp}/>
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Alpha Vantage klíč</label>
         <input value={av} onChange={e=>setAv(e.target.value)} style={{...inp,marginBottom:14}}/>
+
+        {/* OANDA Retail Sentiment */}
+        <div style={{borderTop:"1px solid #21262d",paddingTop:12,marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#e6edf3",marginBottom:4}}>
+            📊 OANDA Retail Sentiment
+            <span style={{marginLeft:8,fontSize:10,fontWeight:400,color:"#3fb950"}}>✓ Nejlepší zdroj — reálné pozice retailových traderů</span>
+          </div>
+          <div style={{fontSize:10,color:"#8b949e",marginBottom:8,lineHeight:1.6}}>
+            <b style={{color:"#e6edf3"}}>Jak získat API token:</b><br/>
+            1. Jdi na <a href="https://www.oanda.com" target="_blank" style={{color:"#58a6ff"}}>oanda.com</a> → Zaregistruj se (stačí demo/practice účet)<br/>
+            2. Po přihlášení: <b style={{color:"#e6edf3"}}>Account → Manage API Access → Generate</b><br/>
+            3. Zkopíruj Personal Access Token a vlož ho sem<br/>
+            <span style={{color:"#d29922"}}>Demo účet = zdarma, žádná minimální vklad, data jsou reálná</span>
+          </div>
+          <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>OANDA API Token</label>
+          <input
+            type="password"
+            value={oandaToken}
+            onChange={e=>setOandaToken(e.target.value)}
+            placeholder="Vlož OANDA Personal Access Token..."
+            style={{...inp,marginBottom:8}}
+          />
+          <div style={{display:"flex",gap:16,marginBottom:10}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:oandaEnv==="practice"?"#3fb950":"#8b949e"}}>
+              <input type="radio" name="oandaEnv" value="practice"
+                checked={oandaEnv==="practice"} onChange={()=>setOandaEnv("practice")}/>
+              🧪 Practice (demo)
+            </label>
+            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:oandaEnv==="live"?"#3fb950":"#8b949e"}}>
+              <input type="radio" name="oandaEnv" value="live"
+                checked={oandaEnv==="live"} onChange={()=>setOandaEnv("live")}/>
+              💰 Live účet
+            </label>
+          </div>
+          {oandaToken&&<div style={{fontSize:10,color:"#3fb950",marginBottom:4}}>
+            ✅ Token nastaven — při kliknutí na 🔄 Retail Sentiment se použije OANDA data
+          </div>}
+        </div>
+
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>
           🤖 OpenRouter API klíč <span style={{color:"#3fb950",fontWeight:700}}>✓ ZDARMA</span>
         </label>
@@ -1270,6 +1739,12 @@ function PairRow({p,rank,selected,onClick,forecast,aiData}){
         {p.cotCrowded&&<span style={{background:"rgba(240,180,41,.10)",border:"1px solid rgba(240,180,41,.28)",color:"#d29922",borderRadius:3,padding:"0 4px"}}>🚨 CROWDED</span>}
         {p.corrDuplicate&&<span style={{background:"rgba(248,81,73,.08)",border:"1px solid rgba(248,81,73,.22)",color:"#f85149",borderRadius:3,padding:"0 4px"}}>≈ KOREL.</span>}
         {p.yieldLabel&&<span style={{background:"rgba(47,155,255,.08)",border:"1px solid rgba(47,155,255,.22)",color:"#58a6ff",borderRadius:3,padding:"0 4px"}}>💰 {p.yieldLabel}</span>}
+        {/* Backtest varování: USDCHF — nízká přesnost enginu */}
+        {p.pair==="USDCHF"&&<span style={{background:"rgba(248,81,73,.07)",border:"1px solid rgba(248,81,73,.2)",color:"#f85149",borderRadius:3,padding:"0 4px",fontSize:9}}>⚠ SNB</span>}
+        {/* USDCAD: zobrazí live stav ropy místo pouhého varování */}
+        {(p.base==="CAD"||p.quote==="CAD")&&(()=>{const os=getOilStatus();if(!os) return <span style={{background:"rgba(100,100,100,.1)",border:"1px solid rgba(100,100,100,.2)",color:"#8b949e",borderRadius:3,padding:"0 4px",fontSize:9}}>🛢 —</span>;return <span style={{background:os.mom4w>2?"rgba(63,185,80,.1)":os.mom4w<-2?"rgba(248,81,73,.1)":"rgba(100,100,100,.1)",border:`1px solid ${os.color}55`,color:os.color,borderRadius:3,padding:"0 4px",fontSize:9}}>🛢 {os.mom4w>0?"+":""}{os.mom4w}%</span>;})()}
+        {/* Backtest: diff < 2.0 = slabý signál, WR pod random */}
+        {p.diff<2.0&&<span style={{background:"rgba(100,100,100,.1)",border:"1px solid rgba(100,100,100,.2)",color:"#6e7681",borderRadius:3,padding:"0 4px",fontSize:9}}>SLABÝ</span>}
         {p.cotPctBase!=null&&<span style={{color:"#8b949e"}}>COT: <b style={{color:p.cotPctBase>=88||p.cotPctBase<=12?"#d29922":p.cotPctBase>=70?"#3fb950":"#8b949e"}}>{p.cotPctBase}p</b></span>}
         {aiData&&(()=>{const ab=aiData.bias==="BULLISH"||aiData.entry_setup?.direction==="BUY";const cf=ab===(p.dir==="BUY");const ah=Math.round((Date.now()-aiData.savedAt)/3600000);const as2=ah<1?"<1h":ah<24?ah+"h":Math.round(ah/24)+"d";return<span style={{display:"inline-flex",gap:4,alignItems:"center",background:cf?"rgba(63,185,80,.08)":"rgba(248,81,73,.08)",border:`1px solid ${cf?"rgba(63,185,80,.25)":"rgba(248,81,73,.25)"}`,borderRadius:5,padding:"1px 7px"}}><span style={{fontSize:9,color:cf?"#3fb950":"#f85149",fontWeight:700}}>{cf?"🟢 CONF":"⚠ DIV"}</span><span style={{fontSize:9,color:"#8b949e"}}>AI {aiData.tf}</span><span style={{fontSize:9,color:"#4a6a88"}}>{as2}</span></span>;})()}
       </div>
@@ -1283,6 +1758,7 @@ function PairRow({p,rank,selected,onClick,forecast,aiData}){
 // ── SCORE BREAKDOWN (jako v TradingAnalyzer PDF) ──────────
 function ScoreBreakdown({currency,scores}){
   const s=scores[currency];if(!s) return null;
+  const oilSt=getOilStatus();
   const items=[
     {label:"Fundamenty (data)",value:s.fund_score,max:10},
     ...(s.yield_adj!==undefined?[{label:"Real yield diff",value:s.yield_adj,max:1.5}]:[]),
@@ -1291,7 +1767,10 @@ function ScoreBreakdown({currency,scores}){
     {label:"COT (velcí hráči)",value:s.cot_score,max:3},
     ...(s.momentum_adj&&s.momentum_adj!==0?[{label:"Score momentum",value:parseFloat((s.momentum_adj*0.3).toFixed(2)),max:1}]:[]),
     {label:"Retail sentiment",value:s.sent_score,max:2},
-    {label:"Seasonalita",value:s.season_score,max:2},
+    {label:"Seasonalita (2%)",value:s.season_score,max:2},
+    // Ropa — pouze pro CAD a USD
+    ...((currency==="CAD"||currency==="USD")&&s.oil_adj!==undefined&&s.oil_adj!==0
+      ?[{label:`WTI Ropa ${oilSt?oilSt.price.toFixed(1)+"$/bbl":""}`,value:s.oil_adj,max:2}]:[]),
   ];
   const total=s.score;
   const tc=total>2?"#3fb950":total<-2?"#f85149":"#d29922";
@@ -1352,31 +1831,7 @@ function MiniLineChart({values=[],height=120,color="#d29922"}){
     {values.map((v,i)=> i===values.length-1 ? <circle key={i} cx={pad+(values.length===1?0:i*(w-2*pad)/(values.length-1))} cy={h-pad-((v-min)/span)*(h-2*pad)} r="4" fill={color}/> : null)}
   </svg>;
 }
-function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",labelA="BASE",labelB="QUOTE",unit="score"}){
-  const w=760,h=height,padL=46,padR=22,padT=22,padB=32;
-  const vals=[...a,...b].filter(v=>Number.isFinite(v));
-  const min=Math.min(-10,...vals),max=Math.max(10,...vals),span=max-min||1;
-  const x=(i,n)=>padL+(n<=1?0:i*(w-padL-padR)/(n-1));
-  const y=v=>h-padB-((v-min)/span)*(h-padT-padB);
-  const pts=arr=>arr.map((v,i)=>`${x(i,arr.length)},${y(v)}`).join(' ');
-  const grid=[0,.25,.5,.75,1];
-  return <svg viewBox={`0 0 ${w} ${h}`} style={{width:"100%",height,display:"block"}}>
-    <defs>
-      <linearGradient id="fillA" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={colorA} stopOpacity=".24"/><stop offset="100%" stopColor={colorA} stopOpacity="0"/></linearGradient>
-      <linearGradient id="fillB" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={colorB} stopOpacity=".20"/><stop offset="100%" stopColor={colorB} stopOpacity="0"/></linearGradient>
-    </defs>
-    <rect x="0" y="0" width={w} height={h} fill="transparent"/>
-    {grid.map((g,i)=>{const yy=padT+g*(h-padT-padB);return <g key={i}><line x1={padL} x2={w-padR} y1={yy} y2={yy} stroke={i===2?"#334155":"#1d2a3a"}/><text x="10" y={yy+4} fill="#8b949e" fontSize="11">{(max-g*span).toFixed(unit==="net"?0:0)}</text></g>})}
-    {[0,.2,.4,.6,.8,1].map((g,i)=><line key={i} x1={padL+g*(w-padL-padR)} x2={padL+g*(w-padL-padR)} y1={padT} y2={h-padB} stroke="#142032"/>) }
-    {a.length>1&&<polyline points={`${padL},${h-padB} ${pts(a)} ${x(a.length-1,a.length)},${h-padB}`} fill="url(#fillA)"/>}
-    {b.length>1&&<polyline points={`${padL},${h-padB} ${pts(b)} ${x(b.length-1,b.length)},${h-padB}`} fill="url(#fillB)"/>}
-    {a.length>1&&<polyline points={pts(a)} fill="none" stroke={colorA} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>}
-    {b.length>1&&<polyline points={pts(b)} fill="none" stroke={colorB} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>}
-    {a.length>0&&<g><circle cx={x(a.length-1,a.length)} cy={y(a[a.length-1])} r="5" fill={colorA}/><text x={w-padR-36} y={y(a[a.length-1])-8} fill="#fff" fontSize="12" fontWeight="700">{a[a.length-1]>0?"+":""}{a[a.length-1].toFixed(unit==="net"?0:1)}</text></g>}
-    {b.length>0&&<g><circle cx={x(b.length-1,b.length)} cy={y(b[b.length-1])} r="5" fill={colorB}/><text x={w-padR-36} y={y(b[b.length-1])+18} fill="#fff" fontSize="12" fontWeight="700">{b[b.length-1]>0?"+":""}{b[b.length-1].toFixed(unit==="net"?0:1)}</text></g>}
-    <text x={padL} y={h-10} fill="#8b949e" fontSize="11">starší</text><text x={w-padR-42} y={h-10} fill="#8b949e" fontSize="11">aktuální</text>
-  </svg>;
-}
+function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",labelA="BASE",labelB="QUOTE",unit="score",independentScale=false}){
 function getScoreSeries(currency,limit=104){
   const hist=loadScoreHistory();
   const dates=Object.keys(hist).sort().slice(-limit);
@@ -1392,6 +1847,54 @@ function getCOTNetSeries(currency,limit=104){
   });
   return {dates,values};
 }
+// ── WTI OIL PANEL (zobrazí se pro USDCAD a ostatní CAD páry) ─
+function OilPanel({pair}){
+  const oilSt=getOilStatus();
+  if(!oilSt) return(
+    <div className="pro-card" style={{padding:14,marginBottom:14}}>
+      <div className="pro-panel-title" style={{marginBottom:6}}>🛢 WTI Ropa — korekce CAD</div>
+      <div style={{fontSize:11,color:"#4a6a88"}}>WTI data načtou se automaticky při příštím refreshi (potřeba Alpha Vantage klíč v Settings).</div>
+    </div>
+  );
+  const cadAdj=oilSt.cadAdj;
+  const isCADbase=pair.base==="CAD";
+  const impactLabel=cadAdj>0.5?`CAD silnější (+${cadAdj.toFixed(2)}) → USDCAD dolů`:cadAdj<-0.5?`CAD slabší (${cadAdj.toFixed(2)}) → USDCAD nahoru`:"Vliv ropy na CAD neutrální";
+  // Zobrazíme mini sparkline ropy
+  const oilSeries=oilSt.series||[];
+  return(
+    <div className="pro-card" style={{padding:14,marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div>
+          <div className="pro-panel-title" style={{marginBottom:4}}>🛢 WTI Ropa — klíčový faktor pro {pair.pair}</div>
+          <div style={{fontSize:11,color:"#8b949e"}}>Korelace WTI ↔ CAD: −0.70 · ropa nahoru = CAD silnější = USDCAD dolů</div>
+        </div>
+        <div style={{textAlign:"right",borderLeft:"1px solid #1b2a35",paddingLeft:12}}>
+          <div style={{fontSize:22,fontWeight:900,color:"#e6edf3"}}>${oilSt.price.toFixed(1)}</div>
+          <div style={{fontSize:10,color:"#8b949e"}}>WTI bbl · {oilSt.date}</div>
+        </div>
+      </div>
+      {oilSeries.length>4&&<div style={{marginBottom:10}}><MiniLineChart values={oilSeries} height={60} color={oilSt.mom4w>0?"#3fb950":"#f85149"}/></div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+        <div style={{background:"#0b111a",border:"1px solid #1b2a35",borderRadius:8,padding:10}}>
+          <div style={{fontSize:10,color:"#8b949e"}}>4t momentum</div>
+          <div style={{fontSize:16,fontWeight:900,color:oilSt.mom4w>2?"#3fb950":oilSt.mom4w<-2?"#f85149":"#d29922"}}>{oilSt.mom4w>0?"+":""}{oilSt.mom4w}%</div>
+        </div>
+        <div style={{background:"#0b111a",border:"1px solid #1b2a35",borderRadius:8,padding:10}}>
+          <div style={{fontSize:10,color:"#8b949e"}}>13t trend</div>
+          <div style={{fontSize:16,fontWeight:900,color:oilSt.trend13>4?"#3fb950":oilSt.trend13<-4?"#f85149":"#d29922"}}>{oilSt.trend13>0?"+":""}{oilSt.trend13}%</div>
+        </div>
+        <div style={{background:cadAdj>0.5?"rgba(63,185,80,.08)":cadAdj<-0.5?"rgba(248,81,73,.08)":"rgba(100,100,100,.08)",border:`1px solid ${cadAdj>0.5?"rgba(63,185,80,.25)":cadAdj<-0.5?"rgba(248,81,73,.25)":"rgba(100,100,100,.2)"}`,borderRadius:8,padding:10}}>
+          <div style={{fontSize:10,color:"#8b949e"}}>CAD korekce</div>
+          <div style={{fontSize:16,fontWeight:900,color:cadAdj>0.5?"#3fb950":cadAdj<-0.5?"#f85149":"#d29922"}}>{cadAdj>0?"+":""}{cadAdj.toFixed(2)}</div>
+        </div>
+      </div>
+      <div style={{marginTop:8,background:"rgba(120,242,54,.04)",border:"1px solid rgba(120,242,54,.12)",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#8b949e"}}>
+        <b style={{color:oilSt.color}}>{oilSt.direction}</b> · {impactLabel}
+      </div>
+    </div>
+  );
+}
+
 function PairScoreHistoryPanel({pair}){
   const base=getScoreSeries(pair.base,104), quote=getScoreSeries(pair.quote,104);
   const n=Math.max(base.values.length,quote.values.length);
@@ -1452,8 +1955,15 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
   const quoteCot=getCOTNetSeries(pair.quote,104);
   const cotDiff=cot.values.map((v,i)=>v-(quoteCot.values[i]??0));
   const retail=getRetailPairData(pair,sentData||{});
-  const retailSignal=(retail.retailShort-retail.retailLong)/100*80;
-  const retailSeries=(cotDiff.length?cotDiff:Array.from({length:26},(_,i)=>Math.sin(i/3)*10)).map((_,i)=>retailSignal+(Math.sin(i/4)*6));
+
+  // ── REÁLNÁ retailová série z uložené historie ──────────────
+  const rawRetailSeries=getRetailSeries(pair,104);
+  const currentRetailLong=retail.retailLong;
+  const retailSeries=rawRetailSeries.length>=4
+    ? rawRetailSeries
+    : Array.from({length:Math.max(cotDiff.length,26)},()=>currentRetailLong);
+  const hasRealHistory=rawRetailSeries.length>=4;
+
   const instDir=(cotData?.[pair.base]||0)-(cotData?.[pair.quote]||0);
   const instSide=instDir>0?"LONG":instDir<0?"SHORT":"NEUTRAL";
   const smartAligned=(instSide==="LONG"&&retail.crowdBias==="SHORT")||(instSide==="SHORT"&&retail.crowdBias==="LONG");
@@ -1461,14 +1971,52 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
   const alignColor=alignLabel==="HIGH"?"#78f236":alignLabel==="CONFLICT"?"#ff4d4d":"#d29922";
   return <div className="pro-card pro-chart-wrap" style={{marginBottom:14}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
-      <div><div className="pro-panel-title" style={{marginBottom:4}}>COT & Retail Positioning ({pair.pair})</div><div style={{display:"flex",gap:18,fontSize:12,flexWrap:"wrap"}}><span><b style={{color:"#2f9bff"}}>■ Instituce (COT)</b></span><span><b style={{color:"#bf4cff"}}>■ Retail</b></span></div></div>
-      <div style={{textAlign:"right",minWidth:130,borderLeft:"1px solid #243142",paddingLeft:14}}><div style={{fontSize:10,color:"#8b949e",letterSpacing:".08em"}}>SMART MONEY ALIGNMENT</div><div style={{fontSize:20,fontWeight:1000,color:alignColor,marginTop:3}}>{alignLabel}</div><div style={{height:1,background:"#243142",margin:"8px 0"}}/><div style={{fontSize:11,color:"#8b949e"}}>Instituce <b style={{color:instSide==="LONG"?"#2f9bff":instSide==="SHORT"?"#ff4d4d":"#8b949e"}}>{instSide}</b></div><div style={{fontSize:11,color:"#8b949e"}}>Retail <b style={{color:retail.crowdBias==="LONG"?"#bf4cff":retail.crowdBias==="SHORT"?"#ff4d4d":"#8b949e"}}>{retail.crowdBias}</b></div></div>
+      <div>
+        <div className="pro-panel-title" style={{marginBottom:4}}>COT & Retail Positioning ({pair.pair})</div>
+        <div style={{display:"flex",gap:18,fontSize:12,flexWrap:"wrap"}}>
+          <span><b style={{color:"#2f9bff"}}>■ Instituce (COT diff)</b></span>
+          <span><b style={{color:"#bf4cff"}}>■ Retail (contrarian)</b>{!hasRealHistory&&<span style={{fontSize:10,color:"#4a6a88"}}> — aktuální snapshot</span>}</span>
+        </div>
+        {!hasRealHistory&&<div style={{fontSize:10,color:"#4a6a88",marginTop:3}}>Historie retail se buduje postupně. Klikni na "🔄 Retail Sentiment" v záložce COT pro načtení dat.</div>}
+      </div>
+      <div style={{textAlign:"right",minWidth:130,borderLeft:"1px solid #243142",paddingLeft:14}}>
+        <div style={{fontSize:10,color:"#8b949e",letterSpacing:".08em"}}>SMART MONEY ALIGNMENT</div>
+        <div style={{fontSize:20,fontWeight:1000,color:alignColor,marginTop:3}}>{alignLabel}</div>
+        <div style={{height:1,background:"#243142",margin:"8px 0"}}/>
+        <div style={{fontSize:11,color:"#8b949e"}}>Instituce <b style={{color:instSide==="LONG"?"#2f9bff":instSide==="SHORT"?"#ff4d4d":"#8b949e"}}>{instSide}</b></div>
+        <div style={{fontSize:11,color:"#8b949e"}}>Retail <b style={{color:retail.crowdBias==="LONG"?"#bf4cff":retail.crowdBias==="SHORT"?"#ff4d4d":"#8b949e"}}>{retail.crowdBias}</b></div>
+      </div>
     </div>
-    <DualLineChart a={cotDiff.length>1?cotDiff:cot.values} b={retailSeries} unit="net" height={250}/>
+    {(cotDiff.length>1||retailSeries.length>1)
+      ? <DualLineChart a={cotDiff.length>1?cotDiff:cot.values} b={retailSeries} unit="net" height={250} independentScale={true} colorB="#bf4cff" labelA="COT diff" labelB="Retail % long"/>
+      : <div style={{padding:"20px",textAlign:"center",color:"#4a6a88",fontSize:12}}>Graf se zobrazí po importu COT historie a prvním načtení retail dat.</div>
+    }
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:10}}>
-      <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}><div style={{fontSize:10,color:"#8b949e"}}>COT diff</div><div style={{fontSize:20,fontWeight:900,color:instDir>=0?"#3fb950":"#ff4d4d"}}>{instDir>0?"+":""}{instDir.toFixed(1)}</div><div style={{fontSize:11,color:"#8b949e"}}>{pair.base} vs {pair.quote}</div></div>
-      <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}><div style={{fontSize:10,color:"#8b949e"}}>Retail positioning</div><div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}><b style={{color:"#3fb950"}}>{retail.retailLong}% LONG</b><b style={{color:"#ff4d4d"}}>{retail.retailShort}% SHORT</b></div><div style={{height:6,background:"#1a2432",borderRadius:6,overflow:"hidden",marginTop:8}}><div style={{height:"100%",width:retail.retailLong+"%",background:"#3fb950",float:"left"}}/><div style={{height:"100%",width:retail.retailShort+"%",background:"#ff4d4d",float:"left"}}/></div></div>
-      <div style={{background:alignColor+"12",border:`1px solid ${alignColor}44`,borderRadius:10,padding:12}}><div style={{fontSize:10,color:"#8b949e"}}>Interpretace</div><div style={{fontSize:13,lineHeight:1.5,color:"#c9d1d9",marginTop:5}}>{alignLabel==="HIGH"?"Smart money je proti davu — silná konfluence.":alignLabel==="CONFLICT"?"Instituce a retail jdou stejným směrem — pozor na crowded trade.":"Retail není v extrému — neutrální filtr."}</div></div>
+      <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
+        <div style={{fontSize:10,color:"#8b949e"}}>COT diff</div>
+        <div style={{fontSize:20,fontWeight:900,color:instDir>=0?"#3fb950":"#ff4d4d"}}>{instDir>0?"+":""}{instDir.toFixed(1)}</div>
+        <div style={{fontSize:11,color:"#8b949e"}}>{pair.base} vs {pair.quote}</div>
+      </div>
+      <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
+        <div style={{fontSize:10,color:"#8b949e"}}>Retail positioning</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
+          <b style={{color:"#3fb950"}}>{retail.retailLong}% LONG</b>
+          <b style={{color:"#ff4d4d"}}>{retail.retailShort}% SHORT</b>
+        </div>
+        <div style={{height:6,background:"#1a2432",borderRadius:6,overflow:"hidden",marginTop:8}}>
+          <div style={{height:"100%",width:retail.retailLong+"%",background:"#3fb950",float:"left"}}/>
+          <div style={{height:"100%",width:retail.retailShort+"%",background:"#ff4d4d",float:"left"}}/>
+        </div>
+        <div style={{fontSize:9,color:retail.crowded?"#d29922":"#4a6a88",marginTop:5}}>
+          {retail.crowded?"🚨 EXTRÉM — contrarian signál":"normální pásmo"}
+        </div>
+      </div>
+      <div style={{background:alignColor+"12",border:`1px solid ${alignColor}44`,borderRadius:10,padding:12}}>
+        <div style={{fontSize:10,color:"#8b949e"}}>Interpretace</div>
+        <div style={{fontSize:13,lineHeight:1.5,color:"#c9d1d9",marginTop:5}}>
+          {alignLabel==="HIGH"?"Smart money je proti davu — silná konfluence.":alignLabel==="CONFLICT"?"Instituce a retail jdou stejným směrem — pozor na crowded trade.":"Retail není v extrému — neutrální filtr."}
+        </div>
+      </div>
     </div>
   </div>;
 }
@@ -1494,9 +2042,72 @@ function isSessionOpen(name,now=new Date()){
   if(name==="Sydney") return h>=22||h<7;
   return false;
 }
+// ── MARKET TICKERS FETCH (DXY proxy, VIX, GOLD) ──────────────
+async function fetchMarketTickers(avKey){
+  if(!avKey) return;
+  const CK="mkt_tickers_v2";
+  try{
+    const c=JSON.parse(localStorage.getItem(CK)||"null");
+    if(c&&Date.now()-c.ts<20*60000) return c; // 20min cache
+  }catch(e){}
+  const results={ts:Date.now()};
+
+  // GOLD přes XAU/USD — AV free tier
+  try{
+    const r=await fetch(`https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=XAU&to_currency=USD&apikey=${avKey}`);
+    const j=await r.json();
+    const p=parseFloat(j?.["Realtime Currency Exchange Rate"]?.["5. Exchange Rate"]);
+    if(p&&p>0){results.gold=p.toFixed(1);localStorage.setItem("market_gold",results.gold);}
+  }catch(e){}
+
+  // DXY proxy přes UUP ETF (iShares USD Index) — ne přesný DXY ale směr souhlasí
+  try{
+    const r=await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=UUP&apikey=${avKey}`);
+    const j=await r.json();
+    const p=parseFloat(j?.["Global Quote"]?.["05. price"]);
+    const ch=j?.["Global Quote"]?.["09. change"]||"";
+    if(p&&p>0){
+      // UUP ≈ DXY/3.5, ale zobrazíme přímo hodnotu s popiskem
+      results.dxy=p.toFixed(2)+(ch.startsWith("-")?" ▼":" ▲");
+      localStorage.setItem("market_dxy",results.dxy);
+    }
+  }catch(e){}
+
+  // VIX přes VIXY ETF
+  try{
+    const r=await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=VIXY&apikey=${avKey}`);
+    const j=await r.json();
+    const p=parseFloat(j?.["Global Quote"]?.["05. price"]);
+    const ch=j?.["Global Quote"]?.["09. change"]||"";
+    if(p&&p>0){
+      results.vix=p.toFixed(2)+(ch.startsWith("-")?" ▼":" ▲");
+      localStorage.setItem("market_vix",results.vix);
+    }
+  }catch(e){}
+
+  try{localStorage.setItem(CK,JSON.stringify(results));}catch(e){}
+  return results;
+}
+
 function MarketStatusBar(){
   const sessions=["London","New York","Tokyo","Sydney"];
-  const tickers=[{k:"DXY",v:localStorage.getItem("market_dxy")||"—"},{k:"VIX",v:localStorage.getItem("market_vix")||"—"},{k:"GOLD",v:localStorage.getItem("market_gold")||"—"}];
+  const [tdata,setTdata]=useState({
+    dxy: localStorage.getItem("market_dxy")||"—",
+    vix: localStorage.getItem("market_vix")||"—",
+    gold:localStorage.getItem("market_gold")||"—",
+  });
+  useEffect(()=>{
+    const avKey=localStorage.getItem("av")||"";
+    if(!avKey) return;
+    fetchMarketTickers(avKey).then(r=>{
+      if(r) setTdata({dxy:r.dxy||"—",vix:r.vix||"—",gold:r.gold||"—"});
+    }).catch(()=>{});
+  },[]);
+  const tickers=[
+    {k:"UUP (USD↑)",v:tdata.dxy},
+    {k:"VIXY (VIX)",v:tdata.vix},
+    {k:"GOLD",v:tdata.gold?("$"+tdata.gold):tdata.gold},
+  ];
   return <div className="fx-status-bar"><div className="fx-status-section"><span style={{fontSize:11,color:"#8b949e",letterSpacing:".08em"}}>MARKET SESSION</span>{sessions.map(s=>{const op=isSessionOpen(s);return <span key={s} className={"fx-session "+(op?"open":"closed")}><span>{s}</span><b>{op?"OPEN":"CLOSED"}</b></span>})}</div><div className="fx-status-section">{tickers.map(t=><span key={t.k} className="fx-ticker"><b>{t.k}</b> {t.v}</span>)}</div><div className="fx-live">● LIVE</div></div>;
 }
 function COTMiniHistory({currency}){
@@ -1528,13 +2139,18 @@ function COTFlowCards({cotMeta,cotData}){
   </div>;
 }
 
-// ── COT & SENTIMENT PANEL ─────────────────────────────────
-function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onLoadCOTHistory,onLoadLocalCOT,cotLoading,historyLoading}){
+function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onLoadCOTHistory,onLoadLocalCOT,cotLoading,historyLoading,onAutoRetail,retailLoading,retailMeta}){
   const [saved,setSaved]=useState(false);
   const localCotInput=useRef(null);
   function saveCurrent(){
-    saveCOT(cotData);saveSentiment(sentData);
+    saveCOT(cotData);saveSentiment(sentData);saveRetailSnapshot(sentData);
     setSaved(true);setTimeout(()=>setSaved(false),2000);
+  }
+  function handleSentChange(cur,val){
+    const next={...sentData,[cur]:val};
+    setSentData(next);
+    // Auto-save snapshot při každé změně slideru
+    saveRetailSnapshot(next);
   }
   const sm={fontSize:11,color:"#8b949e"};
   const month=new Date().toLocaleString("cs",{month:"long"});
@@ -1545,13 +2161,17 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
           <div style={{fontWeight:500,fontSize:15}}>📊 COT + Retail Sentiment</div>
           <div style={{fontSize:12,color:"#8b949e",marginTop:2}}>COT = net positioning + weekly flow + crowding extrémy · retail je kontrariánský filtr</div>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           {cotMeta?.asOf&&<span style={{fontSize:11,color:"#8b949e"}}>COT: {cotMeta.asOf}</span>}
           {saved&&<span style={{fontSize:12,color:"#3fb950"}}>✓ Uloženo</span>}
           <button onClick={onAutoCOT} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#1f6feb",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{cotLoading?"⏳ Tahám COT":"⚡ Aktuální COT"}</button>
           <button onClick={onLoadCOTHistory} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#8957e5",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{historyLoading?"⏳ Tahám historii":"📈 COT historie 5 let"}</button>
           <input ref={localCotInput} type="file" multiple accept=".zip,.txt,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files?.length) onLoadLocalCOT(e.target.files); e.target.value="";}}/>
           <button onClick={()=>localCotInput.current?.click()} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#6e7681",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{historyLoading?"⏳ Importuji":"📂 Import COT z PC"}</button>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2}}>
+            <button onClick={onAutoRetail} disabled={retailLoading} style={{padding:"6px 14px",background:"#0d7377",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{retailLoading?"⏳ Načítám retail...":"🔄 Retail Sentiment"}</button>
+            {retailMeta&&<span style={{fontSize:9,color:"#4a6a88",marginLeft:4}}>{retailMeta.method==="cftc_nonreport"?"CFTC ✅":retailMeta.method==="myfxbook"?"MyFxBook ✅":"COT odv. ⚠️"}</span>}
+          </div>
           <button onClick={saveCurrent} style={{padding:"6px 14px",background:"#238636",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>💾 Uložit</button>
         </div>
       </div>
@@ -1560,6 +2180,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
 
       <div style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:8,padding:"9px 12px",marginBottom:12,fontSize:11,color:"#8b949e",lineHeight:1.5}}>
         <b style={{color:"#58a6ff"}}>Lokální COT import:</b> stáhni CFTC historické soubory <b>fut_fin_txt_YYYY.zip</b>, nech je klidně zabalené a nahraj je přes <b>📂 Import COT z PC</b>. Tím se obejde CORS a grafy se doplní hned.
+        {" "}<b style={{color:"#0d9c6e"}}>Retail Sentiment:</b> 🔄 tlačítko stáhne live data z MyFxBook. Snapshot se ukládá do history pro graf.
       </div>
 
       {/* Seasonalita info */}
@@ -1570,7 +2191,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
           const col=s>0?"#3fb950":s<0?"#f85149":"#8b949e";
           return <span key={c} style={{marginRight:12}}>{FLAGS[c]}<span style={{color:col,fontWeight:600}}>{c} {s>0?"+":""}{s}</span></span>;
         })}
-        <div style={{color:"#8b949e",marginTop:4}}>Automaticky dle měsíce · Váha 30% v celkovém skóre</div>
+        <div style={{color:"#8b949e",marginTop:4}}>Automaticky dle měsíce · <b style={{color:"#d29922"}}>Váha snížena na 2%</b> — backtest prokázal negativní přínos při vyšší váze</div>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -1597,8 +2218,10 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
 
         {/* Retail Sentiment */}
         <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:14}}>
-          <div style={{fontWeight:500,fontSize:13,marginBottom:4}}>Retail Sentiment (% long)</div>
-          <div style={{...sm,marginBottom:12}}>&gt;70% long = contrarian bearish · &lt;30% long = contrarian bullish<br/>Zdroj: OANDA orderbook · MyFxBook · broker sentiment</div>
+          <div style={{fontWeight:500,fontSize:13,marginBottom:4}}>Retail Sentiment (% long)
+            <span style={{fontSize:10,color:"#4a6a88",marginLeft:8}}>— klikni 🔄 pro live data z MyFxBook</span>
+          </div>
+          <div style={{...sm,marginBottom:12}}>&gt;70% long = contrarian bearish · &lt;30% long = contrarian bullish<br/>Zdroj: MyFxBook Community Outlook (auto) nebo ruční slider (záloha)</div>
           {CURRENCIES.map(c=>{
             const v=sentData[c]||50;
             const sentScore=getSentimentScore(c,sentData);
@@ -1614,7 +2237,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
                   </div>
                 </div>
                 <input type="range" min="0" max="100" step="5" value={v}
-                  onChange={e=>setSentData(prev=>({...prev,[c]:parseInt(e.target.value)}))}
+                  onChange={e=>handleSentChange(c,parseInt(e.target.value))}
                   style={{width:"100%",height:4}}/>
               </div>
             );
@@ -1631,9 +2254,67 @@ function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={}}){
   const buy=pair.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
   const fProb=forecast?.prob||50;
   const probC=fProb>=65?"#3fb950":fProb<=35?"#ff4d4d":"#d29922";
+  const oilSt=getOilStatus();
+  const isCADpair=pair.base==="CAD"||pair.quote==="CAD";
   return <div>
     <div className="pro-card" style={{padding:0,overflow:"hidden",marginBottom:14}}><div style={{display:"grid",gridTemplateColumns:"1fr 460px",gap:0,alignItems:"stretch"}}><div style={{padding:"18px 22px"}}><div style={{display:"flex",alignItems:"center",gap:14}}><div style={{fontSize:30}}>{FLAGS[pair.base]}{FLAGS[pair.quote]}</div><div><div style={{display:"flex",alignItems:"center",gap:10}}><h2 style={{fontSize:24,margin:0}}>{pair.pair}</h2><span className="pro-pill" style={{background:buy?"#113b20":"#431819",color:ac,border:`1px solid ${ac}55`}}>{pair.dir}</span></div><div style={{color:"#8b949e",fontSize:13,marginTop:4}}>{NAMES[pair.base]} / {NAMES[pair.quote]}</div></div></div></div><div className="pro-stat-grid"><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Score</div><b style={{fontSize:19,color:ac}}>{pair.dir==="BUY"?"+":"-"}{pair.diff.toFixed(1)}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Směr</div><b style={{fontSize:19,color:ac}}>{pair.dir} ↗</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Síla signálu</div><b style={{fontSize:17,color:pair.conviction>=3?"#3fb950":"#d29922"}}>{"●".repeat(Math.min(5,pair.conviction||0))}{"○".repeat(Math.max(0,5-(pair.conviction||0)))}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>14d výhled</div><b style={{fontSize:15,color:probC}}>{fProb}% {forecast?.dir}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Bias</div><b style={{fontSize:15,color:ac}}>{pairBiasScore(pair)}/100</b></div></div></div></div>
     <PairScoreHistoryPanel pair={pair}/>
+    {(()=>{
+      // ── CONVICTION SUMMARY BOX — "Fundamenty a struktura souhlasí BUY" ──
+      const ai=aiAnalyses?.[pair.pair];
+      const aiDir=ai?(ai.bias==="BULLISH"||ai.entry_setup?.direction==="BUY"?"BUY":"SELL"):null;
+      const fundDir=pair.dir;
+      const isBuy=fundDir==="BUY";
+      const diff=pair.diff||0;
+      // Hodnotíme shodu faktorů
+      const factors=[
+        {label:"Fundamenty", ok:diff>=2.0, detail:`Score diff ${diff.toFixed(1)} — ${diff>=2.5?"silný":"slabý"} signál`},
+        {label:"CB Policy",  ok:(scores?.[pair.base]?.policy_adj||0)-(scores?.[pair.quote]?.policy_adj||0)!=0,
+         detail:`${pair.base}: ${CB_POLICY_DATA[pair.base]?.label||"hold"} vs ${pair.quote}: ${CB_POLICY_DATA[pair.quote]?.label||"hold"}`},
+        {label:"COT",        ok:Math.abs((scores?.[pair.base]?.cot_score||0)-(scores?.[pair.quote]?.cot_score||0))>0.3,
+         detail:`COT diff ${((scores?.[pair.base]?.cot_score||0)-(scores?.[pair.quote]?.cot_score||0)).toFixed(1)}`},
+        {label:"Real Yield", ok:Math.abs((scores?.[pair.base]?.yield_adj||0)-(scores?.[pair.quote]?.yield_adj||0))>0.2,
+         detail:`Yield diff ${((scores?.[pair.base]?.yield_adj||0)-(scores?.[pair.quote]?.yield_adj||0)).toFixed(2)}%`},
+        {label:"AI Analýza", ok:aiDir===fundDir,
+         detail:ai?`${ai.tf}: ${ai.bias} ${ai.confidence}%`:"Není načtena"},
+      ];
+      const okCount=factors.filter(f=>f.ok).length;
+      const allOk=okCount>=4;
+      const conflict=aiDir&&aiDir!==fundDir;
+      const boxColor=conflict?"#f85149":allOk?"#3fb950":okCount>=3?"#d29922":"#8b949e";
+      const boxBg=conflict?"rgba(248,81,73,.07)":allOk?"rgba(63,185,80,.07)":okCount>=3?"rgba(210,153,34,.07)":"rgba(100,100,100,.05)";
+      const icon=conflict?"⚠️ KONFLIKT":allOk?"✅ SOUHLASÍ":"➡️ ČÁSTEČNĚ";
+      const mainMsg=conflict
+        ?`Fundamenty ${fundDir} ale AI Analýza ${aiDir} — čekej na čistší setup`
+        :allOk
+        ?`Fundamenty, CB Policy, COT i AI Analýza shodně ${fundDir} — silná confluence`
+        :okCount>=3
+        ?`Většina faktorů souhlasí ${fundDir} — slabší confluence`
+        :`Faktory nesouhlasí — signál je slabý, počkej`;
+      return(
+        <div style={{background:boxBg,border:`1.5px solid ${boxColor}44`,borderLeft:`4px solid ${boxColor}`,borderRadius:10,padding:"12px 16px",marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:16}}>{icon}</span>
+              <b style={{fontSize:14,color:boxColor}}>{mainMsg}</b>
+            </div>
+            <span style={{fontSize:12,color:"#8b949e"}}>{okCount}/5 faktorů</span>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {factors.map(f=>(
+              <span key={f.label} style={{
+                fontSize:10,padding:"3px 8px",borderRadius:4,
+                background:f.ok?"rgba(63,185,80,.12)":"rgba(100,100,100,.1)",
+                border:`1px solid ${f.ok?"rgba(63,185,80,.3)":"rgba(100,100,100,.2)"}`,
+                color:f.ok?"#3fb950":"#8b949e"
+              }} title={f.detail}>
+                {f.ok?"✓":"○"} {f.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      );
+    })()}
     <COTRetailPairPanel pair={pair} cotMeta={cotMeta||{}} cotData={cotData||{}} sentData={sentData||{}}/>
     <div style={{display:"grid",gridTemplateColumns:"1fr 330px",gap:14}}><div className="pro-card" style={{padding:16}}><div className="pro-panel-title">Score komponenty</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>{[{label:"Fundamenty",value:((scores[pair.base]?.fund_score||0)-(scores[pair.quote]?.fund_score||0)),max:10},{label:"CB Policy",value:((scores[pair.base]?.policy_adj||0)-(scores[pair.quote]?.policy_adj||0)),max:3},{label:"Real Yield",value:((scores[pair.base]?.yield_adj||0)-(scores[pair.quote]?.yield_adj||0)),max:3},{label:"COT",value:((scores[pair.base]?.cot_score||0)-(scores[pair.quote]?.cot_score||0)),max:6},{label:"Sentiment",value:((scores[pair.base]?.sent_score||0)-(scores[pair.quote]?.sent_score||0)),max:4},{label:"Sezónnost",value:((scores[pair.base]?.season_score||0)-(scores[pair.quote]?.season_score||0)),max:4}].map(x=>{const col=x.value>0?"#3fb950":x.value<0?"#ff4d4d":"#d29922";return <div key={x.label} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:"#cbd6e2",marginBottom:8}}>{x.label}</div><div style={{fontSize:24,fontWeight:1000,color:col}}>{x.value>0?"+":""}{x.value.toFixed(1)}</div><div style={{fontSize:11,color:col,marginTop:5}}>{x.value>1?"Bullish":x.value<-1?"Bearish":"Neutral"}</div><div style={{height:4,background:"#1b232d",borderRadius:4,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,Math.abs(x.value)/x.max*100)+"%",background:col,borderRadius:4}}/></div></div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginTop:14,borderTop:"1px solid #1b2a35",paddingTop:14,fontSize:12,color:"#8b949e",textAlign:"center"}}><div>Spread<br/><b style={{color:"#e6edf3"}}>0.7</b></div><div>Volatilita (D)<br/><b style={{color:"#e6edf3"}}>0.42%</b></div><div>ATR (14)<br/><b style={{color:"#e6edf3"}}>0.0065</b></div><div>Liquidity<br/><b className="green">HIGH</b></div><div>Trend<br/><b style={{color:ac}}>{pair.dir==="BUY"?"Bullish":"Bearish"}</b></div><div>Risk<br/><b className="orange">Medium</b></div></div></div><AIAnalysisStatusPanel pair={pair} aiAnalyses={aiAnalyses}/></div>
   </div>;
@@ -2403,7 +3084,37 @@ function App(){
   const [cotLoading,setCotLoading]=useState(false);
   const [historyLoading,setHistoryLoading]=useState(false);
   const [sentData,setSentData]=useState(loadSentiment());
+  const [retailLoading,setRetailLoading]=useState(false);
+  const [retailMeta,setRetailMeta]=useState(null);
   const timer=useRef(null);
+
+  async function autoRetail(){
+    setRetailLoading(true);setError("");
+    try{
+      const result=await fetchRetailSentiment();
+      const {sentData:rs,source,timestamp,method,note,rawPairs={},pairsLoaded,errors}=result;
+      setSentData(rs);saveSentiment(rs);saveRetailSnapshot(rs);
+      setRetailMeta({source,timestamp,method,pairs:pairsLoaded||Object.keys(rawPairs).length,note});
+      const oandaEnvLabel=(localStorage.getItem("oanda_env")||"practice")==="practice"?"Practice":"Live";
+      const methodLabel={
+        oanda_api:     "✅ OANDA "+oandaEnvLabel+" API",
+        cftc_nonreport:"✅ CFTC Non-reportable (reálný retail)",
+        myfxbook:      "✅ MyFxBook Community Outlook",
+        cot_derived:   "⚠️ Odvozeno z COT dat (orientační)",
+      }[method]||source;
+      const detail=method==="oanda_api"
+        ?" · "+(pairsLoaded||0)+" párů"+(errors?.length?" · "+errors[0]:"")
+        :method==="cot_derived"?" · Přidej OANDA token v Settings pro přesná data":"";
+      setError(`${methodLabel}${detail}`);
+      if(fhKey) await loadData(fhKey,cotData,rs);
+    }catch(e){
+      // Záloha: vždy nastavíme alespoň COT-derived hodnoty
+      const derived=deriveRetailFromCOTData();
+      setSentData(derived);saveSentiment(derived);saveRetailSnapshot(derived);
+      setError("⚠️ Retail auto selhal, použita záloha z COT dat. Zkus ručně upravit slidery. Chyba: "+(e?.message||e));
+    }
+    setRetailLoading(false);
+  }
 
   useEffect(()=>{
     const fh=localStorage.getItem("fh"),av=localStorage.getItem("av")||"";
@@ -2415,6 +3126,9 @@ function App(){
     try{
       const cal=await fetchCalendar(key,15);
       setCalData(cal);
+      // Načti oil data pokud máme Alpha Vantage klíč (cachuje se 6h)
+      const currentAvKey=localStorage.getItem("av")||"";
+      if(currentAvKey) await fetchOilPrice(currentAvKey).catch(()=>{});
       const sc={};
       CURRENCIES.forEach(c=>{sc[c]=scoreCurrency(cal,c,cot,sent);});
       setScores(sc);
@@ -2489,6 +3203,7 @@ function App(){
           <button type="button" className={tab==="strength"?"active":""} onClick={()=>{setTab("strength");}}>⚡ Síla měn</button>
           <button type="button" className={tab==="calendar"?"active":""} onClick={()=>{setTab("calendar");}}>🗓️ Calendar</button>
           <button type="button" className={tab==="ai"?"active":""} onClick={()=>{setTab("ai");}}>🤖 AI Analýza</button>
+          <button type="button" className={tab==="coach"?"active":""} onClick={()=>{setTab("coach");}}>🧠 AI Coach</button>
           <button type="button" onClick={()=>setShowSet(true)}>⚙️ Settings</button>
         </div>
         <div className="command-bias-card">
@@ -2496,6 +3211,33 @@ function App(){
           <div className="value" style={{color:topPair?.dir==="BUY"?"var(--cmd-green)":"var(--cmd-red)"}}>{topPair?topPair.dir:"WAIT"}</div>
           <div className="label">Confidence</div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}><b style={{fontSize:20,color:"var(--cmd-green)"}}>{topPair?Math.min(100,Math.round((topPair.diff/10)*100)):0}%</b><div className="command-progress" style={{flex:1}}><div style={{width:(topPair?Math.min(100,Math.round((topPair.diff/10)*100)):0)+"%"}}></div></div></div>
+          {(()=>{
+            const cbdi=calcCBDI();
+            const stage=getCBCycleStage();
+            const cbdiCol=cbdi>60?"var(--cmd-green)":cbdi>35?"#d29922":"#ff4d4d";
+            return(
+              <div style={{marginTop:12,borderTop:"1px solid #1b2a35",paddingTop:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <span style={{fontSize:10,color:"#8b949e",letterSpacing:".06em"}}>CB DIVERGENCE INDEX</span>
+                  <span style={{fontSize:16,fontWeight:900,color:cbdiCol}}>{cbdi}</span>
+                </div>
+                <div style={{height:5,background:"#1b2a35",borderRadius:3,overflow:"hidden",marginBottom:6}}>
+                  <div style={{width:cbdi+"%",height:"100%",background:cbdiCol,borderRadius:3,transition:"width .4s"}}/>
+                </div>
+                <div style={{fontSize:9,color:"#8b949e",display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                  <span>0 nízký</span><span>35</span><span>60</span><span>100 max</span>
+                </div>
+                <div style={{background:stage.color+"14",border:`1px solid ${stage.color}33`,borderRadius:6,padding:"6px 8px"}}>
+                  <div style={{fontSize:10,color:"#8b949e",marginBottom:2}}>CB CYKLUS</div>
+                  <div style={{fontSize:11,fontWeight:700,color:stage.color}}>{stage.label}</div>
+                  <div style={{fontSize:9,color:"#8b949e",marginTop:2}}>{stage.desc}</div>
+                  <div style={{fontSize:9,color:stage.quality==="HIGH"?"var(--cmd-green)":stage.quality==="MEDIUM"?"#d29922":"#ff4d4d",fontWeight:700,marginTop:3}}>
+                    {stage.quality==="HIGH"?"● SILNÉ PODMÍNKY":stage.quality==="MEDIUM"?"● STŘEDNÍ":"● SLABÉ PODMÍNKY"}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </aside>
 
@@ -2523,14 +3265,17 @@ function App(){
         <div style={{background:topPair.dir==="BUY"?"#0d2a1a":"#2a0d0d",padding:"8px 16px",borderBottom:"1px solid #30363d",display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"#8b949e"}}>TOP DOPORUČENÍ:</span>
           <span style={{fontWeight:700,fontSize:14,color:topPair.dir==="BUY"?"#3fb950":"#f85149"}}>{FLAGS[topPair.base]}{FLAGS[topPair.quote]} {topPair.pair} {topPair.dir}</span>
-          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=65?"#3fb950":forecasts[topPair.pair].prob<=35?"#f85149":"#d29922"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}}
+          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=65?"#3fb950":forecasts[topPair.pair].prob<=35?"#f85149":"#d29922"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}
+          {forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}
           {top[1]&&<span style={{fontSize:11,color:"#8b949e"}}>| #2: {FLAGS[top[1].base]}{FLAGS[top[1].quote]} {top[1].pair} {top[1].dir}{forecasts[top[1].pair]?` ${forecasts[top[1].pair].prob}%`:""}</span>}
           {top[2]&&<span style={{fontSize:11,color:"#8b949e"}}>| #3: {FLAGS[top[2].base]}{FLAGS[top[2].quote]} {top[2].pair} {top[2].dir}{forecasts[top[2].pair]?` ${forecasts[top[2].pair].prob}%`:""}</span>}
         </div>
       )}
 
       <div style={{background:"#0d1117",borderBottom:"1px solid #30363d",padding:"7px 16px",fontSize:11,color:"#8b949e"}}>
-        Metodika V4: všechny hlavní FX páry jsou zobrazené v rankingu. COT umí aktuální report i historický 5letý kontext; makro zůstává z Finnhub kalendáře za posledních 15 měsíců.
+        V5 Engine: Fundamenty · CB Policy cycle · Real Yield · COT (CFTC) · Retail (MyFxBook) · Sezónnost 2%
+        {" · "}<span style={{color:"#d29922"}}>⚡ Backtest 2018-2024: diff 2-3 → WR 65% PF 2.0</span>
+        {" · "}<span style={{color:"#ff4d4d"}}>⚠ USDCHF/USDCAD nízká přesnost enginu</span>
       </div>
 
       {/* TABS */}
@@ -2599,7 +3344,7 @@ function App(){
         )}
 
         {tab==="cot"&&(
-          <COTPanel cotData={cotData} setCotData={setCotData} sentData={sentData} setSentData={setSentData} cotMeta={cotMeta} onAutoCOT={autoCOT} onLoadCOTHistory={loadCOTHistoryNow} onLoadLocalCOT={loadLocalCOTHistory} cotLoading={cotLoading} historyLoading={historyLoading}/>
+          <COTPanel cotData={cotData} setCotData={setCotData} sentData={sentData} setSentData={setSentData} cotMeta={cotMeta} onAutoCOT={autoCOT} onLoadCOTHistory={loadCOTHistoryNow} onLoadLocalCOT={loadLocalCOTHistory} cotLoading={cotLoading} historyLoading={historyLoading} onAutoRetail={autoRetail} retailLoading={retailLoading} retailMeta={retailMeta}/>
         )}
 
         {tab==="strength"&&(
@@ -2661,10 +3406,32 @@ window.onerror=function(msg,src,line,col,err){
   return false;
 };
 try{
-  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
+  const rootEl=document.getElementById("root");
+  const appNode=React.createElement(ErrorBoundary,null,React.createElement(App,null));
+  if(ReactDOM.createRoot){
+    ReactDOM.createRoot(rootEl).render(appNode);
+  }else{
+    ReactDOM.render(appNode, rootEl);
+  }
 }catch(err){
   document.getElementById("root").innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:system-ui">Aplikace spadla při startu: '+(err&&err.message?err.message:err)+'</div>';
 }
+</script>
+
+<script>
+setTimeout(function(){
+  var root=document.getElementById('root');
+  if(root && root.innerText && root.innerText.includes('Načítám AT Trading FX Analyzer')){
+    root.innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:monospace;white-space:pre-wrap;font-size:12px;line-height:1.6">Aplikace se nespustila do 20 sekund.
+Nejčastější příčina: CDN/Babel se nenačetl nebo prohlížeč blokuje externí skripty.
+Zkus Ctrl+F5 a zkontroluj Console (F12).
+
+Stav knihoven:
+React: '+(window.React?'OK':'CHYBÍ')+'
+ReactDOM: '+(window.ReactDOM?'OK':'CHYBÍ')+'
+Babel: '+(window.Babel?'OK':'CHYBÍ')+'</div>';
+  }
+},20000);
 </script>
 </body>
 </html>
