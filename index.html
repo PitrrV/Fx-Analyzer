@@ -2254,16 +2254,15 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
   // ── REÁLNÁ retailová série z uložené historie ──────────────
   const rawRetailSeries=getRetailSeries(pair,104);
   const currentRetailLong=retail.retailLong;
-  const retailSeries=rawRetailSeries.length>=4
-    ? rawRetailSeries
-    : Array.from({length:Math.max(cotDiff.length,26)},()=>currentRetailLong);
+  const hasRetailMovement=rawRetailSeries.length>=7 && rawRetailSeries.some(v=>Math.abs(v-rawRetailSeries[0])>0.5);
+  const retailSeries=hasRetailMovement ? rawRetailSeries : [];
 
   const instDir=(cotData?.[pair.base]||0)-(cotData?.[pair.quote]||0);
   const instSide=instDir>0?"LONG":instDir<0?"SHORT":"NEUTRAL";
   const smartAligned=(instSide==="LONG"&&retail.crowdBias==="SHORT")||(instSide==="SHORT"&&retail.crowdBias==="LONG");
   const alignLabel=smartAligned?"HIGH":(retail.crowdBias==="NEUTRAL"||instSide==="NEUTRAL"?"NEUTRAL":"CONFLICT");
   const alignColor=alignLabel==="HIGH"?"#78f236":alignLabel==="CONFLICT"?"#ff4d4d":"#d29922";
-  const hasRealHistory=rawRetailSeries.length>=4;
+  const hasRealHistory=hasRetailMovement;
   return <div className="pro-card pro-chart-wrap" style={{marginBottom:14}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
       <div>
@@ -2282,9 +2281,20 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
         <div style={{fontSize:11,color:"#8b949e"}}>Retail <b style={{color:retail.crowdBias==="LONG"?"#bf4cff":retail.crowdBias==="SHORT"?"#ff4d4d":"#8b949e"}}>{retail.crowdBias}</b></div>
       </div>
     </div>
-    {(cotDiff.length>1||retailSeries.length>1)
+    {hasRealHistory
       ? <DualLineChart a={cotDiff.length>1?cotDiff:cot.values} b={retailSeries} unit="net" height={250} independentScale={true} colorB="#bf4cff" labelA="COT diff" labelB="Retail % long"/>
-      : <div style={{padding:"20px",textAlign:"center",color:"#4a6a88",fontSize:12}}>Graf se zobrazí po importu COT historie a prvním načtení retail dat.</div>
+      : <div style={{background:"#070d14",border:"1px solid #1b2a35",borderRadius:12,padding:14}}>
+          <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>COT trend + aktuální retail snapshot</div>
+          {cotDiff.length>1?<MiniLineChart values={cotDiff} height={118} color="#2f9bff"/>:<div style={{fontSize:12,color:"#4a6a88",padding:12}}>COT graf se zobrazí po importu historických COT dat.</div>}
+          <div style={{marginTop:14,display:"grid",gridTemplateColumns:"1fr 90px",gap:12,alignItems:"center"}}>
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#cbd6e2",marginBottom:5}}><b>Retail LONG</b><b>{retail.retailLong}%</b></div>
+              <div style={{height:10,background:"#1a2432",borderRadius:999,overflow:"hidden"}}><div style={{height:"100%",width:retail.retailLong+"%",background:"#bf4cff",borderRadius:999}}/></div>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"#8b949e",marginTop:5}}><span>SHORT {retail.retailShort}%</span><span>{retail.crowded?"CROWDED":"SNAPSHOT"}</span></div>
+            </div>
+            <div style={{textAlign:"center",border:"1px solid #243142",borderRadius:10,padding:10,background:"#0b111a"}}><div style={{fontSize:10,color:"#8b949e"}}>Historie</div><b style={{color:"#d29922"}}>{rawRetailSeries.length}/7</b></div>
+          </div>
+        </div>
     }
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:10}}>
       <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
@@ -2321,14 +2331,74 @@ function AIAnalysisStatusPanel({pair,aiAnalyses}){
   const bc=ai.bias==="BULLISH"?"#3fb950":ai.bias==="BEARISH"?"#ff4d4d":"#d29922";
   return <div className="pro-card" style={{padding:16,minHeight:270}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div className="pro-panel-title" style={{margin:0}}>AI Analysis</div><span style={{fontSize:10,color:"#8b949e"}}>{ai.tf||"TF"}</span></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div style={{background:bc+"14",border:`1px solid ${bc}44`,borderRadius:8,padding:10}}><div style={{fontSize:10,color:"#8b949e"}}>Bias</div><b style={{fontSize:18,color:bc}}>{ai.bias}</b></div><div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:8,padding:10}}><div style={{fontSize:10,color:"#8b949e"}}>Confidence</div><b style={{fontSize:18,color:ai.confidence>=70?"#3fb950":"#d29922"}}>{ai.confidence}%</b></div></div>{ai.key_levels?.length>0&&<div style={{marginBottom:10}}><div style={{fontSize:10,color:"#8b949e",marginBottom:5}}>Klíčové zóny</div>{ai.key_levels.slice(0,4).map((l,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:"1px solid #152031"}}><span style={{color:l.type==="SUPPORT"?"#3fb950":"#ff4d4d"}}>{l.type}</span><b>{l.zone}</b></div>)}</div>}{ai.entry_setup&&<div style={{fontSize:12,lineHeight:1.55,color:"#c9d1d9"}}><b style={{color:"#58a6ff"}}>Entry:</b> {ai.entry_setup.entry_zone||"—"}<br/><b style={{color:"#ff4d4d"}}>Invalidace:</b> {ai.entry_setup.invalidation||ai.entry_setup.stop_loss||"—"}</div>}</div>;
 }
-function DashboardCalendarPanel({events,pair}){
-  const all=(events||[]);
-  const relevant=pair?all.filter(e=>eventRelevance(pair.base,e)||eventRelevance(pair.quote,e)):all;
-  const list=(relevant.length?relevant:all).slice(0,6);
-  const title=pair?`Fundamentální kalendář — ${pair.pair}`:"Fundamentální kalendář";
-  const subtitle=pair?`${pair.base} / ${pair.quote}`:"dnes / nejbližší";
-  return <div className="pro-card" style={{padding:16,marginBottom:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div className="pro-panel-title" style={{margin:0}}>{title}</div><span style={{fontSize:11,color:"#8b949e"}}>{subtitle}</span></div>{list.length?list.map((e,i)=>{const impact=(e.impact||"").toString().toLowerCase();const col=impact.includes("high")||impact==="3"?"#ff4d4d":impact.includes("medium")||impact==="2"?"#d29922":"#3fb950";const dt=new Date(e.time);const cur=Object.entries(CURRENCY_COUNTRIES).find(([,c])=>c.some(x=>(e.country||"").toUpperCase().includes(x)))?.[0]||e.country;return <div key={i} style={{display:"grid",gridTemplateColumns:"54px 52px 1fr 64px 60px",gap:8,alignItems:"center",padding:"9px 0",borderBottom:"1px solid #1b2a35",fontSize:12}}><span>{dt.toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})}</span><span>{FLAGS[cur]||""} {cur}</span><b style={{fontWeight:600}}>{e.event}</b><span style={{color:col,fontWeight:800}}>{impact.includes("high")||impact==="3"?"Vysoký":impact.includes("medium")||impact==="2"?"Střední":"Nízký"}</span><span style={{color:e.actual&&e.estimate?(eventDirection(e)>0?"#3fb950":"#ff4d4d"):"#8b949e",textAlign:"right"}}>{e.actual||e.estimate||"—"}</span></div>}) : <div style={{color:"#8b949e",fontSize:13,padding:12}}>Pro {pair?.pair||"vybraný filtr"} teď nejsou dostupné žádné relevantní události. Zkus refresh Finnhub dat.</div>}<button className="pro-btn" style={{width:"100%",marginTop:12}}>Zobrazit celý kalendář</button></div>;
+function fmtCalValue(v){
+  if(v===undefined||v===null||v==="") return "—";
+  return String(v);
 }
+function getEventCurrency(ev){
+  const country=(ev.country||"").toUpperCase();
+  return Object.entries(CURRENCY_COUNTRIES).find(([,c])=>c.some(x=>country.includes(x)))?.[0]||ev.currency||ev.country||"";
+}
+function getImpactInfo(ev){
+  const raw=(ev.impact||ev.importance||"").toString().toLowerCase();
+  const w=getWeight(ev.event||"");
+  if(raw.includes("high")||raw==="3"||w>=2.5) return {label:"HIGH",color:"#ff4d4d",bg:"rgba(255,77,77,.12)"};
+  if(raw.includes("medium")||raw==="2"||w>=1.5) return {label:"MED",color:"#d29922",bg:"rgba(210,153,34,.12)"};
+  return {label:"LOW",color:"#3fb950",bg:"rgba(63,185,80,.10)"};
+}
+function getSurpriseInfo(ev){
+  const actual=ev.actual;
+  const forecast=ev.estimate??ev.forecast??ev.consensus;
+  const previous=ev.prev??ev.previous;
+  const hasActual=actual!==undefined&&actual!==null&&actual!=="";
+  const hasForecast=forecast!==undefined&&forecast!==null&&forecast!=="";
+  if(!hasActual) return {label:"PENDING",color:"#8b949e",bg:"rgba(139,148,158,.10)",bias:"Čeká se na výsledek"};
+  if(!hasForecast) return {label:"ACTUAL",color:"#58a6ff",bg:"rgba(88,166,255,.10)",bias:"Výsledek bez forecastu"};
+  const dir=eventDirection({...ev,estimate:forecast,prev:previous});
+  if(dir>0) return {label:"BEAT",color:"#3fb950",bg:"rgba(63,185,80,.12)",bias:"bullish pro měnu"};
+  if(dir<0) return {label:"MISS",color:"#ff4d4d",bg:"rgba(255,77,77,.12)",bias:"bearish pro měnu"};
+  return {label:"INLINE",color:"#d29922",bg:"rgba(210,153,34,.12)",bias:"v souladu s odhadem"};
+}
+function CalendarEventRow({e,compact=false}){
+  const dt=new Date(e.time);
+  const cur=getEventCurrency(e);
+  const impact=getImpactInfo(e);
+  const surprise=getSurpriseInfo(e);
+  const forecast=e.estimate??e.forecast??e.consensus;
+  const previous=e.prev??e.previous;
+  return <div style={{display:"grid",gridTemplateColumns:compact?"54px 50px minmax(150px,1fr) 58px 64px 64px 64px 74px":"88px 58px minmax(230px,1fr) 70px 82px 82px 82px 90px",gap:8,alignItems:"center",padding:compact?"9px 0":"11px 0",borderBottom:"1px solid #1b2a35",fontSize:compact?11:12}}>
+    <span style={{color:"#cbd6e2"}}>{dt.toLocaleDateString("cs-CZ",{day:"2-digit",month:"2-digit"})} {dt.toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"})}</span>
+    <span style={{fontWeight:900}}>{FLAGS[cur]||COUNTRY_FLAGS[(e.country||"").toUpperCase()]||""} {cur}</span>
+    <div style={{minWidth:0}}><b style={{fontWeight:800,color:"#eaf2f8"}}>{e.event}</b><div style={{fontSize:10,color:"#8b949e",marginTop:2}}>{surprise.bias}</div></div>
+    <span style={{justifySelf:"start",fontSize:10,fontWeight:1000,color:impact.color,background:impact.bg,border:`1px solid ${impact.color}44`,borderRadius:999,padding:"4px 7px"}}>{impact.label}</span>
+    <span style={{textAlign:"right",color:surprise.label==="PENDING"?"#8b949e":"#eaf2f8",fontWeight:800}}>{fmtCalValue(e.actual)}</span>
+    <span style={{textAlign:"right",color:"#cbd6e2"}}>{fmtCalValue(forecast)}</span>
+    <span style={{textAlign:"right",color:"#8b949e"}}>{fmtCalValue(previous)}</span>
+    <span style={{justifySelf:"end",fontSize:10,fontWeight:1000,color:surprise.color,background:surprise.bg,border:`1px solid ${surprise.color}44`,borderRadius:999,padding:"4px 7px"}}>{surprise.label}</span>
+  </div>;
+}
+function DashboardCalendarPanel({events,pair}){
+  const all=(events||[]).sort((a,b)=>new Date(a.time)-new Date(b.time));
+  const relevant=pair?all.filter(e=>eventRelevance(pair.base,e)||eventRelevance(pair.quote,e)):all;
+  const list=(relevant.length?relevant:all).slice(0,7);
+  const title=pair?`Fundamentální kalendář — ${pair.pair}`:"Fundamentální kalendář";
+  const subtitle=pair?`Filtr: ${pair.base} + ${pair.quote}`:"nejbližší události";
+  return <div className="pro-card" style={{padding:16,marginBottom:14}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:12}}>
+      <div>
+        <div className="pro-panel-title" style={{margin:0}}>{title}</div>
+        <div style={{fontSize:11,color:"#8b949e",marginTop:3}}>{subtitle} · Actual / Forecast / Previous / Surprise</div>
+      </div>
+      <span style={{fontSize:10,color:"#78f236",background:"rgba(120,242,54,.10)",border:"1px solid rgba(120,242,54,.25)",borderRadius:999,padding:"5px 8px",fontWeight:900}}>EVENT WATCH</span>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"54px 50px minmax(150px,1fr) 58px 64px 64px 64px 74px",gap:8,padding:"7px 0",borderTop:"1px solid #1b2a35",borderBottom:"1px solid #1b2a35",fontSize:10,color:"#8b949e",fontWeight:900,letterSpacing:".04em"}}>
+      <span>TIME</span><span>CCY</span><span>EVENT</span><span>IMPACT</span><span style={{textAlign:"right"}}>ACTUAL</span><span style={{textAlign:"right"}}>FORECAST</span><span style={{textAlign:"right"}}>PREV</span><span style={{textAlign:"right"}}>SURPRISE</span>
+    </div>
+    {list.length?list.map((e,i)=><CalendarEventRow key={i} e={e} compact={true}/>) : <div style={{color:"#8b949e",fontSize:13,padding:12}}>Pro {pair?.pair||"vybraný filtr"} teď nejsou dostupné žádné relevantní události. Zkus refresh Finnhub dat.</div>}
+    <div style={{fontSize:10,color:"#4a6a88",marginTop:10,lineHeight:1.45}}>Interpretace: BEAT/MISS je počítaný podle typu události. U unemployment/claims je nižší výsledek bullish, u CPI/sazeb/NFP je vyšší výsledek většinou bullish.</div>
+  </div>;
+}
+
 function isSessionOpen(name,now=new Date()){
   const h=now.getUTCHours()+now.getUTCMinutes()/60;
   if(name==="London") return h>=8&&h<17;
@@ -2339,47 +2409,35 @@ function isSessionOpen(name,now=new Date()){
 }
 // ── MARKET TICKERS FETCH (DXY proxy, VIX, GOLD) ──────────────
 async function fetchMarketTickers(avKey){
-  if(!avKey) return;
-  const CK="mkt_tickers_v2";
-  try{
-    const c=JSON.parse(localStorage.getItem(CK)||"null");
-    if(c&&Date.now()-c.ts<20*60000) return c; // 20min cache
-  }catch(e){}
-  const results={ts:Date.now()};
-
-  // GOLD přes XAU/USD — AV free tier
-  try{
-    const r=await fetch(`https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=XAU&to_currency=USD&apikey=${avKey}`);
+  const CK="mkt_tickers_v3";
+  const cached=(()=>{try{return JSON.parse(localStorage.getItem(CK)||"null");}catch(e){return null;}})();
+  if(!avKey){
+    return {ts:Date.now(),status:"NO_KEY",dxy:localStorage.getItem("market_dxy")||"API?",vix:localStorage.getItem("market_vix")||"API?",gold:localStorage.getItem("market_gold")||"API?",note:"Alpha Vantage key missing"};
+  }
+  if(cached&&Date.now()-cached.ts<20*60000) return cached;
+  const results={ts:Date.now(),status:"OK",note:""};
+  async function avJson(url){
+    const r=await fetch(url,{cache:"no-store"});
     const j=await r.json();
+    if(j?.Note||j?.Information){results.status="LIMIT";results.note=j.Note||j.Information||"Alpha Vantage limit";}
+    return j;
+  }
+  try{
+    const j=await avJson(`https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=XAU&to_currency=USD&apikey=${avKey}`);
     const p=parseFloat(j?.["Realtime Currency Exchange Rate"]?.["5. Exchange Rate"]);
-    if(p&&p>0){results.gold=p.toFixed(1);localStorage.setItem("market_gold",results.gold);}
-  }catch(e){}
-
-  // DXY proxy přes UUP ETF (iShares USD Index) — ne přesný DXY ale směr souhlasí
+    if(p&&p>0){results.gold=p.toFixed(1);localStorage.setItem("market_gold",results.gold);}else results.gold=localStorage.getItem("market_gold")||"—";
+  }catch(e){results.gold=localStorage.getItem("market_gold")||"ERR";}
   try{
-    const r=await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=UUP&apikey=${avKey}`);
-    const j=await r.json();
-    const p=parseFloat(j?.["Global Quote"]?.["05. price"]);
-    const ch=j?.["Global Quote"]?.["09. change"]||"";
-    if(p&&p>0){
-      // UUP ≈ DXY/3.5, ale zobrazíme přímo hodnotu s popiskem
-      results.dxy=p.toFixed(2)+(ch.startsWith("-")?" ▼":" ▲");
-      localStorage.setItem("market_dxy",results.dxy);
-    }
-  }catch(e){}
-
-  // VIX přes VIXY ETF
+    const j=await avJson(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=UUP&apikey=${avKey}`);
+    const q=j?.["Global Quote"]||{};const p=parseFloat(q["05. price"]);const ch=q["09. change"]||q["10. change percent"]||"";
+    if(p&&p>0){results.dxy=p.toFixed(2)+(String(ch).startsWith("-")?" ▼":" ▲");localStorage.setItem("market_dxy",results.dxy);}else results.dxy=localStorage.getItem("market_dxy")||"—";
+  }catch(e){results.dxy=localStorage.getItem("market_dxy")||"ERR";}
   try{
-    const r=await fetch(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=VIXY&apikey=${avKey}`);
-    const j=await r.json();
-    const p=parseFloat(j?.["Global Quote"]?.["05. price"]);
-    const ch=j?.["Global Quote"]?.["09. change"]||"";
-    if(p&&p>0){
-      results.vix=p.toFixed(2)+(ch.startsWith("-")?" ▼":" ▲");
-      localStorage.setItem("market_vix",results.vix);
-    }
-  }catch(e){}
-
+    const j=await avJson(`https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=VIXY&apikey=${avKey}`);
+    const q=j?.["Global Quote"]||{};const p=parseFloat(q["05. price"]);const ch=q["09. change"]||q["10. change percent"]||"";
+    if(p&&p>0){results.vix=p.toFixed(2)+(String(ch).startsWith("-")?" ▼":" ▲");localStorage.setItem("market_vix",results.vix);}else results.vix=localStorage.getItem("market_vix")||"—";
+  }catch(e){results.vix=localStorage.getItem("market_vix")||"ERR";}
+  if(results.status==="OK" && [results.dxy,results.vix,results.gold].some(v=>!v||v==="—"||v==="ERR")) results.status="PARTIAL";
   try{localStorage.setItem(CK,JSON.stringify(results));}catch(e){}
   return results;
 }
@@ -2387,24 +2445,32 @@ async function fetchMarketTickers(avKey){
 function MarketStatusBar(){
   const sessions=["London","New York","Tokyo","Sydney"];
   const [tdata,setTdata]=useState({
-    dxy: localStorage.getItem("market_dxy")||"—",
-    vix: localStorage.getItem("market_vix")||"—",
-    gold:localStorage.getItem("market_gold")||"—",
+    dxy: localStorage.getItem("market_dxy")||"API?",
+    vix: localStorage.getItem("market_vix")||"API?",
+    gold:localStorage.getItem("market_gold")||"API?",
+    status: localStorage.getItem("av")?"LOADING":"NO_KEY",
+    note:""
   });
   useEffect(()=>{
     const avKey=localStorage.getItem("av")||"";
-    if(!avKey) return;
     fetchMarketTickers(avKey).then(r=>{
-      if(r) setTdata({dxy:r.dxy||"—",vix:r.vix||"—",gold:r.gold||"—"});
-    }).catch(()=>{});
+      if(r) setTdata({dxy:r.dxy||"—",vix:r.vix||"—",gold:r.gold||"—",status:r.status||"OK",note:r.note||""});
+    }).catch(e=>setTdata(x=>({...x,status:"ERR",note:e?.message||"market data error"})));
   },[]);
+  const statusLabel=tdata.status==="OK"?"LIVE":tdata.status==="NO_KEY"?"NO API":tdata.status==="LIMIT"?"LIMIT":tdata.status==="PARTIAL"?"PARTIAL":tdata.status==="LOADING"?"LOAD":"ERR";
+  const statusColor=tdata.status==="OK"?"#78f236":tdata.status==="LOADING"?"#d29922":"#ff4d4d";
   const tickers=[
-    {k:"UUP (USD↑)",v:tdata.dxy},
-    {k:"VIXY (VIX)",v:tdata.vix},
-    {k:"GOLD",v:tdata.gold?("$"+tdata.gold):tdata.gold},
+    {k:"USD proxy",v:tdata.dxy,h:"UUP ETF proxy pro DXY"},
+    {k:"VIX proxy",v:tdata.vix,h:"VIXY ETF proxy"},
+    {k:"GOLD",v:tdata.gold&&tdata.gold!=="API?"&&tdata.gold!=="—"&&tdata.gold!=="ERR"?("$"+tdata.gold):tdata.gold,h:"XAU/USD"},
   ];
-  return <div className="fx-status-bar"><div className="fx-status-section"><span style={{fontSize:11,color:"#8b949e",letterSpacing:".08em"}}>MARKET SESSION</span>{sessions.map(s=>{const op=isSessionOpen(s);return <span key={s} className={"fx-session "+(op?"open":"closed")}><span>{s}</span><b>{op?"OPEN":"CLOSED"}</b></span>})}</div><div className="fx-status-section">{tickers.map(t=><span key={t.k} className="fx-ticker"><b>{t.k}</b> {t.v}</span>)}</div><div className="fx-live">● LIVE</div></div>;
+  return <div className="fx-status-bar" title={tdata.note||"Market status"}>
+    <div className="fx-status-section"><span style={{fontSize:11,color:"#8b949e",letterSpacing:".08em"}}>MARKET SESSION</span>{sessions.map(s=>{const op=isSessionOpen(s);return <span key={s} className={"fx-session "+(op?"open":"closed")}><span>{s}</span><b>{op?"OPEN":"CLOSED"}</b></span>})}</div>
+    <div className="fx-status-section">{tickers.map(t=><span key={t.k} className="fx-ticker" title={t.h}><b>{t.k}</b> {t.v}</span>)}</div>
+    <div className="fx-live" style={{color:statusColor}}>● {statusLabel}</div>
+  </div>;
 }
+
 function COTMiniHistory({currency}){
   const hist=loadCOTHistory();
   const dates=Object.keys(hist).sort().slice(-26);
@@ -2668,31 +2734,21 @@ function pairsIndexSafe(pair){return pair?.rankLabel||"";}
 
 // ── CALENDAR ─────────────────────────────────────────────
 function CalendarPanel({events}){
-  if(!events?.length) return <div style={{color:"#8b949e",fontSize:13}}>Načítám...</div>;
-  return <div>{events.map((e,i)=>{
-    const dt=new Date(e.time),past=dt<new Date();
-    const dot=(e.impact||"").toLowerCase()==="high"?"#f85149":"#d29922";
-    const cur=Object.entries(CURRENCY_COUNTRIES).find(([,c])=>c.some(x=>(e.country||"").toUpperCase().includes(x)))?.[0]||e.country;
-    const beat=past&&e.actual&&e.estimate?eventDirection(e)>0:null;
-    return <div key={i} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:"1px solid #21262d"}}>
-      <div style={{width:6,height:6,borderRadius:"50%",background:dot,marginTop:5,flexShrink:0}}/>
-      <div style={{flex:1}}>
-        <div style={{display:"flex",justifyContent:"space-between"}}>
-          <span style={{fontWeight:500}}>{COUNTRY_FLAGS[(e.country||"").toUpperCase()]||FLAGS[cur]||""} {e.event}</span>
-          {past&&beat!==null&&<span style={{fontSize:11,fontWeight:700,color:beat?"#3fb950":"#f85149",marginLeft:8}}>{beat?"BEAT":"MISS"}</span>}
-        </div>
-        <div style={{fontSize:11,color:"#8b949e",marginTop:2,display:"flex",gap:10,flexWrap:"wrap"}}>
-          <span>{dt.toLocaleDateString("cs")} {dt.toLocaleTimeString("cs",{hour:"2-digit",minute:"2-digit"})}</span>
-          {e.estimate&&<span>Forecast: {e.estimate}</span>}
-          {past&&e.actual&&<span style={{color:"#e6edf3"}}>Actual: {e.actual}</span>}
-        </div>
-      </div>
-    </div>;
-  })}</div>;
+  const all=(events||[]).sort((a,b)=>new Date(a.time)-new Date(b.time));
+  if(!all.length) return <div className="pro-card" style={{padding:18,color:"#8b949e",fontSize:13}}>Kalendář zatím nemá data. Zadej Finnhub API klíč a spusť Refresh.</div>;
+  const highCount=all.filter(e=>getImpactInfo(e).label==="HIGH").length;
+  return <div className="pro-card" style={{padding:18}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:12}}>
+      <div><div className="pro-panel-title" style={{margin:0}}>Fundamentální kalendář</div><div style={{fontSize:11,color:"#8b949e",marginTop:3}}>Actual · Forecast · Previous · Surprise · bias impact</div></div>
+      <div style={{display:"flex",gap:8,fontSize:11}}><span style={{background:"rgba(255,77,77,.12)",border:"1px solid rgba(255,77,77,.3)",color:"#ff4d4d",borderRadius:999,padding:"5px 9px",fontWeight:900}}>HIGH {highCount}</span><span style={{background:"rgba(88,166,255,.10)",border:"1px solid rgba(88,166,255,.25)",color:"#58a6ff",borderRadius:999,padding:"5px 9px",fontWeight:900}}>EVENTS {all.length}</span></div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"88px 58px minmax(230px,1fr) 70px 82px 82px 82px 90px",gap:8,padding:"8px 0",borderTop:"1px solid #1b2a35",borderBottom:"1px solid #1b2a35",fontSize:10,color:"#8b949e",fontWeight:900,letterSpacing:".04em"}}>
+      <span>TIME</span><span>CCY</span><span>EVENT</span><span>IMPACT</span><span style={{textAlign:"right"}}>ACTUAL</span><span style={{textAlign:"right"}}>FORECAST</span><span style={{textAlign:"right"}}>PREVIOUS</span><span style={{textAlign:"right"}}>SURPRISE</span>
+    </div>
+    {all.map((e,i)=><CalendarEventRow key={i} e={e}/>) }
+  </div>;
 }
 
-
-// ── AI ANALYZER TAB ───────────────────────────────────────
 function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
   const TF_LIST=["M1","M5","M15","M30","H1","H4","D1","W1"];
   const [imgFile,setImgFile]=useState(null);
