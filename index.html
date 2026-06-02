@@ -1362,6 +1362,7 @@ function getAutoUpdateStatus(){
     return{ts,log,ago,agoLabel:ago<60?ago+"m":Math.round(ago/60)+"h"};
   }catch(e){return null;}
 }
+function getDynamicWeights(cotPct,regime){
   // Audit výsledek: sezónnost při váze 8% škodí výsledkům (+0.6% WR bez ní).
   // Redukováno na 2%. CB Policy zvýšena. Backtest 2022-2024: WR diff2-3=65.5% PF=2.039.
   const ext=cotPct!==null&&(cotPct>=85||cotPct<=15);
@@ -1820,8 +1821,6 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose}){
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>
           🤖 OpenRouter API klíč <span style={{color:"#3fb950",fontWeight:700}}>✓ ZDARMA</span>
         </label>
-          🤖 OpenRouter API klíč <span style={{color:"#3fb950",fontWeight:700}}>✓ ZDARMA</span>
-        </label>
         <div style={{fontSize:10,color:"#8b949e",marginBottom:6}}>
           1. Jdi na <a href="https://openrouter.ai" target="_blank" style={{color:"#58a6ff"}}>openrouter.ai</a> → Sign up (Google účet) → <b style={{color:"#e6edf3"}}>Keys</b> → <b style={{color:"#e6edf3"}}>Create Key</b><br/>
           2. Zkopíruj klíč sem (začíná <b style={{color:"#e6edf3"}}>sk-or-v1-...</b>)
@@ -2128,7 +2127,6 @@ function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",l
     <text x={w-padR-42} y={h-10} fill="#8b949e" fontSize="11">aktuální</text>
   </svg>;
 }
-}
 function getScoreSeries(currency,limit=104){
   const hist=loadScoreHistory();
   const dates=Object.keys(hist).sort().slice(-limit);
@@ -2259,7 +2257,6 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
   const retailSeries=rawRetailSeries.length>=4
     ? rawRetailSeries
     : Array.from({length:Math.max(cotDiff.length,26)},()=>currentRetailLong);
-  const hasRealHistory=rawRetailSeries.length>=4;
 
   const instDir=(cotData?.[pair.base]||0)-(cotData?.[pair.quote]||0);
   const instSide=instDir>0?"LONG":instDir<0?"SHORT":"NEUTRAL";
@@ -2598,6 +2595,8 @@ function AutoUpdateStatus(){
     </div>
   );
 }
+
+function ConvictionSummary({pair,scores,aiAnalyses}){
   if(!pair) return null;
   const ai=aiAnalyses&&aiAnalyses[pair.pair];
   const aiDir=ai?(ai.bias==="BULLISH"||ai.entry_setup?.direction==="BUY"?"BUY":"SELL"):null;
