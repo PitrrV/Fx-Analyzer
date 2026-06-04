@@ -1642,6 +1642,96 @@ function scoreCurrency(events,currency,cotData,sentData){
   };
 }
 
+// ════════ DAILY BRIEF ENGINE — dnešní vrstva (rolling 24h) ════════
+const DAY_WINDOW=1; // dny zpět pro "dnes" (24h rolling — kryje AU/JP data v noci)
+
+function getShortTermFundScore(currency,calData,days=DAY_WINDOW){
+  const cutoff=Date.now()-days*86400000;
+  const evs=(calData||[]).filter(e=>{
+    const t=new Date(e.time).getTime();
+    return t>=cutoff&&t<=Date.now()&&e.actual&&eventRelevance(currency,e)&&getEventMeta(e.event);
+  });
+  let score=0,weight=0;const items=[];
+  for(const ev of evs){
+    const rel=eventRelevance(currency,ev),meta=getEventMeta(ev.event);
+    const a=parseFloat(ev.actual),e2=parseFloat(ev.estimate);
+    if(isNaN(a)||isNaN(e2)) continue;
+    const dir=eventDirection(ev);if(!dir) continue;
+    const w=meta.w*rel.factor*surpriseStrength(ev);
+    score+=dir*w;weight+=w;
+    items.push({event:ev.event,cat:meta.cat,beat:dir>0,actual:ev.actual,estimate:ev.estimate,time:ev.time});
+  }
+  const norm=weight>0?Math.max(-10,Math.min(10,(score/weight)*10)):0;
+  return{score:parseFloat(norm.toFixed(1)),count:items.length,items};
+}
+function detectFundamentalConflict(pair,scores,calData,days=DAY_WINDOW){
+  const ltDiff=(scores[pair.base]?.score||0)-(scores[pair.quote]?.score||0);
+  const ltDir=ltDiff>=0?"BUY":"SELL";
+  const stB=getShortTermFundScore(pair.base,calData,days);
+  const stQ=getShortTermFundScore(pair.quote,calData,days);
+  const stDiff=stB.score-stQ.score;
+  if(stB.count+stQ.count===0) return{hasData:false,ltDir};
+  const stDir=stDiff>0.3?"BUY":stDiff<-0.3?"SELL":"FLAT";
+  return{hasData:true,ltDir,stDir,conflict:stDir!=="FLAT"&&stDir!==ltDir,stB,stQ,stDiff:parseFloat(stDiff.toFixed(1))};
+}
+function getTodayHighImpact(currency,upcoming,hours=24){
+  const now=Date.now(),end=now+hours*3600000;
+  return (upcoming||[]).filter(e=>{
+    const t=new Date(e.time).getTime();
+    const imp=(e.impact||"").toString().toLowerCase();
+    const hi=imp.includes("high")||imp==="3"||imp.includes("medium")||imp==="2";
+    return t>=now&&t<=end&&eventRelevance(currency,e)&&hi&&getEventMeta(e.event);
+  }).sort((a,b)=>new Date(a.time)-new Date(b.time));
+}
+function getPairDailyState(pair,scores,calData,upcoming){
+  const c=detectFundamentalConflict(pair,scores,calData,DAY_WINDOW);
+  const hasUp=getTodayHighImpact(pair.base,upcoming).length+getTodayHighImpact(pair.quote,upcoming).length>0;
+  if(c.hasData&&c.conflict) return{level:"conflict",dot:"🔴",color:"#ff4d4d"};
+  if(hasUp) return{level:"upcoming",dot:"🟡",color:"#d29922"};
+  if(c.hasData&&c.stDir===c.ltDir) return{level:"confirm",dot:"🟢",color:"#3fb950"};
+  return{level:"none",dot:"",color:null};
+}
+function getPosition(pair){try{return (JSON.parse(localStorage.getItem("positions")||"{}"))[pair]||"none";}catch(e){return"none";}}
+function setPosition(pair,side){try{const p=JSON.parse(localStorage.getItem("positions")||"{}");side==="none"?delete p[pair]:p[pair]=side;localStorage.setItem("positions",JSON.stringify(p));}catch(e){}}
+function getAllPositions(){try{return JSON.parse(localStorage.getItem("positions")||"{}");}catch(e){return{};}}
+
+// ════════ BIAS FLIP DETECTION ════════
+function loadBiasState(){try{return JSON.parse(localStorage.getItem("bias_state")||"{}");}catch(e){return{};}}
+function saveBiasState(s){try{localStorage.setItem("bias_state",JSON.stringify(s));}catch(e){}}
+function updateBiasFlips(pairs){
+  const st=loadBiasState(),now=Date.now();
+  (pairs||[]).forEach(p=>{
+    if(typeof p.diff!=="number") return;
+    const signed=p.dir==="BUY"?p.diff:-p.diff;
+    const prev=st[p.pair];
+    const clear=Math.abs(signed)>=0.5;
+    const newDir=clear?(signed>0?"BUY":"SELL"):(prev?.dir||(signed>=0?"BUY":"SELL"));
+    if(prev&&prev.dir&&newDir!==prev.dir&&Math.abs(signed)>=0.8){
+      st[p.pair]={dir:newDir,from:prev.dir,flippedAt:now,diff:p.diff};
+    }else{
+      st[p.pair]={dir:newDir,from:prev?.from,flippedAt:prev?.flippedAt,diff:p.diff};
+    }
+  });
+  saveBiasState(st);return st;
+}
+function getRecentFlips(pairs,calData,hours=36){
+  const st=loadBiasState(),now=Date.now(),out=[];
+  (pairs||[]).forEach(p=>{
+    const s=st[p.pair];
+    if(s&&s.flippedAt&&now-s.flippedAt<=hours*3600000){
+      const b=getShortTermFundScore(p.base,calData,DAY_WINDOW);
+      const q=getShortTermFundScore(p.quote,calData,DAY_WINDOW);
+      const driver=(b.count>=q.count&&b.count>0)?p.base:(q.count>0?p.quote:null);
+      out.push({pair:p.pair,from:s.from,to:s.dir,flippedAt:s.flippedAt,driver,
+        driverItems:driver===p.base?b.items:driver===p.quote?q.items:[]});
+    }
+  });
+  return out.sort((a,b)=>b.flippedAt-a.flippedAt);
+}
+function isPairFlipped(pair,hours=36){
+  try{const s=loadBiasState()[pair];return !!(s&&s.flippedAt&&Date.now()-s.flippedAt<=hours*3600000);}catch(e){return false;}
+}
+
 // ── FORECAST ─────────────────────────────────────────────
 function getEventHistoryTrend(eventName,currency,calData){
   const keyword=eventName.toLowerCase().split(" ")[0];
@@ -1940,7 +2030,7 @@ function CopyBtn({text}){
   );
 }
 
-function PairRow({p,rank,selected,onClick,forecast,aiData}){
+function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState}){
   const buy=p.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
   const conf=Math.min(100,(p.diff/15)*100);
   const f=forecast||{};
@@ -1976,7 +2066,7 @@ function PairRow({p,rank,selected,onClick,forecast,aiData}){
     <div onClick={onClick} className={"pro-pair-row "+(selected?"selected":"")}> 
       <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"center"}}>
         <div>
-          <div style={{fontWeight:900,fontSize:14,display:"flex",alignItems:"center",gap:6}}>{FLAGS[p.base]}{FLAGS[p.quote]} {p.pair}{p.conviction>=3&&<span style={{color:"#f0b429",fontSize:11,letterSpacing:1}}>{"★".repeat(p.conviction)}</span>}<span className="pro-muted" style={{fontSize:10}}>{"#"+rank}</span></div>
+          <div style={{fontWeight:900,fontSize:14,display:"flex",alignItems:"center",gap:6}}>{FLAGS[p.base]}{FLAGS[p.quote]} {p.pair}{dailyState&&dailyState.dot&&<span title="Daily brief — dnešní fundamenty" style={{fontSize:11}}>{dailyState.dot}</span>}{isPairFlipped(p.pair)&&<span title="14d výhled se otočil" style={{fontSize:11}}>🔄</span>}{p.conviction>=3&&<span style={{color:"#f0b429",fontSize:11,letterSpacing:1}}>{"★".repeat(p.conviction)}</span>}<span className="pro-muted" style={{fontSize:10}}>{"#"+rank}</span></div>
           <div style={{fontSize:11,marginTop:5}}>
             <span className="pro-muted">{"score "}</span><b style={{color:p.diff>=0?"#3fb950":"#ff4d4d"}}>{p.dir==="BUY"?"+":"-"}{p.diff.toFixed(1)}</b>
             <span className="pro-muted">{" · 14d "}</span>{f.prob&&<b style={{color:probColor}}>{f.prob+"% "+f.dir+(f.newsDiscount&&f.newsDiscount<0?" ⚡":"")}</b>}
@@ -2715,7 +2805,102 @@ function ConvictionSummary({pair,scores,aiAnalyses}){
   );
 }
 
-function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={}}){
+function PosToggle({pair,pos,setPos,color}){
+  return(
+    <div style={{display:"flex",gap:4}}>
+      {["LONG","SHORT","none"].map(s=>(
+        <button key={s} onClick={()=>{setPosition(pair,s);setPos(s);}}
+          style={{fontSize:9,padding:"2px 7px",borderRadius:4,cursor:"pointer",
+            border:"1px solid "+(pos===s?color:"#1d2a36"),
+            background:pos===s?color+"22":"transparent",
+            color:pos===s?color:"#4a6a88",fontWeight:pos===s?700:400}}>
+          {s==="none"?"nic":s}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function BiasFlipNotice({pair,calData}){
+  const s=loadBiasState()[pair.pair];
+  if(!s||!s.flippedAt||Date.now()-s.flippedAt>36*3600000) return null;
+  const b=getShortTermFundScore(pair.base,calData||[],DAY_WINDOW);
+  const q=getShortTermFundScore(pair.quote,calData||[],DAY_WINDOW);
+  const driver=(b.count>=q.count&&b.count>0)?pair.base:(q.count>0?pair.quote:null);
+  const items=driver===pair.base?b.items:driver===pair.quote?q.items:[];
+  const dtxt=driver
+    ?`Spouštěč: ${FLAGS[driver]} ${driver} ${items.map(i=>i.event+" "+(i.beat?"BEAT":"MISS")).slice(0,2).join(", ")}.`
+    :"Bez čerstvých dat — posun ze score/COT driftu.";
+  return(
+    <div style={{background:"rgba(191,76,255,.10)",border:"1px solid rgba(191,76,255,.4)",borderLeft:"4px solid #bf4cff",borderRadius:10,padding:"12px 16px",marginBottom:14}}>
+      <div style={{fontSize:13,fontWeight:800,color:"#bf4cff",marginBottom:5}}>🔄 OTOČENÍ VÝHLEDU — {pair.pair}: 14d {s.from} → {s.dir}</div>
+      <div style={{fontSize:12,color:"#c9d1d9",lineHeight:1.5}}>
+        {dtxt} Fundamentální vítr se obrátil. {driver?"Není to signál ke vstupu hned":"Sleduj vývoj"} — počkej na technické potvrzení, než vstoupíš na kteroukoli stranu.
+      </div>
+    </div>
+  );
+}
+
+function DailyBriefPanel({pair,scores,calData,upcoming}){
+  const [pos,setPos]=useState(getPosition(pair.pair));
+  const c=detectFundamentalConflict(pair,scores,calData||[],DAY_WINDOW);
+  const upB=getTodayHighImpact(pair.base,upcoming),upQ=getTodayHighImpact(pair.quote,upcoming);
+  const hasUp=upB.length+upQ.length>0;
+  const ltDir=c.ltDir;
+  if(!c.hasData&&!hasUp){
+    return(
+      <div style={{background:"rgba(63,185,80,.05)",border:"1px solid rgba(63,185,80,.18)",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <span style={{fontSize:12,color:"#8b949e"}}>🟢 DAILY BRIEF — {pair.pair}: dnes žádné velké fundamenty. Můžeš ve směru 14d biasu ({ltDir}).</span>
+        <PosToggle pair={pair.pair} pos={pos} setPos={setPos} color="#3fb950"/>
+      </div>
+    );
+  }
+  const conflict=c.hasData&&c.conflict;
+  const confirm=c.hasData&&!c.conflict&&c.stDir===ltDir;
+  const col=conflict?"#ff4d4d":hasUp?"#d29922":confirm?"#3fb950":"#d29922";
+  const head=conflict?`⚠️ DAILY BRIEF — ${pair.pair}: 14d ${ltDir}, dnes krátkodobě PROTI`
+    :(hasUp&&!c.hasData)?`⏳ DAILY BRIEF — ${pair.pair}: dnes přicházejí důležité fundamenty`
+    :confirm?`✅ DAILY BRIEF — ${pair.pair}: dnešní data potvrzují ${ltDir}`
+    :`➡️ DAILY BRIEF — ${pair.pair}`;
+  const tm=e=>new Date(e.time).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
+  const evLine=(cur,arr)=>arr.length?`${FLAGS[cur]} ${cur} ${tm(arr[0])}: ${arr.map(e=>e.event).slice(0,2).join(", ")}${arr.length>2?` (+${arr.length-2})`:""}`:null;
+  const releasedTxt=c.hasData?(conflict
+    ?`14denní výhled zůstává ${ltDir}, ale dnešní data tlačí ${pair.pair} krátkodobě na ${c.stDir==="BUY"?"posílení":"oslabení"}. Dnes bych nehledal agresivní ${ltDir==="BUY"?"longy":"shorty"} — počkal na uklidnění a nové potvrzení ${ltDir} scénáře.`
+    :confirm?`Dnešní data potvrzují směr ${ltDir} i krátkodobě — můžeš jet ve směru biasu.`
+    :`Dnešní data jsou smíšená, bez jasného krátkodobého směru.`):null;
+  const upTxt=hasUp?`Dnes: ${[evLine(pair.base,upB),evLine(pair.quote,upQ)].filter(Boolean).join(" · ")}. Před zprávou bývá trh opatrný a volatilní; výhled se po zveřejnění přepočítá.`:null;
+  let posTxt=null;
+  if(pos!=="none"){
+    const posDir=pos==="LONG"?"BUY":"SELL";
+    if(conflict){
+      posTxt=posDir===ltDir
+        ?`Držíš ${pos} (ve směru 14d biasu), ale dnešek jde krátkodobě proti. Pozice je pod krátkodobým tlakem — zvaž zajištění části zisku nebo SL na break-even. Spíš možný pullback než hluboký obrat.`
+        :`Držíš ${pos} proti 14d biasu. Dnešek ti krátkodobě nahrává, ale dlouhodobě jdeš proti — ber zisk do biasu a netlač pozici.`;
+    }else if(hasUp){
+      posTxt=`Držíš ${pos} a dnes přijdou data → vyšší volatilita oběma směry. Není to doporučení, jen upozornění: zvaž zajištění části / SL na BE / sniž expozici.`;
+    }
+  }
+  const lc=s=>s>0.5?"#3fb950":s<-0.5?"#ff4d4d":"#8b949e";
+  const mk=(cur,st)=>st&&st.items.length?`${FLAGS[cur]} ${cur}: `+st.items.map(i=>i.event+" "+(i.beat?"BEAT":"MISS")).join(", "):null;
+  return(
+    <div style={{background:col+"12",border:"1px solid "+col+"44",borderLeft:"4px solid "+col,borderRadius:10,padding:"12px 16px",marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:6,flexWrap:"wrap"}}>
+        <div style={{fontSize:13,fontWeight:800,color:col}}>{head}</div>
+        <PosToggle pair={pair.pair} pos={pos} setPos={setPos} color={col}/>
+      </div>
+      {releasedTxt&&<div style={{fontSize:12,color:"#c9d1d9",lineHeight:1.5,marginBottom:6}}>{releasedTxt}</div>}
+      {upTxt&&<div style={{fontSize:12,color:"#d6c089",lineHeight:1.5,marginBottom:6}}>📅 {upTxt}</div>}
+      {posTxt&&<div style={{fontSize:12,color:conflict?"#ffb3b3":"#d6c089",lineHeight:1.5,marginBottom:6,background:"rgba(255,255,255,.04)",borderRadius:6,padding:"6px 8px"}}>🎯 {posTxt}</div>}
+      {c.hasData&&(mk(pair.base,c.stB)||mk(pair.quote,c.stQ))&&
+        <div style={{fontSize:11,color:"#8b949e",lineHeight:1.6,borderTop:"1px solid rgba(255,255,255,.06)",paddingTop:6}}>
+          {mk(pair.base,c.stB)&&<div>{mk(pair.base,c.stB)} <b style={{color:lc(c.stB.score)}}>({c.stB.score>0?"+":""}{c.stB.score})</b></div>}
+          {mk(pair.quote,c.stQ)&&<div>{mk(pair.quote,c.stQ)} <b style={{color:lc(c.stQ.score)}}>({c.stQ.score>0?"+":""}{c.stQ.score})</b></div>}
+        </div>}
+    </div>
+  );
+}
+
+function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},calData=[],upcoming=[]}){
   const buy=pair.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
   const fProb=forecast?.prob||50;
   const probC=fProb>=65?"#3fb950":fProb<=35?"#ff4d4d":"#d29922";
@@ -2725,6 +2910,8 @@ function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={}}){
     <div className="pro-card" style={{padding:0,overflow:"hidden",marginBottom:14}}><div style={{display:"grid",gridTemplateColumns:"1fr 460px",gap:0,alignItems:"stretch"}}><div style={{padding:"18px 22px"}}><div style={{display:"flex",alignItems:"center",gap:14}}><div style={{fontSize:30}}>{FLAGS[pair.base]}{FLAGS[pair.quote]}</div><div><div style={{display:"flex",alignItems:"center",gap:10}}><h2 style={{fontSize:24,margin:0}}>{pair.pair}</h2><span className="pro-pill" style={{background:buy?"#113b20":"#431819",color:ac,border:`1px solid ${ac}55`}}>{pair.dir}</span></div><div style={{color:"#8b949e",fontSize:13,marginTop:4}}>{NAMES[pair.base]} / {NAMES[pair.quote]}</div></div></div></div><div className="pro-stat-grid"><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Score</div><b style={{fontSize:19,color:ac}}>{pair.dir==="BUY"?"+":"-"}{pair.diff.toFixed(1)}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Směr</div><b style={{fontSize:19,color:ac}}>{pair.dir} ↗</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Síla signálu</div><b style={{fontSize:17,color:pair.conviction>=3?"#3fb950":"#d29922"}}>{"●".repeat(Math.min(5,pair.conviction||0))}{"○".repeat(Math.max(0,5-(pair.conviction||0)))}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>14d výhled</div><b style={{fontSize:15,color:probC}}>{fProb}% {forecast?.dir}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Bias</div><b style={{fontSize:15,color:ac}}>{pairBiasScore(pair)}/100</b></div></div></div></div>
     <PairScoreHistoryPanel pair={pair}/>
     <ConvictionSummary pair={pair} scores={scores} aiAnalyses={aiAnalyses}/>
+    <BiasFlipNotice pair={pair} calData={calData}/>
+    <DailyBriefPanel pair={pair} scores={scores} calData={calData} upcoming={upcoming}/>
     {isCADpair&&<OilPanel pair={pair}/>}
     <COTRetailPairPanel pair={pair} cotMeta={cotMeta||{}} cotData={cotData||{}} sentData={sentData||{}}/>
     <div style={{display:"grid",gridTemplateColumns:"1fr 330px",gap:14}}><div className="pro-card" style={{padding:16}}><div className="pro-panel-title">Score komponenty</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>{[{label:"Fundamenty",value:((scores[pair.base]?.fund_score||0)-(scores[pair.quote]?.fund_score||0)),max:10},{label:"CB Policy",value:((scores[pair.base]?.policy_adj||0)-(scores[pair.quote]?.policy_adj||0)),max:3},{label:"Real Yield",value:((scores[pair.base]?.yield_adj||0)-(scores[pair.quote]?.yield_adj||0)),max:3},{label:"COT",value:((scores[pair.base]?.cot_score||0)-(scores[pair.quote]?.cot_score||0)),max:6},{label:"Sentiment",value:((scores[pair.base]?.sent_score||0)-(scores[pair.quote]?.sent_score||0)),max:4},{label:"Sezónnost",value:((scores[pair.base]?.season_score||0)-(scores[pair.quote]?.season_score||0)),max:4}].map(x=>{const col=x.value>0?"#3fb950":x.value<0?"#ff4d4d":"#d29922";return <div key={x.label} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:"#cbd6e2",marginBottom:8}}>{x.label}</div><div style={{fontSize:24,fontWeight:1000,color:col}}>{x.value>0?"+":""}{x.value.toFixed(1)}</div><div style={{fontSize:11,color:col,marginTop:5}}>{x.value>1?"Bullish":x.value<-1?"Bearish":"Neutral"}</div><div style={{height:4,background:"#1b232d",borderRadius:4,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,Math.abs(x.value)/x.max*100)+"%",background:col,borderRadius:4}}/></div></div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginTop:14,borderTop:"1px solid #1b2a35",paddingTop:14,fontSize:12,color:"#8b949e",textAlign:"center"}}><div>Spread<br/><b style={{color:"#e6edf3"}}>0.7</b></div><div>Volatilita (D)<br/><b style={{color:"#e6edf3"}}>0.42%</b></div><div>ATR (14)<br/><b style={{color:"#e6edf3"}}>0.0065</b></div><div>Liquidity<br/><b className="green">HIGH</b></div><div>Trend<br/><b style={{color:ac}}>{pair.dir==="BUY"?"Bullish":"Bearish"}</b></div><div>Risk<br/><b className="orange">Medium</b></div></div></div><AIAnalysisStatusPanel pair={pair} aiAnalyses={aiAnalyses}/></div>
@@ -3136,7 +3323,7 @@ function CoachContextBar({activePair,pairs,aiAnalyses,forecasts}){
   );
 }
 
-function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming}){
+function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming,calData=[]}){
   const defaultCoachMessage={
     role:"assistant",
     content:"Ahoj! Jsem tvůj AI trading mentor. Mám přístup ke všem datům aplikace — fundamentálnímu scoringu, COT, conviction skóre i výsledkům AI analýzy grafů.\n\nNa co se chceš zeptat?",
@@ -3166,6 +3353,8 @@ function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming
     const topPairs=(pairs||[]).slice(0,8).map(p=>{
       const f=forecasts?.[p.pair]||{};
       const ai=aiAnalyses?.[p.pair];
+      const brf=detectFundamentalConflict(p,scores,calData||[],DAY_WINDOW);
+      const upT=[...getTodayHighImpact(p.base,upcoming),...getTodayHighImpact(p.quote,upcoming)];
       return {
         pair:p.pair, dir:p.dir, diff:p.diff.toFixed(2),
         conviction:p.conviction||0,
@@ -3187,7 +3376,13 @@ function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming
           summary:ai.summary
         }:null,
         crowded:p.cotCrowded?true:false,
-        corrDuplicate:p.corrDuplicate?true:false
+        corrDuplicate:p.corrDuplicate?true:false,
+        dailyBrief:{
+          stDir:brf.hasData?brf.stDir:null,
+          conflict:brf.hasData?brf.conflict:false,
+          position:getPosition(p.pair),
+          todayNews:upT.map(e=>e.event).slice(0,4)
+        }
       };
     });
 
@@ -3224,6 +3419,7 @@ function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming
       currencyScores,
       cbPolicy:cbContext,
       topPairs,
+      recentFlips:getRecentFlips(pairs,calData||[]).map(f=>({pair:f.pair,from:f.from,to:f.to,driver:f.driver,news:f.driverItems.map(i=>i.event+" "+(i.beat?"BEAT":"MISS"))})),
       activeAIAnalysis:activeAI?{
         pair:activePair,
         timeframe:activeAI.tf,
@@ -3254,6 +3450,9 @@ PRAVIDLA ODPOVĚDÍ:
 4. Buď přímý a stručný — max 3–4 odstavce
 5. Vždy zmiň kde je invalidace
 6. Jsi mentor, ne signální služba
+7. DAILY BRIEF (dnešní vrstva): Sleduj u párů pole dailyBrief. Pokud dailyBrief.conflict=true, aktivně upozorni, že dnešní data jdou proti 14d biasu → dnes nehledat vstupy ve směru biasu, počkat na uklidnění a re-potvrzení (spíš pullback než hluboký obrat). Pokud todayNews není prázdné, varuj před nadcházející volatilitou. Pokud position != "none", veď uživatele co s pozicí (zajistit část, SL na break-even, počkat na pullback) — vždy jako upozornění, ne příkaz.
+8. OTOČENÍ VÝHLEDU: Pokud recentFlips není prázdné, sám a důrazně to zmíň — 14d bias se po čerstvých datech otočil (uveď z jaké měny a jaké výsledky). Otočení NENÍ pokyn obchodovat opačně hned; vítr se obrátil, ale ke vstupu je potřeba technické potvrzení.
+9. PROAKTIVITA: Na začátku konverzace nebo při obecném dotazu ("co dnes", "jak to vypadá") sám zmiň páry s conflict, otočením nebo todayNews — i bez přímého dotazu.
 
 STYL:
 - Mluv jako zkušený trader, ne jako robot
@@ -3472,6 +3671,65 @@ STYL:
   );
 }
 
+function DailyBriefBar({pairs,scores,calData,upcoming}){
+  const tops=(pairs||[]).slice(0,8);
+  const flips=getRecentFlips(pairs,calData);
+  const rel={};CURRENCIES.forEach(c=>{const st=getShortTermFundScore(c,calData,DAY_WINDOW);if(st.count>0)rel[c]=st;});
+  const up={};CURRENCIES.forEach(c=>{const e=getTodayHighImpact(c,upcoming);if(e.length)up[c]=e;});
+  const conflictPairs=tops.filter(p=>getPairDailyState(p,scores,calData,upcoming).level==="conflict");
+  const upPairs=tops.filter(p=>getPairDailyState(p,scores,calData,upcoming).level==="upcoming");
+  const positions=getAllPositions();
+  const posLines=Object.entries(positions).map(([pr,side])=>{
+    const p=(pairs||[]).find(x=>x.pair===pr);if(!p) return null;
+    const stt=getPairDailyState(p,scores,calData,upcoming);
+    if(stt.level==="none") return null;
+    return{pair:pr,side,level:stt.level};
+  }).filter(Boolean);
+  const nothing=!flips.length&&!Object.keys(rel).length&&!Object.keys(up).length&&!posLines.length;
+  const tm=e=>new Date(e.time).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
+  const now=new Date().toLocaleString("cs-CZ",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"});
+  if(nothing) return(
+    <div style={{gridColumn:"1 / -1",background:"rgba(63,185,80,.05)",border:"1px solid rgba(63,185,80,.18)",borderRadius:10,padding:"10px 14px",marginBottom:4,fontSize:12,color:"#8b949e"}}>
+      🌅 <b style={{color:"#e6edf3"}}>Dnešní přehled</b> · {now} — žádné velké fundamenty na sledovaných párech. Můžeš jet podle 14d biasu.
+    </div>
+  );
+  return(
+    <div style={{gridColumn:"1 / -1",background:"linear-gradient(180deg,rgba(12,18,27,.96),rgba(7,11,17,.98))",border:"1px solid #1b2a35",borderRadius:12,padding:"12px 16px",marginBottom:4}}>
+      <div style={{fontSize:13,fontWeight:900,color:"#e6edf3",marginBottom:10}}>🌅 DNEŠNÍ PŘEHLED <span style={{fontSize:11,fontWeight:400,color:"#8b949e"}}>· {now}</span></div>
+      {flips.length>0&&<div style={{marginBottom:10,paddingBottom:8,borderBottom:"1px solid rgba(191,76,255,.2)"}}>
+        <div style={{fontSize:10,color:"#bf4cff",letterSpacing:".06em",marginBottom:4,fontWeight:700}}>🔄 OTOČENÍ VÝHLEDU (za ~36h)</div>
+        {flips.map(f=>(
+          <div key={f.pair} style={{fontSize:12,color:"#d9b3ff",marginBottom:2}}>
+            <b>{f.pair}</b>: {f.from} → {f.to}{f.driver?` · po datech ${FLAGS[f.driver]} ${f.driver} (${f.driverItems.map(i=>i.event+" "+(i.beat?"BEAT":"MISS")).slice(0,1).join(", ")})`:""} — počkej na technické potvrzení.
+          </div>
+        ))}
+      </div>}
+      {Object.keys(rel).length>0&&<div style={{marginBottom:8}}>
+        <div style={{fontSize:10,color:"#8b949e",letterSpacing:".06em",marginBottom:4}}>UŽ VYŠLO (24h)</div>
+        {Object.entries(rel).map(([c,st])=>{
+          const col=st.score>0.5?"#3fb950":st.score<-0.5?"#ff4d4d":"#8b949e";
+          const dot=st.score>0.5?"🟢":st.score<-0.5?"🔴":"⚪";
+          return <div key={c} style={{fontSize:12,color:"#c9d1d9",marginBottom:2}}>{dot} <b>{FLAGS[c]} {c}</b> — {st.items.map(i=>i.event+" "+(i.beat?"BEAT":"MISS")).slice(0,3).join(", ")} <b style={{color:col}}>({st.score>0?"+":""}{st.score})</b></div>;
+        })}
+        {conflictPairs.length>0&&<div style={{fontSize:12,color:"#ffb3b3",marginTop:4}}>→ <b>{conflictPairs.map(p=>p.pair).join(", ")}</b>: dnes krátkodobě PROTI 14d biasu — vstupy ve směru biasu dnes nehledat.</div>}
+      </div>}
+      {Object.keys(up).length>0&&<div style={{marginBottom:8}}>
+        <div style={{fontSize:10,color:"#8b949e",letterSpacing:".06em",marginBottom:4}}>DNES JEŠTĚ PŘIJDE</div>
+        {Object.entries(up).map(([c,evs])=>(
+          <div key={c} style={{fontSize:12,color:"#d6c089",marginBottom:2}}>🟡 <b>{FLAGS[c]} {c}</b> {tm(evs[0])} — {evs.map(e=>e.event).slice(0,2).join(", ")}{evs.length>2?` (+${evs.length-2})`:""}</div>
+        ))}
+        {upPairs.length>0&&<div style={{fontSize:11,color:"#8b949e",marginTop:4}}>→ týká se: {upPairs.map(p=>p.pair).join(", ")} · před zprávou opatrně, volatilita.</div>}
+      </div>}
+      {posLines.length>0&&<div>
+        <div style={{fontSize:10,color:"#8b949e",letterSpacing:".06em",marginBottom:4}}>TVÉ POZICE</div>
+        {posLines.map(l=>(
+          <div key={l.pair} style={{fontSize:12,color:l.level==="conflict"?"#ffb3b3":"#d6c089",marginBottom:2}}>🎯 <b>{l.pair} {l.side}</b> — {l.level==="conflict"?"čerstvá data jdou krátkodobě proti pozici":"dnes přijdou data → vyšší volatilita"} · zvaž zajištění části / SL na BE.</div>
+        ))}
+      </div>}
+    </div>
+  );
+}
+
 // ── HLAVNÍ APP ────────────────────────────────────────────
 function App(){
   const [fhKey,setFhKey]=useState(null);
@@ -3554,6 +3812,7 @@ function App(){
       saveScoreHistory(sc);
       const ranked=rankPairs(sc,aiAnalyses);
       setPairs(ranked);
+      updateBiasFlips(ranked);
       setSelected(p=>p||ranked[0]);
       const up=await fetchUpcoming14(key);
       setUpcoming(up);
@@ -3659,7 +3918,7 @@ function App(){
         <div style={{background:topPair.dir==="BUY"?"#0d2a1a":"#2a0d0d",padding:"8px 16px",borderBottom:"1px solid #30363d",display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"#8b949e"}}>TOP DOPORUČENÍ:</span>
           <span style={{fontWeight:700,fontSize:14,color:topPair.dir==="BUY"?"#3fb950":"#f85149"}}>{FLAGS[topPair.base]}{FLAGS[topPair.quote]} {topPair.pair} {topPair.dir}</span>
-          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=65?"#3fb950":forecasts[topPair.pair].prob<=35?"#f85149":"#d29922"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}}
+          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=65?"#3fb950":forecasts[topPair.pair].prob<=35?"#f85149":"#d29922"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}
           {top[1]&&<span style={{fontSize:11,color:"#8b949e"}}>| #2: {FLAGS[top[1].base]}{FLAGS[top[1].quote]} {top[1].pair} {top[1].dir}{forecasts[top[1].pair]?` ${forecasts[top[1].pair].prob}%`:""}</span>}
           {top[2]&&<span style={{fontSize:11,color:"#8b949e"}}>| #3: {FLAGS[top[2].base]}{FLAGS[top[2].quote]} {top[2].pair} {top[2].dir}{forecasts[top[2].pair]?` ${forecasts[top[2].pair].prob}%`:""}</span>}
         </div>
@@ -3687,6 +3946,7 @@ function App(){
 
         {tab==="pairs"&&(
           <div className="pro-grid">
+            <DailyBriefBar pairs={top} scores={scores} calData={calData} upcoming={upcoming}/>
             {/* ── RISK SENTIMENT TOGGLE ── */}
             <div style={{gridColumn:"1 / -1",display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
               <span style={{fontSize:10,color:"#8b949e",letterSpacing:".06em"}}>RISK SENTIMENT:</span>
@@ -3721,16 +3981,16 @@ function App(){
               <div className="pro-panel-title">Měnové páry</div>
               <div className="pro-pair-list">
                 {loading&&!top.length?<div style={{color:"#8b949e",padding:"20px 0"}}>⏳ Načítám 15 měsíců dat...</div>
-                  :top.map((p,i)=><PairRow key={p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:(i+1)+" / "+top.length})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]}/>) }
+                  :top.map((p,i)=><PairRow key={p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:(i+1)+" / "+top.length})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]} dailyState={getPairDailyState(p,scores,calData,upcoming)}/>) }
               </div>
               <div style={{borderTop:"1px solid #263242",paddingTop:12,marginTop:10,display:"flex",justifyContent:"space-between",fontSize:12,color:"#8b949e"}}><span>Celkem párů: {top.length}</span><button className="pro-btn" onClick={()=>loadData(fhKey,cotData,sentData)}>Aktualizovat</button></div>
             </div>
-            <div>{selected&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses}/>}</div>
+            <div>{selected&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses} calData={calData} upcoming={upcoming}/>}</div>
             <div>
               <DashboardCalendarPanel events={upcoming} pair={selected}/>
               <div className="pro-card" style={{padding:16}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div className="pro-panel-title" style={{margin:0}}>AI Coach</div><span style={{fontSize:11,color:"#3fb950"}}>● Online</span></div>
-                <div className="coach-compact"><AICoachTab scores={scores} pairs={top} forecasts={forecasts} aiAnalyses={aiAnalyses} cotData={cotData} selected={selected} upcoming={upcoming}/></div>
+                <div className="coach-compact"><AICoachTab scores={scores} pairs={top} forecasts={forecasts} aiAnalyses={aiAnalyses} cotData={cotData} selected={selected} upcoming={upcoming} calData={calData}/></div>
               </div>
             </div>
           </div>
@@ -3766,7 +4026,7 @@ function App(){
         )}
 
         {tab==="coach"&&(
-          <AICoachTab scores={scores} pairs={top} forecasts={forecasts} aiAnalyses={aiAnalyses} cotData={cotData} selected={selected} upcoming={upcoming}/>
+          <AICoachTab scores={scores} pairs={top} forecasts={forecasts} aiAnalyses={aiAnalyses} cotData={cotData} selected={selected} upcoming={upcoming} calData={calData}/>
         )}
       </div>
       <MarketStatusBar/>
