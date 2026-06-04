@@ -1642,101 +1642,68 @@ function scoreCurrency(events,currency,cotData,sentData){
   };
 }
 
-// ════════ DAILY BRIEF ENGINE — dnešní vrstva (rolling 24h) ════════
-const DAY_WINDOW=1; // dny zpět pro "dnes" (24h rolling — kryje AU/JP data v noci)
-
-function getShortTermFundScore(currency,calData,days=DAY_WINDOW){
-  const cutoff=Date.now()-days*86400000;
-  const evs=(calData||[]).filter(e=>{
-    const t=new Date(e.time).getTime();
-    return t>=cutoff&&t<=Date.now()&&e.actual&&eventRelevance(currency,e)&&getEventMeta(e.event);
+// ════════ DAILY BRIEF ENGINE — dnešní vrstva ════════
+const DAY_WINDOW=1; // dny zpět pro "už vyšlo" (rolling — kryje AU/JP data v noci)
+function localDayEnd(){const d=new Date();d.setHours(23,59,59,999);return d.getTime();}
+// Sloučí 15-měsíční kalendář s upcoming. upcoming má čerstvé dnešní ACTUAL dřív než 15mo dotaz,
+// proto bez tohoto merge "už vyšlo" výsledky chyběly. Dedup, preferuj záznam s actual.
+function mergeEvents(calData,upcoming){
+  const map=new Map();
+  [...(calData||[]),...(upcoming||[])].forEach(e=>{
+    const k=(e.event||"")+"|"+(e.country||"")+"|"+(e.time||"");
+    const prev=map.get(k);
+    if(!prev||(!prev.actual&&e.actual)) map.set(k,e);
   });
+  return [...map.values()];
+}
+// Krátkodobé skóre — jen PŘÍMÉ eventy dané měny s actual za posledních 24h (ze sloučeného zdroje).
+function getShortTermFundScore(currency,events,days=DAY_WINDOW){
+  const cutoff=Date.now()-days*86400000,now=Date.now();
   let score=0,weight=0;const items=[];
-  for(const ev of evs){
-    const rel=eventRelevance(currency,ev),meta=getEventMeta(ev.event);
+  for(const ev of (events||[])){
+    const t=new Date(ev.time).getTime();
+    if(!(t>=cutoff&&t<=now)||!ev.actual) continue;
+    const rel=eventRelevance(currency,ev);if(!rel||rel.type!=="direct") continue; // jen přímé → CHF nepřebírá EUR
+    const meta=getEventMeta(ev.event);if(!meta) continue;
     const a=parseFloat(ev.actual),e2=parseFloat(ev.estimate);
     if(isNaN(a)||isNaN(e2)) continue;
     const dir=eventDirection(ev);if(!dir) continue;
-    const w=meta.w*rel.factor*surpriseStrength(ev);
+    const w=meta.w*surpriseStrength(ev);
     score+=dir*w;weight+=w;
     items.push({event:ev.event,cat:meta.cat,beat:dir>0,actual:ev.actual,estimate:ev.estimate,time:ev.time});
   }
   const norm=weight>0?Math.max(-10,Math.min(10,(score/weight)*10)):0;
   return{score:parseFloat(norm.toFixed(1)),count:items.length,items};
 }
-function detectFundamentalConflict(pair,scores,calData,days=DAY_WINDOW){
+function detectFundamentalConflict(pair,scores,calData,upcoming,days=DAY_WINDOW){
+  const ev=mergeEvents(calData,upcoming);
   const ltDiff=(scores[pair.base]?.score||0)-(scores[pair.quote]?.score||0);
   const ltDir=ltDiff>=0?"BUY":"SELL";
-  const stB=getShortTermFundScore(pair.base,calData,days);
-  const stQ=getShortTermFundScore(pair.quote,calData,days);
+  const stB=getShortTermFundScore(pair.base,ev,days);
+  const stQ=getShortTermFundScore(pair.quote,ev,days);
   const stDiff=stB.score-stQ.score;
   if(stB.count+stQ.count===0) return{hasData:false,ltDir};
   const stDir=stDiff>0.3?"BUY":stDiff<-0.3?"SELL":"FLAT";
   return{hasData:true,ltDir,stDir,conflict:stDir!=="FLAT"&&stDir!==ltDir,stB,stQ,stDiff:parseFloat(stDiff.toFixed(1))};
 }
-function startOfLocalDay(d=new Date()){
-  return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
-}
-function endOfLocalDay(d=new Date()){
-  return new Date(d.getFullYear(),d.getMonth(),d.getDate()+1).getTime()-1;
-}
-function isSameLocalDay(time,d=new Date()){
-  const t=new Date(time).getTime();
-  return t>=startOfLocalDay(d)&&t<=endOfLocalDay(d);
-}
-function isImportantCalendarEvent(e){
-  const imp=(e.impact||"").toString().toLowerCase();
-  return (imp.includes("high")||imp==="3"||imp.includes("medium")||imp==="2")&&getEventMeta(e.event);
-}
-function getTodayHighImpact(currency,upcoming){
-  // OPRAVA: "dnes" = pouze dnešní lokální den, ne příštích 24 hodin.
-  // Tím se zítřejší CAD/CHF event už nebude tvářit jako dnešní.
-  const now=Date.now();
+// Dnešní PŘÍMÉ HIGH/MED eventy, které teprve přijdou (do konce dneška, ještě bez actual).
+function getUpcomingToday(currency,upcoming){
+  const now=Date.now(),end=localDayEnd();
   return (upcoming||[]).filter(e=>{
     const t=new Date(e.time).getTime();
-    return t>=now&&isSameLocalDay(e.time)&&eventRelevance(currency,e)&&isImportantCalendarEvent(e);
+    if(!(t>now&&t<=end)||e.actual) return false;           // jen budoucí dnešní, bez výsledku
+    const rel=eventRelevance(currency,e);if(!rel||rel.type!=="direct") return false;
+    if(!getEventMeta(e.event)) return false;
+    const imp=(e.impact||"").toString().toLowerCase();
+    return imp.includes("high")||imp==="3"||imp.includes("medium")||imp==="2";
   }).sort((a,b)=>new Date(a.time)-new Date(b.time));
 }
-function mergeCalendarEvents(calData=[],upcoming=[]){
-  const map=new Map();
-  [...(calData||[]),...(upcoming||[])].forEach(e=>{
-    if(!e||!e.time||!e.event) return;
-    const key=[new Date(e.time).toISOString().slice(0,16),(e.country||""),(e.event||"")].join("|");
-    const prev=map.get(key)||{};
-    map.set(key,{...prev,...e});
-  });
-  return [...map.values()].sort((a,b)=>new Date(a.time)-new Date(b.time));
-}
-function getPairTodayEvents(pair,calData=[],upcoming=[]){
-  if(!pair) return [];
-  return mergeCalendarEvents(calData,upcoming).filter(e=>
-    isSameLocalDay(e.time)&&isImportantCalendarEvent(e)&&(eventRelevance(pair.base,e)||eventRelevance(pair.quote,e))
-  );
-}
-function eventHasActual(e){
-  return e.actual!==undefined&&e.actual!==null&&String(e.actual).trim()!==""&&!isNaN(parseFloat(e.actual));
-}
-function getEventStatus(e){
-  const t=new Date(e.time).getTime();
-  if(!eventHasActual(e)){
-    return t<Date.now()?{label:"ČEKÁ SE",color:"#d29922",icon:"🟠"}:{label:"PŘIJDE",color:"#d29922",icon:"🟡"};
-  }
-  const dir=eventDirection(e);
-  if(dir>0) return{label:"BEAT",color:"#3fb950",icon:"🟢"};
-  if(dir<0) return{label:"MISS",color:"#ff4d4d",icon:"🔴"};
-  return{label:"INLINE",color:"#8b949e",icon:"⚪"};
-}
-function getPairPendingEvents(pair,calData=[],upcoming=[]){
-  return getPairTodayEvents(pair,calData,upcoming).filter(e=>getEventStatus(e).label==="ČEKÁ SE");
-}
 function getPairDailyState(pair,scores,calData,upcoming){
-  const c=detectFundamentalConflict(pair,scores,calData,DAY_WINDOW);
-  const pending=getPairPendingEvents(pair,calData,upcoming).length>0;
-  const hasUp=getTodayHighImpact(pair.base,upcoming).length+getTodayHighImpact(pair.quote,upcoming).length>0;
+  const c=detectFundamentalConflict(pair,scores,calData,upcoming,DAY_WINDOW);
+  const hasUp=getUpcomingToday(pair.base,upcoming).length+getUpcomingToday(pair.quote,upcoming).length>0;
   if(c.hasData&&c.conflict) return{level:"conflict",dot:"🔴",color:"#ff4d4d"};
-  if(pending) return{level:"pending",dot:"🟠",color:"#d29922"};
-  if(hasUp) return{level:"upcoming",dot:"🟡",color:"#d29922"};
   if(c.hasData&&c.stDir===c.ltDir) return{level:"confirm",dot:"🟢",color:"#3fb950"};
+  if(hasUp) return{level:"upcoming",dot:"🟡",color:"#d29922"};
   return{level:"none",dot:"",color:null};
 }
 function getPosition(pair){try{return (JSON.parse(localStorage.getItem("positions")||"{}"))[pair]||"none";}catch(e){return"none";}}
@@ -1762,13 +1729,14 @@ function updateBiasFlips(pairs){
   });
   saveBiasState(st);return st;
 }
-function getRecentFlips(pairs,calData,hours=36){
+function getRecentFlips(pairs,calData,upcoming,hours=36){
+  const ev=mergeEvents(calData,upcoming);
   const st=loadBiasState(),now=Date.now(),out=[];
   (pairs||[]).forEach(p=>{
     const s=st[p.pair];
     if(s&&s.flippedAt&&now-s.flippedAt<=hours*3600000){
-      const b=getShortTermFundScore(p.base,calData,DAY_WINDOW);
-      const q=getShortTermFundScore(p.quote,calData,DAY_WINDOW);
+      const b=getShortTermFundScore(p.base,ev,DAY_WINDOW);
+      const q=getShortTermFundScore(p.quote,ev,DAY_WINDOW);
       const driver=(b.count>=q.count&&b.count>0)?p.base:(q.count>0?p.quote:null);
       out.push({pair:p.pair,from:s.from,to:s.dir,flippedAt:s.flippedAt,driver,
         driverItems:driver===p.base?b.items:driver===p.quote?q.items:[]});
@@ -2869,11 +2837,12 @@ function PosToggle({pair,pos,setPos,color}){
   );
 }
 
-function BiasFlipNotice({pair,calData}){
+function BiasFlipNotice({pair,calData,upcoming}){
   const s=loadBiasState()[pair.pair];
   if(!s||!s.flippedAt||Date.now()-s.flippedAt>36*3600000) return null;
-  const b=getShortTermFundScore(pair.base,calData||[],DAY_WINDOW);
-  const q=getShortTermFundScore(pair.quote,calData||[],DAY_WINDOW);
+  const ev=mergeEvents(calData,upcoming);
+  const b=getShortTermFundScore(pair.base,ev,DAY_WINDOW);
+  const q=getShortTermFundScore(pair.quote,ev,DAY_WINDOW);
   const driver=(b.count>=q.count&&b.count>0)?pair.base:(q.count>0?pair.quote:null);
   const items=driver===pair.base?b.items:driver===pair.quote?q.items:[];
   const dtxt=driver
@@ -2891,8 +2860,8 @@ function BiasFlipNotice({pair,calData}){
 
 function DailyBriefPanel({pair,scores,calData,upcoming}){
   const [pos,setPos]=useState(getPosition(pair.pair));
-  const c=detectFundamentalConflict(pair,scores,calData||[],DAY_WINDOW);
-  const upB=getTodayHighImpact(pair.base,upcoming),upQ=getTodayHighImpact(pair.quote,upcoming);
+  const c=detectFundamentalConflict(pair,scores,calData||[],upcoming||[],DAY_WINDOW);
+  const upB=getUpcomingToday(pair.base,upcoming),upQ=getUpcomingToday(pair.quote,upcoming);
   const hasUp=upB.length+upQ.length>0;
   const ltDir=c.ltDir;
   if(!c.hasData&&!hasUp){
@@ -2905,10 +2874,10 @@ function DailyBriefPanel({pair,scores,calData,upcoming}){
   }
   const conflict=c.hasData&&c.conflict;
   const confirm=c.hasData&&!c.conflict&&c.stDir===ltDir;
-  const col=conflict?"#ff4d4d":hasUp?"#d29922":confirm?"#3fb950":"#d29922";
+  const col=conflict?"#ff4d4d":confirm?"#3fb950":hasUp?"#d29922":"#d29922";
   const head=conflict?`⚠️ DAILY BRIEF — ${pair.pair}: 14d ${ltDir}, dnes krátkodobě PROTI`
-    :(hasUp&&!c.hasData)?`⏳ DAILY BRIEF — ${pair.pair}: dnes přicházejí důležité fundamenty`
     :confirm?`✅ DAILY BRIEF — ${pair.pair}: dnešní data potvrzují ${ltDir}`
+    :(hasUp&&!c.hasData)?`⏳ DAILY BRIEF — ${pair.pair}: dnes přicházejí důležité fundamenty`
     :`➡️ DAILY BRIEF — ${pair.pair}`;
   const tm=e=>new Date(e.time).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
   const evLine=(cur,arr)=>arr.length?`${FLAGS[cur]} ${cur} ${tm(arr[0])}: ${arr.map(e=>e.event).slice(0,2).join(", ")}${arr.length>2?` (+${arr.length-2})`:""}`:null;
@@ -2916,7 +2885,7 @@ function DailyBriefPanel({pair,scores,calData,upcoming}){
     ?`14denní výhled zůstává ${ltDir}, ale dnešní data tlačí ${pair.pair} krátkodobě na ${c.stDir==="BUY"?"posílení":"oslabení"}. Dnes bych nehledal agresivní ${ltDir==="BUY"?"longy":"shorty"} — počkal na uklidnění a nové potvrzení ${ltDir} scénáře.`
     :confirm?`Dnešní data potvrzují směr ${ltDir} i krátkodobě — můžeš jet ve směru biasu.`
     :`Dnešní data jsou smíšená, bez jasného krátkodobého směru.`):null;
-  const upTxt=hasUp?`Dnes: ${[evLine(pair.base,upB),evLine(pair.quote,upQ)].filter(Boolean).join(" · ")}. Před zprávou bývá trh opatrný a volatilní; výhled se po zveřejnění přepočítá.`:null;
+  const upTxt=hasUp?`Dnes ještě přijde: ${[evLine(pair.base,upB),evLine(pair.quote,upQ)].filter(Boolean).join(" · ")}. Před zprávou bývá trh opatrný a volatilní; výhled se po zveřejnění přepočítá.`:null;
   let posTxt=null;
   if(pos!=="none"){
     const posDir=pos==="LONG"?"BUY":"SELL";
@@ -2948,53 +2917,6 @@ function DailyBriefPanel({pair,scores,calData,upcoming}){
   );
 }
 
-
-function DailyEventsPanel({pair,calData=[],upcoming=[]}){
-  const events=getPairTodayEvents(pair,calData,upcoming);
-  const tm=e=>new Date(e.time).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
-  const fmt=v=>v!==undefined&&v!==null&&String(v).trim()!==""?String(v):"—";
-  const pairImpact=e=>{
-    const st=getEventStatus(e),dir=eventDirection(e);
-    if(st.label==="PŘIJDE") return "Čeká se na zveřejnění";
-    if(st.label==="ČEKÁ SE") return "Čas proběhl, actual ještě není v datech";
-    if(dir===0) return "Bez jasného překvapení";
-    const relBase=eventRelevance(pair.base,e),relQuote=eventRelevance(pair.quote,e);
-    const cur=relBase?pair.base:relQuote?pair.quote:null;
-    if(!cur) return "";
-    const ccyBull=dir>0;
-    const pairBull=(cur===pair.base&&ccyBull)||(cur===pair.quote&&!ccyBull);
-    return `${cur} ${ccyBull?"bullish":"bearish"} → ${pair.pair} ${pairBull?"bullish":"bearish"}`;
-  };
-  return(
-    <div className="pro-card" style={{padding:16,marginBottom:14}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:12}}>
-        <div>
-          <div className="pro-panel-title" style={{margin:0}}>Dnešní události — {pair?.pair||"pár"}</div>
-          <div style={{fontSize:11,color:"#8b949e",marginTop:3}}>Actual · Forecast · Previous · dopad na vybraný pár</div>
-        </div>
-        <span style={{fontSize:10,color:"#8b949e",border:"1px solid #263242",borderRadius:999,padding:"4px 8px"}}>TODAY</span>
-      </div>
-      {!events.length&&<div style={{fontSize:12,color:"#8b949e",lineHeight:1.6,background:"rgba(63,185,80,.05)",border:"1px solid rgba(63,185,80,.16)",borderRadius:10,padding:12}}>🟢 Dnes pro {pair?.base}/{pair?.quote} nejsou v kalendáři žádné high/medium impact události.</div>}
-      {events.map((e,i)=>{const st=getEventStatus(e);const rel=eventRelevance(pair.base,e)?pair.base:pair.quote;return(
-        <div key={i} style={{border:"1px solid #1b2a35",borderLeft:`4px solid ${st.color}`,borderRadius:10,padding:"10px 12px",marginBottom:8,background:"rgba(255,255,255,.025)"}}>
-          <div style={{display:"grid",gridTemplateColumns:"54px 42px 1fr auto",gap:8,alignItems:"center",marginBottom:8}}>
-            <span style={{fontSize:12,color:"#c9d1d9",fontWeight:800}}>{tm(e)}</span>
-            <span style={{fontSize:12,color:"#e6edf3",fontWeight:900}}>{FLAGS[rel]} {rel}</span>
-            <span style={{fontSize:12,color:"#e6edf3",fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.event}</span>
-            <span style={{fontSize:10,color:st.color,border:`1px solid ${st.color}55`,borderRadius:999,padding:"3px 7px",fontWeight:900}}>{st.icon} {st.label}</span>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,fontSize:11,marginBottom:8}}>
-            <div style={{background:"#08111b",borderRadius:8,padding:"6px 8px",textAlign:"center"}}><div style={{color:"#4a6a88"}}>ACTUAL</div><b style={{color:"#e6edf3"}}>{fmt(e.actual)}</b></div>
-            <div style={{background:"#08111b",borderRadius:8,padding:"6px 8px",textAlign:"center"}}><div style={{color:"#4a6a88"}}>FORECAST</div><b style={{color:"#e6edf3"}}>{fmt(e.estimate||e.forecast)}</b></div>
-            <div style={{background:"#08111b",borderRadius:8,padding:"6px 8px",textAlign:"center"}}><div style={{color:"#4a6a88"}}>PREVIOUS</div><b style={{color:"#e6edf3"}}>{fmt(e.prev||e.previous)}</b></div>
-          </div>
-          <div style={{fontSize:11,color:st.color,lineHeight:1.45}}>Dopad: {pairImpact(e)}</div>
-        </div>
-      )})}
-    </div>
-  );
-}
-
 function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},calData=[],upcoming=[]}){
   const buy=pair.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
   const fProb=forecast?.prob||50;
@@ -3005,7 +2927,7 @@ function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},cal
     <div className="pro-card" style={{padding:0,overflow:"hidden",marginBottom:14}}><div style={{display:"grid",gridTemplateColumns:"1fr 460px",gap:0,alignItems:"stretch"}}><div style={{padding:"18px 22px"}}><div style={{display:"flex",alignItems:"center",gap:14}}><div style={{fontSize:30}}>{FLAGS[pair.base]}{FLAGS[pair.quote]}</div><div><div style={{display:"flex",alignItems:"center",gap:10}}><h2 style={{fontSize:24,margin:0}}>{pair.pair}</h2><span className="pro-pill" style={{background:buy?"#113b20":"#431819",color:ac,border:`1px solid ${ac}55`}}>{pair.dir}</span></div><div style={{color:"#8b949e",fontSize:13,marginTop:4}}>{NAMES[pair.base]} / {NAMES[pair.quote]}</div></div></div></div><div className="pro-stat-grid"><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Score</div><b style={{fontSize:19,color:ac}}>{pair.dir==="BUY"?"+":"-"}{pair.diff.toFixed(1)}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Směr</div><b style={{fontSize:19,color:ac}}>{pair.dir} ↗</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Síla signálu</div><b style={{fontSize:17,color:pair.conviction>=3?"#3fb950":"#d29922"}}>{"●".repeat(Math.min(5,pair.conviction||0))}{"○".repeat(Math.max(0,5-(pair.conviction||0)))}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>14d výhled</div><b style={{fontSize:15,color:probC}}>{fProb}% {forecast?.dir}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Bias</div><b style={{fontSize:15,color:ac}}>{pairBiasScore(pair)}/100</b></div></div></div></div>
     <PairScoreHistoryPanel pair={pair}/>
     <ConvictionSummary pair={pair} scores={scores} aiAnalyses={aiAnalyses}/>
-    <BiasFlipNotice pair={pair} calData={calData}/>
+    <BiasFlipNotice pair={pair} calData={calData} upcoming={upcoming}/>
     <DailyBriefPanel pair={pair} scores={scores} calData={calData} upcoming={upcoming}/>
     {isCADpair&&<OilPanel pair={pair}/>}
     <COTRetailPairPanel pair={pair} cotMeta={cotMeta||{}} cotData={cotData||{}} sentData={sentData||{}}/>
@@ -3448,8 +3370,8 @@ function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming
     const topPairs=(pairs||[]).slice(0,8).map(p=>{
       const f=forecasts?.[p.pair]||{};
       const ai=aiAnalyses?.[p.pair];
-      const brf=detectFundamentalConflict(p,scores,calData||[],DAY_WINDOW);
-      const upT=[...getTodayHighImpact(p.base,upcoming),...getTodayHighImpact(p.quote,upcoming)];
+      const brf=detectFundamentalConflict(p,scores,calData||[],upcoming||[],DAY_WINDOW);
+      const upT=[...getUpcomingToday(p.base,upcoming),...getUpcomingToday(p.quote,upcoming)];
       return {
         pair:p.pair, dir:p.dir, diff:p.diff.toFixed(2),
         conviction:p.conviction||0,
@@ -3513,8 +3435,8 @@ function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming
       activePair:activePair||"none",
       currencyScores,
       cbPolicy:cbContext,
+      recentFlips:getRecentFlips(pairs,calData||[],upcoming||[]).map(f=>({pair:f.pair,from:f.from,to:f.to,driver:f.driver,news:f.driverItems.map(i=>i.event+" "+(i.beat?"BEAT":"MISS"))})),
       topPairs,
-      recentFlips:getRecentFlips(pairs,calData||[]).map(f=>({pair:f.pair,from:f.from,to:f.to,driver:f.driver,news:f.driverItems.map(i=>i.event+" "+(i.beat?"BEAT":"MISS"))})),
       activeAIAnalysis:activeAI?{
         pair:activePair,
         timeframe:activeAI.tf,
@@ -3545,9 +3467,9 @@ PRAVIDLA ODPOVĚDÍ:
 4. Buď přímý a stručný — max 3–4 odstavce
 5. Vždy zmiň kde je invalidace
 6. Jsi mentor, ne signální služba
-7. DAILY BRIEF (dnešní vrstva): Sleduj u párů pole dailyBrief. Pokud dailyBrief.conflict=true, aktivně upozorni, že dnešní data jdou proti 14d biasu → dnes nehledat vstupy ve směru biasu, počkat na uklidnění a re-potvrzení (spíš pullback než hluboký obrat). Pokud todayNews není prázdné, varuj před nadcházející volatilitou. Pokud position != "none", veď uživatele co s pozicí (zajistit část, SL na break-even, počkat na pullback) — vždy jako upozornění, ne příkaz.
-8. OTOČENÍ VÝHLEDU: Pokud recentFlips není prázdné, sám a důrazně to zmíň — 14d bias se po čerstvých datech otočil (uveď z jaké měny a jaké výsledky). Otočení NENÍ pokyn obchodovat opačně hned; vítr se obrátil, ale ke vstupu je potřeba technické potvrzení.
-9. PROAKTIVITA: Na začátku konverzace nebo při obecném dotazu ("co dnes", "jak to vypadá") sám zmiň páry s conflict, otočením nebo todayNews — i bez přímého dotazu.
+7. DAILY BRIEF (dnešní vrstva): U párů sleduj dailyBrief. Pokud conflict=true, upozorni, že dnešní data jdou proti 14d biasu → dnes nehledat vstupy ve směru biasu, počkat na uklidnění (spíš pullback než hluboký obrat). Pokud todayNews není prázdné, varuj před nadcházející volatilitou. Pokud position != "none", veď uživatele co s pozicí (zajistit část, SL na BE, počkat na pullback) — vždy jako upozornění, ne příkaz.
+8. OTOČENÍ VÝHLEDU: Pokud recentFlips není prázdné, sám to zmíň — 14d bias se po čerstvých datech otočil (uveď měnu a výsledky). Otočení NENÍ pokyn obchodovat opačně hned; vítr se obrátil, ke vstupu je potřeba technické potvrzení.
+9. PROAKTIVITA: Na začátku nebo při obecném dotazu sám zmiň páry s conflict, otočením nebo todayNews i bez přímého dotazu.
 
 STYL:
 - Mluv jako zkušený trader, ne jako robot
@@ -3768,9 +3690,10 @@ STYL:
 
 function DailyBriefBar({pairs,scores,calData,upcoming}){
   const tops=(pairs||[]).slice(0,8);
-  const flips=getRecentFlips(pairs,calData);
-  const rel={};CURRENCIES.forEach(c=>{const st=getShortTermFundScore(c,calData,DAY_WINDOW);if(st.count>0)rel[c]=st;});
-  const up={};CURRENCIES.forEach(c=>{const e=getTodayHighImpact(c,upcoming);if(e.length)up[c]=e;});
+  const ev=mergeEvents(calData,upcoming);
+  const flips=getRecentFlips(pairs,calData,upcoming);
+  const rel={};CURRENCIES.forEach(c=>{const st=getShortTermFundScore(c,ev,DAY_WINDOW);if(st.count>0)rel[c]=st;});
+  const up={};CURRENCIES.forEach(c=>{const e=getUpcomingToday(c,upcoming);if(e.length)up[c]=e;});
   const conflictPairs=tops.filter(p=>getPairDailyState(p,scores,calData,upcoming).level==="conflict");
   const upPairs=tops.filter(p=>getPairDailyState(p,scores,calData,upcoming).level==="upcoming");
   const positions=getAllPositions();
@@ -4083,7 +4006,7 @@ function App(){
             <div>{selected&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses} calData={calData} upcoming={upcoming}/>}</div>
             <div>
               <DashboardCalendarPanel events={upcoming} pair={selected}/>
-              {selected&&<DailyEventsPanel pair={selected} calData={calData} upcoming={upcoming}/>}
+              <button onClick={()=>setTab("coach")} className="pro-btn" style={{width:"100%",padding:"11px"}}>💬 Otevřít AI Coach (celá obrazovka)</button>
             </div>
           </div>
         )}
