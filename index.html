@@ -1674,19 +1674,67 @@ function detectFundamentalConflict(pair,scores,calData,days=DAY_WINDOW){
   const stDir=stDiff>0.3?"BUY":stDiff<-0.3?"SELL":"FLAT";
   return{hasData:true,ltDir,stDir,conflict:stDir!=="FLAT"&&stDir!==ltDir,stB,stQ,stDiff:parseFloat(stDiff.toFixed(1))};
 }
-function getTodayHighImpact(currency,upcoming,hours=24){
-  const now=Date.now(),end=now+hours*3600000;
+function startOfLocalDay(d=new Date()){
+  return new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+}
+function endOfLocalDay(d=new Date()){
+  return new Date(d.getFullYear(),d.getMonth(),d.getDate()+1).getTime()-1;
+}
+function isSameLocalDay(time,d=new Date()){
+  const t=new Date(time).getTime();
+  return t>=startOfLocalDay(d)&&t<=endOfLocalDay(d);
+}
+function isImportantCalendarEvent(e){
+  const imp=(e.impact||"").toString().toLowerCase();
+  return (imp.includes("high")||imp==="3"||imp.includes("medium")||imp==="2")&&getEventMeta(e.event);
+}
+function getTodayHighImpact(currency,upcoming){
+  // OPRAVA: "dnes" = pouze dnešní lokální den, ne příštích 24 hodin.
+  // Tím se zítřejší CAD/CHF event už nebude tvářit jako dnešní.
+  const now=Date.now();
   return (upcoming||[]).filter(e=>{
     const t=new Date(e.time).getTime();
-    const imp=(e.impact||"").toString().toLowerCase();
-    const hi=imp.includes("high")||imp==="3"||imp.includes("medium")||imp==="2";
-    return t>=now&&t<=end&&eventRelevance(currency,e)&&hi&&getEventMeta(e.event);
+    return t>=now&&isSameLocalDay(e.time)&&eventRelevance(currency,e)&&isImportantCalendarEvent(e);
   }).sort((a,b)=>new Date(a.time)-new Date(b.time));
+}
+function mergeCalendarEvents(calData=[],upcoming=[]){
+  const map=new Map();
+  [...(calData||[]),...(upcoming||[])].forEach(e=>{
+    if(!e||!e.time||!e.event) return;
+    const key=[new Date(e.time).toISOString().slice(0,16),(e.country||""),(e.event||"")].join("|");
+    const prev=map.get(key)||{};
+    map.set(key,{...prev,...e});
+  });
+  return [...map.values()].sort((a,b)=>new Date(a.time)-new Date(b.time));
+}
+function getPairTodayEvents(pair,calData=[],upcoming=[]){
+  if(!pair) return [];
+  return mergeCalendarEvents(calData,upcoming).filter(e=>
+    isSameLocalDay(e.time)&&isImportantCalendarEvent(e)&&(eventRelevance(pair.base,e)||eventRelevance(pair.quote,e))
+  );
+}
+function eventHasActual(e){
+  return e.actual!==undefined&&e.actual!==null&&String(e.actual).trim()!==""&&!isNaN(parseFloat(e.actual));
+}
+function getEventStatus(e){
+  const t=new Date(e.time).getTime();
+  if(!eventHasActual(e)){
+    return t<Date.now()?{label:"ČEKÁ SE",color:"#d29922",icon:"🟠"}:{label:"PŘIJDE",color:"#d29922",icon:"🟡"};
+  }
+  const dir=eventDirection(e);
+  if(dir>0) return{label:"BEAT",color:"#3fb950",icon:"🟢"};
+  if(dir<0) return{label:"MISS",color:"#ff4d4d",icon:"🔴"};
+  return{label:"INLINE",color:"#8b949e",icon:"⚪"};
+}
+function getPairPendingEvents(pair,calData=[],upcoming=[]){
+  return getPairTodayEvents(pair,calData,upcoming).filter(e=>getEventStatus(e).label==="ČEKÁ SE");
 }
 function getPairDailyState(pair,scores,calData,upcoming){
   const c=detectFundamentalConflict(pair,scores,calData,DAY_WINDOW);
+  const pending=getPairPendingEvents(pair,calData,upcoming).length>0;
   const hasUp=getTodayHighImpact(pair.base,upcoming).length+getTodayHighImpact(pair.quote,upcoming).length>0;
   if(c.hasData&&c.conflict) return{level:"conflict",dot:"🔴",color:"#ff4d4d"};
+  if(pending) return{level:"pending",dot:"🟠",color:"#d29922"};
   if(hasUp) return{level:"upcoming",dot:"🟡",color:"#d29922"};
   if(c.hasData&&c.stDir===c.ltDir) return{level:"confirm",dot:"🟢",color:"#3fb950"};
   return{level:"none",dot:"",color:null};
@@ -2900,6 +2948,53 @@ function DailyBriefPanel({pair,scores,calData,upcoming}){
   );
 }
 
+
+function DailyEventsPanel({pair,calData=[],upcoming=[]}){
+  const events=getPairTodayEvents(pair,calData,upcoming);
+  const tm=e=>new Date(e.time).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
+  const fmt=v=>v!==undefined&&v!==null&&String(v).trim()!==""?String(v):"—";
+  const pairImpact=e=>{
+    const st=getEventStatus(e),dir=eventDirection(e);
+    if(st.label==="PŘIJDE") return "Čeká se na zveřejnění";
+    if(st.label==="ČEKÁ SE") return "Čas proběhl, actual ještě není v datech";
+    if(dir===0) return "Bez jasného překvapení";
+    const relBase=eventRelevance(pair.base,e),relQuote=eventRelevance(pair.quote,e);
+    const cur=relBase?pair.base:relQuote?pair.quote:null;
+    if(!cur) return "";
+    const ccyBull=dir>0;
+    const pairBull=(cur===pair.base&&ccyBull)||(cur===pair.quote&&!ccyBull);
+    return `${cur} ${ccyBull?"bullish":"bearish"} → ${pair.pair} ${pairBull?"bullish":"bearish"}`;
+  };
+  return(
+    <div className="pro-card" style={{padding:16,marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:12}}>
+        <div>
+          <div className="pro-panel-title" style={{margin:0}}>Dnešní události — {pair?.pair||"pár"}</div>
+          <div style={{fontSize:11,color:"#8b949e",marginTop:3}}>Actual · Forecast · Previous · dopad na vybraný pár</div>
+        </div>
+        <span style={{fontSize:10,color:"#8b949e",border:"1px solid #263242",borderRadius:999,padding:"4px 8px"}}>TODAY</span>
+      </div>
+      {!events.length&&<div style={{fontSize:12,color:"#8b949e",lineHeight:1.6,background:"rgba(63,185,80,.05)",border:"1px solid rgba(63,185,80,.16)",borderRadius:10,padding:12}}>🟢 Dnes pro {pair?.base}/{pair?.quote} nejsou v kalendáři žádné high/medium impact události.</div>}
+      {events.map((e,i)=>{const st=getEventStatus(e);const rel=eventRelevance(pair.base,e)?pair.base:pair.quote;return(
+        <div key={i} style={{border:"1px solid #1b2a35",borderLeft:`4px solid ${st.color}`,borderRadius:10,padding:"10px 12px",marginBottom:8,background:"rgba(255,255,255,.025)"}}>
+          <div style={{display:"grid",gridTemplateColumns:"54px 42px 1fr auto",gap:8,alignItems:"center",marginBottom:8}}>
+            <span style={{fontSize:12,color:"#c9d1d9",fontWeight:800}}>{tm(e)}</span>
+            <span style={{fontSize:12,color:"#e6edf3",fontWeight:900}}>{FLAGS[rel]} {rel}</span>
+            <span style={{fontSize:12,color:"#e6edf3",fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.event}</span>
+            <span style={{fontSize:10,color:st.color,border:`1px solid ${st.color}55`,borderRadius:999,padding:"3px 7px",fontWeight:900}}>{st.icon} {st.label}</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,fontSize:11,marginBottom:8}}>
+            <div style={{background:"#08111b",borderRadius:8,padding:"6px 8px",textAlign:"center"}}><div style={{color:"#4a6a88"}}>ACTUAL</div><b style={{color:"#e6edf3"}}>{fmt(e.actual)}</b></div>
+            <div style={{background:"#08111b",borderRadius:8,padding:"6px 8px",textAlign:"center"}}><div style={{color:"#4a6a88"}}>FORECAST</div><b style={{color:"#e6edf3"}}>{fmt(e.estimate||e.forecast)}</b></div>
+            <div style={{background:"#08111b",borderRadius:8,padding:"6px 8px",textAlign:"center"}}><div style={{color:"#4a6a88"}}>PREVIOUS</div><b style={{color:"#e6edf3"}}>{fmt(e.prev||e.previous)}</b></div>
+          </div>
+          <div style={{fontSize:11,color:st.color,lineHeight:1.45}}>Dopad: {pairImpact(e)}</div>
+        </div>
+      )})}
+    </div>
+  );
+}
+
 function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},calData=[],upcoming=[]}){
   const buy=pair.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
   const fProb=forecast?.prob||50;
@@ -3988,10 +4083,7 @@ function App(){
             <div>{selected&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses} calData={calData} upcoming={upcoming}/>}</div>
             <div>
               <DashboardCalendarPanel events={upcoming} pair={selected}/>
-              <div className="pro-card" style={{padding:16}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div className="pro-panel-title" style={{margin:0}}>AI Coach</div><span style={{fontSize:11,color:"#3fb950"}}>● Online</span></div>
-                <div className="coach-compact"><AICoachTab scores={scores} pairs={top} forecasts={forecasts} aiAnalyses={aiAnalyses} cotData={cotData} selected={selected} upcoming={upcoming} calData={calData}/></div>
-              </div>
+              {selected&&<DailyEventsPanel pair={selected} calData={calData} upcoming={upcoming}/>}
             </div>
           </div>
         )}
