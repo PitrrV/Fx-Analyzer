@@ -1709,6 +1709,7 @@ function getPairDailyState(pair,scores,calData,upcoming){
 function getPosition(pair){try{return (JSON.parse(localStorage.getItem("positions")||"{}"))[pair]||"none";}catch(e){return"none";}}
 function setPosition(pair,side){try{const p=JSON.parse(localStorage.getItem("positions")||"{}");side==="none"?delete p[pair]:p[pair]=side;localStorage.setItem("positions",JSON.stringify(p));}catch(e){}}
 function getAllPositions(){try{return JSON.parse(localStorage.getItem("positions")||"{}");}catch(e){return{};}}
+function loadNotes(){try{return JSON.parse(localStorage.getItem("pair_notes")||"{}");}catch(e){return{};}}
 
 // ════════ BIAS FLIP DETECTION ════════
 function loadBiasState(){try{return JSON.parse(localStorage.getItem("bias_state")||"{}");}catch(e){return{};}}
@@ -2046,7 +2047,7 @@ function CopyBtn({text}){
   );
 }
 
-function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState}){
+function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note}){
   const buy=p.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
   const conf=Math.min(100,(p.diff/15)*100);
   const f=forecast||{};
@@ -2105,6 +2106,7 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState}){
       <div style={{height:4,background:"#1a2432",borderRadius:4,marginTop:9,overflow:"hidden"}}>
         <div style={{width:conf+"%",height:"100%",background:ac,borderRadius:4}}/>
       </div>
+      {note&&<div title={note} style={{fontSize:10,color:"#8a96a8",fontStyle:"italic",marginTop:7,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",borderTop:"1px solid #16202c",paddingTop:5}}>📝 {note}</div>}
     </div>
   );
 }
@@ -2937,7 +2939,25 @@ function DailyBriefPanel({pair,scores,calData,upcoming,positions,onPosition}){
   );
 }
 
-function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},calData=[],upcoming=[],positions={},onPosition=()=>{}}){
+function NotesCard({pair,note,onSave}){
+  const [txt,setTxt]=useState(note||"");
+  useEffect(function(){setTxt(note||"");},[pair.pair]);
+  const dirty=txt!==(note||"");
+  return(
+    <div className="pro-card" style={{padding:14,marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <div className="pro-panel-title" style={{margin:0}}>📝 Moje poznámka — {pair.pair}</div>
+        {dirty?<span style={{fontSize:10,color:"#d29922"}}>● neuloženo</span>:(note?<span style={{fontSize:10,color:"#3fb950"}}>✓ uloženo</span>:null)}
+      </div>
+      <textarea value={txt} onChange={function(e){setTxt(e.target.value);}} onBlur={function(){onSave(pair.pair,txt);}}
+        placeholder="Např. čekám na retest 1.0850, pak long · SL pod 1.0790 · po NFP přehodnotit..."
+        style={{width:"100%",minHeight:58,background:"#0d1117",border:"1px solid #1d2a36",borderRadius:8,color:"#e6edf3",fontSize:12,padding:"8px 10px",resize:"vertical",fontFamily:"inherit",lineHeight:1.5,outline:"none"}}/>
+      <div style={{fontSize:10,color:"#4a6a88",marginTop:4}}>Uloží se po kliknutí mimo pole. Drží se u páru i po zavření appky a ukazuje se u páru v seznamu.</div>
+    </div>
+  );
+}
+
+function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},calData=[],upcoming=[],positions={},onPosition=()=>{},notes={},onNote=()=>{}}){
   const buy=pair.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
   const fProb=forecast?.prob||50;
   const probC=fProb>=65?"#3fb950":fProb<=35?"#ff4d4d":"#d29922";
@@ -2949,6 +2969,7 @@ function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},cal
     <ConvictionSummary pair={pair} scores={scores} aiAnalyses={aiAnalyses}/>
     <BiasFlipNotice pair={pair} calData={calData} upcoming={upcoming}/>
     <DailyBriefPanel pair={pair} scores={scores} calData={calData} upcoming={upcoming} positions={positions} onPosition={onPosition}/>
+    <NotesCard pair={pair} note={notes[pair.pair]} onSave={onNote}/>
     {isCADpair&&<OilPanel pair={pair}/>}
     <COTRetailPairPanel pair={pair} cotMeta={cotMeta||{}} cotData={cotData||{}} sentData={sentData||{}}/>
     <div style={{display:"grid",gridTemplateColumns:"1fr 330px",gap:14}}><div className="pro-card" style={{padding:16}}><div className="pro-panel-title">Score komponenty</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>{[{label:"Fundamenty",value:((scores[pair.base]?.fund_score||0)-(scores[pair.quote]?.fund_score||0)),max:10},{label:"CB Policy",value:((scores[pair.base]?.policy_adj||0)-(scores[pair.quote]?.policy_adj||0)),max:3},{label:"Real Yield",value:((scores[pair.base]?.yield_adj||0)-(scores[pair.quote]?.yield_adj||0)),max:3},{label:"COT",value:((scores[pair.base]?.cot_score||0)-(scores[pair.quote]?.cot_score||0)),max:6},{label:"Sentiment",value:((scores[pair.base]?.sent_score||0)-(scores[pair.quote]?.sent_score||0)),max:4},{label:"Sezónnost",value:((scores[pair.base]?.season_score||0)-(scores[pair.quote]?.season_score||0)),max:4}].map(x=>{const col=x.value>0?"#3fb950":x.value<0?"#ff4d4d":"#d29922";return <div key={x.label} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:"#cbd6e2",marginBottom:8}}>{x.label}</div><div style={{fontSize:24,fontWeight:1000,color:col}}>{x.value>0?"+":""}{x.value.toFixed(1)}</div><div style={{fontSize:11,color:col,marginTop:5}}>{x.value>1?"Bullish":x.value<-1?"Bearish":"Neutral"}</div><div style={{height:4,background:"#1b232d",borderRadius:4,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,Math.abs(x.value)/x.max*100)+"%",background:col,borderRadius:4}}/></div></div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginTop:14,borderTop:"1px solid #1b2a35",paddingTop:14,fontSize:12,color:"#8b949e",textAlign:"center"}}><div>Spread<br/><b style={{color:"#e6edf3"}}>0.7</b></div><div>Volatilita (D)<br/><b style={{color:"#e6edf3"}}>0.42%</b></div><div>ATR (14)<br/><b style={{color:"#e6edf3"}}>0.0065</b></div><div>Liquidity<br/><b className="green">HIGH</b></div><div>Trend<br/><b style={{color:ac}}>{pair.dir==="BUY"?"Bullish":"Bearish"}</b></div><div>Risk<br/><b className="orange">Medium</b></div></div></div><AIAnalysisStatusPanel pair={pair} aiAnalyses={aiAnalyses}/></div>
@@ -3768,7 +3789,7 @@ function DailyBriefBar({pairs,scores,calData,upcoming,inline,positions}){
   );
 }
 
-function OpenPositionsWidget({positions,scores,calData,upcoming,pairs,onPosition}){
+function OpenPositionsWidget({positions,scores,calData,upcoming,pairs,onPosition,notes}){
   const entries=Object.entries(positions||{}).filter(([,s])=>s&&s!=="none");
   return(
     <div style={{marginTop:12,borderTop:"1px solid #1b2a35",paddingTop:10}}>
@@ -3779,12 +3800,16 @@ function OpenPositionsWidget({positions,scores,calData,upcoming,pairs,onPosition
             const p=(pairs||[]).find(x=>x.pair===pr);
             const st=p?getPairDailyState(p,scores,calData,upcoming):{dot:"",color:"#8b949e"};
             const sc=side==="LONG"?"var(--cmd-green)":"#ff4d4d";
+            const note=(notes||{})[pr];
             return(
-              <div key={pr} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,fontSize:11}}>
-                <span style={{fontWeight:800,color:"#e6edf3"}}>{pr}</span>
-                <span style={{color:sc,fontWeight:800}}>{side}</span>
-                {st.dot&&<span title="dnešní stav pozice">{st.dot}</span>}
-                <span onClick={()=>onPosition(pr,"none")} title="Zavřít pozici" style={{marginLeft:"auto",cursor:"pointer",color:"#4a6a88",fontSize:12,padding:"0 4px"}}>✕</span>
+              <div key={pr} style={{marginBottom:6}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11}}>
+                  <span style={{fontWeight:800,color:"#e6edf3"}}>{pr}</span>
+                  <span style={{color:sc,fontWeight:800}}>{side}</span>
+                  {st.dot&&<span title="dnešní stav pozice">{st.dot}</span>}
+                  <span onClick={()=>onPosition(pr,"none")} title="Zavřít pozici" style={{marginLeft:"auto",cursor:"pointer",color:"#4a6a88",fontSize:12,padding:"0 4px"}}>✕</span>
+                </div>
+                {note&&<div title={note} style={{fontSize:9,color:"#7d8aa0",fontStyle:"italic",marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📝 {note}</div>}
               </div>
             );
           })
@@ -3811,6 +3836,13 @@ function App(){
   const [cotData,setCotData]=useState(loadCOT());
   const [positions,setPositions]=useState(getAllPositions());
   const updatePosition=useCallback((pair,side)=>{setPosition(pair,side);setPositions(getAllPositions());},[]);
+  const [notes,setNotes]=useState(loadNotes());
+  const updateNote=useCallback((pair,text)=>{
+    const t=(text||"").trim();const next=loadNotes();
+    if(t) next[pair]=t; else delete next[pair];
+    try{localStorage.setItem("pair_notes",JSON.stringify(next));}catch(e){}
+    setNotes(next);
+  },[]);
   const [riskSentimentUI,setRiskSentimentUI]=useState(g_riskSentiment);
   function setRiskSent(v){g_riskSentiment=v;setRiskSentimentUI(v);localStorage.setItem("v5_risk_sent",String(v));}
 
@@ -3956,7 +3988,7 @@ function App(){
           <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}><b style={{fontSize:20,color:"var(--cmd-green)"}}>{topPair?Math.min(100,Math.round((topPair.diff/10)*100)):0}%</b><div className="command-progress" style={{flex:1}}><div style={{width:(topPair?Math.min(100,Math.round((topPair.diff/10)*100)):0)+"%"}}></div></div></div>
           <CBDIWidget/>
           <AutoUpdateStatus/>
-          <OpenPositionsWidget positions={positions} scores={scores} calData={calData} upcoming={upcoming} pairs={top} onPosition={updatePosition}/>
+          <OpenPositionsWidget positions={positions} scores={scores} calData={calData} upcoming={upcoming} pairs={top} onPosition={updatePosition} notes={notes}/>
         </div>
       </aside>
 
@@ -4046,11 +4078,11 @@ function App(){
               <div className="pro-panel-title">Měnové páry</div>
               <div className="pro-pair-list">
                 {loading&&!top.length?<div style={{color:"#8b949e",padding:"20px 0"}}>⏳ Načítám 15 měsíců dat...</div>
-                  :top.map((p,i)=><PairRow key={p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:(i+1)+" / "+top.length})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]} dailyState={getPairDailyState(p,scores,calData,upcoming)}/>) }
+                  :top.map((p,i)=><PairRow key={p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:(i+1)+" / "+top.length})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]} dailyState={getPairDailyState(p,scores,calData,upcoming)} note={notes[p.pair]}/>) }
               </div>
               <div style={{borderTop:"1px solid #263242",paddingTop:12,marginTop:10,display:"flex",justifyContent:"space-between",fontSize:12,color:"#8b949e"}}><span>Celkem párů: {top.length}</span><button className="pro-btn" onClick={()=>loadData(fhKey,cotData,sentData)}>Aktualizovat</button></div>
             </div>
-            <div>{selected&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses} calData={calData} upcoming={upcoming} positions={positions} onPosition={updatePosition}/>}</div>
+            <div>{selected&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses} calData={calData} upcoming={upcoming} positions={positions} onPosition={updatePosition} notes={notes} onNote={updateNote}/>}</div>
             <div>
               <DashboardCalendarPanel events={upcoming} pair={selected}/>
               <DailyBriefBar pairs={top} scores={scores} calData={calData} upcoming={upcoming} positions={positions} inline/>
