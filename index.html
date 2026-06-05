@@ -2185,7 +2185,7 @@ function MiniLineChart({values=[],height=120,color="#d29922"}){
     {values.map((v,i)=> i===values.length-1 ? <circle key={i} cx={pad+(values.length===1?0:i*(w-2*pad)/(values.length-1))} cy={h-pad-((v-min)/span)*(h-2*pad)} r="4" fill={color}/> : null)}
   </svg>;
 }
-function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",labelA="BASE",labelB="QUOTE",unit="score",independentScale=false}){
+function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",labelA="BASE",labelB="QUOTE",unit="score",independentScale=false,autoFit=false}){
   const w=760,h=height,padL=46,padR=22,padT=22,padB=32;
   const aVals=a.filter(function(v){return Number.isFinite(v);});
   const bVals=b.filter(function(v){return Number.isFinite(v);});
@@ -2198,8 +2198,14 @@ function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",l
     gMin=Math.min(minA,minB); gMax=Math.max(maxA,maxB);
   }else{
     var allVals=aVals.concat(bVals);
-    gMin=Math.min.apply(null,[-10].concat(allVals));
-    gMax=Math.max.apply(null,[10].concat(allVals));
+    if(autoFit&&allVals.length){
+      var lo=Math.min.apply(null,allVals), hi=Math.max.apply(null,allVals);
+      var pad=Math.max(0.8,(hi-lo)*0.18);
+      gMin=lo-pad; gMax=hi+pad;
+    }else{
+      gMin=Math.min.apply(null,[-10].concat(allVals));
+      gMax=Math.max.apply(null,[10].concat(allVals));
+    }
     minA=gMin; maxA=gMax; minB=gMin; maxB=gMax;
   }
   gSpan=gMax-gMin||1;
@@ -2297,21 +2303,35 @@ function OilPanel({pair}){
 }
 
 function PairScoreHistoryPanel({pair}){
-  const base=getScoreSeries(pair.base,104), quote=getScoreSeries(pair.quote,104);
+  const RANGES=[["14D",14],["1M",30],["3M",90],["1Y",365],["ALL",9999]];
+  const [range,setRange]=useState("1M");
+  const days=(RANGES.find(r=>r[0]===range)||["1M",30])[1];
+  const base=getScoreSeries(pair.base,days), quote=getScoreSeries(pair.quote,days);
   const n=Math.max(base.values.length,quote.values.length);
+  const lastB=base.values.length?base.values[base.values.length-1]:null;
+  const lastQ=quote.values.length?quote.values[quote.values.length-1]:null;
+  const diff=(typeof lastB==="number"&&typeof lastQ==="number")?(lastB-lastQ):null;
   return <div className="pro-card pro-chart-wrap" style={{marginBottom:14}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:12}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>
       <div>
-        <div className="pro-panel-title" style={{marginBottom:4}}>Score historie — obě měny</div>
+        <div className="pro-panel-title" style={{marginBottom:4}}>Vývoj skóre — {pair.base} vs {pair.quote}</div>
         <div style={{display:"flex",gap:18,fontSize:12}}>
           <span><b style={{color:"#2f9bff"}}>■ {pair.base}</b> {NAMES[pair.base]}</span>
           <span><b style={{color:"#bf4cff"}}>■ {pair.quote}</b> {NAMES[pair.quote]}</span>
         </div>
       </div>
-      <div className="pro-chart-toolbar"><span>3M</span><span>6M</span><span className="active">1Y</span><span>2Y</span><span>ALL</span></div>
+      <div className="pro-chart-toolbar">
+        {RANGES.map(function(r){return <span key={r[0]} className={range===r[0]?"active":""} onClick={function(){setRange(r[0]);}} style={{cursor:"pointer"}}>{r[0]}</span>;})}
+      </div>
     </div>
-    {n>1?<DualLineChart a={base.values} b={quote.values} labelA={pair.base} labelB={pair.quote}/>:<div style={{fontSize:12,color:"#8b949e",padding:18}}>Score historie se doplní po importu COT historie nebo dalších refreshích.</div>}
-    <div style={{fontSize:11,color:"#8b949e",marginTop:6}}>Modrá = {pair.base}, fialová = {pair.quote}. Čím větší rozestup, tím silnější bias páru.</div>
+    {n>1
+      ? <DualLineChart a={base.values} b={quote.values} labelA={pair.base} labelB={pair.quote} autoFit={true}/>
+      : <div style={{fontSize:12,color:"#8b949e",padding:18,lineHeight:1.6}}>Zatím málo dat ({n} {n===1?"bod":"body"}). Historie skóre se plní automaticky každý den, co necháš appku načíst — za pár dní bude graf čitelný. Rychlý start: naimportuj COT historii v záložce <b>COT &amp; Sentiment</b>.</div>
+    }
+    <div style={{fontSize:11,color:"#8b949e",marginTop:6,lineHeight:1.6}}>
+      {diff!==null&&<span>Aktuální rozdíl skóre: <b style={{color:diff>=0?"#3fb950":"#ff4d4d"}}>{diff>0?"+":""}{diff.toFixed(1)}</b> ({Math.abs(diff)<0.1?"vyrovnané":(diff>=0?pair.base:pair.quote)+" silnější"}) · </span>}
+      Větší rozestup čar = silnější bias páru. Když se čáry protnou, bias se otáčí. Osa se přizpůsobí datům v okně ({n} {n===1?"bod":"bodů"}).
+    </div>
   </div>;
 }
 function COTNetPairPanel({pair,cotMeta,cotData}){
