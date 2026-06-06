@@ -720,7 +720,11 @@ Use this exact structure:
   },
   "risk_warnings":["<warning>"],
   "summary":"<3-4 sentence professional summary>"
-}`;
+}
+
+LANGUAGE RULE (IMPORTANT):
+Write ALL human-readable free text in CZECH (Czech language). This includes every descriptive/explanatory value: timeframe_context, market_structure.description, bos_choch, key_levels notes, ict_smc locations and notes, premium_discount, all classical_ta fields, entry_zone, entry_trigger, stop_loss, tp1, tp2, confluence_factors, invalidation, risk_warnings, and summary.
+BUT keep these ENUM/KEYWORD values EXACTLY in English (do NOT translate them — the app compares them in code): bias (BULLISH/BEARISH/SIDEWAYS), market_structure.trend (UPTREND/DOWNTREND/RANGING), key_levels.type (RESISTANCE/SUPPORT), strength (STRONG/MEDIUM/WEAK), order_blocks.type & fvg.type (BULLISH/BEARISH), status (UNTESTED/TESTED/MITIGATED/OPEN/PARTIALLY_FILLED/FILLED), significance (HIGH/MEDIUM/LOW), liquidity.type (BSL/SSL), entry_setup.direction (BUY/SELL/WAIT). Numbers stay numbers. Return ONLY the JSON object.`;
 
 // ── COT HISTORIE (CFTC Historical Compressed) ─────────────
 function parseCSV(text){
@@ -801,21 +805,41 @@ function parseCOTHistoricalText(text){
   }
   return byDate;
 }
-async function fetchBlobAny(urls){
+async function fetchBlobAny(urls,validate){
   let last=null;
   for(const url of urls){
-    try{const r=await fetch(url,{cache:"no-store"});if(r.ok)return await r.blob();last=new Error("HTTP "+r.status);}catch(e){last=e;}
+    try{
+      const r=await fetch(url,{cache:"no-store"});
+      if(!r.ok){last=new Error("HTTP "+r.status);continue;}
+      const blob=await r.blob();
+      if(validate){const ok=await validate(blob);if(!ok){last=new Error("neplatný obsah (proxy?)");continue;}}
+      return blob;
+    }catch(e){last=e;}
   }
   throw last||new Error("historical fetch failed");
+}
+// Ověření, že blob je opravdu ZIP (magic "PK"), ne HTML chybová stránka z proxy.
+async function isZipBlob(blob){
+  try{ if(blob.size<100) return false; const buf=await blob.slice(0,4).arrayBuffer(); const b=new Uint8Array(buf); return b[0]===0x50&&b[1]===0x4B; }catch(e){ return false; }
+}
+// Přímý CFTC odkaz + binární CORS proxy jako fallback (GitHub Pages nemá přímý CORS na cftc.gov).
+function withBinaryProxies(url){
+  const e=encodeURIComponent(url);
+  return [url,
+    "https://api.allorigins.win/raw?url="+e,
+    "https://corsproxy.io/?url="+e,
+    "https://api.codetabs.com/v1/proxy/?quest="+url,
+    "https://thingproxy.freeboard.io/fetch/"+url];
 }
 async function fetchCOTHistoryYears(years){
   if(!window.JSZip) throw new Error("JSZip knihovna není načtená — zkontroluj internet/CDN.");
   const hist={};let loaded=0;let lastErr=null;
   for(const y of years){
     // Primární CFTC naming pro Traders in Financial Futures; když CFTC změní název, aplikace jen zahlásí konkrétní chybu.
-    const urls=[`https://www.cftc.gov/files/dea/history/fut_fin_txt_${y}.zip`,`https://cftc.gov/files/dea/history/fut_fin_txt_${y}.zip`];
+    const base=`https://www.cftc.gov/files/dea/history/fut_fin_txt_${y}.zip`;
+    const urls=withBinaryProxies(base);
     try{
-      const blob=await fetchBlobAny(urls);
+      const blob=await fetchBlobAny(urls,isZipBlob);
       const zip=await JSZip.loadAsync(blob);
       const file=Object.values(zip.files).find(f=>!f.dir && /\.(txt|csv)$/i.test(f.name)) || Object.values(zip.files).find(f=>!f.dir);
       if(!file) throw new Error("ZIP neobsahuje textový soubor");
@@ -2187,7 +2211,7 @@ function MiniLineChart({values=[],height=120,color="#d29922"}){
     {values.map((v,i)=> i===values.length-1 ? <circle key={i} cx={pad+(values.length===1?0:i*(w-2*pad)/(values.length-1))} cy={h-pad-((v-min)/span)*(h-2*pad)} r="4" fill={color}/> : null)}
   </svg>;
 }
-function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",labelA="BASE",labelB="QUOTE",unit="score",independentScale=false,autoFit=false}){
+function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",labelA="BASE",labelB="QUOTE",unit="score",independentScale=false,autoFit=false,dates=null}){
   const w=760,h=height,padL=46,padR=22,padT=22,padB=32;
   const aVals=a.filter(function(v){return Number.isFinite(v);});
   const bVals=b.filter(function(v){return Number.isFinite(v);});
@@ -2219,6 +2243,21 @@ function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",l
   function ptsA(arr){return arr.map(function(v,i){return xPos(i,arr.length)+","+yPosA(v);}).join(' ');}
   function ptsB(arr){return arr.map(function(v,i){return xPos(i,arr.length)+","+yPosB(v);}).join(' ');}
   var grid=[0,.25,.5,.75,1];
+  var dateTicks=[];
+  if(dates&&dates.length){
+    var nd=dates.length;
+    var mode=nd<=21?"day":(nd<=95?"week":"month");
+    var MON=["led","úno","bře","dub","kvě","čvn","čvc","srp","zář","říj","lis","pro"];
+    for(var di=0;di<nd;di++){
+      var dd=dates[di]; if(!dd) continue;
+      var show=false,lbl="";
+      if(mode==="day"){ show=(nd<=16)||(di%2===0); lbl=dd.getDate()+"."+(dd.getMonth()+1)+"."; }
+      else if(mode==="week"){ show=(dd.getDay()===1); lbl=dd.getDate()+"."+(dd.getMonth()+1)+"."; }
+      else { show=(dd.getDate()===1); lbl=MON[dd.getMonth()]; }
+      if(show) dateTicks.push({x:xPos(di,nd),lbl:lbl});
+    }
+  }
+  var hasDates=!!(dates&&dates.length);
   var lastA=a.length>0?a[a.length-1]:null;
   var lastB=b.length>0?b[b.length-1]:null;
   var lastALabel=lastA!==null?(lastA>0?"+":"")+lastA.toFixed(unit==="net"?0:1):"";
@@ -2230,21 +2269,50 @@ function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",l
     </defs>
     <rect x="0" y="0" width={w} height={h} fill="transparent"/>
     {grid.map(function(g,i){var yy=padT+g*(h-padT-padB);return <g key={i}><line x1={padL} x2={w-padR} y1={yy} y2={yy} stroke={i===2?"#334155":"#1d2a3a"}/><text x="10" y={yy+4} fill="#8b949e" fontSize="11">{(gMax-g*gSpan).toFixed(0)}</text></g>;})}
-    {[0,.2,.4,.6,.8,1].map(function(g,i){return <line key={i} x1={padL+g*(w-padL-padR)} x2={padL+g*(w-padL-padR)} y1={padT} y2={h-padB} stroke="#142032"/>;})}
+    {hasDates
+      ? dateTicks.map(function(t,i){return <g key={"dt"+i}><line x1={t.x} x2={t.x} y1={padT} y2={h-padB} stroke="#1a2738" strokeDasharray="3 4"/><text x={t.x} y={h-10} fill="#8b949e" fontSize="10" textAnchor="middle">{t.lbl}</text></g>;})
+      : [0,.2,.4,.6,.8,1].map(function(g,i){return <line key={i} x1={padL+g*(w-padL-padR)} x2={padL+g*(w-padL-padR)} y1={padT} y2={h-padB} stroke="#142032"/>;})
+    }
     {a.length>1&&<polyline points={padL+","+(h-padB)+" "+ptsA(a)+" "+xPos(a.length-1,a.length)+","+(h-padB)} fill="url(#fillA)"/>}
     {b.length>1&&<polyline points={padL+","+(h-padB)+" "+ptsB(b)+" "+xPos(b.length-1,b.length)+","+(h-padB)} fill="url(#fillB)"/>}
     {a.length>1&&<polyline points={ptsA(a)} fill="none" stroke={colorA} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>}
     {b.length>1&&<polyline points={ptsB(b)} fill="none" stroke={colorB} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>}
     {lastA!==null&&<g><circle cx={xPos(a.length-1,a.length)} cy={yPosA(lastA)} r="5" fill={colorA}/><text x={w-padR-36} y={yPosA(lastA)-8} fill="#fff" fontSize="12" fontWeight="700">{lastALabel}</text></g>}
     {lastB!==null&&<g><circle cx={xPos(b.length-1,b.length)} cy={yPosB(lastB)} r="5" fill={colorB}/><text x={w-padR-36} y={yPosB(lastB)+18} fill="#fff" fontSize="12" fontWeight="700">{lastBLabel}</text></g>}
-    <text x={padL} y={h-10} fill="#8b949e" fontSize="11">starší</text>
-    <text x={w-padR-42} y={h-10} fill="#8b949e" fontSize="11">aktuální</text>
+    {!hasDates&&<text x={padL} y={h-10} fill="#8b949e" fontSize="11">starší</text>}
+    {!hasDates&&<text x={w-padR-42} y={h-10} fill="#8b949e" fontSize="11">aktuální</text>}
   </svg>;
 }
 function getScoreSeries(currency,limit=104){
   const hist=loadScoreHistory();
   const dates=Object.keys(hist).sort().slice(-limit);
   return {dates,values:dates.map(d=>hist[d]?.[currency]??0)};
+}
+// Pravidelná denní kalendářní řada s forward-fill (chybějící den = poslední známé skóre)
+function buildDailySeries(currency,windowDays){
+  const hist=loadScoreHistory();
+  const keys=Object.keys(hist).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
+  if(!keys.length) return {dates:[],values:[]};
+  const today=new Date(); today.setHours(0,0,0,0);
+  let start;
+  if(windowDays>=9999){ start=new Date(keys[0]+"T00:00:00"); }
+  else { start=new Date(today); start.setDate(today.getDate()-(windowDays-1)); }
+  const startMs=start.getTime(), endMs=today.getTime();
+  // seed: poslední známá hodnota k datu <= start
+  let last=null;
+  for(let i=0;i<keys.length;i++){
+    if(new Date(keys[i]+"T00:00:00").getTime()<=startMs){ const v=hist[keys[i]]&&hist[keys[i]][currency]; if(typeof v==="number") last=v; }
+    else break;
+  }
+  const dates=[], values=[];
+  for(let t=startMs;t<=endMs;t+=86400000){
+    const d=new Date(t);
+    const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const v=hist[key]&&hist[key][currency];
+    if(typeof v==="number") last=v;
+    dates.push(d); values.push(last==null?0:last);
+  }
+  return {dates,values};
 }
 function getCOTNetSeries(currency,limit=104){
   const hist=loadCOTHistory();
@@ -2308,7 +2376,7 @@ function PairScoreHistoryPanel({pair}){
   const RANGES=[["14D",14],["1M",30],["3M",90],["1Y",365],["ALL",9999]];
   const [range,setRange]=useState("1M");
   const days=(RANGES.find(r=>r[0]===range)||["1M",30])[1];
-  const base=getScoreSeries(pair.base,days), quote=getScoreSeries(pair.quote,days);
+  const base=buildDailySeries(pair.base,days), quote=buildDailySeries(pair.quote,days);
   const n=Math.max(base.values.length,quote.values.length);
   const lastB=base.values.length?base.values[base.values.length-1]:null;
   const lastQ=quote.values.length?quote.values[quote.values.length-1]:null;
@@ -2327,7 +2395,7 @@ function PairScoreHistoryPanel({pair}){
       </div>
     </div>
     {n>1
-      ? <DualLineChart a={base.values} b={quote.values} labelA={pair.base} labelB={pair.quote} autoFit={true}/>
+      ? <DualLineChart a={base.values} b={quote.values} labelA={pair.base} labelB={pair.quote} autoFit={true} dates={base.dates}/>
       : <div style={{fontSize:12,color:"#8b949e",padding:18,lineHeight:1.6}}>Zatím málo dat ({n} {n===1?"bod":"body"}). Historie skóre se plní automaticky každý den, co necháš appku načíst — za pár dní bude graf čitelný. Rychlý start: naimportuj COT historii v záložce <b>COT &amp; Sentiment</b>.</div>
     }
     <div style={{fontSize:11,color:"#8b949e",marginTop:6,lineHeight:1.6}}>
@@ -3818,6 +3886,209 @@ function OpenPositionsWidget({positions,scores,calData,upcoming,pairs,onPosition
   );
 }
 
+// ── TRADING DENÍK ─────────────────────────────────────────
+function loadJournal(){try{return JSON.parse(localStorage.getItem("journal")||"[]");}catch(e){return[];}}
+function saveJournalArr(arr){try{localStorage.setItem("journal",JSON.stringify(arr));}catch(e){}}
+const PAIR_LIST_TYPE={EURUSD:"white",USDJPY:"white",GBPUSD:"white",AUDUSD:"grey",USDCAD:"grey",USDCHF:"black"};
+function captureContext(pairSym,pairs,scores,calData,upcoming,aiAnalyses){
+  const p=(pairs||[]).find(function(x){return x.pair===pairSym;})||null;
+  const diff=p?p.diff:null;
+  const band=diff==null?null:(Math.abs(diff)<2?"slabý":(Math.abs(diff)<=3?"sweetspot":"silný"));
+  let dailyLevel="none",flip=false,cbdi=null,cbStage=null;
+  try{ if(p) dailyLevel=getPairDailyState(p,scores,calData,upcoming).level; }catch(e){}
+  try{ flip=isPairFlipped(pairSym); }catch(e){}
+  try{ cbdi=calcCBDI(); }catch(e){}
+  try{ cbStage=getCBCycleStage().stage; }catch(e){}
+  const ai=(aiAnalyses||{})[pairSym]||null;
+  return {diff:diff,dir:p?p.dir:null,conviction:p?p.conviction:null,band:band,dailyLevel:dailyLevel,flip:flip,cbdi:cbdi,cbStage:cbStage,aiBias:ai?ai.bias:null,aiConf:ai?ai.confidence:null,listType:PAIR_LIST_TYPE[pairSym]||"other"};
+}
+function jStat(list){
+  var w=list.filter(function(t){return t.outcome==="win";}).length;
+  var l=list.filter(function(t){return t.outcome==="loss";}).length;
+  var be=list.filter(function(t){return t.outcome==="be";}).length;
+  var dec=w+l; var wr=dec?Math.round(w/dec*100):null;
+  var rs=list.map(function(t){return typeof t.rMultiple==="number"?t.rMultiple:null;}).filter(function(x){return x!=null;});
+  var sumR=rs.reduce(function(a,b){return a+b;},0);
+  var avgR=rs.length?sumR/rs.length:null;
+  var pos=rs.filter(function(x){return x>0;}).reduce(function(a,b){return a+b;},0);
+  var neg=Math.abs(rs.filter(function(x){return x<0;}).reduce(function(a,b){return a+b;},0));
+  var pf=neg>0?pos/neg:(pos>0?999:null);
+  return {n:list.length,w:w,l:l,be:be,wr:wr,sumR:sumR,avgR:avgR,pf:pf};
+}
+function SliceBar({label,s}){
+  const wr=s.wr;
+  const col=wr==null?"#4a6a88":(wr>=60?"#3fb950":(wr>=50?"#d29922":"#ff4d4d"));
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6,fontSize:12}}>
+      <div style={{width:130,color:"#b7c3d1"}}>{label}</div>
+      <div style={{flex:1,height:8,background:"#0d1117",borderRadius:5,overflow:"hidden"}}>
+        <div style={{width:(wr==null?0:wr)+"%",height:"100%",background:col,borderRadius:5}}/>
+      </div>
+      <div style={{width:120,textAlign:"right",color:"#8b949e"}}>
+        {wr==null?"—":<b style={{color:col}}>{wr}% WR</b>} · {s.n} obch.{s.avgR!=null?" · "+(s.avgR>0?"+":"")+s.avgR.toFixed(2)+"R":""}
+      </div>
+    </div>
+  );
+}
+function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,onAdd,onUpdate,onDelete,onImport}){
+  const ALLP=["EURUSD","GBPUSD","USDJPY","USDCHF","USDCAD","AUDUSD","NZDUSD","EURGBP","EURJPY","GBPJPY","AUDJPY","EURAUD","AUDNZD","NZDCAD","CADCHF","AUDCHF","NZDJPY","CADJPY","CHFJPY"];
+  const pairOptions=(pairs&&pairs.length?pairs.map(function(p){return p.pair;}):ALLP);
+  const [f,setF]=useState({pair:(selected&&selected.pair)||pairOptions[0]||"EURUSD",dir:"LONG",entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
+  const [openOnly,setOpenOnly]=useState(false);
+  function upd(k,v){setF(function(prev){var n=Object.assign({},prev);n[k]=v;return n;});}
+  function save(){
+    if(!f.pair) return;
+    const now=new Date().toISOString();
+    const closed=f.outcome&&f.outcome!=="open";
+    onAdd({
+      id:Date.now()+"_"+Math.random().toString(36).slice(2,7),
+      pair:f.pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,
+      outcome:f.outcome,rMultiple:f.rMultiple===""?null:parseFloat(f.rMultiple),
+      notes:f.notes,openedAt:now,closedAt:closed?now:null,
+      ctx:captureContext(f.pair,pairs,scores,calData,upcoming,aiAnalyses)
+    });
+    setF(Object.assign({},f,{entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""}));
+  }
+  function download(name,text,type){
+    var blob=new Blob([text],{type:type});var url=URL.createObjectURL(blob);
+    var a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();
+    setTimeout(function(){URL.revokeObjectURL(url);a.remove();},120);
+  }
+  function exportJSON(){download("trading_journal.json",JSON.stringify(journal,null,2),"application/json");}
+  function exportCSV(){
+    var cols=["id","pair","dir","outcome","rMultiple","entry","sl","tp","riskPct","openedAt","closedAt","ctx_diff","ctx_dir","ctx_conviction","ctx_band","ctx_dailyLevel","ctx_flip","ctx_cbdi","ctx_cbStage","ctx_aiBias","ctx_listType","notes"];
+    var rows=journal.map(function(t){var c=t.ctx||{};return [t.id,t.pair,t.dir,t.outcome,t.rMultiple,t.entry,t.sl,t.tp,t.riskPct,t.openedAt,t.closedAt,c.diff,c.dir,c.conviction,c.band,c.dailyLevel,c.flip,c.cbdi,c.cbStage,c.aiBias,c.listType,(t.notes||"").replace(/[\r\n]+/g," ")].map(function(x){var s=x==null?"":String(x);return '"'+s.replace(/"/g,'""')+'"';}).join(",");});
+    download("trading_journal.csv",[cols.join(",")].concat(rows).join("\n"),"text/csv");
+  }
+  function importFile(e){
+    var file=e.target.files&&e.target.files[0];if(!file)return;
+    var rd=new FileReader();rd.onload=function(){try{var arr=JSON.parse(rd.result);if(Array.isArray(arr)){onImport(arr);}else alert("JSON není pole obchodů.");}catch(err){alert("Neplatný JSON soubor.");}};rd.readAsText(file);e.target.value="";
+  }
+  const closed=journal.filter(function(t){return t.outcome&&t.outcome!=="open";});
+  const all=jStat(closed);
+  const byConvHi=jStat(closed.filter(function(t){return (t.ctx&&t.ctx.conviction||0)>=3;}));
+  const byConvLo=jStat(closed.filter(function(t){return (t.ctx&&t.ctx.conviction||0)<3;}));
+  const bandSweet=jStat(closed.filter(function(t){return t.ctx&&t.ctx.band==="sweetspot";}));
+  const bandWeak=jStat(closed.filter(function(t){return t.ctx&&t.ctx.band==="slabý";}));
+  const bandStrong=jStat(closed.filter(function(t){return t.ctx&&t.ctx.band==="silný";}));
+  const listWhite=jStat(closed.filter(function(t){return t.ctx&&t.ctx.listType==="white";}));
+  const listGrey=jStat(closed.filter(function(t){return t.ctx&&t.ctx.listType==="grey";}));
+  const listBlack=jStat(closed.filter(function(t){return t.ctx&&t.ctx.listType==="black";}));
+  const vsConflict=jStat(closed.filter(function(t){return t.ctx&&t.ctx.dailyLevel==="conflict";}));
+  const vsClear=jStat(closed.filter(function(t){return t.ctx&&t.ctx.dailyLevel!=="conflict";}));
+  const inp={width:"100%",background:"#0d1117",border:"1px solid #1d2a36",borderRadius:7,color:"#e6edf3",fontSize:13,padding:"7px 9px",outline:"none",fontFamily:"inherit"};
+  const lab={fontSize:10,color:"#8b949e",marginBottom:3,display:"block"};
+  const shown=(openOnly?journal.filter(function(t){return t.outcome==="open";}):journal);
+  const dotMap={conflict:"🔴",upcoming:"🟡",confirm:"🟢",none:""};
+  return(
+    <div style={{maxWidth:1080}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:14,flexWrap:"wrap"}}>
+        <div>
+          <h2 style={{margin:0,fontSize:20}}>📓 Trading deník</h2>
+          <div style={{fontSize:12,color:"#8b949e",marginTop:2}}>Ke každému obchodu se uloží i fundamentální kontext appky — uvidíš, jestli vyděláváš, když posloucháš signály.</div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={exportCSV} className="pro-btn" style={{fontSize:12,padding:"7px 12px"}}>⬇ CSV</button>
+          <button onClick={exportJSON} className="pro-btn" style={{fontSize:12,padding:"7px 12px"}}>⬇ JSON</button>
+          <label className="pro-btn" style={{fontSize:12,padding:"7px 12px",cursor:"pointer"}}>⬆ Import<input type="file" accept="application/json" onChange={importFile} style={{display:"none"}}/></label>
+        </div>
+      </div>
+
+      {/* STATISTIKY */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginBottom:14}}>
+        {[["Obchodů",journal.length],["Uzavřených",all.n],["Win rate",all.wr==null?"—":all.wr+"%"],["Průměr R",all.avgR==null?"—":(all.avgR>0?"+":"")+all.avgR.toFixed(2)],["Součet R",(all.sumR>0?"+":"")+all.sumR.toFixed(1)],["Profit factor",all.pf==null?"—":(all.pf>=999?"∞":all.pf.toFixed(2))]].map(function(s){
+          return <div key={s[0]} className="pro-card" style={{padding:"12px 14px"}}><div style={{fontSize:10,color:"#8b949e"}}>{s[0]}</div><b style={{fontSize:20}}>{s[1]}</b></div>;
+        })}
+      </div>
+
+      {/* EDGE ŘEZY */}
+      {all.n>0&&(
+        <div className="pro-card" style={{padding:16,marginBottom:14}}>
+          <div className="pro-panel-title" style={{marginBottom:10}}>Ověření edge — WR podle kontextu appky</div>
+          <SliceBar label="Conviction ★3+" s={byConvHi}/>
+          <SliceBar label="Conviction ★0–2" s={byConvLo}/>
+          <div style={{height:8}}/>
+          <SliceBar label="Sweetspot 2–3" s={bandSweet}/>
+          <SliceBar label="Silný 3+" s={bandStrong}/>
+          <SliceBar label="Slabý <2" s={bandWeak}/>
+          <div style={{height:8}}/>
+          <SliceBar label="Whitelist páry" s={listWhite}/>
+          <SliceBar label="Greylist páry" s={listGrey}/>
+          <SliceBar label="Blacklist páry" s={listBlack}/>
+          <div style={{height:8}}/>
+          <SliceBar label="Proti 🔴 konfliktu" s={vsConflict}/>
+          <SliceBar label="Bez konfliktu" s={vsClear}/>
+          <div style={{fontSize:11,color:"#8b949e",marginTop:8}}>Tip: pokud máš výrazně horší WR u „Conviction ★0–2", „Slabý &lt;2", „Blacklist" nebo „Proti konfliktu" — to jsou obchody, které appka neradí. Data ti to ukážou na vlastních číslech.</div>
+        </div>
+      )}
+
+      {/* NOVÝ OBCHOD */}
+      <div className="pro-card" style={{padding:16,marginBottom:14}}>
+        <div className="pro-panel-title" style={{marginBottom:10}}>➕ Zapsat obchod</div>
+        <div style={{display:"grid",gridTemplateColumns:"1.2fr .8fr 1fr 1fr 1fr .8fr",gap:8,marginBottom:8}}>
+          <div><span style={lab}>Pár</span><select value={f.pair} onChange={function(e){upd("pair",e.target.value);}} style={inp}>{pairOptions.map(function(p){return <option key={p} value={p}>{p}</option>;})}</select></div>
+          <div><span style={lab}>Směr</span><select value={f.dir} onChange={function(e){upd("dir",e.target.value);}} style={inp}><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></div>
+          <div><span style={lab}>Entry</span><input value={f.entry} onChange={function(e){upd("entry",e.target.value);}} style={inp} placeholder="1.0850"/></div>
+          <div><span style={lab}>SL</span><input value={f.sl} onChange={function(e){upd("sl",e.target.value);}} style={inp} placeholder="1.0790"/></div>
+          <div><span style={lab}>TP</span><input value={f.tp} onChange={function(e){upd("tp",e.target.value);}} style={inp} placeholder="1.0970"/></div>
+          <div><span style={lab}>Risk %</span><input value={f.riskPct} onChange={function(e){upd("riskPct",e.target.value);}} style={inp} placeholder="0.5"/></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 3fr",gap:8,marginBottom:10}}>
+          <div><span style={lab}>Výsledek</span><select value={f.outcome} onChange={function(e){upd("outcome",e.target.value);}} style={inp}><option value="open">Otevřený</option><option value="win">Win</option><option value="loss">Loss</option><option value="be">BE</option></select></div>
+          <div><span style={lab}>R (násobek)</span><input value={f.rMultiple} onChange={function(e){upd("rMultiple",e.target.value);}} style={inp} placeholder="+1.8 / -1"/></div>
+          <div><span style={lab}>Poznámka</span><input value={f.notes} onChange={function(e){upd("notes",e.target.value);}} style={inp} placeholder="důvod vstupu, emoce, co se povedlo/nepovedlo..."/></div>
+        </div>
+        <button onClick={save} className="pro-btn" style={{padding:"9px 18px",background:"linear-gradient(90deg,#1ea35a,#127a41)",border:"1px solid #2ecf72",color:"#eafff1",fontWeight:800}}>Uložit obchod (uloží i kontext)</button>
+      </div>
+
+      {/* SEZNAM */}
+      <div className="pro-card" style={{padding:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div className="pro-panel-title" style={{margin:0}}>Obchody ({journal.length})</div>
+          <label style={{fontSize:11,color:"#8b949e",cursor:"pointer"}}><input type="checkbox" checked={openOnly} onChange={function(e){setOpenOnly(e.target.checked);}} style={{marginRight:5}}/>jen otevřené</label>
+        </div>
+        {shown.length===0
+          ? <div style={{fontSize:12,color:"#8b949e",padding:14}}>Zatím žádný obchod. Zapiš první nahoře — uloží se k němu i to, co appka v tu chvíli říkala.</div>
+          : shown.map(function(t){
+              var c=t.ctx||{};
+              var oc=t.outcome==="win"?{t:"WIN",col:"#3fb950"}:t.outcome==="loss"?{t:"LOSS",col:"#ff4d4d"}:t.outcome==="be"?{t:"BE",col:"#8b949e"}:{t:"OTEVŘENÝ",col:"#d29922"};
+              var dt=t.openedAt?new Date(t.openedAt):null;
+              return(
+                <div key={t.id} style={{borderTop:"1px solid #16202c",padding:"10px 0"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    <b style={{fontSize:14}}>{t.pair}</b>
+                    <span style={{color:t.dir==="LONG"?"#3fb950":"#ff4d4d",fontWeight:800,fontSize:12}}>{t.dir}</span>
+                    <span style={{fontSize:11,color:oc.col,fontWeight:700,border:"1px solid "+oc.col+"55",borderRadius:4,padding:"1px 7px"}}>{oc.t}</span>
+                    {typeof t.rMultiple==="number"&&<span style={{fontSize:12,fontWeight:700,color:t.rMultiple>=0?"#3fb950":"#ff4d4d"}}>{t.rMultiple>0?"+":""}{t.rMultiple}R</span>}
+                    <span style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
+                      <select value={t.outcome} onChange={function(e){onUpdate(t.id,{outcome:e.target.value,closedAt:e.target.value!=="open"?(t.closedAt||new Date().toISOString()):null});}} style={{background:"#0d1117",border:"1px solid #1d2a36",borderRadius:6,color:"#b7c3d1",fontSize:11,padding:"3px 6px"}}>
+                        <option value="open">Otevřený</option><option value="win">Win</option><option value="loss">Loss</option><option value="be">BE</option>
+                      </select>
+                      <span onClick={function(){onDelete(t.id);}} title="Smazat" style={{cursor:"pointer",color:"#4a6a88",padding:"0 4px"}}>✕</span>
+                    </span>
+                  </div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:6,fontSize:10}}>
+                    {c.diff!=null&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:"#8b949e"}}>diff {c.diff>0?"+":""}{Number(c.diff).toFixed(1)} · {c.band}</span>}
+                    {c.conviction!=null&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:"#f0b429"}}>★{c.conviction}</span>}
+                    {c.dailyLevel&&c.dailyLevel!=="none"&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px"}}>{dotMap[c.dailyLevel]} {c.dailyLevel}</span>}
+                    {c.flip&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:"#bf4cff"}}>🔄 flip</span>}
+                    {c.listType&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:c.listType==="white"?"#3fb950":c.listType==="black"?"#ff4d4d":"#d29922"}}>{c.listType}</span>}
+                    {c.cbdi!=null&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:"#8b949e"}}>CBDI {Math.round(c.cbdi)}</span>}
+                    {c.aiBias&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:"#8b949e"}}>AI {c.aiBias}</span>}
+                    {dt&&<span style={{color:"#4a6a88"}}>{dt.getDate()+"."+(dt.getMonth()+1)+"."+dt.getFullYear()}</span>}
+                  </div>
+                  {(t.entry||t.sl||t.tp)&&<div style={{fontSize:10,color:"#6e7d8f",marginTop:3}}>{t.entry&&"E "+t.entry} {t.sl&&"· SL "+t.sl} {t.tp&&"· TP "+t.tp} {t.riskPct&&"· risk "+t.riskPct+"%"}</div>}
+                  {t.notes&&<div style={{fontSize:11,color:"#8a96a8",fontStyle:"italic",marginTop:3}}>📝 {t.notes}</div>}
+                </div>
+              );
+            })
+        }
+      </div>
+      <div style={{fontSize:10,color:"#4a6a88",marginTop:8}}>Deník je uložen lokálně v prohlížeči (per zařízení). Pravidelně exportuj CSV/JSON jako zálohu.</div>
+    </div>
+  );
+}
+
 // ── HLAVNÍ APP ────────────────────────────────────────────
 function App(){
   const [fhKey,setFhKey]=useState(null);
@@ -3843,6 +4114,11 @@ function App(){
     try{localStorage.setItem("pair_notes",JSON.stringify(next));}catch(e){}
     setNotes(next);
   },[]);
+  const [journal,setJournal]=useState(loadJournal());
+  const addTrade=useCallback(function(t){setJournal(function(prev){var n=[t].concat(prev);saveJournalArr(n);return n;});},[]);
+  const updateTrade=useCallback(function(id,patch){setJournal(function(prev){var n=prev.map(function(t){return t.id===id?Object.assign({},t,patch):t;});saveJournalArr(n);return n;});},[]);
+  const deleteTrade=useCallback(function(id){setJournal(function(prev){var n=prev.filter(function(t){return t.id!==id;});saveJournalArr(n);return n;});},[]);
+  const importTrades=useCallback(function(arr){setJournal(function(prev){var map={};prev.concat(arr).forEach(function(t){if(t&&t.id)map[t.id]=t;});var n=Object.keys(map).map(function(k){return map[k];});saveJournalArr(n);return n;});},[]);
   const [riskSentimentUI,setRiskSentimentUI]=useState(g_riskSentiment);
   function setRiskSent(v){g_riskSentiment=v;setRiskSentimentUI(v);localStorage.setItem("v5_risk_sent",String(v));}
 
@@ -3979,6 +4255,7 @@ function App(){
           <button type="button" className={tab==="calendar"?"active":""} onClick={()=>{setTab("calendar");}}>🗓️ Calendar</button>
           <button type="button" className={tab==="ai"?"active":""} onClick={()=>{setTab("ai");}}>🤖 AI Analýza</button>
           <button type="button" className={tab==="coach"?"active":""} onClick={()=>{setTab("coach");}}>🧠 AI Coach</button>
+          <button type="button" className={tab==="journal"?"active":""} onClick={()=>{setTab("journal");}}>📓 Deník</button>
           <button type="button" onClick={()=>setShowSet(true)}>⚙️ Settings</button>
         </div>
         <div className="command-bias-card">
@@ -4121,6 +4398,9 @@ function App(){
 
         {tab==="coach"&&(
           <AICoachTab scores={scores} pairs={top} forecasts={forecasts} aiAnalyses={aiAnalyses} cotData={cotData} selected={selected} upcoming={upcoming} calData={calData}/>
+        )}
+        {tab==="journal"&&(
+          <JournalTab journal={journal} scores={scores} pairs={top} calData={calData} upcoming={upcoming} aiAnalyses={aiAnalyses} selected={selected} onAdd={addTrade} onUpdate={updateTrade} onDelete={deleteTrade} onImport={importTrades}/>
         )}
       </div>
       <MarketStatusBar/>
