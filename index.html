@@ -277,9 +277,6 @@ function svgPolyline(values,w=360,h=120,pad=16){
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
 }
-function biasLabel(score){
-  if(score>=6) return "very bullish"; if(score>=2) return "bullish"; if(score<=-6) return "very bearish"; if(score<=-2) return "bearish"; return "neutral";
-}
 function pairBiasScore(p){return Math.round(Math.max(0,Math.min(100,50+(p.dir==="BUY"?p.diff:-p.diff)*3.5)));}
 
 // ── COT & RETAIL SENTIMENT (auto + fallback localStorage) ─────────
@@ -504,17 +501,9 @@ function deriveRetailFromCOTData(){
 }
 
 async function fetchRetailSentiment(){
-  // ── PŘÍSTUP 0: OANDA v20 API — nejlepší zdroj retailového positioningu ──
-  const oandaToken   = localStorage.getItem("oanda_token")||"";
-  const oandaPractice = (localStorage.getItem("oanda_env")||"practice") === "practice";
-  if(oandaToken){
-    try{
-      const res = await fetchOANDARetailSentiment(oandaToken, oandaPractice);
-      return res;
-    }catch(e){ console.log("OANDA retail failed:", e?.message); }
-  }
-
-  // ── PŘÍSTUP 1: CFTC Non-reportable positions (reálná data) ──
+  // ── PŘÍSTUP 1: CFTC Non-reportable positions (reálná data, primární zdroj) ──
+  // Malí spekulanti z CFTC TFF = reálný retail. Jde přes stejnou funkční proxy
+  // infrastrukturu jako COT, takže funguje i bez OANDA účtu / mimo EU.
   try{
     const url="https://www.cftc.gov/dea/futures/financial_lf.htm";
     const txt=await fetchTextWithFallback(url);
@@ -523,6 +512,18 @@ async function fetchRetailSentiment(){
       return{sentData:parsed,rawPairs:{},source:"CFTC Non-reportable",timestamp:new Date().toISOString(),method:"cftc_nonreport"};
     }
   }catch(e){console.log("CFTC NonReport failed:",e?.message);}
+
+  // ── PŘÍSTUP 2: OANDA v20 API — jen pokud má uživatel token (mimo EU) ──
+  // Pozn.: OANDA neposílá CORS hlavičky pro prohlížeč a v EU není dostupné,
+  // proto je až jako záloha za CFTC. Když token chybí/selže, jede se dál.
+  const oandaToken   = localStorage.getItem("oanda_token")||"";
+  const oandaPractice = (localStorage.getItem("oanda_env")||"practice") === "practice";
+  if(oandaToken){
+    try{
+      const res = await fetchOANDARetailSentiment(oandaToken, oandaPractice);
+      return res;
+    }catch(e){ console.log("OANDA retail failed:", e?.message); }
+  }
 
   // ── PŘÍSTUP 2: MyFxBook přes Jina.ai (renderuje JS stránky) ──
   const MYFXBOOK_URL="https://www.myfxbook.com/community/outlook";
@@ -934,225 +935,8 @@ async function fetchUpcoming14(apiKey){
     .filter(e=>allCodes.some(c=>(e.country||"").toUpperCase().includes(c))&&getWeight(e.event)>0)
     .sort((a,b)=>new Date(a.time)-new Date(b.time));
 }
-async function fetchTechnical(apiKey,base,quote){
-  const dp=base==="JPY"||quote==="JPY"?3:5;
-  const to=Math.floor(Date.now()/1000),from=to-365*24*3600;
-  const syms=[`OANDA:${base}_${quote}`,`OANDA:${quote}_${base}`];
-  for(let i=0;i<syms.length;i++){
-    try{
-      const res=await fetch(`${FH}/forex/candle?symbol=${encodeURIComponent(syms[i])}&resolution=D&from=${from}&to=${to}&token=${apiKey}`);
-      if(!res.ok) continue;
-      const d=await res.json();
-      if(!d.c||d.c.length<20) continue;
-      let closes=d.c;
-      if(i===1) closes=closes.map(c=>1/c);
-      const cur=closes.at(-1);
-      const h52=Math.max(...closes),l52=Math.min(...closes);
-      const rng=h52-l52,pos=rng>0?(cur-l52)/rng:0.5;
-      const ma20=closes.slice(-20).reduce((a,b)=>a+b)/20;
-      const ma5=closes.slice(-5).reduce((a,b)=>a+b)/5;
-      return{current:cur.toFixed(dp),high52:h52.toFixed(dp),low52:l52.toFixed(dp),
-        pos,trend:ma5>ma20*1.001?"UP":ma5<ma20*0.999?"DOWN":"FLAT",
-        zone:pos<0.35?"DISCOUNT":pos>0.65?"PREMIUM":"NEUTRAL"};
-    }catch(e){continue;}
-  }
-  return null;
-}
-
-// ── MARKET STRUCTURE (Alpha Vantage) ─────────────────────
-async function fetchAVWeekly(avKey,base,quote){
-  const ck="ms_v34_"+base+quote;
-  try{
-    const c=localStorage.getItem(ck);
-    if(c){const{data,ts}=JSON.parse(c);if(Date.now()-ts<12*3600000)return data;}
-  }catch(e){}
-  const fetch1=async(b,q,inv)=>{
-    const u="https://www.alphavantage.co/query?function=FX_WEEKLY&from_symbol="+b+"&to_symbol="+q+"&outputsize=compact&apikey="+avKey;
-    const r=await fetch(u);const j=await r.json();
-    const key=Object.keys(j).find(k=>k.startsWith("Time Series"));
-    if(!key) return null;
-    const candles=Object.entries(j[key]).sort((a,b)=>new Date(b[0])-new Date(a[0])).slice(0,78)
-      .map(([date,v])=>{
-        const o=parseFloat(v["1. open"]),h=parseFloat(v["2. high"]),l=parseFloat(v["3. low"]),c=parseFloat(v["4. close"]);
-        return inv?{date,open:1/o,high:1/l,low:1/h,close:1/c}:{date,open:o,high:h,low:l,close:c};
-      });
-    if(candles.length<20) return null;
-    const closes=candles.map(c=>c.close),highs=candles.map(c=>c.high),lows=candles.map(c=>c.low);
-    const seg=Math.floor(closes.length/5);
-    const avgs=Array.from({length:5},(_,i)=>{const s=closes.slice(i*seg,(i+1)*seg);return s.reduce((a,b)=>a+b,0)/s.length;});
-    const rising=avgs.filter((a,i)=>i>0&&a<avgs[i-1]).length;
-    const falling=avgs.filter((a,i)=>i>0&&a>avgs[i-1]).length;
-    let hh=0,hl=0,lh=0,ll=0;
-    const pH=[],pL=[];
-    for(let i=2;i<candles.length-2;i++){
-      if(highs[i]>highs[i-1]&&highs[i]>highs[i-2]&&highs[i]>highs[i+1]&&highs[i]>highs[i+2]) pH.push(highs[i]);
-      if(lows[i]<lows[i-1]&&lows[i]<lows[i-2]&&lows[i]<lows[i+1]&&lows[i]<lows[i+2]) pL.push(lows[i]);
-    }
-    for(let i=1;i<Math.min(pH.length,6);i++) pH[i-1]>pH[i]?hh++:lh++;
-    for(let i=1;i<Math.min(pL.length,6);i++) pL[i-1]>pL[i]?hl++:ll++;
-    const bull=rising+hh+hl,bear=falling+lh+ll;
-    const structure=bull>bear+1?"BULLISH":bear>bull+1?"BEARISH":"SIDEWAYS";
-    return{structure,bull,bear,hh,hl,lh,ll};
-  };
-  try{
-    const r=await fetch1(base,quote,false)||await fetch1(quote,base,true);
-    if(r){try{localStorage.setItem(ck,JSON.stringify({data:r,ts:Date.now()}));}catch(e){}}
-    return r;
-  }catch(e){return null;}
-}
-
-
-async function fetchFinnhubStructure(fhKey,base,quote){
-  const ck="ms_fh_v34_"+base+quote;
-  try{
-    const c=localStorage.getItem(ck);
-    if(c){const{data,ts}=JSON.parse(c);if(Date.now()-ts<6*3600000)return data;}
-  }catch(e){}
-  const to=Math.floor(Date.now()/1000),from=to-365*24*3600;
-  const syms=[`OANDA:${base}_${quote}`,`OANDA:${quote}_${base}`];
-  for(let si=0;si<syms.length;si++){
-    try{
-      const res=await fetch(`${FH}/forex/candle?symbol=${encodeURIComponent(syms[si])}&resolution=D&from=${from}&to=${to}&token=${fhKey}`);
-      if(!res.ok) continue;
-      const d=await res.json();
-      if(!d.c||d.c.length<80) continue;
-      let candles=d.c.map((c,i)=>({date:d.t?.[i],open:d.o[i],high:d.h[i],low:d.l[i],close:c}));
-      if(si===1){
-        candles=candles.map(x=>({date:x.date,open:1/x.open,high:1/x.low,low:1/x.high,close:1/x.close}));
-      }
-      // převod denních svíček na zjednodušené weekly bloky po 5 dnech
-      const weeks=[];
-      for(let i=0;i<candles.length;i+=5){
-        const chunk=candles.slice(i,i+5); if(chunk.length<3) continue;
-        weeks.push({
-          date:chunk.at(-1).date,
-          open:chunk[0].open,
-          high:Math.max(...chunk.map(x=>x.high)),
-          low:Math.min(...chunk.map(x=>x.low)),
-          close:chunk.at(-1).close
-        });
-      }
-      const recent=weeks.slice(-78).reverse(); // nejnovější první, stejně jako AV funkce
-      const r=calcStructureFromCandles(recent);
-      if(r){r.source="Finnhub fallback";try{localStorage.setItem(ck,JSON.stringify({data:r,ts:Date.now()}));}catch(e){}return r;}
-    }catch(e){continue;}
-  }
-  return null;
-}
-function avgNum(arr){return arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;}
-function emaCalc(values,period){
-  if(!values.length) return 0;
-  const k=2/(period+1); let e=values[0];
-  for(let i=1;i<values.length;i++) e=values[i]*k+e*(1-k);
-  return e;
-}
-function slopeCalc(values){
-  const n=values.length; if(n<2) return 0;
-  const mx=(n-1)/2, my=avgNum(values); let num=0, den=0;
-  for(let i=0;i<n;i++){ num+=(i-mx)*(values[i]-my); den+=(i-mx)*(i-mx); }
-  return den?num/den:0;
-}
-function calcStructureFromCandles(candles){
-  if(!candles||candles.length<30) return null;
-
-  // Input z AV i Finnhub fallbacku je nejnovější → nejstarší. Pro výpočty ho otočíme na staré → nové.
-  const recent=[...candles].reverse().slice(-78).filter(c=>isFinite(c.high)&&isFinite(c.low)&&isFinite(c.close));
-  if(recent.length<30) return null;
-
-  const closes=recent.map(c=>c.close), highs=recent.map(c=>c.high), lows=recent.map(c=>c.low);
-  const current=closes[closes.length-1];
-  const ema13=emaCalc(closes,13), ema26=emaCalc(closes,26);
-  const slope13=slopeCalc(closes.slice(-13));
-  const trs=recent.slice(-14).map((c,i)=>{
-    const prev=i>0?recent[recent.length-14+i-1].close:c.close;
-    return Math.max(c.high-c.low,Math.abs(c.high-prev),Math.abs(c.low-prev));
-  });
-  const atr=avgNum(trs)||Math.abs(current)*0.005;
-  const slopeNorm=atr?slope13/atr:0;
-
-  const lastHighs=highs.slice(-20), lastLows=lows.slice(-20);
-  const high20=Math.max(...lastHighs), low20=Math.min(...lastLows);
-  const high52=Math.max(...highs.slice(-52)), low52=Math.min(...lows.slice(-52));
-  const pos52=(current-low52)/Math.max(high52-low52,Math.abs(current)*0.01);
-
-  let hh=0,hl=0,lh=0,ll=0;
-  const swingH=[], swingL=[];
-  for(let i=2;i<recent.length-2;i++){
-    if(highs[i]>=highs[i-1]&&highs[i]>=highs[i-2]&&highs[i]>=highs[i+1]&&highs[i]>=highs[i+2]) swingH.push(highs[i]);
-    if(lows[i]<=lows[i-1]&&lows[i]<=lows[i-2]&&lows[i]<=lows[i+1]&&lows[i]<=lows[i+2]) swingL.push(lows[i]);
-  }
-  const h=swingH.slice(-5), l=swingL.slice(-5);
-  for(let i=1;i<h.length;i++) h[i]>h[i-1]?hh++:lh++;
-  for(let i=1;i<l.length;i++) l[i]>l[i-1]?hl++:ll++;
-
-  let bull=0, bear=0;
-  if(current>ema13) bull+=1; else bear+=1;
-  if(ema13>ema26) bull+=1.5; else bear+=1.5;
-  if(slopeNorm>0.05) bull+=1.25; else if(slopeNorm<-0.05) bear+=1.25;
-  if(hh>lh) bull+=1; else if(lh>hh) bear+=1;
-  if(hl>ll) bull+=1; else if(ll>hl) bear+=1;
-  if(current>=high20-atr*0.35) bull+=0.75;
-  if(current<=low20+atr*0.35) bear+=0.75;
-  if(pos52>0.6) bull+=0.5; else if(pos52<0.4) bear+=0.5;
-
-  const score=bull-bear;
-  const structure=score>=1.0?"BULLISH":score<=-1.0?"BEARISH":"SIDEWAYS";
-  const confidence=Math.round(Math.min(100,Math.max(0,Math.abs(score)/5*100)));
-  return{
-    structure,
-    bull:parseFloat(bull.toFixed(1)),bear:parseFloat(bear.toFixed(1)),
-    hh,hl,lh,ll,
-    score:parseFloat(score.toFixed(2)),confidence,
-    slope:parseFloat(slopeNorm.toFixed(2)),pos52:parseFloat(pos52.toFixed(2)),
-    source:"Weekly structure v3.4"
-  };
-}
-async function fetchMarketStructure(fhKey,avKey,base,quote){
-  let avError="";
-  if(avKey){
-    try{const av=await fetchAVWeekly(avKey,base,quote); if(av){av.source=av.source||"Alpha Vantage"; return av;}}
-    catch(e){avError=e.message||String(e);}
-  }
-  const fh=await fetchFinnhubStructure(fhKey,base,quote);
-  if(fh){fh.note=avKey?"Alpha Vantage nevrátil data, použit fallback z Finnhub daily." : "Použit fallback z Finnhub daily, protože Alpha Vantage klíč není zadaný.";return fh;}
-  return {structure:"SIDEWAYS",bull:0,bear:0,hh:0,hl:0,lh:0,ll:0,source:"none",error: avError||"Nepodařilo se načíst Alpha Vantage ani Finnhub candles"};
-}
-
-function combinedSignal(fundDir,ms){
-  if(!ms) return{signal:fundDir,strength:"slabý",reason:"Technika nedostupná"};
-  const td=ms.structure==="BULLISH"?"BUY":ms.structure==="BEARISH"?"SELL":null;
-  if(fundDir==="BUY"&&td==="BUY") return{signal:"BUY",strength:"silný ✅",reason:"Fundamenty i tržní struktura shodně BUY"};
-  if(fundDir==="SELL"&&td==="SELL") return{signal:"SELL",strength:"silný ✅",reason:"Fundamenty i tržní struktura shodně SELL"};
-  if(fundDir==="BUY"&&td==="SELL") return{signal:"ČEKEJ",strength:"rozporný ⚠️",reason:"Fundamenty BUY ale struktura BEARISH — čekej"};
-  if(fundDir==="SELL"&&td==="BUY") return{signal:"ČEKEJ",strength:"rozporný ⚠️",reason:"Fundamenty SELL ale struktura BULLISH — čekej"};
-  return{signal:fundDir,strength:"neutrální ➡️",reason:"Tržní struktura sideways"};
-}
-
 // ── SCORING ───────────────────────────────────────────────
-function scoreCurrencyLegacy(events,currency,cotData,sentData){
-  // Původní V2 styl: actual > estimate = bullish pro všechna data. Slouží jen pro kontrolu rozdílu metodiky.
-  const matched=events.filter(e=>eventRelevance(currency,e));
-  let score=0,weight=0;
-  for(const ev of matched){
-    const rel=eventRelevance(currency,ev);if(!rel) continue;
-    const w0=getWeight(ev.event);if(!w0) continue;
-    const a=parseFloat(ev.actual),e2=parseFloat(ev.estimate);
-    if(isNaN(a)||isNaN(e2)) continue;
-    const r=recency(ev.time),dir=a>e2?1:a<e2?-1:0,w=w0*rel.factor;
-    score+=dir*w*r;weight+=w*r;
-  }
-  const fundScore=weight>0?Math.max(-10,Math.min(10,(score/weight)*10)):0;
-  const cotScore=getCOTScore(currency,cotData);
-  const sentScore=getSentimentScore(currency,sentData);
-  const seasonScore=getSeasonalScore(currency);
-  return parseFloat(Math.max(-10,Math.min(10,fundScore+cotScore*0.5+sentScore*0.5+seasonScore*0.3)).toFixed(2));
-}
-
 // ═══════════════ V5 ENGINE HELPERS ═══════════════════════════
-function getYieldDiffScore(currency){
-  const avg=Object.values(CENTRAL_BANK_RATES).reduce((a,b)=>a+b,0)/8;
-  return parseFloat(Math.max(-1.5,Math.min(1.5,((CENTRAL_BANK_RATES[currency]||avg)-avg)*0.35)).toFixed(2));
-}
 function getCOTPercentile(currency){
   try{
     const hist=loadCOTHistory();
@@ -1170,10 +954,14 @@ function getCOTPercentile(currency){
 }
 function getCurrencyMomentum(currency){
   try{
+    // OPRAVA: loadScoreHistory() vrací objekt klíčovaný datem, ne pole.
+    // Sestavíme chronologickou řadu skóre a spočítáme průměrnou denní změnu.
     const hist=loadScoreHistory();
-    if(!Array.isArray(hist)||hist.length<3) return 0;
-    const recent=hist.slice(-5).map(h=>h[currency]?.score??h[currency]??0);
+    const dates=Object.keys(hist).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    if(dates.length<3) return 0;
+    const recent=dates.slice(-5).map(d=>{const v=hist[d]?.[currency];return typeof v==="number"?v:0;});
     const diffs=recent.slice(1).map((v,i)=>v-recent[i]);
+    if(!diffs.length) return 0;
     return parseFloat(Math.max(-1,Math.min(1,(diffs.reduce((a,b)=>a+b,0)/diffs.length)*0.35)).toFixed(2));
   }catch(e){return 0;}
 }
@@ -1656,7 +1444,6 @@ function scoreCurrency(events,currency,cotData,sentData){
   const total=parseFloat(Math.max(-10,Math.min(10,rawTotal)).toFixed(2));
   return{
     score:total,
-    legacy_score:scoreCurrencyLegacy(events,currency,cotData,sentData),
     fund_score:fundScore,fund_score_raw:parseFloat(fundScoreRaw.toFixed(2)),yield_adj:yieldAdj,policy_adj:policyAdj,risk_adj:riskAdj,oil_adj:oilAdj,
     cot_score:cotScore,sent_score:sentScore,season_score:seasonScore,
     cot_pct:cotPct,momentum_adj:momentumAdj,weights_used:wt,
@@ -1671,14 +1458,20 @@ const DAY_WINDOW=1; // dny zpět pro "už vyšlo" (rolling — kryje AU/JP data 
 function localDayEnd(){const d=new Date();d.setHours(23,59,59,999);return d.getTime();}
 // Sloučí 15-měsíční kalendář s upcoming. upcoming má čerstvé dnešní ACTUAL dřív než 15mo dotaz,
 // proto bez tohoto merge "už vyšlo" výsledky chyběly. Dedup, preferuj záznam s actual.
+let _mergeEventsCache={a:null,b:null,out:null};
 function mergeEvents(calData,upcoming){
+  // PERF: calData/upcoming mění referenci jen při loadData, ale mergeEvents se volá
+  // desítky× za render (per pár). Cachujeme dle identity vstupních polí.
+  if(_mergeEventsCache.out&&_mergeEventsCache.a===calData&&_mergeEventsCache.b===upcoming) return _mergeEventsCache.out;
   const map=new Map();
   [...(calData||[]),...(upcoming||[])].forEach(e=>{
     const k=(e.event||"")+"|"+(e.country||"")+"|"+(e.time||"");
     const prev=map.get(k);
     if(!prev||(!prev.actual&&e.actual)) map.set(k,e);
   });
-  return [...map.values()];
+  const out=[...map.values()];
+  _mergeEventsCache={a:calData,b:upcoming,out};
+  return out;
 }
 // Krátkodobé skóre — jen PŘÍMÉ eventy dané měny s actual za posledních 24h (ze sloučeného zdroje).
 function getShortTermFundScore(currency,events,days=DAY_WINDOW){
@@ -1793,35 +1586,6 @@ function getEventHistoryTrend(eventName,currency,calData){
   return{trend:norm>0.25?"pozitivní 📈":norm<-0.25?"negativní 📉":"neutrální ➡️",score:parseFloat(norm.toFixed(2))};
 }
 
-function buildForecast(pair,scores,calData,upcoming){
-  const {base,quote}=pair;
-  const upBase=upcoming.filter(e=>eventRelevance(base,e));
-  const upQuote=upcoming.filter(e=>eventRelevance(quote,e));
-  let fwdBase=0,fwdQuote=0;
-  const baseItems=[],quoteItems=[];
-  for(const ev of upBase){
-    const rel=eventRelevance(base,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;
-    const hist=getEventHistoryTrend(ev.event,base,calData);
-    fwdBase+=hist.score*w;baseItems.push({ev,hist,w,rel});
-  }
-  for(const ev of upQuote){
-    const rel=eventRelevance(quote,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;
-    const hist=getEventHistoryTrend(ev.event,quote,calData);
-    fwdQuote+=hist.score*w;quoteItems.push({ev,hist,w,rel});
-  }
-  const curDiff=(scores[base]?.score||0)-(scores[quote]?.score||0);
-  const fwdDiff=fwdBase-fwdQuote;
-  const combined=curDiff*0.70+fwdDiff*3.0*0.30;
-  const prob=Math.round(Math.max(18,Math.min(82,50+combined*4)));
-  const dir=combined>0?"BUY":"SELL";
-  const bTrend=fwdBase>0.3?"posilovat":fwdBase<-0.3?"oslabovat":"být neutrální";
-  const qTrend=fwdQuote>0.3?"posilovat":fwdQuote<-0.3?"oslabovat":"být neutrální";
-  const desc=baseItems.length||quoteItems.length
-    ?`Nadcházející data naznačují, že ${base} může ${bTrend} a ${quote} může ${qTrend}.`
-    :"Žádné klíčové eventy v příštích 14 dnech. Výhled z historické síly měn.";
-  return{dir,prob,baseItems,quoteItems,curDiff,fwdDiff,desc,hasEvents:baseItems.length+quoteItems.length>0};
-}
-
 function rankPairs(scores,aiAnalyses){
   const ranked=STANDARD_PAIRS.map(({pair,base,quote})=>{
     const sB=scores[base]?.score||0,sQ=scores[quote]?.score||0,diff=sB-sQ;
@@ -1915,14 +1679,12 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose}){
         <div style={{borderTop:"1px solid #21262d",paddingTop:12,marginBottom:12}}>
           <div style={{fontSize:12,fontWeight:700,color:"#e6edf3",marginBottom:4}}>
             📊 OANDA Retail Sentiment
-            <span style={{marginLeft:8,fontSize:10,fontWeight:400,color:"#3fb950"}}>✓ Nejlepší zdroj — reálné pozice retailových traderů</span>
+            <span style={{marginLeft:8,fontSize:10,fontWeight:400,color:"#d29922"}}>volitelné — mimo EU</span>
           </div>
           <div style={{fontSize:10,color:"#8b949e",marginBottom:8,lineHeight:1.6}}>
-            <b style={{color:"#e6edf3"}}>Jak získat API token:</b><br/>
-            1. Jdi na <a href="https://www.oanda.com" target="_blank" style={{color:"#58a6ff"}}>oanda.com</a> → Zaregistruj se (stačí demo/practice účet)<br/>
-            2. Po přihlášení: <b style={{color:"#e6edf3"}}>Account → Manage API Access → Generate</b><br/>
-            3. Zkopíruj Personal Access Token a vlož ho sem<br/>
-            <span style={{color:"#d29922"}}>Demo účet = zdarma, žádná minimální vklad, data jsou reálná</span>
+            <span style={{color:"#3fb950"}}>✓ Primární zdroj retailu je teď <b>CFTC Non-reportable</b> (reální malí spekulanti), funguje bez účtu i v EU — stačí kliknout 🔄 Retail Sentiment.</span><br/>
+            <span style={{color:"#d29922"}}>⚠ OANDA API je v EU nedostupné a prohlížeč ho navíc blokuje přes CORS — vyplň jen pokud máš ne-EU účet a token reálně funguje.</span><br/>
+            <b style={{color:"#e6edf3"}}>Jak získat API token (mimo EU):</b> oanda.com → demo účet → Account → Manage API Access → Generate.
           </div>
           <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>OANDA API Token</label>
           <input
@@ -2282,11 +2044,6 @@ function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",l
     {!hasDates&&<text x={padL} y={h-10} fill="#8b949e" fontSize="11">starší</text>}
     {!hasDates&&<text x={w-padR-42} y={h-10} fill="#8b949e" fontSize="11">aktuální</text>}
   </svg>;
-}
-function getScoreSeries(currency,limit=104){
-  const hist=loadScoreHistory();
-  const dates=Object.keys(hist).sort().slice(-limit);
-  return {dates,values:dates.map(d=>hist[d]?.[currency]??0)};
 }
 // Pravidelná denní kalendářní řada s forward-fill (chybějící den = poslední známé skóre)
 function buildDailySeries(currency,windowDays){
@@ -2648,10 +2405,12 @@ function MarketStatusBar(){
     note:""
   });
   useEffect(()=>{
+    let alive=true; // zabraň setState po odmountování
     const avKey=localStorage.getItem("av")||"";
     fetchMarketTickers(avKey).then(r=>{
-      if(r) setTdata({dxy:r.dxy||"—",vix:r.vix||"—",gold:r.gold||"—",status:r.status||"OK",note:r.note||""});
-    }).catch(e=>setTdata(x=>({...x,status:"ERR",note:e?.message||"market data error"})));
+      if(alive&&r) setTdata({dxy:r.dxy||"—",vix:r.vix||"—",gold:r.gold||"—",status:r.status||"OK",note:r.note||""});
+    }).catch(e=>{if(alive)setTdata(x=>({...x,status:"ERR",note:e?.message||"market data error"}));});
+    return()=>{alive=false;};
   },[]);
   const statusLabel=tdata.status==="OK"?"LIVE":tdata.status==="NO_KEY"?"NO API":tdata.status==="LIMIT"?"LIMIT":tdata.status==="PARTIAL"?"PARTIAL":tdata.status==="LOADING"?"LOAD":"ERR";
   const statusColor=tdata.status==="OK"?"#78f236":tdata.status==="LOADING"?"#d29922":"#ff4d4d";
@@ -2737,7 +2496,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
 
       <div style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:8,padding:"9px 12px",marginBottom:12,fontSize:11,color:"#8b949e",lineHeight:1.5}}>
         <b style={{color:"#58a6ff"}}>Lokální COT import:</b> stáhni CFTC historické soubory <b>fut_fin_txt_YYYY.zip</b>, nech je klidně zabalené a nahraj je přes <b>📂 Import COT z PC</b>. Tím se obejde CORS a grafy se doplní hned.
-        {" "}<b style={{color:"#0d9c6e"}}>Retail Sentiment:</b> 🔄 tlačítko stáhne live data z MyFxBook. Snapshot se ukládá do history pro graf.
+        {" "}<b style={{color:"#0d9c6e"}}>Retail Sentiment:</b> 🔄 tlačítko stáhne reálná data z CFTC Non-reportable (malí spekulanti), s fallbackem na MyFxBook a COT-derivaci. Snapshot se ukládá do history pro graf.
       </div>
 
       {/* Seasonalita info */}
@@ -2776,7 +2535,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
         {/* Retail Sentiment */}
         <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:10,padding:14}}>
           <div style={{fontWeight:500,fontSize:13,marginBottom:4}}>Retail Sentiment (% long)
-            <span style={{fontSize:10,color:"#4a6a88",marginLeft:8}}>— klikni 🔄 pro live data z MyFxBook</span>
+            <span style={{fontSize:10,color:"#4a6a88",marginLeft:8}}>— klikni 🔄 pro reálná data z CFTC (malí spekulanti)</span>
           </div>
           <div style={{...sm,marginBottom:12}}>&gt;70% long = contrarian bearish · &lt;30% long = contrarian bullish<br/>Zdroj: MyFxBook Community Outlook (auto) nebo ruční slider (záloha)</div>
           {CURRENCIES.map(c=>{
@@ -3043,8 +2802,6 @@ function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},cal
     <div style={{display:"grid",gridTemplateColumns:"1fr 330px",gap:14}}><div className="pro-card" style={{padding:16}}><div className="pro-panel-title">Score komponenty</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>{[{label:"Fundamenty",value:((scores[pair.base]?.fund_score||0)-(scores[pair.quote]?.fund_score||0)),max:10},{label:"CB Policy",value:((scores[pair.base]?.policy_adj||0)-(scores[pair.quote]?.policy_adj||0)),max:3},{label:"Real Yield",value:((scores[pair.base]?.yield_adj||0)-(scores[pair.quote]?.yield_adj||0)),max:3},{label:"COT",value:((scores[pair.base]?.cot_score||0)-(scores[pair.quote]?.cot_score||0)),max:6},{label:"Sentiment",value:((scores[pair.base]?.sent_score||0)-(scores[pair.quote]?.sent_score||0)),max:4},{label:"Sezónnost",value:((scores[pair.base]?.season_score||0)-(scores[pair.quote]?.season_score||0)),max:4}].map(x=>{const col=x.value>0?"#3fb950":x.value<0?"#ff4d4d":"#d29922";return <div key={x.label} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:"#cbd6e2",marginBottom:8}}>{x.label}</div><div style={{fontSize:24,fontWeight:1000,color:col}}>{x.value>0?"+":""}{x.value.toFixed(1)}</div><div style={{fontSize:11,color:col,marginTop:5}}>{x.value>1?"Bullish":x.value<-1?"Bearish":"Neutral"}</div><div style={{height:4,background:"#1b232d",borderRadius:4,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,Math.abs(x.value)/x.max*100)+"%",background:col,borderRadius:4}}/></div></div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginTop:14,borderTop:"1px solid #1b2a35",paddingTop:14,fontSize:12,color:"#8b949e",textAlign:"center"}}><div>Spread<br/><b style={{color:"#e6edf3"}}>0.7</b></div><div>Volatilita (D)<br/><b style={{color:"#e6edf3"}}>0.42%</b></div><div>ATR (14)<br/><b style={{color:"#e6edf3"}}>0.0065</b></div><div>Liquidity<br/><b className="green">HIGH</b></div><div>Trend<br/><b style={{color:ac}}>{pair.dir==="BUY"?"Bullish":"Bearish"}</b></div><div>Risk<br/><b className="orange">Medium</b></div></div></div><AIAnalysisStatusPanel pair={pair} aiAnalyses={aiAnalyses}/></div>
   </div>;
 }
-function pairsIndexSafe(pair){return pair?.rankLabel||"";}
-
 // ── CALENDAR ─────────────────────────────────────────────
 function CalendarPanel({events}){
   const all=(events||[]).sort((a,b)=>new Date(a.time)-new Date(b.time));
@@ -3075,14 +2832,19 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
   const [error,setError]=useState("");
   const [drag,setDrag]=useState(false);
   const aiFileRef=useRef();
+  const imgUrlRef=useRef(null); // pro revokaci object URL (zabránění memory leaku)
 
   useEffect(()=>{if(selected?.pair)setSelPair(selected.pair);},[selected?.pair]);
+  // Cleanup posledního object URL při odmountování komponenty
+  useEffect(()=>()=>{if(imgUrlRef.current)URL.revokeObjectURL(imgUrlRef.current);},[]);
 
   const pairData=pairs.find(p=>p.pair===selPair);
 
   const handleAIFile=useCallback(f=>{
     if(!f||!f.type.startsWith("image/")){setError("Nahrej obrázek (PNG/JPG/WebP)");return;}
-    setImgFile(f);setError("");setImgSrc(URL.createObjectURL(f));setResult(null);
+    if(imgUrlRef.current)URL.revokeObjectURL(imgUrlRef.current); // uvolni předchozí
+    const url=URL.createObjectURL(f);imgUrlRef.current=url;
+    setImgFile(f);setError("");setImgSrc(url);setResult(null);
   },[]);
 
   const onAIDrop=useCallback(e=>{e.preventDefault();setDrag(false);handleAIFile(e.dataTransfer.files[0]);},[handleAIFile]);
@@ -3168,7 +2930,7 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
               :<><div style={{fontSize:24,marginBottom:5}}>📈</div><div style={{fontSize:11,color:"#8b949e",textAlign:"center"}}>Přetáhni screenshot<br/>nebo klikni pro výběr</div></>}
           </div>
           <input ref={aiFileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleAIFile(e.target.files[0]);e.target.value="";}}/>
-          {imgSrc&&<button onClick={()=>{setImgSrc(null);setImgFile(null);setResult(null);}} style={{marginTop:4,background:"none",border:"none",color:"#8b949e",fontSize:10,cursor:"pointer"}}>✕ Odebrat</button>}
+          {imgSrc&&<button onClick={()=>{if(imgUrlRef.current){URL.revokeObjectURL(imgUrlRef.current);imgUrlRef.current=null;}setImgSrc(null);setImgFile(null);setResult(null);}} style={{marginTop:4,background:"none",border:"none",color:"#8b949e",fontSize:10,cursor:"pointer"}}>✕ Odebrat</button>}
           <div style={{marginTop:6,fontSize:10,color:"#8b949e"}}>PNG · JPG · WebP · TradingView / MT4/5</div>
         </div>
 
@@ -4131,6 +3893,11 @@ function App(){
   const [retailLoading,setRetailLoading]=useState(false);
   const [retailMeta,setRetailMeta]=useState(null);
   const timer=useRef(null);
+  // Refy drží vždy nejnovější data — auto-refresh interval i loadData z nich čtou,
+  // aby 5min refresh nepoužíval zastaralý COT/sentiment/AI z původní closure.
+  const cotRef=useRef(cotData);cotRef.current=cotData;
+  const sentRef=useRef(sentData);sentRef.current=sentData;
+  const aiRef=useRef(aiAnalyses);aiRef.current=aiAnalyses;
 
   async function autoRetail(){
     setRetailLoading(true);setError("");
@@ -4183,7 +3950,7 @@ function App(){
       CURRENCIES.forEach(c=>{sc[c]=scoreCurrency(cal,c,cot,sent);});
       setScores(sc);
       saveScoreHistory(sc);
-      const ranked=rankPairs(sc,aiAnalyses);
+      const ranked=rankPairs(sc,aiRef.current);
       setPairs(ranked);
       updateBiasFlips(ranked);
       setSelected(p=>p||ranked[0]);
@@ -4198,8 +3965,9 @@ function App(){
 
   useEffect(()=>{
     if(!fhKey) return;
-    loadData(fhKey,cotData,sentData);
-    timer.current=setInterval(()=>loadData(fhKey,cotData,sentData),5*60*1000);
+    loadData(fhKey,cotRef.current,sentRef.current);
+    // interval čte nejnovější COT/sentiment z refů (ne ze zastaralé closure)
+    timer.current=setInterval(()=>loadData(fhKey,cotRef.current,sentRef.current),5*60*1000);
     return()=>clearInterval(timer.current);
   },[fhKey]);
 
