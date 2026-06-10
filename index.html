@@ -3851,6 +3851,282 @@ function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,o
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// BACKTEST / KALIBRACE — COT engine na reálných cenách
+// Historicky máme jen COT (5 let). Forward ceny: Alpha Vantage FX_WEEKLY
+// pro 7 USD-majorů, crossy dopočítány trianguláci přes USD (7 API volání).
+// Datumy se porovnávají v UTC (obchází timezone problém).
+// Měří se DIRECTIONAL forward-return edge (ne tradeable R se SL/TP).
+// ════════════════════════════════════════════════════════════════
+const BT_MAJORS=[
+  {cur:"EUR",invert:false},{cur:"GBP",invert:false},
+  {cur:"AUD",invert:false},{cur:"NZD",invert:false},
+  {cur:"JPY",invert:true},{cur:"CAD",invert:true},{cur:"CHF",invert:true},
+];
+const BT_HORIZONS=[1,2,4,8];           // týdny dopředu
+const BT_DIFFS=[0,1,1.5,2,2.5,3];      // prahy |COT diff|
+const BT_MIN_TRADES=30;                // minimální vzorek pro důvěryhodnost
+
+async function fetchBTWeekly(avKey,fromSym,toSym){
+  const u="https://www.alphavantage.co/query?function=FX_WEEKLY&from_symbol="+fromSym+"&to_symbol="+toSym+"&outputsize=full&apikey="+avKey;
+  const r=await fetch(u);const j=await r.json();
+  if(j.Note||j.Information) throw new Error("Alpha Vantage limit (zkus za minutu / zítra)");
+  const key=Object.keys(j).find(k=>k.startsWith("Time Series"));
+  if(!key) throw new Error("AV nevrátil data");
+  return Object.entries(j[key]).map(([date,v])=>({date,close:parseFloat(v["4. close"])}))
+    .filter(x=>isFinite(x.close)).sort((a,b)=>a.date<b.date?-1:1); // staré → nové
+}
+// Vrátí usdValue[CUR] = pole {date, v} kde v = hodnota 1 jednotky měny v USD.
+async function loadBTPrices(avKey,onProgress){
+  const out={};const errors=[];const loaded=[];
+  for(const m of BT_MAJORS){
+    const ck="bt_fx_"+m.cur;let series=null,cached=false;
+    try{const c=JSON.parse(localStorage.getItem(ck)||"null");if(c&&Date.now()-c.ts<7*86400000){series=c.data;cached=true;}}catch(e){}
+    if(!series){
+      try{
+        const from=m.invert?"USD":m.cur,to=m.invert?m.cur:"USD";
+        const raw=await fetchBTWeekly(avKey,from,to);
+        series=raw.map(x=>({date:x.date,v:m.invert?1/x.close:x.close}));
+        try{localStorage.setItem(ck,JSON.stringify({data:series,ts:Date.now()}));}catch(e){}
+        await new Promise(r=>setTimeout(r,900)); // šetrně k AV rate limitu (5/min)
+      }catch(e){errors.push(m.cur+": "+(e.message||e));}
+    }
+    if(series){out[m.cur]=series;loaded.push(m.cur);onProgress&&onProgress(m.cur,series.length,cached);}
+  }
+  return {usdValue:out,errors,loaded};
+}
+function btPriceOnOrAfter(series,targetMs){
+  let lo=0,hi=series.length-1,ans=-1;
+  while(lo<=hi){const mid=(lo+hi)>>1;const t=Date.parse(series[mid].date+"T00:00:00Z");
+    if(t>=targetMs){ans=mid;hi=mid-1;}else lo=mid+1;}
+  return ans<0?null:series[ans].v;
+}
+function btUsdValAt(usdValue,cur,targetMs){
+  if(cur==="USD") return 1;
+  const s=usdValue[cur];if(!s) return null;
+  return btPriceOnOrAfter(s,targetMs);
+}
+function btPairPrice(usdValue,base,quote,targetMs){
+  const b=btUsdValAt(usdValue,base,targetMs),q=btUsdValAt(usdValue,quote,targetMs);
+  if(b==null||q==null||q===0) return null;
+  return b/q;
+}
+// Rolling percentil COT skóre (jen z minulosti) — pro test contrarian extrémů.
+function btBuildPercentiles(cotHist,dates){
+  const pct={};CURRENCIES.forEach(c=>pct[c]={});
+  CURRENCIES.forEach(c=>{
+    const past=[];
+    for(const d of dates){
+      const v=cotHist[d]?.scores?.[c];
+      if(typeof v!=="number"){continue;}
+      pct[c][d]=past.length?Math.round(past.filter(x=>x<=v).length/past.length*100):50;
+      past.push(v);
+    }
+  });
+  return pct;
+}
+function btAggregate(trades){
+  const n=trades.length;if(!n) return {n:0,wr:null,pf:null,avg:null};
+  const wins=trades.filter(t=>t.ret>0).length;
+  const gp=trades.filter(t=>t.ret>0).reduce((a,b)=>a+b.ret,0);
+  const gl=Math.abs(trades.filter(t=>t.ret<0).reduce((a,b)=>a+b.ret,0));
+  return{n,wins,wr:wins/n*100,pf:gl>0?gp/gl:(gp>0?Infinity:null),
+    avg:trades.reduce((a,b)=>a+b.ret,0)/n,gp,gl};
+}
+// Jádro: projde COT historii × páry, spočítá forward výnos ve směru COT biasu.
+function runCOTBacktest(usdValue,cotHist,pctMap,opts){
+  const {horizonWeeks,diffThreshold,avoidExtremes}=opts;
+  const dates=Object.keys(cotHist).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  const horizonMs=horizonWeeks*7*86400000;const trades=[];const byPair={};
+  for(const pr of STANDARD_PAIRS){
+    for(const d of dates){
+      const sc=cotHist[d]?.scores;if(!sc) continue;
+      const diff=(sc[pr.base]??0)-(sc[pr.quote]??0);
+      if(Math.abs(diff)<diffThreshold) continue;
+      if(avoidExtremes&&pctMap){
+        const pb=pctMap[pr.base]?.[d],pq=pctMap[pr.quote]?.[d];
+        const crowded=(pb!=null&&(pb>=88||pb<=12))||(pq!=null&&(pq>=88||pq<=12));
+        if(crowded) continue;
+      }
+      const t0=Date.parse(d+"T00:00:00Z");
+      const p0=btPairPrice(usdValue,pr.base,pr.quote,t0);
+      const p1=btPairPrice(usdValue,pr.base,pr.quote,t0+horizonMs);
+      if(p0==null||p1==null) continue;
+      const dir=diff>0?1:-1;
+      const ret=(p1/p0-1)*dir*100; // % výnos ve směru obchodu
+      const tr={pair:pr.pair,date:d,diff,dir,ret};
+      trades.push(tr);(byPair[pr.pair]=byPair[pr.pair]||[]).push(tr);
+    }
+  }
+  const agg=btAggregate(trades);agg.byPair=byPair;return agg;
+}
+// Sweep přes prahy × horizonty + porovnání filtru extrémů.
+function runBacktestSweep(usdValue,cotHist){
+  const dates=Object.keys(cotHist).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  const pctMap=btBuildPercentiles(cotHist,dates);
+  const grid=[];
+  for(const h of BT_HORIZONS) for(const df of BT_DIFFS){
+    const base=runCOTBacktest(usdValue,cotHist,pctMap,{horizonWeeks:h,diffThreshold:df,avoidExtremes:false});
+    grid.push({horizon:h,diff:df,...base});
+  }
+  // nejlepší kombinace dle PF s dostatečným vzorkem
+  const valid=grid.filter(g=>g.n>=BT_MIN_TRADES&&g.pf!=null&&isFinite(g.pf));
+  const best=valid.slice().sort((a,b)=>b.pf-a.pf)[0]||grid.slice().sort((a,b)=>(b.n)-(a.n))[0];
+  // porovnání filtru extrémů na nejlepším nastavení
+  let extremeCompare=null;
+  if(best){
+    const withFilter=runCOTBacktest(usdValue,cotHist,pctMap,{horizonWeeks:best.horizon,diffThreshold:best.diff,avoidExtremes:true});
+    extremeCompare={off:{n:best.n,wr:best.wr,pf:best.pf,avg:best.avg},on:btAggregate(withFilter.trades||[])};
+  }
+  return {grid,best,extremeCompare,weeks:dates.length,dateFrom:dates[0],dateTo:dates.at(-1)};
+}
+
+function btFmtPF(pf){return pf==null?"—":(pf===Infinity||pf>=999?"∞":pf.toFixed(2));}
+function btFmtPct(x){return x==null?"—":Math.round(x)+"%";}
+function btCellColor(wr,pf,n){
+  if(n<BT_MIN_TRADES) return "#4a6a88";
+  if(pf!=null&&pf>=1.5&&wr>=55) return "#3fb950";
+  if(pf!=null&&pf>=1.1&&wr>=50) return "#d29922";
+  return "#ff4d4d";
+}
+
+function BacktestTab({avKey,cotData}){
+  const [loading,setLoading]=useState(false);
+  const [progress,setProgress]=useState([]);
+  const [result,setResult]=useState(null);
+  const [error,setError]=useState("");
+  const cotHist=loadCOTHistory();
+  const histWeeks=Object.keys(cotHist).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).length;
+
+  async function run(){
+    setError("");setResult(null);
+    if(!avKey){setError("Backtest potřebuje Alpha Vantage klíč (Settings) pro historické ceny.");return;}
+    if(histWeeks<52){setError("Málo COT historie ("+histWeeks+" týdnů). Načti nejdřív COT historii v záložce 📈 COT & Sentiment (5 let / import z PC).");return;}
+    setLoading(true);setProgress([]);
+    try{
+      const {usdValue,errors,loaded}=await loadBTPrices(avKey,(cur,len,cached)=>{
+        setProgress(p=>[...p,{cur,len,cached}]);
+      });
+      if(loaded.length<4){setLoading(false);setError("Nepodařilo se načíst dost cenových řad ("+loaded.length+"/7). "+(errors[0]||"")+" — zkus znovu (AV limit) nebo později.");return;}
+      // malý odklad ať se UI překreslí, pak těžký výpočet
+      await new Promise(r=>setTimeout(r,30));
+      const sweep=runBacktestSweep(usdValue,cotHist);
+      sweep.priceErrors=errors;sweep.pricesLoaded=loaded;
+      setResult(sweep);
+    }catch(e){setError("Backtest selhal: "+(e?.message||e));}
+    setLoading(false);
+  }
+
+  const inpBtn={padding:"9px 16px",background:"linear-gradient(135deg,var(--cmd-green),#36c94b)",border:"none",borderRadius:8,color:"#041007",fontSize:13,fontWeight:900,cursor:loading?"not-allowed":"pointer"};
+  return(
+    <div style={{maxWidth:1080}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:14,flexWrap:"wrap"}}>
+        <div>
+          <h2 style={{margin:0,fontSize:20}}>🔬 Backtest & Kalibrace (COT)</h2>
+          <div style={{fontSize:12,color:"#8b949e",marginTop:4,lineHeight:1.6,maxWidth:680}}>
+            Otestuje COT bias (skóre báze − kotace) na <b>reálných forward výnosech</b> z 5 let historie.
+            Ceny: Alpha Vantage FX_WEEKLY (7 USD-majorů, crossy dopočítány přes USD).
+            Měří <b>směrovou edge</b> (ne R se SL/TP). Slouží ke kalibraci prahu <code>diff</code> a filtru COT extrémů —
+            engine sám <b>neměníme</b>, jen ti to ukáže, jaké nastavení reálně fungovalo.
+          </div>
+        </div>
+        <button onClick={run} disabled={loading} style={inpBtn}>{loading?"⏳ Počítám…":"▶ Spustit backtest"}</button>
+      </div>
+
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
+        <span style={{fontSize:11,color:histWeeks>=52?"#3fb950":"#d29922",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>COT historie: <b>{histWeeks}</b> týdnů</span>
+        <span style={{fontSize:11,color:avKey?"#3fb950":"#ff4d4d",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>Alpha Vantage: <b>{avKey?"klíč OK":"chybí"}</b></span>
+      </div>
+
+      {loading&&progress.length>0&&<div style={{fontSize:11,color:"#8b949e",marginBottom:12}}>
+        Ceny: {progress.map(p=>p.cur+(p.cached?"·cache":"·"+p.len)).join("  ")}
+      </div>}
+      {error&&<div style={{background:"rgba(248,81,73,.08)",border:"1px solid rgba(248,81,73,.25)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#f85149",marginBottom:14}}>⚠ {error}</div>}
+
+      {result&&<>
+        {/* Doporučení */}
+        {result.best&&<div style={{background:"rgba(120,242,54,.06)",border:"1px solid rgba(120,242,54,.22)",borderLeft:"4px solid var(--cmd-green)",borderRadius:10,padding:"14px 16px",marginBottom:14}}>
+          <div style={{fontSize:13,fontWeight:900,color:"var(--cmd-green)",marginBottom:6}}>📌 Nejlepší nastavení (dle Profit Factoru, min. {BT_MIN_TRADES} obchodů)</div>
+          <div style={{fontSize:13,color:"#e6edf3",lineHeight:1.7}}>
+            Práh <b>|diff| ≥ {result.best.diff}</b> · horizont <b>{result.best.horizon} {result.best.horizon===1?"týden":result.best.horizon<5?"týdny":"týdnů"}</b> →{" "}
+            <b style={{color:"#3fb950"}}>WR {btFmtPct(result.best.wr)}</b> · <b style={{color:"#58a6ff"}}>PF {btFmtPF(result.best.pf)}</b> ·{" "}
+            průměr <b style={{color:result.best.avg>=0?"#3fb950":"#ff4d4d"}}>{result.best.avg>0?"+":""}{result.best.avg?.toFixed(2)}%</b> / obchod · n={result.best.n}
+          </div>
+          <div style={{fontSize:11,color:"#8b949e",marginTop:6}}>
+            Engine teď rankuje páry podle <code>diff</code> a „SLABÝ" značí <code>diff&lt;2</code>. Porovnej s řádkem diff=2 v tabulce níž — uvidíš, jestli je práh dobře nastavený.
+          </div>
+        </div>}
+
+        {/* Filtr extrémů */}
+        {result.extremeCompare&&<div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:10,padding:14,marginBottom:14}}>
+          <div className="pro-panel-title" style={{marginBottom:8}}>🚨 Vyplácí se vyhýbat COT extrémům? (na nejlepším nastavení)</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {[{l:"Bez filtru (všechny obchody)",s:result.extremeCompare.off},{l:"S filtrem (přeskoč crowded ≥88p / ≤12p)",s:result.extremeCompare.on}].map((x,i)=>(
+              <div key={i} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:8,padding:12}}>
+                <div style={{fontSize:11,color:"#8b949e",marginBottom:6}}>{x.l}</div>
+                <div style={{display:"flex",gap:14,fontSize:13}}>
+                  <span>WR <b style={{color:"#3fb950"}}>{btFmtPct(x.s.wr)}</b></span>
+                  <span>PF <b style={{color:"#58a6ff"}}>{btFmtPF(x.s.pf)}</b></span>
+                  <span>n <b>{x.s.n}</b></span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:"#8b949e",marginTop:8}}>Pokud má „S filtrem" lepší PF/WR, contrarian vyhýbání crowded pozicím (které engine dělá) má smysl. Když ne, filtr spíš ubírá obchody bez přínosu.</div>
+        </div>}
+
+        {/* Sweep grid */}
+        <div className="pro-card" style={{padding:16,marginBottom:14}}>
+          <div className="pro-panel-title" style={{marginBottom:4}}>Sweep: Win-rate / PF podle prahu × horizontu</div>
+          <div style={{fontSize:11,color:"#8b949e",marginBottom:12}}>Období {result.dateFrom} → {result.dateTo} · {result.weeks} týdnů · zelená = PF≥1.5 &amp; WR≥55 · šedá = málo dat (&lt;{BT_MIN_TRADES})</div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{borderCollapse:"collapse",width:"100%",fontSize:12}}>
+              <thead><tr>
+                <th style={{textAlign:"left",padding:"6px 8px",color:"#8b949e",fontWeight:700}}>|diff| ≥</th>
+                {BT_HORIZONS.map(h=><th key={h} style={{padding:"6px 10px",color:"#8b949e",fontWeight:700,textAlign:"center"}}>{h}t</th>)}
+              </tr></thead>
+              <tbody>
+                {BT_DIFFS.map(df=>(
+                  <tr key={df}>
+                    <td style={{padding:"6px 8px",fontWeight:700,color:"#e6edf3",borderTop:"1px solid #1b2a35"}}>{df}</td>
+                    {BT_HORIZONS.map(h=>{
+                      const g=result.grid.find(x=>x.diff===df&&x.horizon===h)||{};
+                      const col=btCellColor(g.wr,g.pf,g.n||0);
+                      const isBest=result.best&&result.best.diff===df&&result.best.horizon===h;
+                      return <td key={h} style={{padding:"6px 10px",textAlign:"center",borderTop:"1px solid #1b2a35",background:isBest?"rgba(120,242,54,.10)":"transparent",outline:isBest?"1px solid rgba(120,242,54,.4)":"none"}}>
+                        <div style={{color:col,fontWeight:800}}>{btFmtPct(g.wr)}</div>
+                        <div style={{fontSize:10,color:"#8b949e"}}>PF {btFmtPF(g.pf)}</div>
+                        <div style={{fontSize:9,color:"#4a6a88"}}>n {g.n||0}</div>
+                      </td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Per-pair na nejlepším nastavení */}
+        {result.best&&result.best.byPair&&<div className="pro-card" style={{padding:16}}>
+          <div className="pro-panel-title" style={{marginBottom:10}}>Edge podle páru (diff≥{result.best.diff}, {result.best.horizon}t)</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:8}}>
+            {Object.entries(result.best.byPair).map(([pair,trs])=>{
+              const a=btAggregate(trs);const col=a.pf!=null&&a.pf>=1.3?"#3fb950":a.pf!=null&&a.pf>=1?"#d29922":"#ff4d4d";
+              return <div key={pair} style={{background:"#0b111a",border:"1px solid "+col+"33",borderRadius:8,padding:"8px 10px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><b style={{fontSize:12}}>{pair}</b><span style={{fontSize:11,color:col,fontWeight:800}}>PF {btFmtPF(a.pf)}</span></div>
+                <div style={{fontSize:10,color:"#8b949e",marginTop:3}}>WR {btFmtPct(a.wr)} · n {a.n} · {a.avg>0?"+":""}{a.avg?.toFixed(2)}%</div>
+              </div>;
+            })}
+          </div>
+          <div style={{fontSize:10,color:"#4a6a88",marginTop:10,lineHeight:1.5}}>
+            Páry s PF&lt;1 jsou kandidáti na „blacklist" — COT na nich historicky směr netrefoval. Pozn.: měří se čistá směrová edge bez SL/TP a spreadu, takže reálné R bude o něco nižší.
+          </div>
+        </div>}
+      </>}
+    </div>
+  );
+}
+
 // ── HLAVNÍ APP ────────────────────────────────────────────
 function App(){
   const [fhKey,setFhKey]=useState(null);
@@ -4024,6 +4300,7 @@ function App(){
           <button type="button" className={tab==="ai"?"active":""} onClick={()=>{setTab("ai");}}>🤖 AI Analýza</button>
           <button type="button" className={tab==="coach"?"active":""} onClick={()=>{setTab("coach");}}>🧠 AI Coach</button>
           <button type="button" className={tab==="journal"?"active":""} onClick={()=>{setTab("journal");}}>📓 Deník</button>
+          <button type="button" className={tab==="backtest"?"active":""} onClick={()=>{setTab("backtest");}}>🔬 Backtest</button>
           <button type="button" onClick={()=>setShowSet(true)}>⚙️ Settings</button>
         </div>
         <div className="command-bias-card">
@@ -4169,6 +4446,9 @@ function App(){
         )}
         {tab==="journal"&&(
           <JournalTab journal={journal} scores={scores} pairs={top} calData={calData} upcoming={upcoming} aiAnalyses={aiAnalyses} selected={selected} onAdd={addTrade} onUpdate={updateTrade} onDelete={deleteTrade} onImport={importTrades}/>
+        )}
+        {tab==="backtest"&&(
+          <BacktestTab avKey={avKey} cotData={cotData}/>
         )}
       </div>
       <MarketStatusBar/>
