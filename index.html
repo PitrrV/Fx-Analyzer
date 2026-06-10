@@ -980,6 +980,10 @@ function getCurrencyMomentum(currency){
     return parseFloat(Math.max(-1,Math.min(1,(diffs.reduce((a,b)=>a+b,0)/diffs.length)*0.35)).toFixed(2));
   }catch(e){return 0;}
 }
+// Momentum byl historicky kvůli bugu vždy 0 → backtest s 65% WR běžel BEZ něj.
+// Necháváme momentum počítat (loguje se a vyhodnocuje v 🔬 Backtest tabu),
+// ale do živého skóre nepřispívá, dokud ho backtest neověří. Zapneš = true.
+const MOMENTUM_ENABLED=false;
 // ══════════════════════════════════════════════════════════════
 // AUTO-UPDATE SYSTÉM — extrahuje CB sazby, CPI a Policy stance
 // z již načteného Finnhub kalendáře. Nulové extra API volání.
@@ -1262,7 +1266,7 @@ function buildForecastV5(pair,scores,calData,upcoming){
   // Faktor 1: logistická funkce
   let prob=50+(1/(1+Math.exp(-combined*0.5))-0.5)*60;
   // Faktor 2: momentum
-  const momAdj=(getCurrencyMomentum(base)-getCurrencyMomentum(quote))*5;
+  const momAdj=MOMENTUM_ENABLED?(getCurrencyMomentum(base)-getCurrencyMomentum(quote))*5:0;
   prob+=momAdj;
   // Faktor 3: news risk discount
   const hoursToNews=getHoursToHighImpact(base,quote,upcoming);
@@ -1455,7 +1459,7 @@ function scoreCurrency(events,currency,cotData,sentData){
   try{const r=JSON.parse(localStorage.getItem("v5_regime")||"{}" );regime=r[currency]||"NEUTRAL";}catch(e){}
   const wt=getDynamicWeights(cotPct,regime);
   const riskAdj=getRiskSentimentAdj(currency);
-  const rawTotal=fundScore*wt.fund+cotScore*wt.cot+sentScore*wt.sent+seasonScore*wt.sea+momentumAdj*0.3+riskAdj+oilAdj;
+  const rawTotal=fundScore*wt.fund+cotScore*wt.cot+sentScore*wt.sent+seasonScore*wt.sea+momentumAdj*(MOMENTUM_ENABLED?0.3:0)+riskAdj+oilAdj;
   const total=parseFloat(Math.max(-10,Math.min(10,rawTotal)).toFixed(2));
   return{
     score:total,
@@ -1922,7 +1926,7 @@ function ScoreBreakdown({currency,scores}){
     ...(s.policy_adj!==undefined&&s.policy_adj!==0?[{label:`CB politika (${CB_POLICY_DATA[currency]?.label||""})`,value:s.policy_adj,max:1.5}]:[]),
     ...(s.risk_adj!==undefined&&s.risk_adj!==0?[{label:`Risk sentiment (${g_riskSentiment>0?"risk-on":g_riskSentiment<0?"risk-off":"neutral"})`,value:s.risk_adj,max:1.2}]:[]),
     {label:"COT (velcí hráči)",value:s.cot_score,max:3},
-    ...(s.momentum_adj&&s.momentum_adj!==0?[{label:"Score momentum",value:parseFloat((s.momentum_adj*0.3).toFixed(2)),max:1}]:[]),
+    ...(MOMENTUM_ENABLED&&s.momentum_adj&&s.momentum_adj!==0?[{label:"Score momentum",value:parseFloat((s.momentum_adj*0.3).toFixed(2)),max:1}]:[]),
     {label:"Retail sentiment",value:s.sent_score,max:2},
     {label:"Seasonalita (2%)",value:s.season_score,max:2},
     // Ropa — pouze pro CAD a USD
