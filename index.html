@@ -950,6 +950,61 @@ async function fetchUpcoming14(apiKey){
     .filter(e=>allCodes.some(c=>(e.country||"").toUpperCase().includes(c))&&getWeight(e.event)>0)
     .sort((a,b)=>new Date(a.time)-new Date(b.time));
 }
+
+// ── ZÁLOŽNÍ KALENDÁŘ: ForexFactory (zdarma, bez klíče) ───────────────
+// Finnhub /calendar/economic je teď placený (free klíč → 403). Když selže,
+// vezmeme volný ForexFactory feed (minulý+tento+příští týden) přes proxy.
+const FF_CCY_COUNTRY={USD:"US",EUR:"EU",GBP:"GB",JPY:"JP",AUD:"AU",CAD:"CA",CHF:"CH",NZD:"NZ",CNY:"CN"};
+async function fetchJSONWithProxies(url){
+  const enc=encodeURIComponent(url);
+  const tries=[url,
+    "https://api.allorigins.win/raw?url="+enc,
+    "https://corsproxy.io/?url="+enc,
+    "https://api.codetabs.com/v1/proxy/?quest="+url];
+  let last=null;
+  for(const u of tries){
+    try{
+      const r=await fetch(u,{cache:"no-store",signal:abortTimeout(15000)});
+      if(!r.ok){last=new Error("HTTP "+r.status);continue;}
+      const t=await r.text();
+      if(!t||t.length<10){last=new Error("prázdná odpověď");continue;}
+      try{return JSON.parse(t);}catch(e){last=new Error("není JSON (proxy?)");}
+    }catch(e){last=e;}
+  }
+  throw last||new Error("fetch selhal");
+}
+function mapFFEvent(e){
+  const ccy=String(e.country||e.currency||"").toUpperCase();
+  return {
+    event:e.title||e.event||"",
+    country:FF_CCY_COUNTRY[ccy]||ccy,
+    time:e.date||e.time||"",
+    impact:String(e.impact||"").toLowerCase(),
+    actual:(e.actual!=null&&e.actual!=="")?String(e.actual):"",
+    estimate:(e.forecast!=null&&e.forecast!=="")?String(e.forecast):"",
+    prev:(e.previous!=null&&e.previous!=="")?String(e.previous):"",
+  };
+}
+async function fetchFFEvents(){
+  const feeds=["ff_calendar_lastweek.json","ff_calendar_thisweek.json","ff_calendar_nextweek.json"];
+  const out=[];let ok=0;
+  for(const f of feeds){
+    try{
+      const arr=await fetchJSONWithProxies("https://nfs.faireconomy.media/"+f);
+      if(Array.isArray(arr)){arr.forEach(e=>{const m=mapFFEvent(e);if(m.event&&m.time)out.push(m);});ok++;}
+    }catch(e){console.log("FF feed "+f+" selhal:",e?.message);}
+  }
+  if(!out.length) throw new Error("ForexFactory feed nedostupný (proxy/CORS).");
+  return out;
+}
+function deriveUpcomingFromEvents(events){
+  const now=Date.now(),to=now+14*86400000;
+  const allCodes=[...new Set([...Object.values(CURRENCY_COUNTRIES).flat(),...Object.values(INDIRECT_COUNTRIES).flat()])];
+  return (events||[]).filter(e=>{
+    const t=parseEventTime(e.time);
+    return t>=now&&t<=to&&allCodes.some(c=>(e.country||"").toUpperCase().includes(c))&&getWeight(e.event)>0;
+  }).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+}
 // ── SCORING ───────────────────────────────────────────────
 // ═══════════════ V5 ENGINE HELPERS ═══════════════════════════
 function getCOTPercentile(currency){
@@ -4315,15 +4370,21 @@ function App(){
   const loadData=useCallback(async(key,cot,sent)=>{
     setLoading(true);setError("");
     try{
-      // Kalendář degraduj gracefully: když Finnhub endpoint selže (403/premium,
-      // neplatný klíč, rate limit), appka nespadne — jede dál z COT/yield/policy
-      // a uživateli jasně řekne, proč fundamenty z dat chybí.
-      let cal=[],calWarn="";
+      // Kalendář: Finnhub (15 měsíců historie). Když selže (403 premium /
+      // neplatný klíč), spadne na volný ForexFactory feed, ať appka jede dál.
+      let cal=[],calWarn="",calSource="finnhub";
       try{ cal=await fetchCalendar(key,15); }
-      catch(e){ calWarn="⚠ Finnhub kalendář nedostupný ("+(e?.message||e)+"). Fundamenty z dat chybí — skóre jede z COT/yield/policy. Endpoint /calendar/economic může vyžadovat placený Finnhub plán nebo je klíč neplatný."; }
+      catch(e){
+        try{
+          cal=await fetchFFEvents();calSource="forexfactory";
+          calWarn="ℹ Finnhub kalendář nedostupný ("+(e?.message||e)+") — použit záložní ForexFactory feed (minulý±příští týden). Historie je kratší, ale fundamenty jedou.";
+        }catch(e2){
+          calWarn="⚠ Finnhub kalendář (403?) i ForexFactory záloha selhaly. Skóre jede jen z COT/yield/policy. Detail: "+(e2?.message||e2);
+        }
+      }
       setCalData(cal);
 
-      // AUTO-UPDATE: CB sazby, CPI, CB Policy stance z Finnhub kalendáře (bez extra API)
+      // AUTO-UPDATE: CB sazby, CPI, CB Policy stance z kalendáře (bez extra API)
       const{updated}=autoUpdateFromCalendar(cal);
       if(updated.length) console.log("Auto-aktualizováno:",updated.join(" | "));
 
@@ -4341,7 +4402,8 @@ function App(){
       updateBiasFlips(ranked);
       setSelected(p=>p||ranked[0]);
       let up=[];
-      try{ up=await fetchUpcoming14(key); }catch(e){}
+      if(calSource==="finnhub"){ try{ up=await fetchUpcoming14(key); }catch(e){} }
+      else { up=deriveUpcomingFromEvents(cal); }
       setUpcoming(up);
       const fc={};ranked.forEach(p=>{fc[p.pair]=buildForecastV5(p,sc,cal,up);});
       setForecasts(fc);
