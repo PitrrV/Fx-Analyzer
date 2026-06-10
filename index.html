@@ -4315,7 +4315,12 @@ function App(){
   const loadData=useCallback(async(key,cot,sent)=>{
     setLoading(true);setError("");
     try{
-      const cal=await fetchCalendar(key,15);
+      // Kalendář degraduj gracefully: když Finnhub endpoint selže (403/premium,
+      // neplatný klíč, rate limit), appka nespadne — jede dál z COT/yield/policy
+      // a uživateli jasně řekne, proč fundamenty z dat chybí.
+      let cal=[],calWarn="";
+      try{ cal=await fetchCalendar(key,15); }
+      catch(e){ calWarn="⚠ Finnhub kalendář nedostupný ("+(e?.message||e)+"). Fundamenty z dat chybí — skóre jede z COT/yield/policy. Endpoint /calendar/economic může vyžadovat placený Finnhub plán nebo je klíč neplatný."; }
       setCalData(cal);
 
       // AUTO-UPDATE: CB sazby, CPI, CB Policy stance z Finnhub kalendáře (bez extra API)
@@ -4335,11 +4340,13 @@ function App(){
       setPairs(ranked);
       updateBiasFlips(ranked);
       setSelected(p=>p||ranked[0]);
-      const up=await fetchUpcoming14(key);
+      let up=[];
+      try{ up=await fetchUpcoming14(key); }catch(e){}
       setUpcoming(up);
       const fc={};ranked.forEach(p=>{fc[p.pair]=buildForecastV5(p,sc,cal,up);});
       setForecasts(fc);
       setLastUp(new Date());
+      if(calWarn) setError(calWarn);
     }catch(e){setError(e.message);}
     setLoading(false);
   },[]);
