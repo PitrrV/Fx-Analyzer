@@ -195,6 +195,21 @@ function getSeasonalScore(currency){
   return (SEASONALITY[currency]||[])[month]||0;
 }
 
+// Finnhub ekonomický kalendář vrací čas v UTC ("YYYY-MM-DD HH:MM:SS" bez TZ).
+// Prohlížeč by takový string četl jako LOKÁLNÍ čas → zobrazené časy i denní
+// tečky (🔴🟡🟢) by byly posunuté o offset uživatele. Vynutíme UTC a necháme
+// toLocaleTimeString přepočítat do reálné lokální zóny uživatele.
+function parseEventTime(t){
+  if(t==null) return NaN;
+  if(typeof t==="number") return t;
+  const s=String(t).trim();
+  if(/[zZ]$|[+\-]\d\d:?\d\d$/.test(s)) return Date.parse(s);            // už má TZ
+  const m=s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)/);  // datum+čas → UTC
+  if(m) return Date.parse(m[1]+"T"+m[2]+"Z");
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return Date.parse(s+"T00:00:00Z");  // jen datum
+  return Date.parse(s);
+}
+function evDate(ev){return new Date(parseEventTime(ev&&ev.time));}
 function recency(dateStr){
   const d=(Date.now()-new Date(dateStr))/86400000;
   return d<=90?1.8:d<=180?1.4:d<=365?1.0:0.7;
@@ -987,7 +1002,7 @@ function getCurrencyFromEvent(ev){
 function extractCBRatesFromCalendar(calData){
   const rateEvents=calData.filter(ev=>{
     const meta=getEventMeta(ev.event);
-    return meta?.cat==="Interest Rates"&&ev.actual&&new Date(ev.time)<=new Date();
+    return meta?.cat==="Interest Rates"&&ev.actual&&evDate(ev)<=new Date();
   }).sort((a,b)=>new Date(b.time)-new Date(a.time));
 
   const rates={}; const histories={};
@@ -1011,7 +1026,7 @@ function extractCBRatesFromCalendar(calData){
 function extractCPIFromCalendar(calData){
   const past=calData.filter(ev=>{
     const meta=getEventMeta(ev.event);
-    return meta?.cat==="Inflation"&&ev.actual&&new Date(ev.time)<=new Date();
+    return meta?.cat==="Inflation"&&ev.actual&&evDate(ev)<=new Date();
   });
   const cpi={};
   const sorted=past.sort((a,b)=>new Date(b.time)-new Date(a.time));
@@ -1231,7 +1246,7 @@ function getHoursToHighImpact(base,quote,upcoming){
     const now=Date.now();
     const rel=upcoming.filter(ev=>(eventRelevance(base,ev)||eventRelevance(quote,ev))&&(ev.impact==="high"||ev.impact===3||ev.impact==="3"));
     if(!rel.length) return 999;
-    return Math.max(0,(new Date(rel.sort((a,b)=>new Date(a.time)-new Date(b.time))[0].time)-now)/3600000);
+    return Math.max(0,(parseEventTime(rel.sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time))[0].time)-now)/3600000);
   }catch(e){return 999;}
 }
 function buildForecastV5(pair,scores,calData,upcoming){
@@ -1478,7 +1493,7 @@ function getShortTermFundScore(currency,events,days=DAY_WINDOW){
   const cutoff=Date.now()-days*86400000,now=Date.now();
   let score=0,weight=0;const items=[];
   for(const ev of (events||[])){
-    const t=new Date(ev.time).getTime();
+    const t=parseEventTime(ev.time);
     if(!(t>=cutoff&&t<=now)||!ev.actual) continue;
     const rel=eventRelevance(currency,ev);if(!rel||rel.type!=="direct") continue; // jen přímé → CHF nepřebírá EUR
     const meta=getEventMeta(ev.event);if(!meta) continue;
@@ -1507,7 +1522,7 @@ function detectFundamentalConflict(pair,scores,calData,upcoming,days=DAY_WINDOW)
 function getUpcomingToday(currency,upcoming){
   const now=Date.now(),end=localDayEnd();
   return (upcoming||[]).filter(e=>{
-    const t=new Date(e.time).getTime();
+    const t=parseEventTime(e.time);
     if(!(t>now&&t<=end)||e.actual) return false;           // jen budoucí dnešní, bez výsledku
     const rel=eventRelevance(currency,e);if(!rel||rel.type!=="direct") return false;
     if(!getEventMeta(e.event)) return false;
@@ -2313,7 +2328,7 @@ function getSurpriseInfo(ev){
   return {label:"INLINE",color:"#d29922",bg:"rgba(210,153,34,.12)",bias:"v souladu s odhadem"};
 }
 function CalendarEventRow({e,compact=false}){
-  const dt=new Date(e.time);
+  const dt=evDate(e);
   const cur=getEventCurrency(e);
   const impact=getImpactInfo(e);
   const surprise=getSurpriseInfo(e);
@@ -2728,7 +2743,7 @@ function DailyBriefPanel({pair,scores,calData,upcoming,positions,onPosition}){
     :confirm?`✅ DAILY BRIEF — ${pair.pair}: dnešní data potvrzují ${ltDir}`
     :(hasUp&&!c.hasData)?`⏳ DAILY BRIEF — ${pair.pair}: dnes přicházejí důležité fundamenty`
     :`➡️ DAILY BRIEF — ${pair.pair}`;
-  const tm=e=>new Date(e.time).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
+  const tm=e=>evDate(e).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
   const evLine=(cur,arr)=>arr.length?`${FLAGS[cur]} ${cur} ${tm(arr[0])}: ${arr.map(e=>e.event).slice(0,2).join(", ")}${arr.length>2?` (+${arr.length-2})`:""}`:null;
   const releasedTxt=c.hasData?(conflict
     ?`14denní výhled zůstává ${ltDir}, ale dnešní data tlačí ${pair.pair} krátkodobě na ${c.stDir==="BUY"?"posílení":"oslabení"}. Dnes bych nehledal agresivní ${ltDir==="BUY"?"longy":"shorty"} — počkal na uklidnění a nové potvrzení ${ltDir} scénáře.`
@@ -3575,7 +3590,7 @@ function DailyBriefBar({pairs,scores,calData,upcoming,inline,positions}){
     return{pair:pr,side,level:stt.level};
   }).filter(Boolean);
   const nothing=!flips.length&&!Object.keys(rel).length&&!Object.keys(up).length&&!posLines.length;
-  const tm=e=>new Date(e.time).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
+  const tm=e=>evDate(e).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
   const now=new Date().toLocaleString("cs-CZ",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"});
   if(nothing) return(
     <div style={{...(inline?{}:{gridColumn:"1 / -1"}),background:"rgba(63,185,80,.05)",border:"1px solid rgba(63,185,80,.18)",borderRadius:10,padding:"10px 14px",marginBottom:4,fontSize:12,color:"#8b949e"}}>
@@ -3990,6 +4005,51 @@ function btCellColor(wr,pf,n){
   return "#ff4d4d";
 }
 
+// ── FORWARD LOG CELÉHO ENGINU ─────────────────────────────────────
+// Každý refresh uloží plný rozpad skóre všech měn. Později (až horizont
+// dozraje) se to v backtestu spojí s reálnými cenami → měří edge CELÉHO
+// enginu i jednotlivých komponent (ne jen COT). Roste postupně časem.
+const ENGINE_LOG_FIELDS=["score","fund_score","cot_score","sent_score","season_score","yield_adj","policy_adj","momentum_adj","oil_adj"];
+const ENGINE_COMP_LABELS={fund_score:"Fundamenty",cot_score:"COT",sent_score:"Retail sent.",season_score:"Sezónnost",yield_adj:"Real yield",policy_adj:"CB policy",momentum_adj:"Momentum",oil_adj:"Ropa (WTI)"};
+function loadEngineLog(){try{return JSON.parse(localStorage.getItem("engine_log")||"{}");}catch(e){return{};}}
+function saveEngineSnapshot(scores){
+  try{
+    const today=new Date().toISOString().split("T")[0];
+    const log=loadEngineLog();const snap={};
+    CURRENCIES.forEach(c=>{const s=scores[c]||{};const o={};
+      ENGINE_LOG_FIELDS.forEach(f=>{o[f]=typeof s[f]==="number"?parseFloat(s[f].toFixed(3)):0;});snap[c]=o;});
+    log[today]={ts:Date.now(),cur:snap};
+    const keys=Object.keys(log).sort().slice(-400);const trimmed={};keys.forEach(k=>trimmed[k]=log[k]);
+    localStorage.setItem("engine_log",JSON.stringify(trimmed));
+  }catch(e){}
+}
+// Backtest forward-logu: total skóre + edge každé komponenty na horizont (týdny).
+function runEngineLogBacktest(usdValue,engineLog,horizonWeeks){
+  const dates=Object.keys(engineLog).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  const horizonMs=horizonWeeks*7*86400000;
+  const comp=ENGINE_LOG_FIELDS.filter(f=>f!=="score");
+  const sig={total:[]};comp.forEach(f=>sig[f]=[]);
+  let evaluable=0,matured=0;
+  for(const d of dates){
+    const snap=engineLog[d]?.cur;if(!snap) continue;
+    const t0=Date.parse(d+"T00:00:00Z");
+    for(const pr of STANDARD_PAIRS){
+      const b=snap[pr.base],q=snap[pr.quote];if(!b||!q) continue;
+      const p0=btPairPrice(usdValue,pr.base,pr.quote,t0);if(p0==null) continue;
+      evaluable++;
+      const p1=btPairPrice(usdValue,pr.base,pr.quote,t0+horizonMs);if(p1==null) continue;
+      matured++;
+      const fwd=(p1/p0-1)*100;
+      const td=(b.score||0)-(q.score||0);
+      if(td!==0) sig.total.push({ret:fwd*(td>0?1:-1)});
+      comp.forEach(f=>{const dd=(b[f]||0)-(q[f]||0);if(dd!==0) sig[f].push({ret:fwd*(dd>0?1:-1)});});
+    }
+  }
+  const out={total:btAggregate(sig.total),components:{},days:dates.length,evaluable,matured,horizon:horizonWeeks};
+  comp.forEach(f=>out.components[f]=btAggregate(sig[f]));
+  return out;
+}
+
 function BacktestTab({avKey,cotData}){
   const [loading,setLoading]=useState(false);
   const [progress,setProgress]=useState([]);
@@ -3998,10 +4058,13 @@ function BacktestTab({avKey,cotData}){
   const cotHist=loadCOTHistory();
   const histWeeks=Object.keys(cotHist).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).length;
 
+  const engineLog=loadEngineLog();
+  const engineDays=Object.keys(engineLog).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).length;
+
   async function run(){
     setError("");setResult(null);
     if(!avKey){setError("Backtest potřebuje Alpha Vantage klíč (Settings) pro historické ceny.");return;}
-    if(histWeeks<52){setError("Málo COT historie ("+histWeeks+" týdnů). Načti nejdřív COT historii v záložce 📈 COT & Sentiment (5 let / import z PC).");return;}
+    if(histWeeks<52&&engineDays<1){setError("Není co backtestovat. Načti COT historii v záložce 📈 COT & Sentiment (5 let / import z PC) — nebo nech appku pár dní běžet, ať se nasbírá forward log enginu.");return;}
     setLoading(true);setProgress([]);
     try{
       const {usdValue,errors,loaded}=await loadBTPrices(avKey,(cur,len,cached)=>{
@@ -4010,9 +4073,10 @@ function BacktestTab({avKey,cotData}){
       if(loaded.length<4){setLoading(false);setError("Nepodařilo se načíst dost cenových řad ("+loaded.length+"/7). "+(errors[0]||"")+" — zkus znovu (AV limit) nebo později.");return;}
       // malý odklad ať se UI překreslí, pak těžký výpočet
       await new Promise(r=>setTimeout(r,30));
-      const sweep=runBacktestSweep(usdValue,cotHist);
-      sweep.priceErrors=errors;sweep.pricesLoaded=loaded;
-      setResult(sweep);
+      const res=histWeeks>=52?runBacktestSweep(usdValue,cotHist):{grid:null,best:null};
+      res.engine=engineDays>=1?runEngineLogBacktest(usdValue,engineLog,4):null;
+      res.priceErrors=errors;res.pricesLoaded=loaded;
+      setResult(res);
     }catch(e){setError("Backtest selhal: "+(e?.message||e));}
     setLoading(false);
   }
@@ -4036,6 +4100,7 @@ function BacktestTab({avKey,cotData}){
       <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
         <span style={{fontSize:11,color:histWeeks>=52?"#3fb950":"#d29922",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>COT historie: <b>{histWeeks}</b> týdnů</span>
         <span style={{fontSize:11,color:avKey?"#3fb950":"#ff4d4d",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>Alpha Vantage: <b>{avKey?"klíč OK":"chybí"}</b></span>
+        <span style={{fontSize:11,color:engineDays>=20?"#3fb950":"#8b949e",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>Engine forward-log: <b>{engineDays}</b> dní</span>
       </div>
 
       {loading&&progress.length>0&&<div style={{fontSize:11,color:"#8b949e",marginBottom:12}}>
@@ -4075,9 +4140,9 @@ function BacktestTab({avKey,cotData}){
           <div style={{fontSize:11,color:"#8b949e",marginTop:8}}>Pokud má „S filtrem" lepší PF/WR, contrarian vyhýbání crowded pozicím (které engine dělá) má smysl. Když ne, filtr spíš ubírá obchody bez přínosu.</div>
         </div>}
 
-        {/* Sweep grid */}
-        <div className="pro-card" style={{padding:16,marginBottom:14}}>
-          <div className="pro-panel-title" style={{marginBottom:4}}>Sweep: Win-rate / PF podle prahu × horizontu</div>
+        {/* Sweep grid (jen když je COT historie) */}
+        {result.grid&&<div className="pro-card" style={{padding:16,marginBottom:14}}>
+          <div className="pro-panel-title" style={{marginBottom:4}}>COT sweep: Win-rate / PF podle prahu × horizontu</div>
           <div style={{fontSize:11,color:"#8b949e",marginBottom:12}}>Období {result.dateFrom} → {result.dateTo} · {result.weeks} týdnů · zelená = PF≥1.5 &amp; WR≥55 · šedá = málo dat (&lt;{BT_MIN_TRADES})</div>
           <div style={{overflowX:"auto"}}>
             <table style={{borderCollapse:"collapse",width:"100%",fontSize:12}}>
@@ -4104,7 +4169,7 @@ function BacktestTab({avKey,cotData}){
               </tbody>
             </table>
           </div>
-        </div>
+        </div>}
 
         {/* Per-pair na nejlepším nastavení */}
         {result.best&&result.best.byPair&&<div className="pro-card" style={{padding:16}}>
@@ -4121,6 +4186,41 @@ function BacktestTab({avKey,cotData}){
           <div style={{fontSize:10,color:"#4a6a88",marginTop:10,lineHeight:1.5}}>
             Páry s PF&lt;1 jsou kandidáti na „blacklist" — COT na nich historicky směr netrefoval. Pozn.: měří se čistá směrová edge bez SL/TP a spreadu, takže reálné R bude o něco nižší.
           </div>
+        </div>}
+
+        {/* ── ENGINE FORWARD-LOG BACKTEST (celý engine + komponenty) ── */}
+        {result.engine&&<div className="pro-card" style={{padding:16,marginTop:14}}>
+          <div className="pro-panel-title" style={{marginBottom:4}}>🧪 Live engine forward-log — celý engine (horizont {result.engine.horizon}t)</div>
+          <div style={{fontSize:11,color:"#8b949e",marginBottom:12}}>
+            {result.engine.days} dní logu · {result.engine.matured} obchodů dozrálo (zbytek čeká na {result.engine.horizon}t horizont). Sbírá se automaticky při každém refreshi — užitečné od ~20+ dozrálých.
+          </div>
+          {result.engine.matured>=BT_MIN_TRADES
+            ? <>
+                <div style={{background:"rgba(47,155,255,.06)",border:"1px solid rgba(47,155,255,.2)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                  <div style={{fontSize:12,color:"#8b949e",marginBottom:4}}>Celkové skóre enginu jako signál</div>
+                  <div style={{display:"flex",gap:16,fontSize:14,flexWrap:"wrap"}}>
+                    <span>WR <b style={{color:"#3fb950"}}>{btFmtPct(result.engine.total.wr)}</b></span>
+                    <span>PF <b style={{color:"#58a6ff"}}>{btFmtPF(result.engine.total.pf)}</b></span>
+                    <span>průměr <b style={{color:result.engine.total.avg>=0?"#3fb950":"#ff4d4d"}}>{result.engine.total.avg>0?"+":""}{result.engine.total.avg?.toFixed(2)}%</b></span>
+                    <span style={{color:"#8b949e"}}>n {result.engine.total.n}</span>
+                  </div>
+                </div>
+                <div className="pro-panel-title" style={{marginBottom:8,fontSize:12}}>Edge jednotlivých komponent — který faktor reálně trefuje směr</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:8}}>
+                  {Object.entries(result.engine.components).sort((a,b)=>(b[1].pf||0)-(a[1].pf||0)).map(([f,a])=>{
+                    const col=a.pf!=null&&a.pf>=1.2?"#3fb950":a.pf!=null&&a.pf>=1?"#d29922":"#ff4d4d";
+                    return <div key={f} style={{background:"#0b111a",border:"1px solid "+col+"33",borderRadius:8,padding:"8px 10px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><b style={{fontSize:12}}>{ENGINE_COMP_LABELS[f]||f}</b><span style={{fontSize:11,color:col,fontWeight:800}}>PF {btFmtPF(a.pf)}</span></div>
+                      <div style={{fontSize:10,color:"#8b949e",marginTop:3}}>WR {btFmtPct(a.wr)} · n {a.n}</div>
+                    </div>;
+                  })}
+                </div>
+                <div style={{fontSize:10,color:"#4a6a88",marginTop:10,lineHeight:1.5}}>
+                  Komponenta s vysokým PF nese reálnou edge → zaslouží vyšší váhu. PF≈1 nebo níž = na datech nepomáhá. Tohle je podklad pro pozdější přeladění vah celého enginu (COT sweep výš kalibruje jen práh COT biasu).
+                </div>
+              </>
+            : <div style={{fontSize:12,color:"#8b949e",padding:"8px 0"}}>Zatím málo dozrálých obchodů ({result.engine.matured}). Forward log se plní každý den, co necháš appku načíst — vrať se za pár týdnů, až {result.engine.horizon}t horizont dozraje na dostatečném vzorku.</div>
+          }
         </div>}
       </>}
     </div>
@@ -4226,6 +4326,7 @@ function App(){
       CURRENCIES.forEach(c=>{sc[c]=scoreCurrency(cal,c,cot,sent);});
       setScores(sc);
       saveScoreHistory(sc);
+      saveEngineSnapshot(sc); // forward log celého enginu (pro backtest komponent)
       const ranked=rankPairs(sc,aiRef.current);
       setPairs(ranked);
       updateBiasFlips(ranked);
