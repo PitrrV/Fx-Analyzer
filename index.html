@@ -962,6 +962,7 @@ async function fetchUpcoming14(apiKey){
 // tak se 15 měsíců poskládá z 5 oken (+14 dní dopředu na upcoming). Mapuje se
 // na stejný tvar jako Finnhub/FF, takže scoring nepozná rozdíl.
 const FMP="https://financialmodelingprep.com/api/v3";
+const FMP_STABLE="https://financialmodelingprep.com/stable/economic-calendar";
 function mapFMPEvent(e){
   return {
     event:e.event||"",
@@ -969,22 +970,42 @@ function mapFMPEvent(e){
     time:e.date||"",
     impact:String(e.impact||"").toLowerCase(),
     actual:(e.actual!=null&&e.actual!=="")?String(e.actual):"",
-    estimate:(e.estimate!=null&&e.estimate!=="")?String(e.estimate):"",
+    estimate:((e.estimate??e.consensus??e.forecast)!=null&&(e.estimate??e.consensus??e.forecast)!=="")?String(e.estimate??e.consensus??e.forecast):"",
     prev:(e.previous!=null&&e.previous!=="")?String(e.previous):"",
   };
 }
+// Vrátí JSON pole z FMP. Přímý fetch → při CORS/síti zkusí přes proxy.
+// Chybový objekt {"Error Message":...} (paywall) převede na čitelnou výjimku.
+async function fmpFetchArray(url){
+  let data=null,err=null;
+  try{
+    const res=await fetch(url,{cache:"no-store",signal:abortTimeout(15000)});
+    if(res.ok){ data=await res.json(); }
+    else{ const body=await res.text().catch(()=>""); err=new Error("HTTP "+res.status+(body?(" "+body.slice(0,120)):"")); }
+  }catch(e){ err=new Error("síť/CORS: "+(e?.message||e)); }
+  if(data==null){
+    // fallback přes CORS proxy (stejné jako ForexFactory)
+    try{ data=await fetchJSONWithProxies(url); }catch(e){ throw err||new Error(e?.message||String(e)); }
+  }
+  if(Array.isArray(data)) return data;
+  const msg=data&&(data["Error Message"]||data.message||data.error);
+  throw new Error(msg?String(msg).slice(0,140):"FMP nevrátil pole (paywall/neznámá odpověď)");
+}
 async function fetchFMPCalendar(apiKey,months=15){
-  const out=[];const now=new Date();const windows=Math.ceil(months/3);
+  const out=[];const now=new Date();const windows=Math.ceil(months/3);let lastErr=null;
   for(let i=0;i<windows;i++){
     const to=new Date(now); to.setMonth(to.getMonth()-i*3);
     if(i===0) to.setDate(to.getDate()+14);            // i upcoming události
     const from=new Date(to); from.setMonth(from.getMonth()-3); from.setDate(from.getDate()-(i===0?14:0));
     const f=from.toISOString().split("T")[0],t=to.toISOString().split("T")[0];
-    const res=await fetch(`${FMP}/economic_calendar?from=${f}&to=${t}&apikey=${apiKey}`,{cache:"no-store",signal:abortTimeout(15000)});
-    if(!res.ok) throw new Error(`FMP error ${res.status}`);
-    const data=await res.json();
-    if(!Array.isArray(data)) throw new Error(data&&data["Error Message"]?String(data["Error Message"]).slice(0,90):"FMP nevrátil pole (paywall?)");
-    for(const e of data) out.push(mapFMPEvent(e));
+    const urls=[
+      `${FMP}/economic_calendar?from=${f}&to=${t}&apikey=${apiKey}`,
+      `${FMP_STABLE}?from=${f}&to=${t}&apikey=${apiKey}`,
+    ];
+    let arr=null;
+    for(const u of urls){ try{ arr=await fmpFetchArray(u); break; }catch(e){ lastErr=e; } }
+    if(!arr) throw lastErr||new Error("FMP request selhal");
+    for(const e of arr) out.push(mapFMPEvent(e));
   }
   if(!out.length) throw new Error("FMP vrátil 0 událostí (free tier bez historie?)");
   return out;
@@ -4421,21 +4442,19 @@ function App(){
   const loadData=useCallback(async(key,cot,sent)=>{
     setLoading(true);setError("");
     try{
-      // Kalendář: Finnhub (15 měsíců historie). Když selže (403 premium /
-      // neplatný klíč), spadne na volný ForexFactory feed, ať appka jede dál.
       // Zdroje kalendáře v pořadí: FMP (free, 15 měs) → Finnhub → ForexFactory (záloha).
       const fmpKey=(localStorage.getItem("fmp")||"").trim();
-      let cal=[],calWarn="",calSource="";
+      let cal=[],calWarn="",calSource="",fmpErr="";
       if(fmpKey){
         try{ cal=await fetchFMPCalendar(fmpKey,15); calSource="fmp"; }
-        catch(e){ calWarn="ℹ FMP kalendář selhal ("+(e?.message||e)+") — zkouším Finnhub/ForexFactory."; }
+        catch(e){ fmpErr=(e?.message||String(e)); }
       }
       if(!cal.length){
-        try{ cal=await fetchCalendar(key,15); calSource="finnhub"; calWarn=""; }
+        try{ cal=await fetchCalendar(key,15); calSource="finnhub"; calWarn=fmpErr?("ℹ FMP nezabral ("+fmpErr+") — jede Finnhub 15 měs."):""; }
         catch(e){
           try{
             cal=await fetchFFEvents();calSource="forexfactory";
-            calWarn="ℹ Finnhub kalendář nedostupný ("+(e?.message||e)+") — záloha ForexFactory (~3 týdny). Fundamenty z dat ztlumené na "+Math.round(FF_FUND_DAMP*100)+"% (krátká historie) → bias drží COT/yield/policy."+(fmpKey?" (FMP klíč nezabral.)":" Tip: zadej FMP klíč v Nastavení pro 15měsíční historii zdarma.");
+            calWarn="ℹ Kalendář: záloha ForexFactory (~3 týdny), fundamenty ztlumené na "+Math.round(FF_FUND_DAMP*100)+"% → bias drží COT/yield/policy. "+(fmpKey?("⚠ FMP nezabral: "+fmpErr):"Tip: zadej FMP klíč v Nastavení pro 15měsíční historii zdarma.");
           }catch(e2){
             calWarn="⚠ Žádný zdroj kalendáře (FMP/Finnhub/ForexFactory) nevyšel. Skóre jede jen z COT/yield/policy. Detail: "+(e2?.message||e2);
           }
