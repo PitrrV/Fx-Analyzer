@@ -1,0 +1,35 @@
+; ORB-930 v2 - default preset for MT5 Strategy Tester
+; Load via Strategy Tester > Inputs tab > Load.
+; NOTE: adjust the session-time inputs so OR start = 15:30 CET on YOUR broker.
+InpRiskPercent=0.5
+InpRiskFromEquity=true
+InpMagic=930930
+InpSlippage=20
+InpMaxEquityDD_Pct=12.0
+InpMaxConsecLossDays=3
+InpCooldownDays=2
+InpMaxSpreadPoints=60
+InpTradeFriday=true
+InpORStartHour=15
+InpORStartMinute=30
+InpORDurationMin=15
+InpEntryCutoffHour=18
+InpEntryCutoffMin=0
+InpForceCloseHour=21
+InpForceCloseMin=0
+InpATRPeriod=14
+InpBufferATR=0.1
+InpORrangeMinATR=0.5
+InpORrangeMaxATR=2.5
+InpSLcapATR=1.5
+InpTP_R=2.0
+InpUsePartialTP=true
+InpPartialTP_R=1.0
+InpUseTrailing=true
+InpTrailLookback=10
+InpTrailATR=2.5
+InpUseEMAfilter=false
+InpEMAperiod=50
+InpUseTimeStop=false
+InpTimeStopBars=12
+InpNewsBlocks=

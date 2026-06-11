@@ -451,6 +451,7 @@ void ManageOpenPosition()
          if(type == POSITION_TYPE_BUY)
          {
             int hi = iHighest(_Symbol, PERIOD_CURRENT, MODE_HIGH, InpTrailLookback, 1);
+            if(hi < 0) return;
             double newSL = iHigh(_Symbol, PERIOD_CURRENT, hi) - trail;
             if(newSL > sl && newSL < bid)
                trade.PositionModify(_Symbol, newSL, tp);
@@ -458,6 +459,7 @@ void ManageOpenPosition()
          else
          {
             int lo = iLowest(_Symbol, PERIOD_CURRENT, MODE_LOW, InpTrailLookback, 1);
+            if(lo < 0) return;
             double newSL = iLow(_Symbol, PERIOD_CURRENT, lo) + trail;
             if(newSL < sl && newSL > ask)
                trade.PositionModify(_Symbol, newSL, tp);
