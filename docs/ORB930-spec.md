@@ -159,3 +159,22 @@ neotevírá nová pozice. Prázdný string = filtr vypnutý.
 
 > Pozn.: EA nebyl kompilován v tomto prostředí (chybí MetaEditor). Před
 > ostrým během zkompilovat v MetaEditoru a proběhnout v Strategy Testeru.
+
+---
+
+## 12. v2 — vrstvy pro dlouhodobé přežití (capital protection)
+
+| Input | Default | Význam |
+|---|---|---|
+| InpRiskFromEquity | true | Sizing z equity (anti‑ruin geometrie) místo balance |
+| InpMaxEquityDD_Pct | 12.0 | Tvrdý halt při poklesu equity z peaku o % (0=off) |
+| InpMaxConsecLossDays | 3 | Pauza po N po sobě ztrátových dnech (0=off) |
+| InpCooldownDays | 2 | Délka pauzy po spuštění série |
+| InpMaxSpreadPoints | 60 | Přeskočit vstup při širokém spreadu (0=off) |
+| InpTradeFriday | true | Povolit obchody v pátek |
+| InpUseTrailing | true | ATR (Chandelier) trailing pro runnera po BE |
+| InpTrailLookback | 10 | Lookback pro highest/lowest |
+| InpTrailATR | 2.5 | Vzdálenost trailingu = x×ATR |
+
+Detailní postup validace a diverzifikace viz `docs/long-term-profitability.md`.
+
