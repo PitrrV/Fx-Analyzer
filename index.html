@@ -183,6 +183,12 @@ try{const u=localStorage.getItem("v5_cb_policy");if(u){const p=JSON.parse(u);Obj
 // ── GLOBAL RISK SENTIMENT: -1=risk-off, 0=neutral, +1=risk-on ─
 let g_riskSentiment=0;
 try{g_riskSentiment=parseInt(localStorage.getItem("v5_risk_sent")||"0");}catch(e){}
+// Důvěra ve fundamentální data podle délky historie kalendáře.
+// 1 = plná (Finnhub 15 měsíců, ladění s 65% WR). <1 = krátká záloha (ForexFactory
+// ~3 týdny) → fundamentální tilt z dat se ztlumí, ať pár čerstvých čísel nerozhází
+// celý žebříček a engine se víc opře o stabilní COT/yield/policy.
+let g_fundConfidence=1;
+const FF_FUND_DAMP=0.4;
 // ── V5 ENGINE: KORELAČNÍ SKUPINY FX ──────────────────────────
 const FX_CORRELATION_GROUPS=[
   ["EURUSD","GBPUSD","AUDUSD","NZDUSD"],
@@ -1503,7 +1509,9 @@ function scoreCurrency(events,currency,cotData,sentData){
   const fundScoreRaw=weight>0?Math.max(-10,Math.min(10,(score/weight)*10)):0;
   const yieldAdj=getRealYieldScore(currency);
   const policyAdj=getCBPolicyScore(currency);
-  const fundScore=parseFloat(Math.max(-10,Math.min(10,fundScoreRaw+yieldAdj+policyAdj)).toFixed(2));
+  // Ztlum jen data-tilt z kalendáře (fundScoreRaw) dle důvěry v délku historie;
+  // yield/policy (z CB sazeb, ne z kalendáře) zůstávají plné. Finnhub → g=1 = beze změny.
+  const fundScore=parseFloat(Math.max(-10,Math.min(10,fundScoreRaw*g_fundConfidence+yieldAdj+policyAdj)).toFixed(2));
   const cotScore=getCOTScore(currency,cotData);
   const sentScore=getSentimentScore(currency,sentData);
   const seasonScore=getSeasonalScore(currency);
@@ -4377,11 +4385,13 @@ function App(){
       catch(e){
         try{
           cal=await fetchFFEvents();calSource="forexfactory";
-          calWarn="ℹ Finnhub kalendář nedostupný ("+(e?.message||e)+") — použit záložní ForexFactory feed (minulý±příští týden). Historie je kratší, ale fundamenty jedou.";
+          calWarn="ℹ Finnhub kalendář nedostupný ("+(e?.message||e)+") — záloha ForexFactory (~3 týdny). Fundamenty z dat ztlumené na "+Math.round(FF_FUND_DAMP*100)+"% (krátká historie) → bias drží COT/yield/policy.";
         }catch(e2){
           calWarn="⚠ Finnhub kalendář (403?) i ForexFactory záloha selhaly. Skóre jede jen z COT/yield/policy. Detail: "+(e2?.message||e2);
         }
       }
+      // Krátká FF historie → ztlum fundamentální data-tilt; Finnhub 15mo → plná důvěra.
+      g_fundConfidence = calSource==="finnhub" ? 1 : FF_FUND_DAMP;
       setCalData(cal);
 
       // AUTO-UPDATE: CB sazby, CPI, CB Policy stance z kalendáře (bez extra API)
