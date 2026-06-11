@@ -17,7 +17,7 @@
 //|  no martingale / no grid / no averaging losers.                  |
 //+------------------------------------------------------------------+
 #property copyright "Fx-Analyzer"
-#property version   "2.00"
+#property version   "2.10"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -51,9 +51,9 @@ input int      InpForceCloseMin    = 0;          // Force-close minute
 
 //--- Core breakout parameters -------------------------------------
 input int      InpATRPeriod        = 14;         // ATR period
-input double   InpBufferATR        = 0.10;       // Breakout buffer = x * ATR
-input double   InpORrangeMinATR     = 0.5;       // Min OR range as x * ATR (chop filter)
-input double   InpORrangeMaxATR     = 2.5;       // Max OR range as x * ATR (over-extended filter)
+input double   InpBufferATR        = 0.10;       // Breakout buffer = x * ATR(M5)
+input double   InpORrangeMinDayATR = 0.05;       // Min OR range as fraction of DAILY ATR (chop filter)
+input double   InpORrangeMaxDayATR = 0.60;       // Max OR range as fraction of DAILY ATR (over-extended)
 
 //--- Stop loss / take profit --------------------------------------
 input double   InpSLcapATR         = 1.5;        // Cap SL distance at x * ATR (0 = no cap)
@@ -81,8 +81,9 @@ input string   InpNewsBlocks       = "";         // Daily news block windows (se
 //==================================================================
 CTrade   trade;
 
-int      atrHandle = INVALID_HANDLE;
-int      emaHandle = INVALID_HANDLE;
+int      atrHandle   = INVALID_HANDLE;   // ATR on current TF (buffer / SL cap)
+int      atrD1Handle = INVALID_HANDLE;   // ATR on D1 (chop filter reference)
+int      emaHandle   = INVALID_HANDLE;
 
 datetime g_currentDay     = 0;       // day of last reset (server midnight)
 double   g_orHigh         = 0.0;
@@ -117,6 +118,13 @@ int OnInit()
       return(INIT_FAILED);
    }
 
+   atrD1Handle = iATR(_Symbol, PERIOD_D1, InpATRPeriod);
+   if(atrD1Handle == INVALID_HANDLE)
+   {
+      Print("Failed to create D1 ATR handle");
+      return(INIT_FAILED);
+   }
+
    if(InpUseEMAfilter)
    {
       emaHandle = iMA(_Symbol, PERIOD_CURRENT, InpEMAperiod, 0, MODE_EMA, PRICE_CLOSE);
@@ -136,8 +144,9 @@ int OnInit()
 
 void OnDeinit(const int reason)
 {
-   if(atrHandle != INVALID_HANDLE) IndicatorRelease(atrHandle);
-   if(emaHandle != INVALID_HANDLE) IndicatorRelease(emaHandle);
+   if(atrHandle   != INVALID_HANDLE) IndicatorRelease(atrHandle);
+   if(atrD1Handle != INVALID_HANDLE) IndicatorRelease(atrD1Handle);
+   if(emaHandle   != INVALID_HANDLE) IndicatorRelease(emaHandle);
 }
 
 //==================================================================
@@ -300,17 +309,21 @@ void UpdateOpeningRange()
 
 void ValidateOpeningRange()
 {
-   double atr = GetATR();
-   if(atr <= 0.0) { g_orValid = false; return; }
+   // Reference = DAILY ATR (scale-correct). The OR is a multi-bar range,
+   // so comparing it to a single intraday bar's ATR is wrong; we gate it
+   // against a fraction of a typical day's range instead.
+   double dayATR = GetDailyATR();
+   if(dayATR <= 0.0) { g_orValid = false; return; }
 
    double orRange = g_orHigh - g_orLow;
-   double minR = InpORrangeMinATR * atr;
-   double maxR = InpORrangeMaxATR * atr;
+   double minR = InpORrangeMinDayATR * dayATR;
+   double maxR = InpORrangeMaxDayATR * dayATR;
    g_orValid = (orRange >= minR && orRange <= maxR);
 
    if(!g_orValid)
-      PrintFormat("OR rejected (chop/over-extended): range=%.1f pts band=[%.1f,%.1f]",
-                  orRange/_Point, minR/_Point, maxR/_Point);
+      PrintFormat("OR rejected: range=%.1f pts  band=[%.1f,%.1f] (%.0f%%-%.0f%% of dayATR %.1f)",
+                  orRange/_Point, minR/_Point, maxR/_Point,
+                  InpORrangeMinDayATR*100, InpORrangeMaxDayATR*100, dayATR/_Point);
 }
 
 //==================================================================
@@ -486,6 +499,13 @@ double GetATR()
 {
    double buf[];
    if(CopyBuffer(atrHandle, 0, 1, 1, buf) <= 0) return 0.0;
+   return buf[0];
+}
+
+double GetDailyATR()
+{
+   double buf[];
+   if(CopyBuffer(atrD1Handle, 0, 1, 1, buf) <= 0) return 0.0;
    return buf[0];
 }
 
