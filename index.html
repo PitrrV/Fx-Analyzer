@@ -1057,6 +1057,44 @@ async function fetchFFEvents(){
   if(!out.length) throw new Error("ForexFactory feed nedostupný (proxy/CORS).");
   return out;
 }
+// ── FF HISTORIE: sběrač do localStorage ─────────────────────────────
+// FF feed dává jen ~3 týdny. Každý refresh slijeme nová data do trvalé
+// zásoby, takže historie roste týden po týdnu. Podle rozpětí nasbíraných
+// dat se postupně uvolňuje ztlumení fundamentů (0.4 → 1.0 za ~15 měsíců).
+const FF_HIST_KEY="v5_ff_hist", FF_HIST_MONTHS=15, FF_HIST_CAP=8000;
+function ffHistKey(e){return `${(e.country||"").toUpperCase()}|${e.event||""}|${e.time||""}`;}
+function loadFFHistory(){try{const a=JSON.parse(localStorage.getItem(FF_HIST_KEY)||"[]");return Array.isArray(a)?a:[];}catch(e){return[];}}
+function mergeFFHistory(fresh){
+  const map=new Map();
+  for(const e of loadFFHistory()) map.set(ffHistKey(e),e);
+  for(const e of (fresh||[])){
+    const k=ffHistKey(e),prev=map.get(k);
+    if(!prev) map.set(k,e);
+    else if((!prev.actual&&e.actual)||(!prev.estimate&&e.estimate)||(!prev.prev&&e.prev)) map.set(k,{...prev,...e});
+  }
+  let merged=[...map.values()];
+  const cutoff=Date.now()-(FF_HIST_MONTHS+3)*30*86400000;
+  merged=merged.filter(e=>{const t=new Date(e.time).getTime();return isNaN(t)||t>=cutoff;});
+  merged.sort((a,b)=>new Date(a.time)-new Date(b.time));
+  if(merged.length>FF_HIST_CAP) merged=merged.slice(merged.length-FF_HIST_CAP);
+  try{localStorage.setItem(FF_HIST_KEY,JSON.stringify(merged));}
+  catch(e){ // quota → ořež na polovinu a zkus znovu
+    try{localStorage.setItem(FF_HIST_KEY,JSON.stringify(merged.slice(Math.floor(merged.length/2))));}catch(e2){}
+  }
+  return merged;
+}
+// Rozpětí historie v měsících → důvěra ve fundamenty (FF_FUND_DAMP … 1.0).
+function ffHistorySpanMonths(events){
+  let min=Infinity,max=-Infinity;
+  for(const e of (events||[])){const t=new Date(e.time).getTime();if(!isNaN(t)){if(t<min)min=t;if(t>max)max=t;}}
+  return isFinite(min)?(max-min)/(30*86400000):0;
+}
+function ffConfidence(events){
+  const months=ffHistorySpanMonths(events);
+  const frac=Math.max(0,Math.min(1,months/FF_HIST_MONTHS));
+  return parseFloat((FF_FUND_DAMP+(1-FF_FUND_DAMP)*frac).toFixed(2));
+}
+
 function deriveUpcomingFromEvents(events){
   const now=Date.now(),to=now+14*86400000;
   const allCodes=[...new Set([...Object.values(CURRENCY_COUNTRIES).flat(),...Object.values(INDIRECT_COUNTRIES).flat()])];
@@ -4453,15 +4491,22 @@ function App(){
         try{ cal=await fetchCalendar(key,15); calSource="finnhub"; calWarn=fmpErr?("ℹ FMP nezabral ("+fmpErr+") — jede Finnhub 15 měs."):""; }
         catch(e){
           try{
-            cal=await fetchFFEvents();calSource="forexfactory";
-            calWarn="ℹ Kalendář: záloha ForexFactory (~3 týdny), fundamenty ztlumené na "+Math.round(FF_FUND_DAMP*100)+"% → bias drží COT/yield/policy. "+(fmpKey?("⚠ FMP nezabral: "+fmpErr):"Tip: zadej FMP klíč v Nastavení pro 15měsíční historii zdarma.");
+            const fresh=await fetchFFEvents();calSource="forexfactory";
+            cal=mergeFFHistory(fresh);   // slij do trvalé zásoby + použij nasbíranou historii
           }catch(e2){
-            calWarn="⚠ Žádný zdroj kalendáře (FMP/Finnhub/ForexFactory) nevyšel. Skóre jede jen z COT/yield/policy. Detail: "+(e2?.message||e2);
+            cal=loadFFHistory();         // i kdyby feed teď spadl, využij dřív nasbíranou historii
+            if(cal.length){calSource="forexfactory";}
+            else{calWarn="⚠ Žádný zdroj kalendáře (FMP/Finnhub/ForexFactory) nevyšel. Skóre jede jen z COT/yield/policy. Detail: "+(e2?.message||e2);}
           }
         }
       }
-      // FMP/Finnhub = 15 měs → plná důvěra; krátká FF historie → ztlum fundamenty.
-      g_fundConfidence = (calSource==="fmp"||calSource==="finnhub") ? 1 : FF_FUND_DAMP;
+      // FMP/Finnhub = 15 měs → plná důvěra; FF → důvěra dle rozpětí nasbírané historie.
+      if(calSource==="fmp"||calSource==="finnhub"){ g_fundConfidence=1; }
+      else if(calSource==="forexfactory"){
+        g_fundConfidence=ffConfidence(cal);
+        const span=ffHistorySpanMonths(cal);
+        calWarn="ℹ Kalendář: ForexFactory (sbírám historii — zatím ~"+span.toFixed(1)+" měs, "+cal.length+" událostí). Fundamenty na "+Math.round(g_fundConfidence*100)+"% (roste k 100% s historií), COT/yield/policy drží bias. "+(fmpKey?("FMP free nedostupný: "+fmpErr.slice(0,60)):"");
+      } else { g_fundConfidence=FF_FUND_DAMP; }
       setCalData(cal);
 
       // AUTO-UPDATE: CB sazby, CPI, CB Policy stance z kalendáře (bez extra API)
