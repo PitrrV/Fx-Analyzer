@@ -957,6 +957,39 @@ async function fetchUpcoming14(apiKey){
     .sort((a,b)=>new Date(a.time)-new Date(b.time));
 }
 
+// ── HLAVNÍ KALENDÁŘ: Financial Modeling Prep (free klíč, plná historie) ──
+// Náhrada za placený Finnhub. Free plán dovolí max 3měsíční okno na request,
+// tak se 15 měsíců poskládá z 5 oken (+14 dní dopředu na upcoming). Mapuje se
+// na stejný tvar jako Finnhub/FF, takže scoring nepozná rozdíl.
+const FMP="https://financialmodelingprep.com/api/v3";
+function mapFMPEvent(e){
+  return {
+    event:e.event||"",
+    country:String(e.country||e.currency||"").toUpperCase(),
+    time:e.date||"",
+    impact:String(e.impact||"").toLowerCase(),
+    actual:(e.actual!=null&&e.actual!=="")?String(e.actual):"",
+    estimate:(e.estimate!=null&&e.estimate!=="")?String(e.estimate):"",
+    prev:(e.previous!=null&&e.previous!=="")?String(e.previous):"",
+  };
+}
+async function fetchFMPCalendar(apiKey,months=15){
+  const out=[];const now=new Date();const windows=Math.ceil(months/3);
+  for(let i=0;i<windows;i++){
+    const to=new Date(now); to.setMonth(to.getMonth()-i*3);
+    if(i===0) to.setDate(to.getDate()+14);            // i upcoming události
+    const from=new Date(to); from.setMonth(from.getMonth()-3); from.setDate(from.getDate()-(i===0?14:0));
+    const f=from.toISOString().split("T")[0],t=to.toISOString().split("T")[0];
+    const res=await fetch(`${FMP}/economic_calendar?from=${f}&to=${t}&apikey=${apiKey}`,{cache:"no-store",signal:abortTimeout(15000)});
+    if(!res.ok) throw new Error(`FMP error ${res.status}`);
+    const data=await res.json();
+    if(!Array.isArray(data)) throw new Error(data&&data["Error Message"]?String(data["Error Message"]).slice(0,90):"FMP nevrátil pole (paywall?)");
+    for(const e of data) out.push(mapFMPEvent(e));
+  }
+  if(!out.length) throw new Error("FMP vrátil 0 událostí (free tier bez historie?)");
+  return out;
+}
+
 // ── ZÁLOŽNÍ KALENDÁŘ: ForexFactory (zdarma, bez klíče) ───────────────
 // Finnhub /calendar/economic je teď placený (free klíč → 403). Když selže,
 // vezmeme volný ForexFactory feed (minulý+tento+příští týden) přes proxy.
@@ -1696,9 +1729,11 @@ function rankPairs(scores,aiAnalyses){
 function Setup({onSave}){
   const [fh,setFh]=useState(localStorage.getItem("fh")||"");
   const [av,setAv]=useState(localStorage.getItem("av")||"");
+  const [fmp,setFmp]=useState(localStorage.getItem("fmp")||"");
   function save(){
     if(!fh.trim()){alert("Zadej Finnhub API klíč");return;}
     localStorage.setItem("fh",fh.trim());localStorage.setItem("av",av.trim());
+    if(fmp.trim()) localStorage.setItem("fmp",fmp.trim()); else localStorage.removeItem("fmp");
     if(typeof antKeySetup!=="undefined"&&antKeySetup.trim()) localStorage.setItem("ant_key",antKeySetup.trim());
     onSave(fh.trim(),av.trim());
   }
@@ -1714,6 +1749,10 @@ function Setup({onSave}){
         </label>
         <input value={fh} onChange={e=>setFh(e.target.value)} placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxx" style={inp}/>
         <label style={{color:"#8b949e",fontSize:12,display:"block",marginBottom:5}}>
+          FMP klíč (kalendář, 15 měs historie) — <a href="https://site.financialmodelingprep.com/developer/docs" target="_blank">financialmodelingprep.com</a> (zdarma)
+        </label>
+        <input value={fmp} onChange={e=>setFmp(e.target.value)} placeholder="FMP API key" style={inp}/>
+        <label style={{color:"#8b949e",fontSize:12,display:"block",marginBottom:5}}>
           Alpha Vantage klíč — <a href="https://alphavantage.co/support/#api-key" target="_blank">alphavantage.co</a> (zdarma) — tržní struktura
         </label>
         <input value={av} onChange={e=>setAv(e.target.value)} placeholder="ABCDEF123456" style={{...inp,marginBottom:20}}/>
@@ -1725,6 +1764,7 @@ function Setup({onSave}){
 
 function SettingsOverlay({fhKey,avKey,onSave,onClose}){
   const [fh,setFh]=useState(fhKey);const [av,setAv]=useState(avKey||"");
+  const [fmp,setFmp]=useState(localStorage.getItem("fmp")||"");
   const [orKey,setOrKey]=useState(localStorage.getItem("or_key")||"");
   const [orModel,setOrModel]=useState(localStorage.getItem("or_model")||"");
   const [oandaToken,setOandaToken]=useState(localStorage.getItem("oanda_token")||"");
@@ -1735,6 +1775,7 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose}){
   const inp={width:"100%",padding:"8px 12px",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:13,marginBottom:10,display:"block"};
   function saveAll(){
     localStorage.setItem("fh",fh.trim());localStorage.setItem("av",av.trim());
+    if(fmp.trim()) localStorage.setItem("fmp",fmp.trim()); else localStorage.removeItem("fmp");
     if(orKey.trim()) localStorage.setItem("or_key",orKey.trim());
     if(oandaToken.trim()) localStorage.setItem("oanda_token",oandaToken.trim());
     else localStorage.removeItem("oanda_token");
@@ -1754,6 +1795,8 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose}){
         </div>
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Finnhub API klíč</label>
         <input value={fh} onChange={e=>setFh(e.target.value)} style={inp}/>
+        <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>FMP klíč <span style={{color:"#3fb950"}}>(kalendář, 15 měs zdarma)</span></label>
+        <input value={fmp} onChange={e=>setFmp(e.target.value)} placeholder="FMP API key" style={inp}/>
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Alpha Vantage klíč</label>
         <input value={av} onChange={e=>setAv(e.target.value)} style={{...inp,marginBottom:14}}/>
 
@@ -4380,18 +4423,26 @@ function App(){
     try{
       // Kalendář: Finnhub (15 měsíců historie). Když selže (403 premium /
       // neplatný klíč), spadne na volný ForexFactory feed, ať appka jede dál.
-      let cal=[],calWarn="",calSource="finnhub";
-      try{ cal=await fetchCalendar(key,15); }
-      catch(e){
-        try{
-          cal=await fetchFFEvents();calSource="forexfactory";
-          calWarn="ℹ Finnhub kalendář nedostupný ("+(e?.message||e)+") — záloha ForexFactory (~3 týdny). Fundamenty z dat ztlumené na "+Math.round(FF_FUND_DAMP*100)+"% (krátká historie) → bias drží COT/yield/policy.";
-        }catch(e2){
-          calWarn="⚠ Finnhub kalendář (403?) i ForexFactory záloha selhaly. Skóre jede jen z COT/yield/policy. Detail: "+(e2?.message||e2);
+      // Zdroje kalendáře v pořadí: FMP (free, 15 měs) → Finnhub → ForexFactory (záloha).
+      const fmpKey=(localStorage.getItem("fmp")||"").trim();
+      let cal=[],calWarn="",calSource="";
+      if(fmpKey){
+        try{ cal=await fetchFMPCalendar(fmpKey,15); calSource="fmp"; }
+        catch(e){ calWarn="ℹ FMP kalendář selhal ("+(e?.message||e)+") — zkouším Finnhub/ForexFactory."; }
+      }
+      if(!cal.length){
+        try{ cal=await fetchCalendar(key,15); calSource="finnhub"; calWarn=""; }
+        catch(e){
+          try{
+            cal=await fetchFFEvents();calSource="forexfactory";
+            calWarn="ℹ Finnhub kalendář nedostupný ("+(e?.message||e)+") — záloha ForexFactory (~3 týdny). Fundamenty z dat ztlumené na "+Math.round(FF_FUND_DAMP*100)+"% (krátká historie) → bias drží COT/yield/policy."+(fmpKey?" (FMP klíč nezabral.)":" Tip: zadej FMP klíč v Nastavení pro 15měsíční historii zdarma.");
+          }catch(e2){
+            calWarn="⚠ Žádný zdroj kalendáře (FMP/Finnhub/ForexFactory) nevyšel. Skóre jede jen z COT/yield/policy. Detail: "+(e2?.message||e2);
+          }
         }
       }
-      // Krátká FF historie → ztlum fundamentální data-tilt; Finnhub 15mo → plná důvěra.
-      g_fundConfidence = calSource==="finnhub" ? 1 : FF_FUND_DAMP;
+      // FMP/Finnhub = 15 měs → plná důvěra; krátká FF historie → ztlum fundamenty.
+      g_fundConfidence = (calSource==="fmp"||calSource==="finnhub") ? 1 : FF_FUND_DAMP;
       setCalData(cal);
 
       // AUTO-UPDATE: CB sazby, CPI, CB Policy stance z kalendáře (bez extra API)
