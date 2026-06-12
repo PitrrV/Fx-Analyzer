@@ -1057,6 +1057,20 @@ async function fetchFFEvents(){
   if(!out.length) throw new Error("ForexFactory feed nedostupný (proxy/CORS).");
   return out;
 }
+// Cache FF feedu: appka se refreshuje po 5 min, ale FF povoluje max 2 stažení/5 min.
+// Bez cache se nextweek (data dopředu) často nestáhne → výhled spadne na ~1 týden.
+// Stahujeme tedy nejvýš 1× za FF_FETCH_TTL; ruční Aktualizovat vynutí čerstvá data.
+const FF_CACHE_KEY="v5_ff_cache", FF_FETCH_TTL=45*60*1000;
+async function fetchFFEventsCached(force){
+  if(!force){
+    try{const c=JSON.parse(localStorage.getItem(FF_CACHE_KEY)||"null");
+      if(c&&Array.isArray(c.events)&&c.events.length&&(Date.now()-c.ts)<FF_FETCH_TTL) return c.events;
+    }catch(e){}
+  }
+  const fresh=await fetchFFEvents();
+  try{localStorage.setItem(FF_CACHE_KEY,JSON.stringify({ts:Date.now(),events:fresh}));}catch(e){}
+  return fresh;
+}
 // ── FF HISTORIE: sběrač do localStorage ─────────────────────────────
 // FF feed dává jen ~3 týdny. Každý refresh slijeme nová data do trvalé
 // zásoby, takže historie roste týden po týdnu. Podle rozpětí nasbíraných
@@ -4632,7 +4646,7 @@ function App(){
     if(fh) setFhKey(fh);
   },[]);
 
-  const loadData=useCallback(async(key,cot,sent)=>{
+  const loadData=useCallback(async(key,cot,sent,force=false)=>{
     setLoading(true);setError("");
     try{
       // Zdroje kalendáře v pořadí: FMP (free, 15 měs) → Finnhub → ForexFactory (záloha).
@@ -4646,7 +4660,7 @@ function App(){
         try{ cal=await fetchCalendar(key,15); calSource="finnhub"; calWarn=fmpErr?("ℹ FMP nezabral ("+fmpErr+") — jede Finnhub 15 měs."):""; }
         catch(e){
           try{
-            const fresh=await fetchFFEvents();calSource="forexfactory";
+            const fresh=await fetchFFEventsCached(force);calSource="forexfactory";
             cal=mergeFFHistory(fresh);   // slij do trvalé zásoby + použij nasbíranou historii
           }catch(e2){
             cal=loadFFHistory();         // i kdyby feed teď spadl, využij dřív nasbíranou historii
@@ -4780,7 +4794,7 @@ function App(){
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {loading&&<span style={{fontSize:11,color:"#58a6ff"}}>⟳ Načítám...</span>}
           {error&&<span style={{fontSize:11,color:"#f85149",maxWidth:260}}>{error}</span>}
-          <button onClick={()=>loadData(fhKey,cotData,sentData)} disabled={loading}
+          <button onClick={()=>loadData(fhKey||"",cotData,sentData,true)} disabled={loading}
             style={{padding:"5px 11px",background:"#21262d",border:"1px solid #30363d",borderRadius:5,color:"#e6edf3",fontSize:12,cursor:"pointer"}}>↻ Refresh</button>
           <button onClick={()=>setTab("coach")} className="command-pro" style={{display:"flex",alignItems:"center",gap:8}}>💬 AI Coach</button>
           <button onClick={()=>setShowSet(true)} className="pro-btn">PRO MODE</button>
@@ -4856,7 +4870,7 @@ function App(){
                 {loading&&!top.length?<div style={{color:"#8b949e",padding:"20px 0"}}>⏳ Načítám 15 měsíců dat...</div>
                   :top.map((p,i)=><PairRow key={p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:(i+1)+" / "+top.length})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]} dailyState={getPairDailyState(p,scores,calData,upcoming)} note={notes[p.pair]}/>) }
               </div>
-              <div style={{borderTop:"1px solid #263242",paddingTop:12,marginTop:10,display:"flex",justifyContent:"space-between",fontSize:12,color:"#8b949e"}}><span>Celkem párů: {top.length}</span><button className="pro-btn" onClick={()=>loadData(fhKey,cotData,sentData)}>Aktualizovat</button></div>
+              <div style={{borderTop:"1px solid #263242",paddingTop:12,marginTop:10,display:"flex",justifyContent:"space-between",fontSize:12,color:"#8b949e"}}><span>Celkem párů: {top.length}</span><button className="pro-btn" onClick={()=>loadData(fhKey||"",cotData,sentData,true)}>Aktualizovat</button></div>
             </div>
             <div>{selected&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses} calData={calData} upcoming={upcoming} positions={positions} onPosition={updatePosition} notes={notes} onNote={updateNote}/>}</div>
             <div>
