@@ -4578,6 +4578,7 @@ function App(){
   const [upcoming,setUpcoming]=useState([]);
   const [calData,setCalData]=useState([]);
   const [lastUp,setLastUp]=useState(null);
+  const [calMeta,setCalMeta]=useState(null);   // {source, months, count, fwdDays}
   const [tab,setTab]=useState("pairs");
   const [cotData,setCotData]=useState(loadCOT());
   const [positions,setPositions]=useState(getAllPositions());
@@ -4702,6 +4703,11 @@ function App(){
       const fc={};ranked.forEach(p=>{fc[p.pair]=buildForecastV5(p,sc,cal,up);});
       setForecasts(fc);
       setLastUp(new Date());
+      // přehled stavu kalendáře pro hlavičku
+      const nowMs=Date.now();
+      const fwdDays=up.reduce((mx,e)=>{const d=(new Date(e.time).getTime()-nowMs)/86400000;return d>mx?d:mx;},0);
+      const months=(calSource==="fmp"||calSource==="finnhub")?15:ffHistorySpanMonths(cal);
+      setCalMeta({source:calSource||"none",months,count:cal.length,fwdDays:Math.max(0,Math.round(fwdDays)),conf:Math.round((g_fundConfidence||0)*100)});
       if(calWarn) setError(calWarn);
     }catch(e){setError(e.message);}
     setLoading(false);
@@ -4792,6 +4798,11 @@ function App(){
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {calMeta&&(()=>{const SRC={fmp:"FMP",finnhub:"Finnhub",forexfactory:"ForexFactory",none:"—"};const ok=calMeta.conf>=100;return(
+            <span title={`Zdroj: ${SRC[calMeta.source]||calMeta.source} · historie ~${calMeta.months.toFixed(1)} měs · ${calMeta.count} událostí · výhled ${calMeta.fwdDays} dní · váha fundamentů ${calMeta.conf}%`}
+              style={{fontSize:11,color:ok?"#3fb950":"#d29922",border:"1px solid "+(ok?"#1f5c34":"#5c4a1f"),borderRadius:5,padding:"3px 7px",whiteSpace:"nowrap"}}>
+              📅 {SRC[calMeta.source]||calMeta.source} · {calMeta.months.toFixed(0)}m · {calMeta.fwdDays}d → · {calMeta.conf}%
+            </span>);})()}
           {loading&&<span style={{fontSize:11,color:"#58a6ff"}}>⟳ Načítám...</span>}
           {error&&<span style={{fontSize:11,color:"#f85149",maxWidth:260}}>{error}</span>}
           <button onClick={()=>loadData(fhKey||"",cotData,sentData,true)} disabled={loading}
