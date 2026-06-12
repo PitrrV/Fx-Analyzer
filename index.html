@@ -1061,38 +1061,135 @@ async function fetchFFEvents(){
 // FF feed dává jen ~3 týdny. Každý refresh slijeme nová data do trvalé
 // zásoby, takže historie roste týden po týdnu. Podle rozpětí nasbíraných
 // dat se postupně uvolňuje ztlumení fundamentů (0.4 → 1.0 za ~15 měsíců).
-const FF_HIST_KEY="v5_ff_hist", FF_HIST_MONTHS=15, FF_HIST_CAP=8000;
+// FF_CONF_MONTHS = za kolik měsíců historie dosáhne důvěra 1.0 (engine víc nevyužije).
+// FF_STORE_MONTHS = jak hluboko se historie drží v localStorage (margin nad rámec
+// toho, co live skóre aktivně využívá). FF_HIST_CAP = tvrdý strop počtu událostí.
+const FF_HIST_KEY="v5_ff_hist", FF_CONF_MONTHS=15, FF_STORE_MONTHS=36, FF_HIST_CAP=20000;
+// Sledované kódy zemí (jen ty engine skóruje) — drží velikost zásoby pod kontrolou
+// i při importu víceletého datasetu se stovkami zemí.
+const FF_TRACKED_CC=[...new Set([...Object.values(CURRENCY_COUNTRIES).flat(),...Object.values(INDIRECT_COUNTRIES).flat()])];
+function ffIsTracked(e){const c=(e.country||"").toUpperCase();return FF_TRACKED_CC.some(cc=>c.includes(cc));}
 function ffHistKey(e){return `${(e.country||"").toUpperCase()}|${e.event||""}|${e.time||""}`;}
 function loadFFHistory(){try{const a=JSON.parse(localStorage.getItem(FF_HIST_KEY)||"[]");return Array.isArray(a)?a:[];}catch(e){return[];}}
 function mergeFFHistory(fresh){
   const map=new Map();
   for(const e of loadFFHistory()) map.set(ffHistKey(e),e);
   for(const e of (fresh||[])){
+    if(!e||!e.event||!e.time||!ffIsTracked(e)) continue;   // jen sledované měny
     const k=ffHistKey(e),prev=map.get(k);
     if(!prev) map.set(k,e);
     else if((!prev.actual&&e.actual)||(!prev.estimate&&e.estimate)||(!prev.prev&&e.prev)) map.set(k,{...prev,...e});
   }
   let merged=[...map.values()];
-  const cutoff=Date.now()-(FF_HIST_MONTHS+3)*30*86400000;
+  const cutoff=Date.now()-FF_STORE_MONTHS*30*86400000;
   merged=merged.filter(e=>{const t=new Date(e.time).getTime();return isNaN(t)||t>=cutoff;});
   merged.sort((a,b)=>new Date(a.time)-new Date(b.time));
   if(merged.length>FF_HIST_CAP) merged=merged.slice(merged.length-FF_HIST_CAP);
-  try{localStorage.setItem(FF_HIST_KEY,JSON.stringify(merged));}
-  catch(e){ // quota → ořež na polovinu a zkus znovu
-    try{localStorage.setItem(FF_HIST_KEY,JSON.stringify(merged.slice(Math.floor(merged.length/2))));}catch(e2){}
+  // ulož s postupným ořezem nejstarších, když narazíme na localStorage kvótu
+  let toSave=merged;
+  for(let attempt=0;attempt<6;attempt++){
+    try{localStorage.setItem(FF_HIST_KEY,JSON.stringify(toSave));break;}
+    catch(e){toSave=toSave.slice(Math.floor(toSave.length*0.3));}  // zahoď nejstarších ~30 %
   }
   return merged;
 }
 // Rozpětí historie v měsících → důvěra ve fundamenty (FF_FUND_DAMP … 1.0).
 function ffHistorySpanMonths(events){
-  let min=Infinity,max=-Infinity;
-  for(const e of (events||[])){const t=new Date(e.time).getTime();if(!isNaN(t)){if(t<min)min=t;if(t>max)max=t;}}
+  let min=Infinity,max=-Infinity;const now=Date.now();
+  for(const e of (events||[])){const t=new Date(e.time).getTime();if(!isNaN(t)&&t<=now){if(t<min)min=t;if(t>max)max=t;}}
   return isFinite(min)?(max-min)/(30*86400000):0;
 }
 function ffConfidence(events){
   const months=ffHistorySpanMonths(events);
-  const frac=Math.max(0,Math.min(1,months/FF_HIST_MONTHS));
+  const frac=Math.max(0,Math.min(1,months/FF_CONF_MONTHS));
   return parseFloat((FF_FUND_DAMP+(1-FF_FUND_DAMP)*frac).toFixed(2));
+}
+
+// ── IMPORT / EXPORT historie (CSV + JSON adaptéry) ──────────────────
+// Normalizuje libovolný zdroj (Kaggle/HF/FF export, vlastní JSON) na interní
+// tvar {event,country,time,impact,actual,estimate,prev} — score engine pak
+// nepozná, odkud data jsou.
+function normCountryCode(v){
+  const s=String(v||"").toUpperCase().trim();
+  return (typeof FF_CCY_COUNTRY!=="undefined"&&FF_CCY_COUNTRY[s])?FF_CCY_COUNTRY[s]:s;
+}
+function normImpact(v){
+  const s=String(v||"").toLowerCase();
+  if(/high|red|^3$/.test(s))return"high";
+  if(/med|orange|^2$/.test(s))return"medium";
+  if(/low|yellow|^1$/.test(s))return"low";
+  return"";
+}
+function normTimeISO(dateStr,timeStr){
+  let d=String(dateStr||"").trim(); if(!d)return"";
+  const dt=d.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}):(\d{2})/);          // datum už nese čas
+  if(dt) return `${dt[1]}T${dt[2].padStart(2,"0")}:${dt[3]}:00Z`;
+  let iso=d;
+  const slash=d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);               // MM/DD/YYYY
+  if(slash){let yr=slash[3];if(yr.length===2)yr="20"+yr;iso=`${yr}-${slash[1].padStart(2,"0")}-${slash[2].padStart(2,"0")}`;}
+  let hh="00",mm="00",t=String(timeStr||"").trim().toLowerCase();
+  const m=t.match(/(\d{1,2}):(\d{2})\s*(am|pm)?/);
+  if(m){let h=+m[1];mm=m[2];if(m[3]==="pm"&&h!==12)h+=12;if(m[3]==="am"&&h===12)h=0;hh=String(h).padStart(2,"0");}
+  return `${iso}T${hh}:${mm}:00Z`;
+}
+function normImportEvent(raw){
+  if(!raw)return null;
+  const event=raw.event||raw.title||raw.name||"";
+  const country=normCountryCode(raw.country||raw.currency||raw.ccy||"");
+  let time=raw.datetime||raw.time||"";
+  if(raw.date) time=normTimeISO(raw.date,raw.time||raw.time);             // CSV: date+time → ISO
+  else if(time&&!/T|\d{2}:\d{2}/.test(time)) time=normTimeISO(time,"");
+  const val=v=>(v!=null&&v!=="")?String(v).trim():"";
+  const ev={event:String(event).trim(),country,time:String(time),impact:normImpact(raw.impact||raw.importance||raw.volatility),
+    actual:val(raw.actual),estimate:val(raw.estimate!=null?raw.estimate:(raw.forecast!=null?raw.forecast:raw.consensus)),
+    prev:val(raw.prev!=null?raw.prev:raw.previous)};
+  return (ev.event&&ev.time)?ev:null;
+}
+function parseCSVRows(text){
+  const rows=[];let field="",row=[],inQ=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(inQ){ if(c==='"'){ if(text[i+1]==='"'){field+='"';i++;} else inQ=false; } else field+=c; }
+    else{ if(c==='"')inQ=true;
+      else if(c===','){row.push(field);field="";}
+      else if(c==='\n'||c==='\r'){ if(c==='\r'&&text[i+1]==='\n')i++; if(field!==""||row.length){row.push(field);rows.push(row);row=[];field="";} }
+      else field+=c; }
+  }
+  if(field!==""||row.length){row.push(field);rows.push(row);}
+  return rows;
+}
+function parseEconomicCSV(text){
+  const rows=parseCSVRows(text); if(rows.length<2)return[];
+  const hdr=rows[0].map(h=>String(h).toLowerCase().trim());
+  const idx=(...names)=>{for(const n of names){const j=hdr.indexOf(n);if(j>=0)return j;}return -1;};
+  const cDate=idx("date","datetime","dateutc"),cTime=idx("time"),cCcy=idx("currency","country","ccy"),
+        cEv=idx("event","title","name","figures"),cImp=idx("impact","importance","volatility"),
+        cAct=idx("actual"),cFor=idx("forecast","estimate","consensus"),cPrev=idx("previous","prev");
+  const out=[];
+  for(let r=1;r<rows.length;r++){const row=rows[r];if(!row||!row.length)continue;
+    const g=j=>j>=0?String(row[j]||"").trim():"";
+    const ev=normImportEvent({date:g(cDate),time:g(cTime),currency:g(cCcy),event:g(cEv),impact:g(cImp),actual:g(cAct),forecast:g(cFor),previous:g(cPrev)});
+    if(ev)out.push(ev);
+  }
+  return out;
+}
+function eventsToCSV(events){
+  const esc=v=>{const s=String(v==null?"":v);return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const lines=["date,time,datetime,country,event,impact,actual,forecast,previous"];
+  for(const e of (events||[])){const dt=e.time||"";const dm=dt.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+    lines.push([dm?dm[1]:dt,dm?dm[2]:"",dt,e.country||"",e.event||"",e.impact||"",e.actual||"",e.estimate||"",e.prev||""].map(esc).join(","));}
+  return lines.join("\n");
+}
+// rawEvents = pole z JSON/CSV → normalizace → merge do zásoby. Vrací statistiku.
+function importEconomicEvents(rawEvents){
+  const norm=(rawEvents||[]).map(normImportEvent).filter(Boolean);
+  const before=loadFFHistory().length;
+  const merged=mergeFFHistory(norm);
+  return {parsed:(rawEvents||[]).length,normalized:norm.length,added:Math.max(0,merged.length-before),total:merged.length,span:ffHistorySpanMonths(merged)};
+}
+function downloadFile(name,text,mime){
+  try{const blob=new Blob([text],{type:mime||"text/plain;charset=utf-8"});const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},150);}catch(e){alert("Export selhal: "+(e?.message||e));}
 }
 
 function deriveUpcomingFromEvents(events){
@@ -1790,8 +1887,8 @@ function Setup({onSave}){
   const [av,setAv]=useState(localStorage.getItem("av")||"");
   const [fmp,setFmp]=useState(localStorage.getItem("fmp")||"");
   function save(){
-    if(!fh.trim()){alert("Zadej Finnhub API klíč");return;}
-    localStorage.setItem("fh",fh.trim());localStorage.setItem("av",av.trim());
+    localStorage.setItem("av",av.trim());
+    if(fh.trim()) localStorage.setItem("fh",fh.trim()); else localStorage.removeItem("fh");
     if(fmp.trim()) localStorage.setItem("fmp",fmp.trim()); else localStorage.removeItem("fmp");
     if(typeof antKeySetup!=="undefined"&&antKeySetup.trim()) localStorage.setItem("ant_key",antKeySetup.trim());
     onSave(fh.trim(),av.trim());
@@ -1802,28 +1899,58 @@ function Setup({onSave}){
       <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:12,padding:"2rem",maxWidth:500,width:"100%"}}>
         <div style={{fontSize:28,marginBottom:8}}>📊</div>
         <h1 style={{fontSize:22,marginBottom:6}}>FX Fundamental Analyzer</h1>
-        <p style={{color:"#8b949e",fontSize:13,marginBottom:20}}>Fundamenty · COT · Sentiment · Seasonalita · Tržní struktura</p>
+        <p style={{color:"#8b949e",fontSize:13,marginBottom:8}}>Fundamenty · COT · Sentiment · Seasonalita · Tržní struktura</p>
+        <p style={{color:"#3fb950",fontSize:12,marginBottom:18}}>✓ Jede zdarma na ForexFactory + nahrané historii. Všechny klíče níže jsou volitelné.</p>
         <label style={{color:"#8b949e",fontSize:12,display:"block",marginBottom:5}}>
-          Finnhub API klíč <span style={{color:"#f85149"}}>*</span> — <a href="https://finnhub.io/register" target="_blank">finnhub.io/register</a> (zdarma)
+          Finnhub API klíč <span style={{color:"#6e7681"}}>(volitelné)</span> — <a href="https://finnhub.io/register" target="_blank">finnhub.io</a>
         </label>
-        <input value={fh} onChange={e=>setFh(e.target.value)} placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxx" style={inp}/>
+        <input value={fh} onChange={e=>setFh(e.target.value)} placeholder="pk_… (nepovinné)" style={inp}/>
         <label style={{color:"#8b949e",fontSize:12,display:"block",marginBottom:5}}>
-          FMP klíč (kalendář, 15 měs historie) — <a href="https://site.financialmodelingprep.com/developer/docs" target="_blank">financialmodelingprep.com</a> (zdarma)
+          FMP klíč <span style={{color:"#6e7681"}}>(volitelné, placený kalendář)</span> — <a href="https://site.financialmodelingprep.com/developer/docs" target="_blank">financialmodelingprep.com</a>
         </label>
-        <input value={fmp} onChange={e=>setFmp(e.target.value)} placeholder="FMP API key" style={inp}/>
+        <input value={fmp} onChange={e=>setFmp(e.target.value)} placeholder="FMP API key (nepovinné)" style={inp}/>
         <label style={{color:"#8b949e",fontSize:12,display:"block",marginBottom:5}}>
-          Alpha Vantage klíč — <a href="https://alphavantage.co/support/#api-key" target="_blank">alphavantage.co</a> (zdarma) — tržní struktura
+          Alpha Vantage klíč <span style={{color:"#6e7681"}}>(volitelné)</span> — <a href="https://alphavantage.co/support/#api-key" target="_blank">alphavantage.co</a> — tržní struktura
         </label>
-        <input value={av} onChange={e=>setAv(e.target.value)} placeholder="ABCDEF123456" style={{...inp,marginBottom:20}}/>
+        <input value={av} onChange={e=>setAv(e.target.value)} placeholder="ABCDEF123456 (nepovinné)" style={{...inp,marginBottom:20}}/>
         <button onClick={save} style={{width:"100%",padding:"10px",background:"#238636",border:"none",borderRadius:6,color:"#fff",fontSize:14,fontWeight:500,cursor:"pointer"}}>Spustit →</button>
+        <p style={{color:"#6e7681",fontSize:11,marginTop:12,textAlign:"center"}}>Historii fundamentů nahraješ později v ⚙️ Nastavení → Import.</p>
       </div>
     </div>
   );
 }
 
-function SettingsOverlay({fhKey,avKey,onSave,onClose}){
+function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
   const [fh,setFh]=useState(fhKey);const [av,setAv]=useState(avKey||"");
   const [fmp,setFmp]=useState(localStorage.getItem("fmp")||"");
+  const [impMsg,setImpMsg]=useState("");
+  const [histInfo,setHistInfo]=useState(()=>{const h=loadFFHistory();return{n:h.length,span:ffHistorySpanMonths(h)};});
+  function refreshHistInfo(){const h=loadFFHistory();setHistInfo({n:h.length,span:ffHistorySpanMonths(h)});}
+  function doImportFile(file){
+    if(!file)return;
+    const rd=new FileReader();
+    rd.onload=()=>{
+      try{
+        const text=String(rd.result||"");
+        let raw;
+        if(/\.csv$/i.test(file.name)||(!/^\s*[\[{]/.test(text))) raw=parseEconomicCSV(text);
+        else{const j=JSON.parse(text);raw=Array.isArray(j)?j:(Array.isArray(j.events)?j.events:[]);}
+        const st=importEconomicEvents(raw);
+        setImpMsg(`✓ Naimportováno ${st.normalized} událostí (přidáno ${st.added}). Zásoba: ${st.total} událostí, ~${st.span.toFixed(1)} měs historie.`);
+        refreshHistInfo();
+        if(onImported)onImported();
+      }catch(e){setImpMsg("⚠ Import selhal: "+(e?.message||e));}
+    };
+    rd.onerror=()=>setImpMsg("⚠ Soubor se nepodařilo načíst.");
+    rd.readAsText(file);
+  }
+  function doExport(kind){
+    const h=loadFFHistory();
+    if(!h.length){setImpMsg("Zásoba je prázdná — není co exportovat.");return;}
+    const stamp=new Date().toISOString().slice(0,10);
+    if(kind==="csv")downloadFile(`economic_history_${stamp}.csv`,eventsToCSV(h),"text/csv");
+    else downloadFile(`economic_history_${stamp}.json`,JSON.stringify(h),"application/json");
+  }
   const [orKey,setOrKey]=useState(localStorage.getItem("or_key")||"");
   const [orModel,setOrModel]=useState(localStorage.getItem("or_model")||"");
   const [oandaToken,setOandaToken]=useState(localStorage.getItem("oanda_token")||"");
@@ -1858,6 +1985,30 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose}){
         <input value={fmp} onChange={e=>setFmp(e.target.value)} placeholder="FMP API key" style={inp}/>
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Alpha Vantage klíč</label>
         <input value={av} onChange={e=>setAv(e.target.value)} style={{...inp,marginBottom:14}}/>
+
+        {/* Import / Export historie fundamentů */}
+        <div style={{borderTop:"1px solid #21262d",paddingTop:12,marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#e6edf3",marginBottom:4}}>📚 Historie fundamentů (kalendář)</div>
+          <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>
+            Zásoba: <b style={{color:"#e6edf3"}}>{histInfo.n}</b> událostí · <b style={{color:"#e6edf3"}}>~{histInfo.span.toFixed(1)}</b> měs historie.
+            Nahraj CSV/JSON (např. ForexFactory dataset z Kaggle/HuggingFace) — appka pak jede na dlouhé historii a dál si data dopisuje sama.
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+            <label style={{flex:"1 1 46%",padding:"8px",background:"#0d1117",border:"1px dashed #30363d",borderRadius:6,color:"#58a6ff",fontSize:12,textAlign:"center",cursor:"pointer"}}>
+              ⬆ Import CSV
+              <input type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={e=>{doImportFile(e.target.files[0]);e.target.value="";}}/>
+            </label>
+            <label style={{flex:"1 1 46%",padding:"8px",background:"#0d1117",border:"1px dashed #30363d",borderRadius:6,color:"#58a6ff",fontSize:12,textAlign:"center",cursor:"pointer"}}>
+              ⬆ Import JSON
+              <input type="file" accept=".json,application/json" style={{display:"none"}} onChange={e=>{doImportFile(e.target.files[0]);e.target.value="";}}/>
+            </label>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button onClick={()=>doExport("csv")} style={{flex:"1 1 46%",padding:"7px",background:"#21262d",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:12,cursor:"pointer"}}>⬇ Export CSV</button>
+            <button onClick={()=>doExport("json")} style={{flex:"1 1 46%",padding:"7px",background:"#21262d",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:12,cursor:"pointer"}}>⬇ Export JSON (záloha)</button>
+          </div>
+          {impMsg&&<div style={{fontSize:11,color:impMsg[0]==="⚠"?"#f85149":"#3fb950",marginTop:8}}>{impMsg}</div>}
+        </div>
 
         {/* OANDA Retail Sentiment */}
         <div style={{borderTop:"1px solid #21262d",paddingTop:12,marginBottom:12}}>
@@ -4400,6 +4551,9 @@ function BacktestTab({avKey,cotData}){
 function App(){
   const [fhKey,setFhKey]=useState(null);
   const [avKey,setAvKey]=useState(null);
+  // Appka jede i bez Finnhubu (ForexFactory + nahraná historie). "started" = uživatel
+  // prošel úvodní obrazovkou; klíče jsou volitelné placené doplňky.
+  const [started,setStarted]=useState(()=>{try{return localStorage.getItem("v5_started")==="1"||!!localStorage.getItem("fh")||!!localStorage.getItem("fmp");}catch(e){return false;}});
   const [showSet,setShowSet]=useState(false);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
@@ -4462,7 +4616,7 @@ function App(){
         ?" · "+(pairsLoaded||0)+" párů"+(errors?.length?" · "+errors[0]:"")
         :method==="cot_derived"?" · Přidej OANDA token v Settings pro přesná data":"";
       setError(`${methodLabel}${detail}`);
-      if(fhKey) await loadData(fhKey,cotData,rs);
+      await loadData(fhKey||"",cotData,rs);
     }catch(e){
       // Záloha: vždy nastavíme alespoň COT-derived hodnoty
       const derived=deriveRetailFromCOTData();
@@ -4473,8 +4627,9 @@ function App(){
   }
 
   useEffect(()=>{
-    const fh=localStorage.getItem("fh"),av=localStorage.getItem("av")||"";
-    if(fh){setFhKey(fh);setAvKey(av);}
+    const fh=localStorage.getItem("fh")||"",av=localStorage.getItem("av")||"";
+    setAvKey(av);
+    if(fh) setFhKey(fh);
   },[]);
 
   const loadData=useCallback(async(key,cot,sent)=>{
@@ -4539,19 +4694,19 @@ function App(){
   },[]);
 
   useEffect(()=>{
-    if(!fhKey) return;
-    loadData(fhKey,cotRef.current,sentRef.current);
+    if(!started) return;
+    loadData(fhKey||"",cotRef.current,sentRef.current);
     // interval čte nejnovější COT/sentiment z refů (ne ze zastaralé closure)
-    timer.current=setInterval(()=>loadData(fhKey,cotRef.current,sentRef.current),5*60*1000);
+    timer.current=setInterval(()=>loadData(fhKey||"",cotRef.current,sentRef.current),5*60*1000);
     return()=>clearInterval(timer.current);
-  },[fhKey]);
+  },[started,fhKey]);
 
   async function autoCOT(){
     setCotLoading(true);setError("");
     try{
       const {scores:cs,meta}=await fetchCOTAuto();
       setCotData(cs);setCotMeta(meta);
-      if(fhKey) await loadData(fhKey,cs,sentData);
+      await loadData(fhKey||"",cs,sentData);
     }catch(e){setError("COT auto selhal: "+(e?.message||e));}
     setCotLoading(false);
   }
@@ -4565,7 +4720,7 @@ function App(){
       const {scores:cs,meta,records,yearsLoaded}=await fetchCOTHistoryYears(years);
       setCotData(cs);setCotMeta(meta);
       setError(`COT historie načtena: ${records} týdnů, ${yearsLoaded} ročních souborů. Score historie doplněna zpětně.`);
-      if(fhKey) await loadData(fhKey,cs,sentData);
+      await loadData(fhKey||"",cs,sentData);
     }catch(e){setError("Online COT historie selhala. Použij 📂 Import COT z PC. Detail: "+(e?.message||e));}
     setHistoryLoading(false);
   }
@@ -4577,18 +4732,18 @@ function App(){
       setCotData(cs);setCotMeta(meta);
       const warn=errors?.length?` (${errors.length} souborů přeskočeno)` : "";
       setError(`Lokální COT historie načtena: ${records} týdnů, ${filesLoaded} souborů${warn}. Score historie doplněna zpětně.`);
-      if(fhKey) await loadData(fhKey,cs,sentData);
+      await loadData(fhKey||"",cs,sentData);
     }catch(e){setError("Lokální COT import selhal: "+(e?.message||e));}
     setHistoryLoading(false);
   }
 
-  if(!fhKey) return <Setup onSave={(fh,av)=>{setFhKey(fh);setAvKey(av);}}/>;
+  if(!started) return <Setup onSave={(fh,av)=>{if(fh)setFhKey(fh);setAvKey(av||"");try{localStorage.setItem("v5_started","1");}catch(e){}setStarted(true);}}/>;
 
   const top=pairs,topPair=top[0];
 
   return(
     <div className="pro-shell">
-      {showSet&&<SettingsOverlay fhKey={fhKey} avKey={avKey} onSave={(fh,av)=>{setFhKey(fh);setAvKey(av);}} onClose={()=>setShowSet(false)}/>}
+      {showSet&&<SettingsOverlay fhKey={fhKey} avKey={avKey} onSave={(fh,av)=>{setFhKey(fh);setAvKey(av);}} onClose={()=>setShowSet(false)} onImported={()=>loadData(fhKey||"",cotRef.current,sentRef.current)}/>}
       <aside className="command-sidebar">
         <div className="command-logo"><div className="command-logo-mark">AT</div><div><div className="command-logo-title">AT TRADING</div><div className="command-logo-sub">FX ANALYZER</div></div></div>
         <div className="command-nav">
