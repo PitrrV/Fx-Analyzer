@@ -1071,6 +1071,68 @@ async function fetchFFEventsCached(force){
   try{localStorage.setItem(FF_CACHE_KEY,JSON.stringify({ts:Date.now(),events:fresh}));}catch(e){}
   return fresh;
 }
+// ── BACKFILL: jednorázové dotažení nedávných týdnů z forexfactory.com ──
+// FF feed dává jen 3 týdny; pro recent okno (2025–dnes) stáhneme týdenní
+// stránky z webu FF přes proxy a vyparsujeme. Best-effort: FF/proxy může
+// blokovat (Cloudflare) — co projde, slijeme do historie.
+async function fetchTextWithProxies(url){
+  const enc=encodeURIComponent(url);
+  const tries=["https://api.allorigins.win/raw?url="+enc,"https://corsproxy.io/?url="+enc,"https://api.codetabs.com/v1/proxy/?quest="+url];
+  let last=null;
+  for(const u of tries){
+    try{const r=await fetch(u,{cache:"no-store",signal:abortTimeout(20000)});
+      if(!r.ok){last=new Error("HTTP "+r.status);continue;}
+      const t=await r.text(); if(t&&t.length>800) return t; last=new Error("krátká odpověď");
+    }catch(e){last=e;}
+  }
+  throw last||new Error("fetch selhal");
+}
+const FF_MONTHS_ABBR=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+function ffWeekParam(d){return FF_MONTHS_ABBR[d.getMonth()]+d.getDate()+"."+d.getFullYear();}
+function ffImpactFromEl(el){
+  if(!el)return"";
+  const t=(((el.getAttribute&&el.getAttribute("title"))||"")+" "+(el.className||"")+" "+(el.textContent||"")).toLowerCase();
+  if(/high|red/.test(t))return"high"; if(/medium|orange|moderate/.test(t))return"medium";
+  if(/low|yellow/.test(t))return"low"; return"";
+}
+function parseFFCalendarHTML(html,year){
+  let doc; try{doc=new DOMParser().parseFromString(html,"text/html");}catch(e){return[];}
+  const rows=doc.querySelectorAll(".calendar__row, tr.calendar_row, tr[data-event-id]");
+  const out=[]; let cur=null;
+  rows.forEach(row=>{ try{
+    const q=s=>row.querySelector(s);
+    const dEl=q(".calendar__date, .date"); const dTxt=dEl?dEl.textContent.trim():"";
+    if(dTxt){const mm=dTxt.match(/([A-Za-z]{3,})\s+(\d{1,2})/); if(mm){const mi=FF_MONTHS_ABBR.indexOf(mm[1].slice(0,3).toLowerCase()); if(mi>=0)cur={mi,day:+mm[2]};}}
+    const ccyEl=q(".calendar__currency, .currency"); const ccy=ccyEl?ccyEl.textContent.trim():"";
+    const evEl=q(".calendar__event, .event, .calendar__event-title"); const ev=evEl?evEl.textContent.trim():"";
+    if(!ev||!ccy||!cur)return;
+    const timeEl=q(".calendar__time, .time"); let tt=timeEl?timeEl.textContent.trim().toLowerCase():"";
+    let hh="00",mn="00"; const tm=tt.match(/(\d{1,2}):(\d{2})\s*(am|pm)?/);
+    if(tm){let h=+tm[1];mn=tm[2];if(tm[3]==="pm"&&h!==12)h+=12;if(tm[3]==="am"&&h===12)h=0;hh=String(h).padStart(2,"0");}
+    const impEl=q(".calendar__impact span, .impact span, .calendar__impact");
+    const actEl=q(".calendar__actual, .actual"),forEl=q(".calendar__forecast, .forecast"),prevEl=q(".calendar__previous, .previous");
+    const iso=`${year}-${String(cur.mi+1).padStart(2,"0")}-${String(cur.day).padStart(2,"0")}T${hh}:${mn}:00Z`;
+    out.push(normImportEvent({event:ev,currency:ccy,datetime:iso,impact:ffImpactFromEl(impEl),
+      actual:actEl?actEl.textContent.trim():"",forecast:forEl?forEl.textContent.trim():"",previous:prevEl?prevEl.textContent.trim():""}));
+  }catch(e){} });
+  return out.filter(Boolean);
+}
+async function backfillFFWeeks(weeks,onProgress){
+  const now=new Date(); let all=[],okWeeks=0,failWeeks=0;
+  for(let i=1;i<=weeks;i++){
+    const d=new Date(now.getTime()-i*7*86400000);
+    try{
+      const html=await fetchTextWithProxies("https://www.forexfactory.com/calendar?week="+ffWeekParam(d));
+      const evs=parseFFCalendarHTML(html,d.getFullYear());
+      if(evs.length){all=all.concat(evs);okWeeks++;} else failWeeks++;
+    }catch(e){failWeeks++;}
+    if(onProgress)onProgress({done:i,total:weeks,events:all.length,okWeeks,failWeeks});
+    await new Promise(r=>setTimeout(r,1100)); // šetrné k FF rate-limitu
+  }
+  const merged=mergeFFHistory(all);
+  return {events:all.length,okWeeks,failWeeks,total:merged.length,span:ffHistorySpanMonths(merged)};
+}
+
 // ── FF HISTORIE: sběrač do localStorage ─────────────────────────────
 // FF feed dává jen ~3 týdny. Každý refresh slijeme nová data do trvalé
 // zásoby, takže historie roste týden po týdnu. Podle rozpětí nasbíraných
@@ -1965,6 +2027,17 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
     if(kind==="csv")downloadFile(`economic_history_${stamp}.csv`,eventsToCSV(h),"text/csv");
     else downloadFile(`economic_history_${stamp}.json`,JSON.stringify(h),"application/json");
   }
+  const [busy,setBusy]=useState(false);
+  async function doBackfill(){
+    if(busy)return; setBusy(true);
+    setImpMsg("⏳ Backfill běží… stahuju týdny z ForexFactory (může to trvat ~1–2 min, nezavírej okno).");
+    try{
+      const st=await backfillFFWeeks(70,p=>setImpMsg(`⏳ Backfill ${p.done}/${p.total} týdnů · ${p.events} událostí · ✓${p.okWeeks} ✗${p.failWeeks}`));
+      if(st.okWeeks===0) setImpMsg("⚠ Backfill nevrátil nic — ForexFactory nejspíš blokuje proxy. Zkus Python scraper (řekni a dám kroky).");
+      else{ setImpMsg(`✓ Backfill hotov: ${st.events} událostí z ${st.okWeeks} týdnů (${st.failWeeks} selhalo). Zásoba: ${st.total}, ~${st.span.toFixed(1)} měs.`); refreshHistInfo(); if(onImported)onImported(); }
+    }catch(e){setImpMsg("⚠ Backfill selhal: "+(e?.message||e));}
+    setBusy(false);
+  }
   const [orKey,setOrKey]=useState(localStorage.getItem("or_key")||"");
   const [orModel,setOrModel]=useState(localStorage.getItem("or_model")||"");
   const [oandaToken,setOandaToken]=useState(localStorage.getItem("oanda_token")||"");
@@ -2017,10 +2090,14 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
               <input type="file" accept=".json,application/json" style={{display:"none"}} onChange={e=>{doImportFile(e.target.files[0]);e.target.value="";}}/>
             </label>
           </div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
             <button onClick={()=>doExport("csv")} style={{flex:"1 1 46%",padding:"7px",background:"#21262d",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:12,cursor:"pointer"}}>⬇ Export CSV</button>
             <button onClick={()=>doExport("json")} style={{flex:"1 1 46%",padding:"7px",background:"#21262d",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:12,cursor:"pointer"}}>⬇ Export JSON (záloha)</button>
           </div>
+          <button onClick={doBackfill} disabled={busy} style={{width:"100%",padding:"9px",background:busy?"#1c2733":"#1f3a2a",border:"1px solid #2ea043",borderRadius:6,color:busy?"#8b949e":"#3fb950",fontSize:12,fontWeight:600,cursor:busy?"default":"pointer"}}>
+            {busy?"⏳ Backfill běží…":"⟳ Doplnit posledních ~70 týdnů z ForexFactory (2025–dnes)"}
+          </button>
+          <div style={{fontSize:10,color:"#6e7681",marginTop:4}}>Best-effort: stahuje týdny přes proxy přímo z FF. Když FF blokuje, vrátí málo/nic — pak zkus Python scraper.</div>
           {impMsg&&<div style={{fontSize:11,color:impMsg[0]==="⚠"?"#f85149":"#3fb950",marginTop:8}}>{impMsg}</div>}
         </div>
 
