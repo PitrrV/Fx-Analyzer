@@ -4803,17 +4803,23 @@ function App(){
         catch(e){ fmpErr=(e?.message||String(e));
           if(/Error Message|Restricted|not available|Invalid API|Exclusive|subscription|plan|HTTP 40/i.test(fmpErr)) localStorage.setItem("fmp_cal_block",fmpKey); }
       }
+      // Finnhub kalendář (jen pokud má klíč a není zablokovaný). Finnhub kalendář
+      // je dnes placený → free klíč selže; zablokuj ho jako FMP, ať nezdržuje.
+      if(!cal.length&&key){
+        const fhBlocked=localStorage.getItem("fh_cal_block")===key;
+        if(!fhBlocked){
+          try{ cal=await fetchCalendar(key,15); calSource="finnhub"; localStorage.removeItem("fh_cal_block"); calWarn=fmpErr?"ℹ FMP nezabral — jede Finnhub 15 měs.":""; }
+          catch(e){ if(/Error Message|Restricted|not available|Invalid|premium|subscription|access|plan|HTTP 40/i.test(String(e?.message||e))) localStorage.setItem("fh_cal_block",key); }
+        }
+      }
       if(!cal.length){
-        try{ cal=await fetchCalendar(key,15); calSource="finnhub"; calWarn=fmpErr?("ℹ FMP nezabral ("+fmpErr+") — jede Finnhub 15 měs."):""; }
-        catch(e){
-          try{
-            const fresh=await fetchFFEventsCached(force);calSource="forexfactory";
-            cal=mergeFFHistory(fresh);   // slij do trvalé zásoby + použij nasbíranou historii
-          }catch(e2){
-            cal=loadFFHistory();         // i kdyby feed teď spadl, využij dřív nasbíranou historii
-            if(cal.length){calSource="forexfactory";}
-            else{calWarn="⚠ Žádný zdroj kalendáře (FMP/Finnhub/ForexFactory) nevyšel. Skóre jede jen z COT/yield/policy. Detail: "+(e2?.message||e2);}
-          }
+        try{
+          const fresh=await fetchFFEventsCached(force);calSource="forexfactory";
+          cal=mergeFFHistory(fresh);   // slij do trvalé zásoby + použij nasbíranou historii
+        }catch(e2){
+          cal=loadFFHistory();         // i kdyby feed teď spadl, využij dřív nasbíranou historii
+          if(cal.length){calSource="forexfactory";}
+          else{calWarn="⚠ Žádný zdroj kalendáře (FMP/Finnhub/ForexFactory) nevyšel. Skóre jede jen z COT/yield/policy. Detail: "+(e2?.message||e2);}
         }
       }
       // FMP/Finnhub = 15 měs → plná důvěra; FF → důvěra dle rozpětí nasbírané historie.
