@@ -698,15 +698,20 @@ function cftcNum(row,names){
 }
 async function fetchCOTViaAPI(){
   const base="https://publicreporting.cftc.gov/resource/"+CFTC_TFF_DATASET+".json";
-  const latest=await fetchJSONWithProxies(base+"?$select=report_date_as_yyyy_mm_dd&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=1");
-  const rawDate=Array.isArray(latest)&&latest[0]&&latest[0].report_date_as_yyyy_mm_dd;
-  if(!rawDate) throw new Error("CFTC API nevrátilo datum reportu");
-  const asOf=String(rawDate).slice(0,10);
-  const rows=await fetchJSONWithProxies(base+"?report_date_as_yyyy_mm_dd="+encodeURIComponent(rawDate)+"&$limit=2000");
-  if(!Array.isArray(rows)||!rows.length) throw new Error("CFTC API nevrátilo řádky pro "+asOf);
+  // Jeden požadavek: řádky za posledních ~70 dní, od nejnovějšího. Nejnovější
+  // datum i párování trhů řešíme v JS → odolné vůči formátu timestampu/poli.
+  const cutoff=new Date(Date.now()-70*86400000).toISOString().slice(0,10);
+  const where=encodeURIComponent("report_date_as_yyyy_mm_dd > '"+cutoff+"T00:00:00.000'");
+  const order=encodeURIComponent("report_date_as_yyyy_mm_dd DESC");
+  const rows=await fetchJSONWithProxies(base+"?$where="+where+"&$order="+order+"&$limit=5000");
+  if(!Array.isArray(rows)) throw new Error("CFTC API nevrátilo pole: "+String(JSON.stringify(rows)).slice(0,120));
+  if(!rows.length) throw new Error("CFTC API: 0 řádků za 70 dní");
+  let maxDate=""; for(const r of rows){const d=String(r.report_date_as_yyyy_mm_dd||"");if(d>maxDate)maxDate=d;}
+  const asOf=maxDate.slice(0,10);
+  const week=rows.filter(r=>String(r.report_date_as_yyyy_mm_dd||"")===maxDate);
   const out={},raw={};
   for(const [ccy,market] of Object.entries(COT_MARKETS)){
-    const row=rows.find(r=>{const nm=String(r.market_and_exchange_names||r.contract_market_name||"").toUpperCase();return nm.includes(market)&&nm.includes("CHICAGO MERCANTILE EXCHANGE");});
+    const row=week.find(r=>{const nm=String(r.market_and_exchange_names||r.contract_market_name||"").toUpperCase();return nm.includes(market)&&nm.includes("CHICAGO MERCANTILE");});
     if(!row) continue;
     const assetLong=cftcNum(row,["asset_mgr_positions_long","asset_mgr_positions_long_all"]);
     const assetShort=cftcNum(row,["asset_mgr_positions_short","asset_mgr_positions_short_all"]);
@@ -1032,19 +1037,24 @@ function mapFMPEvent(e){
 // Vrátí JSON pole z FMP. Přímý fetch → při CORS/síti zkusí přes proxy.
 // Chybový objekt {"Error Message":...} (paywall) převede na čitelnou výjimku.
 async function fmpFetchArray(url){
-  let data=null,err=null;
+  // Přímý pokus. Chyba klíče/plánu (HTTP 4xx nebo {"Error Message":...}) =
+  // proxy NEPOMŮŽE → selži rychle. Proxy zkoušíme jen u skutečné síť/CORS chyby.
   try{
-    const res=await fetch(url,{cache:"no-store",signal:abortTimeout(15000)});
-    if(res.ok){ data=await res.json(); }
-    else{ const body=await res.text().catch(()=>""); err=new Error("HTTP "+res.status+(body?(" "+body.slice(0,120)):"")); }
-  }catch(e){ err=new Error("síť/CORS: "+(e?.message||e)); }
-  if(data==null){
-    // fallback přes CORS proxy (stejné jako ForexFactory)
-    try{ data=await fetchJSONWithProxies(url); }catch(e){ throw err||new Error(e?.message||String(e)); }
+    const res=await fetch(url,{cache:"no-store",signal:abortTimeout(12000)});
+    const body=await res.text().catch(()=>"");
+    let data=null; try{data=JSON.parse(body);}catch(e){}
+    if(res.ok&&Array.isArray(data)) return data;
+    const msg=(data&&(data["Error Message"]||data.message||data.error))||("HTTP "+res.status);
+    throw new Error(String(msg).slice(0,160));
+  }catch(e){
+    const m=String(e?.message||e);
+    if(/Failed to fetch|NetworkError|CORS|aborted|abort|Load failed|TypeError/i.test(m)){
+      try{ const data=await fetchJSONWithProxies(url); if(Array.isArray(data)) return data;
+        const msg=data&&(data["Error Message"]||data.message); throw new Error(msg?String(msg).slice(0,160):"FMP nevrátil pole"); }
+      catch(e2){ throw new Error(String(e2?.message||e2).slice(0,160)); }
+    }
+    throw e;
   }
-  if(Array.isArray(data)) return data;
-  const msg=data&&(data["Error Message"]||data.message||data.error);
-  throw new Error(msg?String(msg).slice(0,140):"FMP nevrátil pole (paywall/neznámá odpověď)");
 }
 async function fetchFMPCalendar(apiKey,months=15){
   const out=[];const now=new Date();const windows=Math.ceil(months/3);let lastErr=null;
@@ -4785,9 +4795,13 @@ function App(){
       // Zdroje kalendáře v pořadí: FMP (free, 15 měs) → Finnhub → ForexFactory (záloha).
       const fmpKey=(localStorage.getItem("fmp")||"").trim();
       let cal=[],calWarn="",calSource="",fmpErr="";
-      if(fmpKey){
-        try{ cal=await fetchFMPCalendar(fmpKey,15); calSource="fmp"; }
-        catch(e){ fmpErr=(e?.message||String(e)); }
+      // Pokud FMP klíč už jednou vrátil chybu plánu/klíče, neotravuj s ním každých
+      // 5 min (zrychlejší load, žádná opakovaná červená chyba). Reset při změně klíče.
+      const fmpBlocked=!!fmpKey&&localStorage.getItem("fmp_cal_block")===fmpKey;
+      if(fmpKey&&!fmpBlocked){
+        try{ cal=await fetchFMPCalendar(fmpKey,15); calSource="fmp"; localStorage.removeItem("fmp_cal_block"); }
+        catch(e){ fmpErr=(e?.message||String(e));
+          if(/Error Message|Restricted|not available|Invalid API|Exclusive|subscription|plan|HTTP 40/i.test(fmpErr)) localStorage.setItem("fmp_cal_block",fmpKey); }
       }
       if(!cal.length){
         try{ cal=await fetchCalendar(key,15); calSource="finnhub"; calWarn=fmpErr?("ℹ FMP nezabral ("+fmpErr+") — jede Finnhub 15 měs."):""; }
@@ -4807,7 +4821,7 @@ function App(){
       else if(calSource==="forexfactory"){
         g_fundConfidence=ffConfidence(cal);
         const span=ffHistorySpanMonths(cal);
-        calWarn="ℹ Kalendář: ForexFactory (sbírám historii — zatím ~"+span.toFixed(1)+" měs, "+cal.length+" událostí). Fundamenty na "+Math.round(g_fundConfidence*100)+"% (roste k 100% s historií), COT/yield/policy drží bias. "+(fmpKey?("FMP free nedostupný: "+fmpErr.slice(0,60)):"");
+        calWarn="ℹ Kalendář jede z ForexFactory ("+cal.length+" událostí, ~"+span.toFixed(1)+" měs historie, fundamenty "+Math.round(g_fundConfidence*100)+"% — roste s historií; COT/yield/policy drží bias)."+((fmpKey&&(fmpErr||fmpBlocked))?" Pozn.: FMP free tarif ekonomický kalendář nemá (jen placený plán) — proto FF.":"");
       } else { g_fundConfidence=FF_FUND_DAMP; }
       setCalData(cal);
 
@@ -4848,6 +4862,19 @@ function App(){
   useEffect(()=>{
     if(!started) return;
     loadData(fhKey||"",cotRef.current,sentRef.current);
+    // Po startu na pozadí dotáhni aktuální COT z CFTC API, když je uložený starší
+    // než ~4 dny (nebo neznámé datum). Tiché při selhání – uložená data zůstanou.
+    (async()=>{
+      try{
+        const m0=loadCOTMeta();
+        const ageDays=m0&&m0.asOf?((Date.now()-new Date(m0.asOf).getTime())/86400000):NaN;
+        if(!(ageDays<=4)){
+          const {scores:cs,meta:m}=await fetchCOTAuto();
+          setCotData(cs);setCotMeta(m);
+          await loadData(fhKey||"",cs,sentRef.current);
+        }
+      }catch(e){/* tiché – uložený COT zůstává */}
+    })();
     // interval čte nejnovější COT/sentiment z refů (ne ze zastaralé closure)
     timer.current=setInterval(()=>loadData(fhKey||"",cotRef.current,sentRef.current),5*60*1000);
     return()=>clearInterval(timer.current);
