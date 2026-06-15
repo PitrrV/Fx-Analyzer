@@ -687,14 +687,69 @@ async function fetchTextWithFallback(url){
   }
   throw lastErr||new Error("COT fetch failed");
 }
+// ── CFTC OFICIÁLNÍ API (Socrata, CORS-native) ───────────────────────
+// Primární COT zdroj. Na rozdíl od .htm/.zip přes free proxy posílá
+// publicreporting.cftc.gov správné CORS hlavičky → volá se přímo z
+// prohlížeče bez proxy = spolehlivé a zdarma. Dataset TFF Futures-Only.
+const CFTC_TFF_DATASET="gpe5-46if";
+function cftcNum(row,names){
+  for(const n of names){const v=row[n]; if(v!=null&&v!==""){const f=parseFloat(v); if(!isNaN(f))return f;}}
+  return null;
+}
+async function fetchCOTViaAPI(){
+  const base="https://publicreporting.cftc.gov/resource/"+CFTC_TFF_DATASET+".json";
+  const latest=await fetchJSONWithProxies(base+"?$select=report_date_as_yyyy_mm_dd&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=1");
+  const rawDate=Array.isArray(latest)&&latest[0]&&latest[0].report_date_as_yyyy_mm_dd;
+  if(!rawDate) throw new Error("CFTC API nevrátilo datum reportu");
+  const asOf=String(rawDate).slice(0,10);
+  const rows=await fetchJSONWithProxies(base+"?report_date_as_yyyy_mm_dd="+encodeURIComponent(rawDate)+"&$limit=2000");
+  if(!Array.isArray(rows)||!rows.length) throw new Error("CFTC API nevrátilo řádky pro "+asOf);
+  const out={},raw={};
+  for(const [ccy,market] of Object.entries(COT_MARKETS)){
+    const row=rows.find(r=>{const nm=String(r.market_and_exchange_names||r.contract_market_name||"").toUpperCase();return nm.includes(market)&&nm.includes("CHICAGO MERCANTILE EXCHANGE");});
+    if(!row) continue;
+    const assetLong=cftcNum(row,["asset_mgr_positions_long","asset_mgr_positions_long_all"]);
+    const assetShort=cftcNum(row,["asset_mgr_positions_short","asset_mgr_positions_short_all"]);
+    const levLong=cftcNum(row,["lev_money_positions_long","lev_money_positions_long_all"]);
+    const levShort=cftcNum(row,["lev_money_positions_short","lev_money_positions_short_all"]);
+    if([assetLong,assetShort,levLong,levShort].some(v=>v==null)) continue;
+    const asset=cotNet(assetLong,assetShort),lev=cotNet(levLong,levShort);
+    const assetScore=cotNetScore(assetLong,assetShort),levScore=cotNetScore(levLong,levShort);
+    const score=parseFloat((levScore*0.70+assetScore*0.30).toFixed(1));
+    const levChange=(cftcNum(row,["change_in_lev_money_long","change_in_lev_money_long_all"])||0)-(cftcNum(row,["change_in_lev_money_short","change_in_lev_money_short_all"])||0);
+    const assetChange=(cftcNum(row,["change_in_asset_mgr_long","change_in_asset_mgr_long_all"])||0)-(cftcNum(row,["change_in_asset_mgr_short","change_in_asset_mgr_short_all"])||0);
+    const flow=levChange*0.70+assetChange*0.30;
+    out[ccy]=score;
+    raw[ccy]={market,assetLong,assetShort,levLong,levShort,assetNet:asset.net,levNet:lev.net,levRatio:lev.ratio,assetRatio:asset.ratio,
+      levScore,assetScore,score,levChange,assetChange,flow:Math.round(flow),extreme:cotExtremeFromRatio(lev.ratio)};
+  }
+  const vals=Object.values(out).filter(v=>typeof v==="number"&&!isNaN(v));
+  if(vals.length<5) throw new Error("CFTC API: namapováno jen "+vals.length+" měn (změna schématu?)");
+  out.USD=parseFloat((-vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1));
+  const flows=Object.values(raw).map(r=>r.flow||0);
+  raw.USD={market:"syntetický USD koš",note:"opačný průměr dostupných non-USD COT měn",score:out.USD,flow:flows.length?Math.round(-flows.reduce((a,b)=>a+b,0)/flows.length):0,extreme:{level:"SYNTH",label:"syntetický koš",color:"#8b949e"}};
+  return{scores:{...COT_DEFAULT,...out},raw,asOf};
+}
 async function fetchCOTAuto(){
-  const url="https://www.cftc.gov/dea/futures/financial_lf.htm";
-  const txt=await fetchTextWithFallback(url);
-  const parsed=parseCOTFinancialText(txt);
-  const asOf=(txt.match(/Positions as of\s+([^\n<]+)/i)||[])[1]?.trim()||new Date().toISOString().split("T")[0];
-  const meta={source:url,asOf,updatedAt:new Date().toISOString(),raw:parsed.raw};
-  saveCOT(parsed.scores);saveCOTMeta(meta);saveCOTSnapshot(parsed.scores,meta);
-  return{scores:parsed.scores,meta};
+  try{
+    const api=await fetchCOTViaAPI();
+    const meta={source:"CFTC oficiální API (TFF Futures-Only)",asOf:api.asOf,updatedAt:new Date().toISOString(),raw:api.raw,via:"cftc_api"};
+    saveCOT(api.scores);saveCOTMeta(meta);saveCOTSnapshot(api.scores,meta);
+    return{scores:api.scores,meta};
+  }catch(apiErr){
+    // Fallback: původní .htm přes proxy (když API nedostupné / změní schéma)
+    try{
+      const url="https://www.cftc.gov/dea/futures/financial_lf.htm";
+      const txt=await fetchTextWithFallback(url);
+      const parsed=parseCOTFinancialText(txt);
+      const asOf=(txt.match(/Positions as of\s+([^\n<]+)/i)||[])[1]?.trim()||new Date().toISOString().split("T")[0];
+      const meta={source:url+" (fallback)",asOf,updatedAt:new Date().toISOString(),raw:parsed.raw,via:"proxy_text",apiError:String(apiErr?.message||apiErr)};
+      saveCOT(parsed.scores);saveCOTMeta(meta);saveCOTSnapshot(parsed.scores,meta);
+      return{scores:parsed.scores,meta};
+    }catch(txtErr){
+      throw new Error("COT: API i proxy fallback selhaly. API: "+(apiErr?.message||apiErr)+" · proxy: "+(txtErr?.message||txtErr));
+    }
+  }
 }
 
 
