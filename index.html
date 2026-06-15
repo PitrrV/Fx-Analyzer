@@ -4963,7 +4963,7 @@ function App(){
               📅 {SRC[calMeta.source]||calMeta.source} · {calMeta.months.toFixed(0)}m · {calMeta.fwdDays}d → · {calMeta.conf}%
             </span>);})()}
           {loading&&<span style={{fontSize:11,color:"#58a6ff"}}>⟳ Načítám...</span>}
-          {error&&<span style={{fontSize:11,color:"#f85149",maxWidth:260}}>{error}</span>}
+          {error&&<span style={{fontSize:11,color:error[0]==="ℹ"?"#8b949e":error[0]==="✅"?"#3fb950":"#f85149",maxWidth:260}}>{error}</span>}
           <button onClick={()=>loadData(fhKey||"",cotData,sentData,true)} disabled={loading}
             style={{padding:"5px 11px",background:"#21262d",border:"1px solid #30363d",borderRadius:5,color:"#e6edf3",fontSize:12,cursor:"pointer"}}>↻ Refresh</button>
           <button onClick={()=>setTab("coach")} className="command-pro" style={{display:"flex",alignItems:"center",gap:8}}>💬 AI Coach</button>
