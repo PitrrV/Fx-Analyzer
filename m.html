@@ -362,6 +362,103 @@ function SettingsTab({onSaved}){
   );
 }
 
+// ── AI ANALÝZA GRAFU (z fotky) ──────────────────────────────
+async function analyzeChartMobile(file,setProg){
+  const orKey=(localStorage.getItem("or_key")||"").trim();
+  if(!orKey) throw new Error("Chybí OpenRouter klíč — zadej ho v Nastavení (zdarma na openrouter.ai).");
+  setProg&&setProg("Připravuji obrázek…");
+  const b64=await fileToBase64(file), mt=file.type||"image/jpeg";
+  setProg&&setProg("Hledám AI model…");
+  let visionModels=[];
+  try{
+    const mResp=await fetch("https://openrouter.ai/api/v1/models",{headers:{"Authorization":"Bearer "+orKey}});
+    const mData=await mResp.json();
+    visionModels=(mData.data||[]).filter(m=>m.id.endsWith(":free")&&((m.architecture&&m.architecture.modality)||"").includes("image")).sort((a,b)=>(b.context_length||0)-(a.context_length||0)).map(m=>m.id);
+  }catch(e){}
+  const manual=localStorage.getItem("or_model")||"";
+  const FALLBACK=["meta-llama/llama-3.2-11b-vision-instruct:free","meta-llama/llama-3.2-90b-vision-instruct:free","qwen/qwen-2-vl-7b-instruct:free"];
+  const models=[manual,...visionModels,...FALLBACK].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+  let raw="",lastErr="";
+  for(const model of models){
+    setProg&&setProg("Analyzuji ("+model.split("/").pop().slice(0,16)+")…");
+    try{
+      const r=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":"Bearer "+orKey,"HTTP-Referer":"https://pitrrv.github.io","X-Title":"AT Trading FX"},
+        body:JSON.stringify({model,messages:[{role:"system",content:AI_SYSTEM_PROMPT},{role:"user",content:[{type:"image_url",image_url:{url:"data:"+mt+";base64,"+b64}},{type:"text",text:"Analyzuj tento FX/index graf. Return ONLY the JSON."}]}],max_tokens:2048})});
+      const d=await r.json();
+      if(d.error){lastErr=(d.error.message||"");continue;}
+      const c=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||"";
+      if(c){raw=c;break;}
+    }catch(e){lastErr=(e&&e.message||String(e));}
+  }
+  if(!raw) throw new Error("Žádný free vision model nezabral. Zkus za chvíli nebo zvol model v Nastavení. "+lastErr);
+  const clean=raw.replace(/```json|```/g,"").trim();
+  const si=clean.indexOf("{"),ei=clean.lastIndexOf("}");
+  return JSON.parse(si>=0&&ei>si?clean.slice(si,ei+1):clean);
+}
+function AITab(){
+  const [img,setImg]=useState(null);
+  const [file,setFile]=useState(null);
+  const [res,setRes]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [prog,setProg]=useState("");
+  const [err,setErr]=useState("");
+  function pick(f){ if(!f)return; setFile(f);setRes(null);setErr(""); const r=new FileReader(); r.onload=()=>setImg(r.result); r.readAsDataURL(f); }
+  async function run(){
+    if(!file){setErr("Nejdřív vyfoť nebo nahraj graf.");return;}
+    setBusy(true);setErr("");setRes(null);
+    try{ setRes(await analyzeChartMobile(file,setProg)); }
+    catch(e){ setErr(String(e&&e.message||e)); }
+    setBusy(false);setProg("");
+  }
+  const bc=res&&res.bias==="BULLISH"?"#3fb950":res&&res.bias==="BEARISH"?"#ff6a5e":"#d29922";
+  const es=(res&&res.entry_setup)||{}, ms=(res&&res.market_structure)||{};
+  return (
+    <div>
+      <div className="card">
+        <div style={{fontWeight:800,marginBottom:8}}>🤖 AI analýza grafu</div>
+        <label className="btn sec" style={{display:"block",textAlign:"center",cursor:"pointer"}}>📷 Vyfotit / nahrát graf
+          <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>pick(e.target.files[0])}/>
+        </label>
+        {img&&<img src={img} alt="graf" style={{width:"100%",borderRadius:8,marginTop:10,border:"1px solid #21262d"}}/>}
+        {img&&<button className="btn" style={{marginTop:10}} disabled={busy} onClick={run}>{busy?"⏳ "+(prog||"Analyzuji…"):"🔍 Analyzovat"}</button>}
+        {err&&<div style={{color:"#ff6a5e",fontSize:12,marginTop:8,lineHeight:1.5}}>⚠ {err}</div>}
+        <div className="muted" style={{fontSize:10,marginTop:8}}>Potřebuje OpenRouter klíč (Nastavení) — zdarma na openrouter.ai.</div>
+      </div>
+      {res&&<>
+        <div className="card" style={{borderColor:bc+"55"}}>
+          <div className="between">
+            <span className="pill" style={{background:bc+"22",color:bc,border:"1px solid "+bc+"55"}}>{res.bias||"—"}</span>
+            {res.confidence!=null&&<b style={{color:bc,fontSize:18}}>{res.confidence}%</b>}
+          </div>
+          {res.summary&&<div style={{fontSize:13,marginTop:8,lineHeight:1.5}}>{res.summary}</div>}
+        </div>
+        {es.direction&&<div className="card">
+          <div style={{fontWeight:800,marginBottom:6}}>🎯 Vstup: <span style={{color:es.direction==="BUY"?"#3fb950":es.direction==="SELL"?"#ff6a5e":"#d29922"}}>{es.direction}</span>{es.rr_estimate?(" · RR "+es.rr_estimate):""}</div>
+          {es.entry_zone&&<div className="seg"><span className="muted">Vstup</span><span>{es.entry_zone}</span></div>}
+          {es.entry_trigger&&<div className="seg"><span className="muted">Trigger</span><span>{es.entry_trigger}</span></div>}
+          {es.stop_loss&&<div className="seg"><span className="muted">Stop loss</span><span style={{color:"#ff6a5e"}}>{es.stop_loss}</span></div>}
+          {es.tp1&&<div className="seg"><span className="muted">TP1</span><span style={{color:"#3fb950"}}>{es.tp1}</span></div>}
+          {es.tp2&&<div className="seg"><span className="muted">TP2</span><span style={{color:"#3fb950"}}>{es.tp2}</span></div>}
+          {es.invalidation&&<div className="seg"><span className="muted">Invalidace</span><span>{es.invalidation}</span></div>}
+        </div>}
+        {ms.trend&&<div className="card">
+          <div style={{fontWeight:800,marginBottom:6}}>📐 Struktura: {ms.trend}</div>
+          {ms.description&&<div style={{fontSize:12,color:"#c9d1d9",lineHeight:1.5}}>{ms.description}</div>}
+          {ms.bos_choch&&<div style={{fontSize:11,color:"#8b949e",marginTop:4}}>{ms.bos_choch}</div>}
+        </div>}
+        {res.key_levels&&res.key_levels.length>0&&<div className="card">
+          <div style={{fontWeight:800,marginBottom:6}}>📊 Klíčové úrovně</div>
+          {res.key_levels.slice(0,6).map((l,i)=><div className="seg" key={i}><span style={{color:l.type==="RESISTANCE"?"#ff6a5e":"#3fb950"}}>{l.type==="RESISTANCE"?"⬆ R":"⬇ S"} {l.zone}</span><span className="muted" style={{fontSize:11}}>{l.strength}</span></div>)}
+        </div>}
+        {res.risk_warnings&&res.risk_warnings.length>0&&<div className="card" style={{borderColor:"#5c4a1f"}}>
+          <div style={{fontWeight:800,marginBottom:6,color:"#d29922"}}>⚠️ Rizika</div>
+          {res.risk_warnings.map((w,i)=><div key={i} style={{fontSize:12,color:"#d6c089",marginBottom:3,lineHeight:1.4}}>• {w}</div>)}
+        </div>}
+      </>}
+    </div>
+  );
+}
 // ── ROOT ────────────────────────────────────────────────────
 function MApp(){
   const [tab,setTab]=useState("signals");
@@ -414,10 +511,11 @@ function MApp(){
         {tab==="signals"&&<SignalsTab data={data} onTap={setSel}/>}
         {tab==="cot"&&<CotTab data={data} onRefreshCot={refreshCot} cotLoading={cotLoading}/>}
         {tab==="cal"&&<CalendarTab data={data}/>}
+        {tab==="ai"&&<AITab/>}
         {tab==="set"&&<SettingsTab onSaved={load}/>}
       </div>
       <div className="bottomnav">
-        {[["signals","🎯","Signály"],["cot","📊","COT"],["cal","📅","Kalendář"],["set","⚙️","Nastavení"]].map(([id,ic,lbl])=>(
+        {[["signals","🎯","Signály"],["cot","📊","COT"],["cal","📅","Kalendář"],["ai","🤖","AI"],["set","⚙️","Nastavení"]].map(([id,ic,lbl])=>(
           <button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}><span className="ic">{ic}</span>{lbl}</button>
         ))}
       </div>
