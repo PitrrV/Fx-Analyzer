@@ -1948,20 +1948,27 @@ function getImminentHigh(currency,events,from,to){
     return evIsHighImpact(ev);
   }).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
 }
-// Jednotný zdroj pro puntík i Daily Brief — velké přímé události páru kolem dneška.
+// Jednotný zdroj pro puntík i Daily Brief — velké přímé události páru.
+// Rozdělené: dnes už proběhlo / dnes ještě přijde / zítra (do +36h) = podtext.
 function getPairFundamentalDay(pair,calData,upcoming){
   const ev=mergeEvents(calData,upcoming);
-  const from=startOfTodayMs(), to=Date.now()+36*3600000, now=Date.now();
-  const hi=getImminentHigh(pair.base,ev,from,to).concat(getImminentHigh(pair.quote,ev,from,to)).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
-  return {hi, upcoming:hi.filter(e=>parseEventTime(e.time)>now&&!e.actual), past:hi.filter(e=>parseEventTime(e.time)<=now)};
+  const dayStart=startOfTodayMs(), dayEnd=localDayEnd(), now=Date.now(), soon=now+36*3600000;
+  const hi=getImminentHigh(pair.base,ev,dayStart,soon).concat(getImminentHigh(pair.quote,ev,dayStart,soon)).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+  return {
+    hi,
+    todayPast:hi.filter(e=>{const t=parseEventTime(e.time);return t>=dayStart&&t<=now;}),
+    todayUpcoming:hi.filter(e=>{const t=parseEventTime(e.time);return t>now&&t<=dayEnd&&!e.actual;}),
+    tomorrow:hi.filter(e=>{const t=parseEventTime(e.time);return t>dayEnd&&!e.actual;}),
+  };
 }
 function getPairDailyState(pair,scores,calData,upcoming){
   const c=detectFundamentalConflict(pair,scores,calData,upcoming,DAY_WINDOW);
   if(c.hasData&&c.conflict) return{level:"conflict",dot:"🔴",color:"#ff4d4d"};
   if(c.hasData&&c.stDir===c.ltDir) return{level:"confirm",dot:"🟢",color:"#3fb950"};
-  const d=getPairFundamentalDay(pair,calData,upcoming);
-  if(d.upcoming.length) return{level:"upcoming",dot:"🟡",color:"#d29922"};
-  if(d.past.length) return{level:"done",dot:"🔵",color:"#58a6ff"};
+  const d=getPairFundamentalDay(pair,calData,upcoming);          // priorita: DNES > zítra
+  if(d.todayUpcoming.length) return{level:"upcoming",dot:"🟡",color:"#d29922"};
+  if(d.todayPast.length) return{level:"done",dot:"🔵",color:"#58a6ff"};
+  if(d.tomorrow.length) return{level:"tomorrow",dot:"🟡",color:"#d29922"};
   return{level:"none",dot:"",color:null};
 }
 function getPosition(pair){try{return (JSON.parse(localStorage.getItem("positions")||"{}"))[pair]||"none";}catch(e){return"none";}}
@@ -3231,51 +3238,32 @@ function DailyBriefPanel({pair,scores,calData,upcoming,positions,onPosition}){
   const pos=(positions&&positions[pair.pair])||"none";
   const c=detectFundamentalConflict(pair,scores,calData||[],upcoming||[],DAY_WINDOW);
   const fd=getPairFundamentalDay(pair,calData||[],upcoming||[]);
-  const hasUp=fd.upcoming.length>0;
-  const donePast=fd.past.length>0&&!hasUp; // velké zprávy proběhly (i bez překvapení)
   const ltDir=c.ltDir;
-  const tm=e=>evDate(e).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
-  const evList=arr=>arr.slice(0,4).map(e=>`${COUNTRY_FLAGS[(e.country||"").toUpperCase()]||""}${tm(e)} ${e.event}${(e.actual!=null&&e.actual!=="")?` = ${e.actual}`:((e.estimate??e.forecast)!=null&&(e.estimate??e.forecast)!=="")?` (odh. ${e.estimate??e.forecast})`:""}`).join("  ·  ");
-  if(!c.hasData&&!hasUp){
-    if(donePast){
-      return(
-        <div style={{background:"rgba(88,166,255,.06)",border:"1px solid rgba(88,166,255,.22)",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
-          <div style={{minWidth:0}}>
-            <div style={{fontSize:12,color:"#8fb8e0"}}>🔵 DAILY BRIEF — {pair.pair}: dnes proběhly velké zprávy — zatím bez výrazného překvapení vs. odhad. Drž ve směru 14d biasu ({ltDir}), sleduj reakci trhu.</div>
-            <div style={{fontSize:10,color:"#6e8aa0",marginTop:4,lineHeight:1.5}}>📊 {evList(fd.past)}</div>
-          </div>
-          <PosToggle pair={pair.pair} pos={pos} onSet={s=>onPosition(pair.pair,s)} color="#58a6ff"/>
-        </div>
-      );
-    }
-    return(
-      <div style={{background:"rgba(63,185,80,.05)",border:"1px solid rgba(63,185,80,.18)",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-        <span style={{fontSize:12,color:"#8b949e"}}>🟢 DAILY BRIEF — {pair.pair}: dnes žádné velké fundamenty. Můžeš ve směru 14d biasu ({ltDir}).</span>
-        <PosToggle pair={pair.pair} pos={pos} onSet={s=>onPosition(pair.pair,s)} color="#3fb950"/>
-      </div>
-    );
-  }
   const conflict=c.hasData&&c.conflict;
   const confirm=c.hasData&&!c.conflict&&c.stDir===ltDir;
-  const col=conflict?"#ff4d4d":confirm?"#3fb950":hasUp?"#d29922":"#58a6ff";
+  const hasPast=fd.todayPast.length>0, hasTodayUp=fd.todayUpcoming.length>0, hasTomorrow=fd.tomorrow.length>0;
+  const tm=e=>evDate(e).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
+  const evList=arr=>arr.slice(0,4).map(e=>`${COUNTRY_FLAGS[(e.country||"").toUpperCase()]||""}${tm(e)} ${e.event}${(e.actual!=null&&e.actual!=="")?` = ${e.actual}`:((e.estimate??e.forecast)!=null&&(e.estimate??e.forecast)!=="")?` (odh. ${e.estimate??e.forecast})`:""}`).join("  ·  ");
+  // PRIMÁRNÍ stav = DNEŠEK (překvapení > dnes přijde > dnes proběhlo > nic). Zítřek = podtext.
+  const col=conflict?"#ff4d4d":confirm?"#3fb950":hasTodayUp?"#d29922":hasPast?"#58a6ff":"#3fb950";
   const head=conflict?`⚠️ DAILY BRIEF — ${pair.pair}: 14d ${ltDir}, dnes krátkodobě PROTI`
     :confirm?`✅ DAILY BRIEF — ${pair.pair}: dnešní data potvrzují ${ltDir}`
-    :(hasUp&&!c.hasData)?`⏳ DAILY BRIEF — ${pair.pair}: brzy přicházejí důležité fundamenty`
-    :`➡️ DAILY BRIEF — ${pair.pair}`;
+    :hasTodayUp?`⏳ DAILY BRIEF — ${pair.pair}: dnes ještě přijdou důležité fundamenty`
+    :hasPast?`🔵 DAILY BRIEF — ${pair.pair}: dnes proběhly velké zprávy`
+    :`🟢 DAILY BRIEF — ${pair.pair}: dnes žádné velké fundamenty`;
   const releasedTxt=c.hasData?(conflict
-    ?`14denní výhled zůstává ${ltDir}, ale dnešní data tlačí ${pair.pair} krátkodobě na ${c.stDir==="BUY"?"posílení":"oslabení"}. Dnes bych nehledal agresivní ${ltDir==="BUY"?"longy":"shorty"} — počkal na uklidnění a nové potvrzení ${ltDir} scénáře.`
+    ?`14denní výhled zůstává ${ltDir}, ale dnešní data tlačí ${pair.pair} krátkodobě na ${c.stDir==="BUY"?"posílení":"oslabení"}. Dnes bych nehledal agresivní ${ltDir==="BUY"?"longy":"shorty"} — počkal na uklidnění a potvrzení ${ltDir} scénáře.`
     :confirm?`Dnešní data potvrzují směr ${ltDir} i krátkodobě — můžeš jet ve směru biasu.`
     :`Dnešní data jsou smíšená, bez jasného krátkodobého směru.`):null;
-  const upTxt=hasUp?`Brzy přijde: ${evList(fd.upcoming)}. Před zprávou bývá trh opatrný a volatilní; výhled se po zveřejnění přepočítá.`:null;
   let posTxt=null;
   if(pos!=="none"){
     const posDir=pos==="LONG"?"BUY":"SELL";
     if(conflict){
       posTxt=posDir===ltDir
-        ?`Držíš ${pos} (ve směru 14d biasu), ale dnešek jde krátkodobě proti. Pozice je pod krátkodobým tlakem — zvaž zajištění části zisku nebo SL na break-even. Spíš možný pullback než hluboký obrat.`
+        ?`Držíš ${pos} (ve směru 14d biasu), ale dnešek jde krátkodobě proti. Zvaž zajištění části zisku nebo SL na break-even. Spíš pullback než hluboký obrat.`
         :`Držíš ${pos} proti 14d biasu. Dnešek ti krátkodobě nahrává, ale dlouhodobě jdeš proti — ber zisk do biasu a netlač pozici.`;
-    }else if(hasUp){
-      posTxt=`Držíš ${pos} a dnes přijdou data → vyšší volatilita oběma směry. Není to doporučení, jen upozornění: zvaž zajištění části / SL na BE / sniž expozici.`;
+    }else if(hasTodayUp){
+      posTxt=`Držíš ${pos} a dnes ještě přijdou data → vyšší volatilita oběma směry. Zvaž zajištění části / SL na BE / sniž expozici.`;
     }
   }
   const lc=s=>s>0.5?"#3fb950":s<-0.5?"#ff4d4d":"#8b949e";
@@ -3287,7 +3275,10 @@ function DailyBriefPanel({pair,scores,calData,upcoming,positions,onPosition}){
         <PosToggle pair={pair.pair} pos={pos} onSet={s=>onPosition(pair.pair,s)} color={col}/>
       </div>
       {releasedTxt&&<div style={{fontSize:12,color:"#c9d1d9",lineHeight:1.5,marginBottom:6}}>{releasedTxt}</div>}
-      {upTxt&&<div style={{fontSize:12,color:"#d6c089",lineHeight:1.5,marginBottom:6}}>📅 {upTxt}</div>}
+      {!c.hasData&&!hasPast&&!hasTodayUp&&<div style={{fontSize:12,color:"#8b949e",lineHeight:1.5,marginBottom:6}}>Žádná čerstvá data — můžeš ve směru 14d biasu ({ltDir}).</div>}
+      {hasPast&&!c.hasData&&<div style={{fontSize:12,color:"#8fb8e0",lineHeight:1.5,marginBottom:6}}>🔵 Dnes proběhlo: {evList(fd.todayPast)} — zatím bez výrazného překvapení vs. odhad; sleduj reakci trhu.</div>}
+      {hasTodayUp&&<div style={{fontSize:12,color:"#d6c089",lineHeight:1.5,marginBottom:6}}>⏳ Dnes ještě přijde: {evList(fd.todayUpcoming)}. Před zprávou bývá trh opatrný a volatilní.</div>}
+      {hasTomorrow&&<div style={{fontSize:11,color:"#6e8aa0",lineHeight:1.5,marginBottom:6,borderTop:"1px solid rgba(255,255,255,.05)",paddingTop:6}}>📅 Zítra: {evList(fd.tomorrow)}</div>}
       {posTxt&&<div style={{fontSize:12,color:conflict?"#ffb3b3":"#d6c089",lineHeight:1.5,marginBottom:6,background:"rgba(255,255,255,.04)",borderRadius:6,padding:"6px 8px"}}>🎯 {posTxt}</div>}
       {c.hasData&&(mk(pair.base,c.stB)||mk(pair.quote,c.stQ))&&
         <div style={{fontSize:11,color:"#8b949e",lineHeight:1.6,borderTop:"1px solid rgba(255,255,255,.06)",paddingTop:6}}>
@@ -4144,7 +4135,7 @@ function DailyBriefBar({pairs,scores,calData,upcoming,inline,positions}){
       {posLines.length>0&&<div>
         <div style={{fontSize:10,color:"#8b949e",letterSpacing:".06em",marginBottom:4}}>TVÉ POZICE</div>
         {posLines.map(l=>(
-          <div key={l.pair} style={{fontSize:12,color:l.level==="conflict"?"#ffb3b3":l.level==="none"?"#9fb0c0":l.level==="done"?"#8fb8e0":"#d6c089",marginBottom:2}}>🎯 <b>{l.pair} {l.side}</b> — {l.level==="conflict"?"čerstvá data jdou krátkodobě proti pozici · zvaž zajištění / SL na BE":l.level==="upcoming"?"dnes přijdou důležitá data → vyšší volatilita · zvaž zajištění / SL na BE":l.level==="confirm"?"dnešní data potvrzují směr — drž dle plánu":l.level==="done"?"dnes proběhly velké zprávy (zatím beze změny) — sleduj volatilitu":"dnes bez fundamentů — klid"}</div>
+          <div key={l.pair} style={{fontSize:12,color:l.level==="conflict"?"#ffb3b3":l.level==="none"?"#9fb0c0":l.level==="done"?"#8fb8e0":"#d6c089",marginBottom:2}}>🎯 <b>{l.pair} {l.side}</b> — {l.level==="conflict"?"čerstvá data jdou krátkodobě proti pozici · zvaž zajištění / SL na BE":l.level==="upcoming"?"dnes přijdou důležitá data → vyšší volatilita · zvaž zajištění / SL na BE":l.level==="confirm"?"dnešní data potvrzují směr — drž dle plánu":l.level==="done"?"dnes proběhly velké zprávy (zatím beze změny) — sleduj volatilitu":l.level==="tomorrow"?"zítra přijdou důležitá data — dnes klid, připrav se":"dnes bez fundamentů — klid"}</div>
         ))}
       </div>}
     </div>

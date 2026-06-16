@@ -1,8 +1,5 @@
 /* ============================================================================
-   AT Trading FX Analyzer — SDÍLENÝ ENGINE
-   Veškerá logika (scoring, COT z CFTC, kalendář, FMP/Finnhub, forecast…).
-   Extrahováno z index.html. Načítá se jako plain <script> PŘED babel scriptem.
-   Fáze 1: kopie udržovaná v sync s index.html. Fáze 3: index.html načte tenhle soubor.
+   AT Trading FX Analyzer — SDÍLENÝ ENGINE (sync s index.html, lines 75-2060)
    ============================================================================ */
 const CURRENCIES=["USD","EUR","GBP","JPY","AUD","CAD","CHF","NZD"];
 const FLAGS={USD:"🇺🇸",EUR:"🇪🇺",GBP:"🇬🇧",JPY:"🇯🇵",AUD:"🇦🇺",CAD:"🇨🇦",CHF:"🇨🇭",NZD:"🇳🇿"};
@@ -1880,20 +1877,27 @@ function getImminentHigh(currency,events,from,to){
     return evIsHighImpact(ev);
   }).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
 }
-// Jednotný zdroj pro puntík i Daily Brief — velké přímé události páru kolem dneška.
+// Jednotný zdroj pro puntík i Daily Brief — velké přímé události páru.
+// Rozdělené: dnes už proběhlo / dnes ještě přijde / zítra (do +36h) = podtext.
 function getPairFundamentalDay(pair,calData,upcoming){
   const ev=mergeEvents(calData,upcoming);
-  const from=startOfTodayMs(), to=Date.now()+36*3600000, now=Date.now();
-  const hi=getImminentHigh(pair.base,ev,from,to).concat(getImminentHigh(pair.quote,ev,from,to)).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
-  return {hi, upcoming:hi.filter(e=>parseEventTime(e.time)>now&&!e.actual), past:hi.filter(e=>parseEventTime(e.time)<=now)};
+  const dayStart=startOfTodayMs(), dayEnd=localDayEnd(), now=Date.now(), soon=now+36*3600000;
+  const hi=getImminentHigh(pair.base,ev,dayStart,soon).concat(getImminentHigh(pair.quote,ev,dayStart,soon)).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+  return {
+    hi,
+    todayPast:hi.filter(e=>{const t=parseEventTime(e.time);return t>=dayStart&&t<=now;}),
+    todayUpcoming:hi.filter(e=>{const t=parseEventTime(e.time);return t>now&&t<=dayEnd&&!e.actual;}),
+    tomorrow:hi.filter(e=>{const t=parseEventTime(e.time);return t>dayEnd&&!e.actual;}),
+  };
 }
 function getPairDailyState(pair,scores,calData,upcoming){
   const c=detectFundamentalConflict(pair,scores,calData,upcoming,DAY_WINDOW);
   if(c.hasData&&c.conflict) return{level:"conflict",dot:"🔴",color:"#ff4d4d"};
   if(c.hasData&&c.stDir===c.ltDir) return{level:"confirm",dot:"🟢",color:"#3fb950"};
-  const d=getPairFundamentalDay(pair,calData,upcoming);
-  if(d.upcoming.length) return{level:"upcoming",dot:"🟡",color:"#d29922"};
-  if(d.past.length) return{level:"done",dot:"🔵",color:"#58a6ff"};
+  const d=getPairFundamentalDay(pair,calData,upcoming);          // priorita: DNES > zítra
+  if(d.todayUpcoming.length) return{level:"upcoming",dot:"🟡",color:"#d29922"};
+  if(d.todayPast.length) return{level:"done",dot:"🔵",color:"#58a6ff"};
+  if(d.tomorrow.length) return{level:"tomorrow",dot:"🟡",color:"#d29922"};
   return{level:"none",dot:"",color:null};
 }
 function getPosition(pair){try{return (JSON.parse(localStorage.getItem("positions")||"{}"))[pair]||"none";}catch(e){return"none";}}
