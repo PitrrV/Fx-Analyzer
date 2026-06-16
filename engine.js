@@ -1870,24 +1870,30 @@ function evIsHighImpact(ev){
   return raw.includes("high")||raw==="3"||getWeight(ev.event||"")>=2.5;
 }
 function startOfTodayMs(){const d=new Date();d.setHours(0,0,0,0);return d.getTime();}
-// Všechny PŘÍMÉ HIGH události měny DNES (proběhlé i budoucí) — i bez známého názvu,
-// takže centrobankovní "Rate Statement"/"Press Conference"/"Policy Statement" se počítají.
-function getDayHighImpact(currency,events){
-  const s=startOfTodayMs(),e=localDayEnd();
+// PŘÍMÉ HIGH události měny v časovém okně [from..to]. Okno bere dnešek od 00:00
+// + ~36h dopředu → pokryje i dvoudenní zasedání CB (BOJ/RBA) a posun časových pásem,
+// a to i bez ohledu na to, zda engine zná název (centrobankovní statements).
+function getImminentHigh(currency,events,from,to){
   return (events||[]).filter(ev=>{
-    const t=parseEventTime(ev.time); if(!(t>=s&&t<=e)) return false;
+    const t=parseEventTime(ev.time); if(isNaN(t)||t<from||t>to) return false;
     const rel=eventRelevance(currency,ev); if(!rel||rel.type!=="direct") return false;
     return evIsHighImpact(ev);
-  });
+  }).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+}
+// Jednotný zdroj pro puntík i Daily Brief — velké přímé události páru kolem dneška.
+function getPairFundamentalDay(pair,calData,upcoming){
+  const ev=mergeEvents(calData,upcoming);
+  const from=startOfTodayMs(), to=Date.now()+36*3600000, now=Date.now();
+  const hi=getImminentHigh(pair.base,ev,from,to).concat(getImminentHigh(pair.quote,ev,from,to)).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+  return {hi, upcoming:hi.filter(e=>parseEventTime(e.time)>now&&!e.actual), past:hi.filter(e=>parseEventTime(e.time)<=now)};
 }
 function getPairDailyState(pair,scores,calData,upcoming){
-  const ev=mergeEvents(calData,upcoming);
   const c=detectFundamentalConflict(pair,scores,calData,upcoming,DAY_WINDOW);
   if(c.hasData&&c.conflict) return{level:"conflict",dot:"🔴",color:"#ff4d4d"};
   if(c.hasData&&c.stDir===c.ltDir) return{level:"confirm",dot:"🟢",color:"#3fb950"};
-  const dayHigh=getDayHighImpact(pair.base,ev).concat(getDayHighImpact(pair.quote,ev));
-  if(dayHigh.some(e=>parseEventTime(e.time)>Date.now()&&!e.actual)) return{level:"upcoming",dot:"🟡",color:"#d29922"};
-  if(dayHigh.length) return{level:"done",dot:"🔵",color:"#58a6ff"};
+  const d=getPairFundamentalDay(pair,calData,upcoming);
+  if(d.upcoming.length) return{level:"upcoming",dot:"🟡",color:"#d29922"};
+  if(d.past.length) return{level:"done",dot:"🔵",color:"#58a6ff"};
   return{level:"none",dot:"",color:null};
 }
 function getPosition(pair){try{return (JSON.parse(localStorage.getItem("positions")||"{}"))[pair]||"none";}catch(e){return"none";}}

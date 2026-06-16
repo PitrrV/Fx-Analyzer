@@ -1938,24 +1938,30 @@ function evIsHighImpact(ev){
   return raw.includes("high")||raw==="3"||getWeight(ev.event||"")>=2.5;
 }
 function startOfTodayMs(){const d=new Date();d.setHours(0,0,0,0);return d.getTime();}
-// Všechny PŘÍMÉ HIGH události měny DNES (proběhlé i budoucí) — i bez známého názvu,
-// takže centrobankovní "Rate Statement"/"Press Conference"/"Policy Statement" se počítají.
-function getDayHighImpact(currency,events){
-  const s=startOfTodayMs(),e=localDayEnd();
+// PŘÍMÉ HIGH události měny v časovém okně [from..to]. Okno bere dnešek od 00:00
+// + ~36h dopředu → pokryje i dvoudenní zasedání CB (BOJ/RBA) a posun časových pásem,
+// a to i bez ohledu na to, zda engine zná název (centrobankovní statements).
+function getImminentHigh(currency,events,from,to){
   return (events||[]).filter(ev=>{
-    const t=parseEventTime(ev.time); if(!(t>=s&&t<=e)) return false;
+    const t=parseEventTime(ev.time); if(isNaN(t)||t<from||t>to) return false;
     const rel=eventRelevance(currency,ev); if(!rel||rel.type!=="direct") return false;
     return evIsHighImpact(ev);
-  });
+  }).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+}
+// Jednotný zdroj pro puntík i Daily Brief — velké přímé události páru kolem dneška.
+function getPairFundamentalDay(pair,calData,upcoming){
+  const ev=mergeEvents(calData,upcoming);
+  const from=startOfTodayMs(), to=Date.now()+36*3600000, now=Date.now();
+  const hi=getImminentHigh(pair.base,ev,from,to).concat(getImminentHigh(pair.quote,ev,from,to)).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+  return {hi, upcoming:hi.filter(e=>parseEventTime(e.time)>now&&!e.actual), past:hi.filter(e=>parseEventTime(e.time)<=now)};
 }
 function getPairDailyState(pair,scores,calData,upcoming){
-  const ev=mergeEvents(calData,upcoming);
   const c=detectFundamentalConflict(pair,scores,calData,upcoming,DAY_WINDOW);
   if(c.hasData&&c.conflict) return{level:"conflict",dot:"🔴",color:"#ff4d4d"};
   if(c.hasData&&c.stDir===c.ltDir) return{level:"confirm",dot:"🟢",color:"#3fb950"};
-  const dayHigh=getDayHighImpact(pair.base,ev).concat(getDayHighImpact(pair.quote,ev));
-  if(dayHigh.some(e=>parseEventTime(e.time)>Date.now()&&!e.actual)) return{level:"upcoming",dot:"🟡",color:"#d29922"};
-  if(dayHigh.length) return{level:"done",dot:"🔵",color:"#58a6ff"};
+  const d=getPairFundamentalDay(pair,calData,upcoming);
+  if(d.upcoming.length) return{level:"upcoming",dot:"🟡",color:"#d29922"};
+  if(d.past.length) return{level:"done",dot:"🔵",color:"#58a6ff"};
   return{level:"none",dot:"",color:null};
 }
 function getPosition(pair){try{return (JSON.parse(localStorage.getItem("positions")||"{}"))[pair]||"none";}catch(e){return"none";}}
@@ -3224,19 +3230,20 @@ function BiasFlipNotice({pair,calData,upcoming}){
 function DailyBriefPanel({pair,scores,calData,upcoming,positions,onPosition}){
   const pos=(positions&&positions[pair.pair])||"none";
   const c=detectFundamentalConflict(pair,scores,calData||[],upcoming||[],DAY_WINDOW);
-  const ev=mergeEvents(calData||[],upcoming||[]);
-  const dayHiB=getDayHighImpact(pair.base,ev),dayHiQ=getDayHighImpact(pair.quote,ev);
-  const upB=dayHiB.filter(e=>parseEventTime(e.time)>Date.now()&&!e.actual);
-  const upQ=dayHiQ.filter(e=>parseEventTime(e.time)>Date.now()&&!e.actual);
-  const hasUp=upB.length+upQ.length>0;
-  const donePast=(dayHiB.length+dayHiQ.length)>0&&!hasUp; // velké zprávy dnes už proběhly (i bez překvapení)
+  const fd=getPairFundamentalDay(pair,calData||[],upcoming||[]);
+  const hasUp=fd.upcoming.length>0;
+  const donePast=fd.past.length>0&&!hasUp; // velké zprávy proběhly (i bez překvapení)
   const ltDir=c.ltDir;
+  const tm=e=>evDate(e).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
+  const evList=arr=>arr.slice(0,4).map(e=>`${COUNTRY_FLAGS[(e.country||"").toUpperCase()]||""}${tm(e)} ${e.event}${(e.actual!=null&&e.actual!=="")?` = ${e.actual}`:((e.estimate??e.forecast)!=null&&(e.estimate??e.forecast)!=="")?` (odh. ${e.estimate??e.forecast})`:""}`).join("  ·  ");
   if(!c.hasData&&!hasUp){
     if(donePast){
-      const names=[...dayHiB,...dayHiQ].map(e=>e.event).slice(0,2).join(", ");
       return(
-        <div style={{background:"rgba(88,166,255,.06)",border:"1px solid rgba(88,166,255,.22)",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-          <span style={{fontSize:12,color:"#8fb8e0"}}>🔵 DAILY BRIEF — {pair.pair}: dnes proběhly velké zprávy ({names}) — zatím bez výrazného překvapení. Můžeš ve směru 14d biasu ({ltDir}), ale sleduj reakci trhu.</span>
+        <div style={{background:"rgba(88,166,255,.06)",border:"1px solid rgba(88,166,255,.22)",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,flexWrap:"wrap"}}>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:12,color:"#8fb8e0"}}>🔵 DAILY BRIEF — {pair.pair}: dnes proběhly velké zprávy — zatím bez výrazného překvapení vs. odhad. Drž ve směru 14d biasu ({ltDir}), sleduj reakci trhu.</div>
+            <div style={{fontSize:10,color:"#6e8aa0",marginTop:4,lineHeight:1.5}}>📊 {evList(fd.past)}</div>
+          </div>
           <PosToggle pair={pair.pair} pos={pos} onSet={s=>onPosition(pair.pair,s)} color="#58a6ff"/>
         </div>
       );
@@ -3250,18 +3257,16 @@ function DailyBriefPanel({pair,scores,calData,upcoming,positions,onPosition}){
   }
   const conflict=c.hasData&&c.conflict;
   const confirm=c.hasData&&!c.conflict&&c.stDir===ltDir;
-  const col=conflict?"#ff4d4d":confirm?"#3fb950":hasUp?"#d29922":"#d29922";
+  const col=conflict?"#ff4d4d":confirm?"#3fb950":hasUp?"#d29922":"#58a6ff";
   const head=conflict?`⚠️ DAILY BRIEF — ${pair.pair}: 14d ${ltDir}, dnes krátkodobě PROTI`
     :confirm?`✅ DAILY BRIEF — ${pair.pair}: dnešní data potvrzují ${ltDir}`
-    :(hasUp&&!c.hasData)?`⏳ DAILY BRIEF — ${pair.pair}: dnes přicházejí důležité fundamenty`
+    :(hasUp&&!c.hasData)?`⏳ DAILY BRIEF — ${pair.pair}: brzy přicházejí důležité fundamenty`
     :`➡️ DAILY BRIEF — ${pair.pair}`;
-  const tm=e=>evDate(e).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
-  const evLine=(cur,arr)=>arr.length?`${FLAGS[cur]} ${cur} ${tm(arr[0])}: ${arr.map(e=>e.event).slice(0,2).join(", ")}${arr.length>2?` (+${arr.length-2})`:""}`:null;
   const releasedTxt=c.hasData?(conflict
     ?`14denní výhled zůstává ${ltDir}, ale dnešní data tlačí ${pair.pair} krátkodobě na ${c.stDir==="BUY"?"posílení":"oslabení"}. Dnes bych nehledal agresivní ${ltDir==="BUY"?"longy":"shorty"} — počkal na uklidnění a nové potvrzení ${ltDir} scénáře.`
     :confirm?`Dnešní data potvrzují směr ${ltDir} i krátkodobě — můžeš jet ve směru biasu.`
     :`Dnešní data jsou smíšená, bez jasného krátkodobého směru.`):null;
-  const upTxt=hasUp?`Dnes ještě přijde: ${[evLine(pair.base,upB),evLine(pair.quote,upQ)].filter(Boolean).join(" · ")}. Před zprávou bývá trh opatrný a volatilní; výhled se po zveřejnění přepočítá.`:null;
+  const upTxt=hasUp?`Brzy přijde: ${evList(fd.upcoming)}. Před zprávou bývá trh opatrný a volatilní; výhled se po zveřejnění přepočítá.`:null;
   let posTxt=null;
   if(pos!=="none"){
     const posDir=pos==="LONG"?"BUY":"SELL";
