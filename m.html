@@ -258,6 +258,8 @@ function CalendarTab({data}){
 function SyncCard({onSynced}){
   const [sess,setSess]=useState(null);
   const [email,setEmail]=useState("");
+  const [code,setCode]=useState("");
+  const [sent,setSent]=useState(false);
   const [msg,setMsg]=useState("");
   const [busy,setBusy]=useState(false);
   const avail=window.Sync&&window.Sync.ready;
@@ -278,19 +280,30 @@ function SyncCard({onSynced}){
   async function login(){
     if(!email.trim()){setMsg("Zadej e-mail.");return;}
     setBusy(true);setMsg("");
-    try{ await window.Sync.signIn(email); setMsg("📧 Poslali jsme přihlašovací odkaz na "+email+". Otevři ho na TOMHLE zařízení."); }
+    try{ await window.Sync.signIn(email); setSent(true); setMsg("📧 Poslali jsme e-mail. V appce na ploše: opiš 6místný KÓD z e-mailu sem dolů. (V Safari můžeš místo toho kliknout na odkaz.)"); }
     catch(e){ setMsg("⚠ "+(e&&e.message||e)); }
     setBusy(false);
   }
-  async function logout(){ await window.Sync.signOut(); setSess(null); setMsg("Odhlášeno."); }
+  async function verify(){
+    if(!code.trim()){setMsg("Zadej kód z e-mailu.");return;}
+    setBusy(true);setMsg("⏳ Ověřuji kód…");
+    try{ await window.Sync.verifyCode(email,code); /* SIGNED_IN → doSync(true) sám sloučí + obnoví */ }
+    catch(e){ setMsg("⚠ Neplatný/expirovaný kód: "+(e&&e.message||e)); setBusy(false); }
+  }
+  async function logout(){ await window.Sync.signOut(); setSess(null); setSent(false); setMsg("Odhlášeno."); }
   return (
     <div className="card">
       <div style={{fontWeight:800,marginBottom:8}}>☁️ Cloud sync</div>
       {!avail&&<div className="muted" style={{fontSize:12}}>Nedostupné (internet / Supabase se nenačetl).</div>}
       {avail&&!sess&&<>
-        <label className="muted" style={{fontSize:12}}>E-mail (přihlášení odkazem, bez hesla)</label>
+        <label className="muted" style={{fontSize:12}}>E-mail (přihlášení bez hesla)</label>
         <input className="fld" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tvuj@email.cz" type="email" autoCapitalize="off" autoCorrect="off"/>
-        <button className="btn" disabled={busy} onClick={login}>📧 Poslat přihlašovací odkaz</button>
+        <button className="btn" disabled={busy} onClick={login}>📧 Poslat přihlašovací kód</button>
+        {sent&&<>
+          <label className="muted" style={{fontSize:12,display:"block",marginTop:12}}>6místný kód z e-mailu</label>
+          <input className="fld" value={code} onChange={e=>setCode(e.target.value)} placeholder="123456" inputMode="numeric" autoComplete="one-time-code"/>
+          <button className="btn" disabled={busy} onClick={verify}>✅ Přihlásit kódem</button>
+        </>}
       </>}
       {avail&&sess&&<>
         <div className="muted" style={{fontSize:12,marginBottom:8}}>Přihlášen: <b style={{color:"#e6edf3"}}>{sess.user&&sess.user.email}</b></div>
