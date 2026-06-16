@@ -15,8 +15,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- Cloud sync (Supabase) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
 <script src="engine.js"></script>
+<script src="sync.js"></script>
 <style>
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:#0d1117;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px}
@@ -251,6 +254,52 @@ function CalendarTab({data}){
   );
 }
 
+// ── CLOUD SYNC KARTA ────────────────────────────────────────
+function SyncCard({onSynced}){
+  const [sess,setSess]=useState(null);
+  const [email,setEmail]=useState("");
+  const [msg,setMsg]=useState("");
+  const [busy,setBusy]=useState(false);
+  const avail=window.Sync&&window.Sync.ready;
+  async function doSync(){
+    setBusy(true);setMsg("⏳ Synchronizuji…");
+    try{ const st=await window.Sync.syncNow();
+      setMsg(`✅ Sloučeno: ${st.events} událostí · ${st.cotWeeks} COT týdnů · ${st.trades} obchodů · ${st.keys} klíčů`);
+      if(onSynced)onSynced();
+    }catch(e){ setMsg("⚠ "+(e&&e.message||e)); }
+    setBusy(false);
+  }
+  useEffect(()=>{
+    if(!avail){return;}
+    window.Sync.session().then(s=>setSess(s));
+    window.Sync.onAuth(s=>{ setSess(s); if(s) doSync(); });
+  },[]);
+  async function login(){
+    if(!email.trim()){setMsg("Zadej e-mail.");return;}
+    setBusy(true);setMsg("");
+    try{ await window.Sync.signIn(email); setMsg("📧 Poslali jsme přihlašovací odkaz na "+email+". Otevři ho na TOMHLE zařízení."); }
+    catch(e){ setMsg("⚠ "+(e&&e.message||e)); }
+    setBusy(false);
+  }
+  async function logout(){ await window.Sync.signOut(); setSess(null); setMsg("Odhlášeno."); }
+  return (
+    <div className="card">
+      <div style={{fontWeight:800,marginBottom:8}}>☁️ Cloud sync</div>
+      {!avail&&<div className="muted" style={{fontSize:12}}>Nedostupné (internet / Supabase se nenačetl).</div>}
+      {avail&&!sess&&<>
+        <label className="muted" style={{fontSize:12}}>E-mail (přihlášení odkazem, bez hesla)</label>
+        <input className="fld" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tvuj@email.cz" type="email" autoCapitalize="off" autoCorrect="off"/>
+        <button className="btn" disabled={busy} onClick={login}>📧 Poslat přihlašovací odkaz</button>
+      </>}
+      {avail&&sess&&<>
+        <div className="muted" style={{fontSize:12,marginBottom:8}}>Přihlášen: <b style={{color:"#e6edf3"}}>{sess.user&&sess.user.email}</b></div>
+        <button className="btn" disabled={busy} onClick={doSync}>🔄 Synchronizovat teď</button>
+        <button className="btn sec" style={{marginTop:8}} onClick={logout}>Odhlásit</button>
+      </>}
+      {msg&&<div style={{fontSize:12,marginTop:8,color:msg[0]==="⚠"?"#ff6a5e":"#3fb950",lineHeight:1.5}}>{msg}</div>}
+    </div>
+  );
+}
 // ── ZÁLOŽKA: NASTAVENÍ ──────────────────────────────────────
 function SettingsTab({onSaved}){
   const [fmp,setFmp]=useState(localStorage.getItem("fmp")||"");
@@ -267,6 +316,7 @@ function SettingsTab({onSaved}){
   }
   return (
     <div>
+      <SyncCard onSynced={onSaved}/>
       <div className="card">
         <div style={{fontWeight:800,marginBottom:10}}>API klíče</div>
         <label className="muted" style={{fontSize:12}}>FMP (kalendář)</label>
@@ -312,9 +362,11 @@ function MApp(){
   },[load]);
 
   useEffect(()=>{
-    load();
-    // COT na pozadí, když je starší než ~4 dny (tiché při selhání)
     (async()=>{
+      // Cloud sync při startu (když přihlášen) → slije data z cloudu, pak načti
+      if(window.Sync&&window.Sync.ready){ try{ const s=await window.Sync.session(); if(s) await window.Sync.syncNow(); }catch(e){} }
+      load();
+      // COT na pozadí, když je starší než ~4 dny (tiché při selhání)
       try{
         const m=loadCOTMeta();
         const age=m&&m.asOf?((Date.now()-new Date(m.asOf).getTime())/86400000):NaN;
