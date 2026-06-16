@@ -57,6 +57,9 @@
   async function session(){ if(!sb) return null; try{const{data}=await sb.auth.getSession();return data.session||null;}catch(e){return null;} }
   async function signIn(email){ if(!sb) throw new Error("Supabase není načtený (internet/CDN?)"); const{error}=await sb.auth.signInWithOtp({email:String(email).trim(),options:{emailRedirectTo:location.href.split("#")[0]}}); if(error) throw error; return true; }
   async function verifyCode(email,token){ if(!sb) throw new Error("Supabase není načtený"); const{error}=await sb.auth.verifyOtp({email:String(email).trim(),token:String(token).trim().replace(/\s/g,""),type:"email"}); if(error) throw error; return true; }
+  async function signInPassword(email,password){ if(!sb) throw new Error("Supabase není načtený"); const{error}=await sb.auth.signInWithPassword({email:String(email).trim(),password}); if(error) throw error; return true; }
+  async function signUpPassword(email,password){ if(!sb) throw new Error("Supabase není načtený"); const{data,error}=await sb.auth.signUp({email:String(email).trim(),password}); if(error) throw error; return data; }
+  async function resetPassword(email){ if(!sb) throw new Error("Supabase není načtený"); const{error}=await sb.auth.resetPasswordForEmail(String(email).trim(),{redirectTo:location.href.split("#")[0]}); if(error) throw error; return true; }
   async function signOut(){ if(sb) try{await sb.auth.signOut();}catch(e){} }
   async function pull(uid){ const{data,error}=await sb.from("app_state").select("data,updated_at").eq("user_id",uid).maybeSingle(); if(error) throw error; return data; }
   async function push(uid,data){ const{error}=await sb.from("app_state").upsert({user_id:uid,data,updated_at:new Date().toISOString()}); if(error) throw error; }
@@ -79,6 +82,6 @@
     return stats;
   }
 
-  window.Sync={ ready:!!sb, session, signIn, verifyCode, signOut, syncNow,
+  window.Sync={ ready:!!sb, session, signIn, verifyCode, signInPassword, signUpPassword, resetPassword, signOut, syncNow,
     onAuth:(cb)=>{ if(sb) sb.auth.onAuthStateChange((event,sess)=>cb(sess,event)); } };
 })();

@@ -258,8 +258,7 @@ function CalendarTab({data}){
 function SyncCard({onSynced}){
   const [sess,setSess]=useState(null);
   const [email,setEmail]=useState("");
-  const [code,setCode]=useState("");
-  const [sent,setSent]=useState(false);
+  const [pw,setPw]=useState("");
   const [msg,setMsg]=useState("");
   const [busy,setBusy]=useState(false);
   const avail=window.Sync&&window.Sync.ready;
@@ -277,33 +276,44 @@ function SyncCard({onSynced}){
     window.Sync.session().then(s=>setSess(s));
     window.Sync.onAuth((s,event)=>{ setSess(s); if(s&&event==="SIGNED_IN") doSync(true); }); // čerstvé přihlášení → sluč + obnov (ať se ukážou klíče)
   },[]);
-  async function login(){
-    if(!email.trim()){setMsg("Zadej e-mail.");return;}
+  async function loginOrRegister(){
+    if(!email.trim()||pw.length<6){setMsg("Zadej e-mail a heslo (min. 6 znaků).");return;}
+    setBusy(true);setMsg("⏳ Přihlašuji…");
+    try{ await window.Sync.signInPassword(email,pw); return; } // SIGNED_IN → doSync(true) sám sloučí + obnoví
+    catch(e){
+      const m=String(e&&e.message||e);
+      if(/invalid login credentials/i.test(m)){
+        try{ const d=await window.Sync.signUpPassword(email,pw);
+          if(d&&d.session){ setMsg("✅ Účet vytvořen, přihlašuji…"); }
+          else { setMsg("⚠ Účet vytvořen, ale Supabase čeká na potvrzení e-mailu. Vypni 'Confirm email' (Authentication → Sign In/Providers → Email) a zkus znovu."); setBusy(false); }
+        }catch(e2){
+          const m2=String(e2&&e2.message||e2);
+          if(/already registered|already exists|User already/i.test(m2)) setMsg("⚠ Tenhle e-mail už existuje (z dřívějšího přihlášení odkazem). Dej 'Zapomenuté heslo', nastav si heslo, pak se přihlas.");
+          else setMsg("⚠ "+m2);
+          setBusy(false);
+        }
+      } else { setMsg("⚠ "+m); setBusy(false); }
+    }
+  }
+  async function reset(){
+    if(!email.trim()){setMsg("Zadej nejdřív e-mail.");return;}
     setBusy(true);setMsg("");
-    try{ await window.Sync.signIn(email); setSent(true); setMsg("📧 Poslali jsme e-mail. V appce na ploše: opiš 6místný KÓD z e-mailu sem dolů. (V Safari můžeš místo toho kliknout na odkaz.)"); }
+    try{ await window.Sync.resetPassword(email); setMsg("📧 Poslali jsme odkaz na nastavení hesla. Otevři ho (klidně v Safari), nastav heslo, pak se sem přihlas heslem."); }
     catch(e){ setMsg("⚠ "+(e&&e.message||e)); }
     setBusy(false);
   }
-  async function verify(){
-    if(!code.trim()){setMsg("Zadej kód z e-mailu.");return;}
-    setBusy(true);setMsg("⏳ Ověřuji kód…");
-    try{ await window.Sync.verifyCode(email,code); /* SIGNED_IN → doSync(true) sám sloučí + obnoví */ }
-    catch(e){ setMsg("⚠ Neplatný/expirovaný kód: "+(e&&e.message||e)); setBusy(false); }
-  }
-  async function logout(){ await window.Sync.signOut(); setSess(null); setSent(false); setMsg("Odhlášeno."); }
+  async function logout(){ await window.Sync.signOut(); setSess(null); setMsg("Odhlášeno."); }
   return (
     <div className="card">
       <div style={{fontWeight:800,marginBottom:8}}>☁️ Cloud sync</div>
       {!avail&&<div className="muted" style={{fontSize:12}}>Nedostupné (internet / Supabase se nenačetl).</div>}
       {avail&&!sess&&<>
-        <label className="muted" style={{fontSize:12}}>E-mail (přihlášení bez hesla)</label>
+        <label className="muted" style={{fontSize:12}}>E-mail</label>
         <input className="fld" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tvuj@email.cz" type="email" autoCapitalize="off" autoCorrect="off"/>
-        <button className="btn" disabled={busy} onClick={login}>📧 Poslat přihlašovací kód</button>
-        {sent&&<>
-          <label className="muted" style={{fontSize:12,display:"block",marginTop:12}}>6místný kód z e-mailu</label>
-          <input className="fld" value={code} onChange={e=>setCode(e.target.value)} placeholder="123456" inputMode="numeric" autoComplete="one-time-code"/>
-          <button className="btn" disabled={busy} onClick={verify}>✅ Přihlásit kódem</button>
-        </>}
+        <label className="muted" style={{fontSize:12}}>Heslo (stejné na PC i mobilu)</label>
+        <input className="fld" value={pw} onChange={e=>setPw(e.target.value)} placeholder="min. 6 znaků" type="password" autoCapitalize="off" autoCorrect="off"/>
+        <button className="btn" disabled={busy} onClick={loginOrRegister}>🔐 Přihlásit / Vytvořit účet</button>
+        <button className="btn sec" style={{marginTop:8}} disabled={busy} onClick={reset}>Zapomenuté heslo</button>
       </>}
       {avail&&sess&&<>
         <div className="muted" style={{fontSize:12,marginBottom:8}}>Přihlášen: <b style={{color:"#e6edf3"}}>{sess.user&&sess.user.email}</b></div>
