@@ -261,18 +261,19 @@ function SyncCard({onSynced}){
   const [msg,setMsg]=useState("");
   const [busy,setBusy]=useState(false);
   const avail=window.Sync&&window.Sync.ready;
-  async function doSync(){
+  async function doSync(reload){
     setBusy(true);setMsg("⏳ Synchronizuji…");
     try{ const st=await window.Sync.syncNow();
-      setMsg(`✅ Sloučeno: ${st.events} událostí · ${st.cotWeeks} COT týdnů · ${st.trades} obchodů · ${st.keys} klíčů`);
+      setMsg(`✅ Sloučeno: ${st.events} událostí · ${st.cotWeeks} COT týdnů · ${st.trades} obchodů · ${st.keys} klíčů`+(reload?" — obnovuji…":""));
       if(onSynced)onSynced();
+      if(reload) setTimeout(()=>location.reload(),1000);
     }catch(e){ setMsg("⚠ "+(e&&e.message||e)); }
     setBusy(false);
   }
   useEffect(()=>{
     if(!avail){return;}
     window.Sync.session().then(s=>setSess(s));
-    window.Sync.onAuth(s=>{ setSess(s); if(s) doSync(); });
+    window.Sync.onAuth((s,event)=>{ setSess(s); if(s&&event==="SIGNED_IN") doSync(true); }); // čerstvé přihlášení → sluč + obnov (ať se ukážou klíče)
   },[]);
   async function login(){
     if(!email.trim()){setMsg("Zadej e-mail.");return;}
@@ -293,7 +294,7 @@ function SyncCard({onSynced}){
       </>}
       {avail&&sess&&<>
         <div className="muted" style={{fontSize:12,marginBottom:8}}>Přihlášen: <b style={{color:"#e6edf3"}}>{sess.user&&sess.user.email}</b></div>
-        <button className="btn" disabled={busy} onClick={doSync}>🔄 Synchronizovat teď</button>
+        <button className="btn" disabled={busy} onClick={()=>doSync(true)}>🔄 Synchronizovat teď</button>
         <button className="btn sec" style={{marginTop:8}} onClick={logout}>Odhlásit</button>
       </>}
       {msg&&<div style={{fontSize:12,marginTop:8,color:msg[0]==="⚠"?"#ff6a5e":"#3fb950",lineHeight:1.5}}>{msg}</div>}

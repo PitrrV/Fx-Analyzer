@@ -79,5 +79,5 @@
   }
 
   window.Sync={ ready:!!sb, session, signIn, signOut, syncNow,
-    onAuth:(cb)=>{ if(sb) sb.auth.onAuthStateChange((_e,sess)=>cb(sess)); } };
+    onAuth:(cb)=>{ if(sb) sb.auth.onAuthStateChange((event,sess)=>cb(sess,event)); } };
 })();
