@@ -161,7 +161,7 @@ function PairDetail({p,scores,f,cotData,daily,onClose}){
             <div><div className="muted" style={{fontSize:12}}>Skóre páru</div><div className="bignum" style={{color:cScore(buy?p.diff:-p.diff)}}>{(buy?"+":"-")+p.diff.toFixed(1)}</div></div>
             {f&&f.prob!=null&&<div style={{textAlign:"right"}}><div className="muted" style={{fontSize:12}}>14d výhled</div><div className="bignum" style={{color:f.prob>=65?"#3fb950":f.prob<=35?"#ff6a5e":"#d29922"}}>{f.prob}%</div><div className="muted" style={{fontSize:11}}>{f.dir}</div></div>}
           </div>
-          {daily&&daily.dot&&<div style={{marginTop:8,fontSize:13}}>{daily.dot} <span className="muted">{daily.level==="conflict"?"Dnešní data jdou PROTI biasu":daily.level==="confirm"?"Dnešní data potvrzují bias":daily.level==="upcoming"?"Dnes přijde důležitá zpráva":""}</span></div>}
+          {daily&&daily.dot&&<div style={{marginTop:8,fontSize:13}}>{daily.dot} <span className="muted">{daily.level==="conflict"?"Dnešní data jdou PROTI biasu":daily.level==="confirm"?"Dnešní data potvrzují bias":daily.level==="upcoming"?"Dnes přijde důležitá zpráva":daily.level==="done"?"Dnes proběhly velké zprávy (beze změny)":""}</span></div>}
         </div>
         <div className="card">
           <div className="seg" style={{fontWeight:800,color:"#8b949e",fontSize:11}}>
@@ -225,24 +225,28 @@ function CotTab({data,onRefreshCot,cotLoading}){
 // ── ZÁLOŽKA: KALENDÁŘ ───────────────────────────────────────
 function CalendarTab({data}){
   if(!data) return null;
-  const now=Date.now();
-  const evs=(data.upcoming||[]).filter(e=>{const t=parseEventTime(e.time);return t>now-6*3600000;}).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time)).slice(0,60);
+  // Dnešní den (vč. už proběhlých) + 14 dní dopředu — stejné jako PC dashboard
+  const evs=buildEventWatch(data.cal,data.upcoming).slice(0,80);
+  const todayStr=new Date().toLocaleDateString("cs-CZ",{day:"2-digit",month:"2-digit"});
   return (
     <div>
-      <div className="card muted" style={{fontSize:12}}>Nadcházející události ({evs.length}) · zdroj {data.calMeta.source} · {data.calMeta.months.toFixed(0)}m · {data.calMeta.conf}%</div>
-      {evs.map((e,i)=>(
-        <div className="card" key={i} style={{padding:"10px 12px"}}>
+      <div className="card muted" style={{fontSize:12}}>Události ({evs.length}) · zdroj {data.calMeta.source} · {data.calMeta.months.toFixed(0)}m · {data.calMeta.conf}%</div>
+      {evs.map((e,i)=>{
+        const isToday=fmtDT(e.time).startsWith(todayStr);
+        return (
+        <div className="card" key={i} style={{padding:"10px 12px",borderColor:isToday?"#2a3a4a":"#21262d"}}>
           <div className="between">
             <span className="row" style={{gap:7}}><span style={{fontSize:16}}>{evFlag(e)}</span><b style={{fontSize:13}}>{e.event}</b></span>
             <span className="chip" style={{color:impactColor(e.impact),borderColor:impactColor(e.impact)+"55"}}>{impactLabel(e.impact)}</span>
           </div>
           <div className="between" style={{marginTop:6}}>
-            <span className="muted" style={{fontSize:12}}>{fmtDT(e.time)}</span>
-            <span className="muted" style={{fontSize:11}}>{(e.estimate?("odhad "+e.estimate):"")}{(e.prev?(" · min "+e.prev):"")}</span>
+            <span className="muted" style={{fontSize:12}}>{isToday?"🔵 ":""}{fmtDT(e.time)}</span>
+            <span className="muted" style={{fontSize:11}}>{(e.actual?("akt "+e.actual+" · "):"")}{(e.estimate?("odhad "+e.estimate):"")}{(e.prev?(" · min "+e.prev):"")}</span>
           </div>
         </div>
-      ))}
-      {!evs.length&&<div className="card muted">Žádné nadcházející události.</div>}
+        );
+      })}
+      {!evs.length&&<div className="card muted">Žádné události.</div>}
     </div>
   );
 }

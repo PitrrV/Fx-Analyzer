@@ -1,9 +1,8 @@
 /* ============================================================================
    AT Trading FX Analyzer — SDÍLENÝ ENGINE
    Veškerá logika (scoring, COT z CFTC, kalendář, FMP/Finnhub, forecast…).
-   Extrahováno z index.html (řádky 75–2023). Načítá se jako plain <script>
-   PŘED mobilním/PC babel scriptem → všechny funkce/konstanty jsou globální.
-   Fáze 1: kopie. Fáze 3: index.html začne načítat tenhle soubor (1 zdroj).
+   Extrahováno z index.html. Načítá se jako plain <script> PŘED babel scriptem.
+   Fáze 1: kopie udržovaná v sync s index.html. Fáze 3: index.html načte tenhle soubor.
    ============================================================================ */
 const CURRENCIES=["USD","EUR","GBP","JPY","AUD","CAD","CHF","NZD"];
 const FLAGS={USD:"🇺🇸",EUR:"🇪🇺",GBP:"🇬🇧",JPY:"🇯🇵",AUD:"🇦🇺",CAD:"🇨🇦",CHF:"🇨🇭",NZD:"🇳🇿"};
@@ -1274,6 +1273,12 @@ function deriveUpcomingFromEvents(events){
     return t>=now&&t<=to&&allCodes.some(c=>(e.country||"").toUpperCase().includes(c))&&getWeight(e.event)>0;
   }).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
 }
+// EVENT WATCH pro dashboard: dnešní den (00:00, vč. už proběhlých) + 14 dní dopředu.
+// Drží dnešní události celý den s jejich výsledky (1:1 s ForexFactory pro daný den).
+function buildEventWatch(calData,upcoming){
+  const s=startOfTodayMs(),to=Date.now()+14*86400000;
+  return mergeEvents(calData,upcoming).filter(e=>{const t=parseEventTime(e.time);return t>=s&&t<=to;}).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+}
 // ── SCORING ───────────────────────────────────────────────
 // ═══════════════ V5 ENGINE HELPERS ═══════════════════════════
 function getCOTPercentile(currency){
@@ -1860,12 +1865,29 @@ function getUpcomingToday(currency,upcoming){
     return imp.includes("high")||imp==="3"||imp.includes("medium")||imp==="2";
   }).sort((a,b)=>new Date(a.time)-new Date(b.time));
 }
+function evIsHighImpact(ev){
+  const raw=(ev.impact||ev.importance||"").toString().toLowerCase();
+  return raw.includes("high")||raw==="3"||getWeight(ev.event||"")>=2.5;
+}
+function startOfTodayMs(){const d=new Date();d.setHours(0,0,0,0);return d.getTime();}
+// Všechny PŘÍMÉ HIGH události měny DNES (proběhlé i budoucí) — i bez známého názvu,
+// takže centrobankovní "Rate Statement"/"Press Conference"/"Policy Statement" se počítají.
+function getDayHighImpact(currency,events){
+  const s=startOfTodayMs(),e=localDayEnd();
+  return (events||[]).filter(ev=>{
+    const t=parseEventTime(ev.time); if(!(t>=s&&t<=e)) return false;
+    const rel=eventRelevance(currency,ev); if(!rel||rel.type!=="direct") return false;
+    return evIsHighImpact(ev);
+  });
+}
 function getPairDailyState(pair,scores,calData,upcoming){
+  const ev=mergeEvents(calData,upcoming);
   const c=detectFundamentalConflict(pair,scores,calData,upcoming,DAY_WINDOW);
-  const hasUp=getUpcomingToday(pair.base,upcoming).length+getUpcomingToday(pair.quote,upcoming).length>0;
   if(c.hasData&&c.conflict) return{level:"conflict",dot:"🔴",color:"#ff4d4d"};
   if(c.hasData&&c.stDir===c.ltDir) return{level:"confirm",dot:"🟢",color:"#3fb950"};
-  if(hasUp) return{level:"upcoming",dot:"🟡",color:"#d29922"};
+  const dayHigh=getDayHighImpact(pair.base,ev).concat(getDayHighImpact(pair.quote,ev));
+  if(dayHigh.some(e=>parseEventTime(e.time)>Date.now()&&!e.actual)) return{level:"upcoming",dot:"🟡",color:"#d29922"};
+  if(dayHigh.length) return{level:"done",dot:"🔵",color:"#58a6ff"};
   return{level:"none",dot:"",color:null};
 }
 function getPosition(pair){try{return (JSON.parse(localStorage.getItem("positions")||"{}"))[pair]||"none";}catch(e){return"none";}}
@@ -1954,3 +1976,4 @@ function rankPairs(scores,aiAnalyses){
     return{...p,corrDuplicate:false};
   });
 }
+

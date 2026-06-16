@@ -1341,6 +1341,12 @@ function deriveUpcomingFromEvents(events){
     return t>=now&&t<=to&&allCodes.some(c=>(e.country||"").toUpperCase().includes(c))&&getWeight(e.event)>0;
   }).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
 }
+// EVENT WATCH pro dashboard: dnešní den (00:00, vč. už proběhlých) + 14 dní dopředu.
+// Drží dnešní události celý den s jejich výsledky (1:1 s ForexFactory pro daný den).
+function buildEventWatch(calData,upcoming){
+  const s=startOfTodayMs(),to=Date.now()+14*86400000;
+  return mergeEvents(calData,upcoming).filter(e=>{const t=parseEventTime(e.time);return t>=s&&t<=to;}).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+}
 // ── SCORING ───────────────────────────────────────────────
 // ═══════════════ V5 ENGINE HELPERS ═══════════════════════════
 function getCOTPercentile(currency){
@@ -1927,12 +1933,29 @@ function getUpcomingToday(currency,upcoming){
     return imp.includes("high")||imp==="3"||imp.includes("medium")||imp==="2";
   }).sort((a,b)=>new Date(a.time)-new Date(b.time));
 }
+function evIsHighImpact(ev){
+  const raw=(ev.impact||ev.importance||"").toString().toLowerCase();
+  return raw.includes("high")||raw==="3"||getWeight(ev.event||"")>=2.5;
+}
+function startOfTodayMs(){const d=new Date();d.setHours(0,0,0,0);return d.getTime();}
+// Všechny PŘÍMÉ HIGH události měny DNES (proběhlé i budoucí) — i bez známého názvu,
+// takže centrobankovní "Rate Statement"/"Press Conference"/"Policy Statement" se počítají.
+function getDayHighImpact(currency,events){
+  const s=startOfTodayMs(),e=localDayEnd();
+  return (events||[]).filter(ev=>{
+    const t=parseEventTime(ev.time); if(!(t>=s&&t<=e)) return false;
+    const rel=eventRelevance(currency,ev); if(!rel||rel.type!=="direct") return false;
+    return evIsHighImpact(ev);
+  });
+}
 function getPairDailyState(pair,scores,calData,upcoming){
+  const ev=mergeEvents(calData,upcoming);
   const c=detectFundamentalConflict(pair,scores,calData,upcoming,DAY_WINDOW);
-  const hasUp=getUpcomingToday(pair.base,upcoming).length+getUpcomingToday(pair.quote,upcoming).length>0;
   if(c.hasData&&c.conflict) return{level:"conflict",dot:"🔴",color:"#ff4d4d"};
   if(c.hasData&&c.stDir===c.ltDir) return{level:"confirm",dot:"🟢",color:"#3fb950"};
-  if(hasUp) return{level:"upcoming",dot:"🟡",color:"#d29922"};
+  const dayHigh=getDayHighImpact(pair.base,ev).concat(getDayHighImpact(pair.quote,ev));
+  if(dayHigh.some(e=>parseEventTime(e.time)>Date.now()&&!e.actual)) return{level:"upcoming",dot:"🟡",color:"#d29922"};
+  if(dayHigh.length) return{level:"done",dot:"🔵",color:"#58a6ff"};
   return{level:"none",dot:"",color:null};
 }
 function getPosition(pair){try{return (JSON.parse(localStorage.getItem("positions")||"{}"))[pair]||"none";}catch(e){return"none";}}
@@ -2824,7 +2847,7 @@ function CalendarEventRow({e,compact=false}){
 function DashboardCalendarPanel({events,pair}){
   const all=(events||[]).sort((a,b)=>new Date(a.time)-new Date(b.time));
   const relevant=pair?all.filter(e=>eventRelevance(pair.base,e)||eventRelevance(pair.quote,e)):all;
-  const list=(relevant.length?relevant:all).slice(0,7);
+  const list=(relevant.length?relevant:all).slice(0,12);
   const title=pair?`Fundamentální kalendář — ${pair.pair}`:"Fundamentální kalendář";
   const subtitle=pair?`Filtr: ${pair.base} + ${pair.quote}`:"nejbližší události";
   return <div className="pro-card" style={{padding:16,marginBottom:14}}>
@@ -4103,7 +4126,7 @@ function DailyBriefBar({pairs,scores,calData,upcoming,inline,positions}){
       {posLines.length>0&&<div>
         <div style={{fontSize:10,color:"#8b949e",letterSpacing:".06em",marginBottom:4}}>TVÉ POZICE</div>
         {posLines.map(l=>(
-          <div key={l.pair} style={{fontSize:12,color:l.level==="conflict"?"#ffb3b3":l.level==="none"?"#9fb0c0":"#d6c089",marginBottom:2}}>🎯 <b>{l.pair} {l.side}</b> — {l.level==="conflict"?"čerstvá data jdou krátkodobě proti pozici · zvaž zajištění / SL na BE":l.level==="upcoming"?"dnes přijdou data → vyšší volatilita · zvaž zajištění / SL na BE":l.level==="confirm"?"dnešní data potvrzují směr — drž dle plánu":"dnes bez fundamentů — klid"}</div>
+          <div key={l.pair} style={{fontSize:12,color:l.level==="conflict"?"#ffb3b3":l.level==="none"?"#9fb0c0":l.level==="done"?"#8fb8e0":"#d6c089",marginBottom:2}}>🎯 <b>{l.pair} {l.side}</b> — {l.level==="conflict"?"čerstvá data jdou krátkodobě proti pozici · zvaž zajištění / SL na BE":l.level==="upcoming"?"dnes přijdou důležitá data → vyšší volatilita · zvaž zajištění / SL na BE":l.level==="confirm"?"dnešní data potvrzují směr — drž dle plánu":l.level==="done"?"dnes proběhly velké zprávy (zatím beze změny) — sleduj volatilitu":"dnes bez fundamentů — klid"}</div>
         ))}
       </div>}
     </div>
@@ -5050,7 +5073,7 @@ function App(){
             </div>
             <div>{selected&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses} calData={calData} upcoming={upcoming} positions={positions} onPosition={updatePosition} notes={notes} onNote={updateNote}/>}</div>
             <div>
-              <DashboardCalendarPanel events={upcoming} pair={selected}/>
+              <DashboardCalendarPanel events={buildEventWatch(calData,upcoming)} pair={selected}/>
               <DailyBriefBar pairs={top} scores={scores} calData={calData} upcoming={upcoming} positions={positions} inline/>
             </div>
           </div>
