@@ -459,9 +459,93 @@ function AITab(){
     </div>
   );
 }
+// ── ZÁLOŽKA: SÍLA MĚN ───────────────────────────────────────
+function StrengthTab({data}){
+  if(!data) return null;
+  const rows=CURRENCIES.map(c=>({c,score:(data.scores[c]&&data.scores[c].score)||0,chg:(typeof getScoreChange!=="undefined"?getScoreChange(c,7):null)})).sort((a,b)=>b.score-a.score);
+  const max=Math.max(1,...rows.map(r=>Math.abs(r.score)));
+  return (
+    <div>
+      <div className="card muted" style={{fontSize:12}}>Síla měn — celkové skóre enginu (−10…+10), seřazeno. ▲▼ = změna za 7 dní.</div>
+      {rows.map((r,i)=>{
+        const col=cScore(r.score), w=Math.round(Math.abs(r.score)/max*100);
+        return (
+        <div className="card" key={r.c} style={{padding:"10px 12px"}}>
+          <div className="between">
+            <span className="row" style={{gap:8}}><b className="muted" style={{width:16}}>{i+1}</b><span style={{fontSize:17}}>{FLAGS[r.c]}</span> <b>{r.c}</b></span>
+            <span className="row" style={{gap:10}}>
+              {r.chg!=null&&Math.abs(r.chg)>=0.1&&<span style={{fontSize:11,color:r.chg>0?"#3fb950":"#ff6a5e"}}>{r.chg>0?"▲":"▼"}{Math.abs(r.chg).toFixed(1)}</span>}
+              <b style={{color:col,fontSize:16,minWidth:46,textAlign:"right"}}>{fmtNum(r.score)}</b>
+            </span>
+          </div>
+          <div className="barwrap"><div style={{width:w+"%",height:"100%",background:col,borderRadius:4}}/></div>
+        </div>
+        );
+      })}
+    </div>
+  );
+}
+// ── ZÁLOŽKA: DENÍK ──────────────────────────────────────────
+function JournalTab(){
+  const [list,setList]=useState(()=>{try{return JSON.parse(localStorage.getItem("journal")||"[]");}catch(e){return[];}});
+  const pairOpts=(typeof STANDARD_PAIRS!=="undefined"?STANDARD_PAIRS.map(p=>p.pair):["EURUSD"]);
+  const [f,setF]=useState({pair:pairOpts[0],dir:"LONG",entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
+  const upd=(k,v)=>setF(p=>({...p,[k]:v}));
+  function persist(arr){ setList(arr); try{localStorage.setItem("journal",JSON.stringify(arr));}catch(e){} }
+  function add(){
+    if(!f.pair)return;
+    const now=new Date().toISOString(), closed=f.outcome&&f.outcome!=="open";
+    const t={id:Date.now()+"_"+Math.random().toString(36).slice(2,7),pair:f.pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:f.rMultiple===""?null:parseFloat(f.rMultiple),notes:f.notes,openedAt:now,closedAt:closed?now:null};
+    persist([t,...list]);
+    setF({...f,entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
+  }
+  function del(id){ persist(list.filter(t=>t.id!==id)); }
+  const oc={open:"#58a6ff",win:"#3fb950",loss:"#ff6a5e",be:"#d29922"};
+  const closed=list.filter(t=>t.outcome&&t.outcome!=="open"), wins=closed.filter(t=>t.outcome==="win").length;
+  const wr=closed.length?Math.round(wins/closed.length*100):0, totR=closed.reduce((s,t)=>s+(t.rMultiple||0),0);
+  return (
+    <div>
+      <div className="card">
+        <div style={{fontWeight:800,marginBottom:8}}>📓 Nový obchod</div>
+        <div className="grid2">
+          <select className="fld" value={f.pair} onChange={e=>upd("pair",e.target.value)}>{pairOpts.map(p=><option key={p} value={p}>{p}</option>)}</select>
+          <select className="fld" value={f.dir} onChange={e=>upd("dir",e.target.value)}><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select>
+        </div>
+        <div className="grid2">
+          <input className="fld" value={f.entry} onChange={e=>upd("entry",e.target.value)} placeholder="Entry" inputMode="decimal"/>
+          <input className="fld" value={f.sl} onChange={e=>upd("sl",e.target.value)} placeholder="SL" inputMode="decimal"/>
+        </div>
+        <div className="grid2">
+          <input className="fld" value={f.tp} onChange={e=>upd("tp",e.target.value)} placeholder="TP" inputMode="decimal"/>
+          <input className="fld" value={f.riskPct} onChange={e=>upd("riskPct",e.target.value)} placeholder="Risk %" inputMode="decimal"/>
+        </div>
+        <div className="grid2">
+          <select className="fld" value={f.outcome} onChange={e=>upd("outcome",e.target.value)}><option value="open">Otevřený</option><option value="win">Zisk</option><option value="loss">Ztráta</option><option value="be">BE</option></select>
+          <input className="fld" value={f.rMultiple} onChange={e=>upd("rMultiple",e.target.value)} placeholder="R (2 / -1)" inputMode="decimal"/>
+        </div>
+        <input className="fld" value={f.notes} onChange={e=>upd("notes",e.target.value)} placeholder="Poznámka"/>
+        <button className="btn" onClick={add}>＋ Přidat obchod</button>
+      </div>
+      <div className="card"><div className="between"><span className="muted">Obchodů: <b style={{color:"#e6edf3"}}>{list.length}</b></span><span className="muted">WR <b style={{color:"#3fb950"}}>{wr}%</b> · Σ <b style={{color:totR>=0?"#3fb950":"#ff6a5e"}}>{totR>0?"+":""}{totR.toFixed(1)}R</b></span></div></div>
+      {list.map(t=>(
+        <div className="card" key={t.id} style={{padding:"10px 12px"}}>
+          <div className="between">
+            <span className="row" style={{gap:8,flexWrap:"wrap"}}><b>{t.pair}</b><span style={{color:t.dir==="LONG"?"#3fb950":"#ff6a5e",fontSize:12,fontWeight:700}}>{t.dir}</span><span className="chip" style={{color:oc[t.outcome]||"#8b949e",borderColor:(oc[t.outcome]||"#8b949e")+"55"}}>{t.outcome}{t.rMultiple!=null?(" "+(t.rMultiple>0?"+":"")+t.rMultiple+"R"):""}</span></span>
+            <span onClick={()=>del(t.id)} style={{color:"#6e7681",cursor:"pointer",padding:"0 6px"}}>✕</span>
+          </div>
+          {(t.entry||t.sl||t.tp)&&<div className="muted" style={{fontSize:11,marginTop:4}}>{t.entry?("E "+t.entry):""} {t.sl?("· SL "+t.sl):""} {t.tp?("· TP "+t.tp):""}</div>}
+          {t.notes&&<div style={{fontSize:12,marginTop:4,color:"#c9d1d9"}}>{t.notes}</div>}
+          <div className="muted" style={{fontSize:9,marginTop:3}}>{(t.openedAt||"").slice(0,10)}</div>
+        </div>
+      ))}
+      {!list.length&&<div className="card muted">Zatím žádný obchod.</div>}
+    </div>
+  );
+}
 // ── ROOT ────────────────────────────────────────────────────
 function MApp(){
   const [tab,setTab]=useState("signals");
+  const [moreOpen,setMoreOpen]=useState(false);
   const [data,setData]=useState(null);
   const [loading,setLoading]=useState(true);
   const [cotLoading,setCotLoading]=useState(false);
@@ -512,13 +596,24 @@ function MApp(){
         {tab==="cot"&&<CotTab data={data} onRefreshCot={refreshCot} cotLoading={cotLoading}/>}
         {tab==="cal"&&<CalendarTab data={data}/>}
         {tab==="ai"&&<AITab/>}
+        {tab==="strength"&&<StrengthTab data={data}/>}
+        {tab==="journal"&&<JournalTab/>}
         {tab==="set"&&<SettingsTab onSaved={load}/>}
       </div>
       <div className="bottomnav">
-        {[["signals","🎯","Signály"],["cot","📊","COT"],["cal","📅","Kalendář"],["ai","🤖","AI"],["set","⚙️","Nastavení"]].map(([id,ic,lbl])=>(
+        {[["signals","🎯","Signály"],["cot","📊","COT"],["cal","📅","Kalendář"],["ai","🤖","AI"]].map(([id,ic,lbl])=>(
           <button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}><span className="ic">{ic}</span>{lbl}</button>
         ))}
+        <button className={["strength","journal","set"].indexOf(tab)>=0?"active":""} onClick={()=>setMoreOpen(true)}><span className="ic">☰</span>Víc</button>
       </div>
+      {moreOpen&&<div style={{position:"fixed",inset:0,zIndex:50,background:"#000a"}} onClick={()=>setMoreOpen(false)}>
+        <div style={{position:"absolute",left:0,right:0,bottom:0,background:"#161b22",borderTop:"1px solid #21262d",borderTopLeftRadius:16,borderTopRightRadius:16,padding:"16px 14px",paddingBottom:"calc(20px + env(safe-area-inset-bottom))"}} onClick={e=>e.stopPropagation()}>
+          <div style={{fontWeight:800,marginBottom:12}}>Víc</div>
+          {[["strength","💪","Síla měn"],["journal","📓","Deník"],["set","⚙️","Nastavení"]].map(([id,ic,lbl])=>(
+            <button key={id} className="btn sec" style={{textAlign:"left",marginBottom:8,fontSize:15}} onClick={()=>{setTab(id);setMoreOpen(false);}}><span style={{marginRight:8}}>{ic}</span>{lbl}</button>
+          ))}
+        </div>
+      </div>}
       {sel&&data&&<PairDetail p={sel} scores={data.scores} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} onClose={()=>setSel(null)}/>}
     </div>
   );
