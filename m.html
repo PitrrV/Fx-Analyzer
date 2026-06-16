@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
+<meta name="theme-color" content="#0d1117"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>AT Trading FX — Mobil</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
+<script src="engine.js"></script>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:#0d1117;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px}
+  #root{min-height:100vh}
+  .topbar{position:sticky;top:0;z-index:20;background:#0d1117ee;backdrop-filter:blur(8px);border-bottom:1px solid #1c2533;padding:10px 14px;display:flex;align-items:center;gap:10px;padding-top:max(10px,env(safe-area-inset-top))}
+  .topbar h1{font-size:15px;font-weight:800;margin:0;flex:1;letter-spacing:.02em}
+  .topbar .accent{color:#3fb950}
+  .content{padding:12px 12px 88px}
+  .card{background:#161b22;border:1px solid #21262d;border-radius:12px;padding:12px;margin-bottom:10px}
+  .pill{font-size:12px;font-weight:800;border-radius:6px;padding:3px 9px;white-space:nowrap}
+  .buy{background:#113b20;color:#3fb950;border:1px solid #3fb95033}
+  .sell{background:#431819;color:#ff6a5e;border:1px solid #f8514933}
+  .muted{color:#8b949e}
+  .row{display:flex;align-items:center;gap:8px}
+  .between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .bignum{font-size:22px;font-weight:900}
+  .bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#0d1117f5;backdrop-filter:blur(10px);border-top:1px solid #1c2533;padding-bottom:env(safe-area-inset-bottom)}
+  .bottomnav button{flex:1;background:none;border:none;color:#6e7681;font-size:10px;font-weight:700;padding:9px 2px 7px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+  .bottomnav button .ic{font-size:19px;line-height:1}
+  .bottomnav button.active{color:#3fb950}
+  .btn{background:#1f6feb;border:none;border-radius:9px;color:#fff;font-size:14px;font-weight:700;padding:11px 14px;cursor:pointer;width:100%}
+  .btn.sec{background:#21262d;border:1px solid #30363d;color:#e6edf3}
+  .btn:disabled{opacity:.55}
+  input.fld{width:100%;padding:11px 12px;background:#0d1117;border:1px solid #30363d;border-radius:9px;color:#e6edf3;font-size:14px;margin-bottom:10px}
+  .chip{font-size:10px;border:1px solid #30363d;border-radius:5px;padding:2px 6px;color:#8b949e;white-space:nowrap}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .ovl{position:fixed;inset:0;z-index:40;background:#0d1117;overflow-y:auto;padding:0 12px 88px;animation:sl .18s ease}
+  @keyframes sl{from{transform:translateY(14px);opacity:.4}to{transform:none;opacity:1}}
+  .barwrap{height:6px;background:#1a2432;border-radius:4px;overflow:hidden;margin-top:8px}
+  .seg{display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid #1c2533}
+  .seg:last-child{border-bottom:none}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+
+// ── BARVY / FORMÁTOVAČE ─────────────────────────────────────
+const cScore=v=>v>2?"#3fb950":v<-2?"#ff6a5e":v>0?"#7fc99a":v<0?"#e0857d":"#8b949e";
+const cComp=v=>v>0.3?"#3fb950":v<-0.3?"#ff6a5e":"#8b949e";
+const fmtNum=v=>(v>0?"+":"")+(Math.round(v*10)/10);
+function impactColor(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"#f85149";if(i.includes("medium")||i==="2")return"#d29922";return"#6e7681";}
+function impactLabel(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"HIGH";if(i.includes("medium")||i==="2")return"MED";if(i.includes("low")||i==="1")return"LOW";return"—";}
+function evFlag(ev){const c=String(ev.country||ev.currency||"").toUpperCase();return COUNTRY_FLAGS[c]||"🏳️";}
+function fmtDT(t){const d=new Date(parseEventTime(t));if(isNaN(d))return"";return d.toLocaleString("cs-CZ",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});}
+
+// ── DATA: stejná orchestrace jako PC (engine globals) ───────
+async function loadDataMobile(){
+  const key=(localStorage.getItem("fh")||"").trim();
+  const fmpKey=(localStorage.getItem("fmp")||"").trim();
+  let cal=[],calSource="",fmpErr="";
+  const fmpBlocked=!!fmpKey&&localStorage.getItem("fmp_cal_block")===fmpKey;
+  if(fmpKey&&!fmpBlocked){
+    try{ cal=await fetchFMPCalendar(fmpKey,15); calSource="fmp"; localStorage.removeItem("fmp_cal_block"); }
+    catch(e){ fmpErr=String(e&&e.message||e); if(/Error Message|Restricted|not available|Invalid API|Exclusive|subscription|plan|HTTP 40/i.test(fmpErr)) localStorage.setItem("fmp_cal_block",fmpKey); }
+  }
+  if(!cal.length&&key){
+    const fhBlocked=localStorage.getItem("fh_cal_block")===key;
+    if(!fhBlocked){
+      try{ cal=await fetchCalendar(key,15); calSource="finnhub"; localStorage.removeItem("fh_cal_block"); }
+      catch(e){ if(/Error Message|Restricted|not available|Invalid|premium|subscription|access|plan|HTTP 40/i.test(String(e&&e.message||e))) localStorage.setItem("fh_cal_block",key); }
+    }
+  }
+  if(!cal.length){
+    try{ const fresh=await fetchFFEventsCached(false); calSource="forexfactory"; cal=mergeFFHistory(fresh); }
+    catch(e2){ cal=loadFFHistory(); if(cal.length) calSource="forexfactory"; }
+  }
+  if(calSource==="fmp"||calSource==="finnhub") g_fundConfidence=1;
+  else if(calSource==="forexfactory") g_fundConfidence=ffConfidence(cal);
+  else g_fundConfidence=FF_FUND_DAMP;
+  try{ autoUpdateFromCalendar(cal); }catch(e){}
+  const av=(localStorage.getItem("av")||"").trim();
+  if(av){ try{ await fetchOilPrice(av); }catch(e){} }
+  const cot=loadCOT(), sent=loadSentiment();
+  const sc={}; CURRENCIES.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
+  const ranked=rankPairs(sc,{});
+  let up;
+  if(calSource==="finnhub"){ try{ up=await fetchUpcoming14(key); }catch(e){ up=deriveUpcomingFromEvents(cal); } }
+  else up=deriveUpcomingFromEvents(cal);
+  const months=(calSource==="fmp"||calSource==="finnhub")?15:ffHistorySpanMonths(cal);
+  const fc={}; ranked.forEach(p=>{ try{ fc[p.pair]=buildForecastV5(p,sc,cal,up); }catch(e){} });
+  return { scores:sc, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(),
+    calMeta:{source:calSource||"none",months,count:cal.length,conf:Math.round((g_fundConfidence||0)*100)} };
+}
+
+// ── KARTA PÁRU ──────────────────────────────────────────────
+function PairCard({p,f,daily,onTap}){
+  const buy=p.dir==="BUY";
+  return (
+    <div className="card" onClick={onTap} style={{borderColor:buy?"#1f5c34":"#5c2626"}}>
+      <div className="between">
+        <div className="row" style={{gap:6}}>
+          <span style={{fontSize:18,fontWeight:900}}>{FLAGS[p.base]}{FLAGS[p.quote]}</span>
+          <span style={{fontWeight:900,fontSize:16}}>{p.pair}</span>
+          {daily&&daily.dot&&<span style={{fontSize:13}}>{daily.dot}</span>}
+          {p.conviction>=3&&<span style={{color:"#f0b429",fontSize:12}}>{"★".repeat(Math.min(5,p.conviction))}</span>}
+        </div>
+        <span className={"pill "+(buy?"buy":"sell")}>{p.dir}</span>
+      </div>
+      <div className="between" style={{marginTop:8}}>
+        <div className="row" style={{gap:12}}>
+          <span style={{fontSize:13}}><span className="muted">skóre </span><b style={{color:cScore(buy?p.diff:-p.diff)}}>{(buy?"+":"-")+p.diff.toFixed(1)}</b></span>
+          {f&&f.prob!=null&&<span style={{fontSize:13}}><span className="muted">14d </span><b style={{color:f.prob>=65?"#3fb950":f.prob<=35?"#ff6a5e":"#d29922"}}>{f.prob+"% "+f.dir}</b></span>}
+        </div>
+        <div className="row" style={{gap:6}}>
+          <span className="chip">{p.base} {fmtNum(p.s1)}</span>
+          <span className="chip">{p.quote} {fmtNum(p.s2)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DETAIL PÁRU ─────────────────────────────────────────────
+function compRow(label,base,quote){
+  const diff=(base||0)-(quote||0);
+  return (
+    <div className="seg" key={label}>
+      <span className="muted">{label}</span>
+      <span className="row" style={{gap:10}}>
+        <b style={{color:cComp(base),minWidth:42,textAlign:"right"}}>{fmtNum(base)}</b>
+        <b style={{color:cComp(-quote),minWidth:42,textAlign:"right"}}>{fmtNum(quote)}</b>
+        <b style={{color:cScore(diff),minWidth:46,textAlign:"right"}}>{fmtNum(diff)}</b>
+      </span>
+    </div>
+  );
+}
+function PairDetail({p,scores,f,cotData,daily,onClose}){
+  const b=scores[p.base]||{}, q=scores[p.quote]||{};
+  const buy=p.dir==="BUY";
+  return (
+    <div className="ovl">
+      <div className="topbar" style={{margin:"0 -12px"}}>
+        <button className="btn sec" style={{width:"auto",padding:"7px 12px"}} onClick={onClose}>← Zpět</button>
+        <h1>{FLAGS[p.base]}{FLAGS[p.quote]} {p.pair}</h1>
+        <span className={"pill "+(buy?"buy":"sell")}>{p.dir}</span>
+      </div>
+      <div style={{paddingTop:12}}>
+        <div className="card">
+          <div className="between">
+            <div><div className="muted" style={{fontSize:12}}>Skóre páru</div><div className="bignum" style={{color:cScore(buy?p.diff:-p.diff)}}>{(buy?"+":"-")+p.diff.toFixed(1)}</div></div>
+            {f&&f.prob!=null&&<div style={{textAlign:"right"}}><div className="muted" style={{fontSize:12}}>14d výhled</div><div className="bignum" style={{color:f.prob>=65?"#3fb950":f.prob<=35?"#ff6a5e":"#d29922"}}>{f.prob}%</div><div className="muted" style={{fontSize:11}}>{f.dir}</div></div>}
+          </div>
+          {daily&&daily.dot&&<div style={{marginTop:8,fontSize:13}}>{daily.dot} <span className="muted">{daily.level==="conflict"?"Dnešní data jdou PROTI biasu":daily.level==="confirm"?"Dnešní data potvrzují bias":daily.level==="upcoming"?"Dnes přijde důležitá zpráva":""}</span></div>}
+        </div>
+        <div className="card">
+          <div className="seg" style={{fontWeight:800,color:"#8b949e",fontSize:11}}>
+            <span>KOMPONENTA</span><span className="row" style={{gap:10}}><span style={{minWidth:42,textAlign:"right"}}>{p.base}</span><span style={{minWidth:42,textAlign:"right"}}>{p.quote}</span><span style={{minWidth:46,textAlign:"right"}}>DIFF</span></span>
+          </div>
+          {compRow("Fundamenty",b.fund_score,q.fund_score)}
+          {compRow("CB Policy",b.policy_adj,q.policy_adj)}
+          {compRow("Real Yield",b.yield_adj,q.yield_adj)}
+          {compRow("COT",b.cot_score,q.cot_score)}
+          {compRow("Sentiment",b.sent_score,q.sent_score)}
+          {compRow("Sezónnost",b.season_score,q.season_score)}
+          {compRow("CELKEM",b.score,q.score)}
+        </div>
+        <div className="card">
+          <div className="muted" style={{fontSize:12,marginBottom:6,fontWeight:700}}>COT pozice</div>
+          <div className="grid2">
+            <div className="between"><span>{FLAGS[p.base]} {p.base}</span><b style={{color:cScore((cotData[p.base]||0))}}>{fmtNum(cotData[p.base]||0)}</b></div>
+            <div className="between"><span>{FLAGS[p.quote]} {p.quote}</span><b style={{color:cScore((cotData[p.quote]||0))}}>{fmtNum(cotData[p.quote]||0)}</b></div>
+          </div>
+          {p.cotPctBase!=null&&<div className="muted" style={{fontSize:11,marginTop:8}}>COT percentil {p.base}: {p.cotPctBase}p {p.cotCrowded?"· 🚨 crowded":""}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── ZÁLOŽKA: SIGNÁLY ────────────────────────────────────────
+function SignalsTab({data,onTap}){
+  if(!data) return null;
+  const pairs=data.pairs||[];
+  return (
+    <div>
+      {pairs.map(p=><PairCard key={p.pair} p={p} f={data.forecasts[p.pair]} daily={getPairDailyState(p,data.scores,data.cal,data.upcoming)} onTap={()=>onTap(p)}/>)}
+      {!pairs.length&&<div className="card muted">Žádné páry. Zkus Refresh.</div>}
+    </div>
+  );
+}
+
+// ── ZÁLOŽKA: COT ────────────────────────────────────────────
+function CotTab({data,onRefreshCot,cotLoading}){
+  const cot=loadCOT(), meta=loadCOTMeta();
+  return (
+    <div>
+      <div className="card">
+        <div className="between">
+          <div><div style={{fontWeight:800}}>COT pozice</div>{meta&&meta.asOf&&<div className="muted" style={{fontSize:12}}>k datu {String(meta.asOf).slice(0,10)}</div>}</div>
+          <button className="btn" style={{width:"auto",padding:"9px 14px"}} disabled={cotLoading} onClick={onRefreshCot}>{cotLoading?"⏳":"⚡ Aktuální"}</button>
+        </div>
+      </div>
+      <div className="grid2">
+        {CURRENCIES.map(c=>(
+          <div className="card" key={c} style={{marginBottom:0}}>
+            <div className="between"><span className="row" style={{gap:6}}>{FLAGS[c]} <b>{c}</b></span><b style={{color:cScore(cot[c]||0),fontSize:18}}>{fmtNum(cot[c]||0)}</b></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── ZÁLOŽKA: KALENDÁŘ ───────────────────────────────────────
+function CalendarTab({data}){
+  if(!data) return null;
+  const now=Date.now();
+  const evs=(data.upcoming||[]).filter(e=>{const t=parseEventTime(e.time);return t>now-6*3600000;}).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time)).slice(0,60);
+  return (
+    <div>
+      <div className="card muted" style={{fontSize:12}}>Nadcházející události ({evs.length}) · zdroj {data.calMeta.source} · {data.calMeta.months.toFixed(0)}m · {data.calMeta.conf}%</div>
+      {evs.map((e,i)=>(
+        <div className="card" key={i} style={{padding:"10px 12px"}}>
+          <div className="between">
+            <span className="row" style={{gap:7}}><span style={{fontSize:16}}>{evFlag(e)}</span><b style={{fontSize:13}}>{e.event}</b></span>
+            <span className="chip" style={{color:impactColor(e.impact),borderColor:impactColor(e.impact)+"55"}}>{impactLabel(e.impact)}</span>
+          </div>
+          <div className="between" style={{marginTop:6}}>
+            <span className="muted" style={{fontSize:12}}>{fmtDT(e.time)}</span>
+            <span className="muted" style={{fontSize:11}}>{(e.estimate?("odhad "+e.estimate):"")}{(e.prev?(" · min "+e.prev):"")}</span>
+          </div>
+        </div>
+      ))}
+      {!evs.length&&<div className="card muted">Žádné nadcházející události.</div>}
+    </div>
+  );
+}
+
+// ── ZÁLOŽKA: NASTAVENÍ ──────────────────────────────────────
+function SettingsTab({onSaved}){
+  const [fmp,setFmp]=useState(localStorage.getItem("fmp")||"");
+  const [fh,setFh]=useState(localStorage.getItem("fh")||"");
+  const [av,setAv]=useState(localStorage.getItem("av")||"");
+  const [or,setOr]=useState(localStorage.getItem("or_key")||"");
+  const [msg,setMsg]=useState("");
+  function save(){
+    fmp.trim()?localStorage.setItem("fmp",fmp.trim()):localStorage.removeItem("fmp");
+    fh.trim()?localStorage.setItem("fh",fh.trim()):localStorage.removeItem("fh");
+    av.trim()?localStorage.setItem("av",av.trim()):localStorage.removeItem("av");
+    or.trim()?localStorage.setItem("or_key",or.trim()):localStorage.removeItem("or_key");
+    setMsg("✅ Uloženo — načítám znovu…"); onSaved();
+  }
+  return (
+    <div>
+      <div className="card">
+        <div style={{fontWeight:800,marginBottom:10}}>API klíče</div>
+        <label className="muted" style={{fontSize:12}}>FMP (kalendář)</label>
+        <input className="fld" value={fmp} onChange={e=>setFmp(e.target.value)} placeholder="FMP API key" autoCapitalize="off" autoCorrect="off"/>
+        <label className="muted" style={{fontSize:12}}>Finnhub (volitelné)</label>
+        <input className="fld" value={fh} onChange={e=>setFh(e.target.value)} placeholder="Finnhub API key" autoCapitalize="off" autoCorrect="off"/>
+        <label className="muted" style={{fontSize:12}}>Alpha Vantage (ropa/ceny)</label>
+        <input className="fld" value={av} onChange={e=>setAv(e.target.value)} placeholder="Alpha Vantage key" autoCapitalize="off" autoCorrect="off"/>
+        <label className="muted" style={{fontSize:12}}>OpenRouter (AI analýza)</label>
+        <input className="fld" value={or} onChange={e=>setOr(e.target.value)} placeholder="OpenRouter key" autoCapitalize="off" autoCorrect="off"/>
+        <button className="btn" onClick={save}>💾 Uložit a načíst</button>
+        {msg&&<div style={{color:"#3fb950",fontSize:12,marginTop:8}}>{msg}</div>}
+      </div>
+      <div className="card muted" style={{fontSize:12,lineHeight:1.5}}>
+        ℹ Tohle je <b>mobilní verze</b> (Fáze 1) — Signály, COT, Kalendář.<br/>
+        Brzy přibude: AI analýza grafu z fotky, Deník, Backtest a <b>auto cloud sync</b> s PC.
+      </div>
+    </div>
+  );
+}
+
+// ── ROOT ────────────────────────────────────────────────────
+function MApp(){
+  const [tab,setTab]=useState("signals");
+  const [data,setData]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [cotLoading,setCotLoading]=useState(false);
+  const [error,setError]=useState("");
+  const [sel,setSel]=useState(null);
+
+  const load=useCallback(async()=>{
+    setLoading(true);setError("");
+    try{ const d=await loadDataMobile(); setData(d); }
+    catch(e){ setError(String(e&&e.message||e)); }
+    setLoading(false);
+  },[]);
+
+  const refreshCot=useCallback(async()=>{
+    setCotLoading(true);
+    try{ await fetchCOTAuto(); await load(); }
+    catch(e){ setError("COT: "+String(e&&e.message||e)); }
+    setCotLoading(false);
+  },[load]);
+
+  useEffect(()=>{
+    load();
+    // COT na pozadí, když je starší než ~4 dny (tiché při selhání)
+    (async()=>{
+      try{
+        const m=loadCOTMeta();
+        const age=m&&m.asOf?((Date.now()-new Date(m.asOf).getTime())/86400000):NaN;
+        if(!(age<=4)){ await fetchCOTAuto(); load(); }
+      }catch(e){}
+    })();
+  },[load]);
+
+  const cm=data&&data.calMeta;
+  const cot=loadCOT();
+  return (
+    <div>
+      <div className="topbar">
+        <h1><span className="accent">AT</span> Trading FX</h1>
+        {cm&&<span className="chip" style={{color:cm.conf>=100?"#3fb950":"#d29922",borderColor:(cm.conf>=100?"#3fb950":"#d29922")+"55"}}>📅 {cm.conf}%</span>}
+        <button className="btn sec" style={{width:"auto",padding:"7px 11px"}} disabled={loading} onClick={load}>{loading?"⏳":"↻"}</button>
+      </div>
+      <div className="content">
+        {error&&<div className="card" style={{borderColor:"#5c2626",color:"#ff6a5e",fontSize:12}}>⚠ {error}</div>}
+        {loading&&!data&&<div className="card muted">⏳ Načítám data…</div>}
+        {tab==="signals"&&<SignalsTab data={data} onTap={setSel}/>}
+        {tab==="cot"&&<CotTab data={data} onRefreshCot={refreshCot} cotLoading={cotLoading}/>}
+        {tab==="cal"&&<CalendarTab data={data}/>}
+        {tab==="set"&&<SettingsTab onSaved={load}/>}
+      </div>
+      <div className="bottomnav">
+        {[["signals","🎯","Signály"],["cot","📊","COT"],["cal","📅","Kalendář"],["set","⚙️","Nastavení"]].map(([id,ic,lbl])=>(
+          <button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}><span className="ic">{ic}</span>{lbl}</button>
+        ))}
+      </div>
+      {sel&&data&&<PairDetail p={sel} scores={data.scores} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} onClose={()=>setSel(null)}/>}
+    </div>
+  );
+}
+
+window.addEventListener("error",function(ev){
+  var el=document.getElementById("root");
+  if(el&&!el.children.length) el.innerHTML='<div style="padding:20px;color:#f85149;font-family:monospace;white-space:pre-wrap;font-size:12px">CHYBA: '+(ev.message||ev)+'</div>';
+});
+ReactDOM.createRoot(document.getElementById("root")).render(<MApp/>);
+</script>
+</body>
+</html>
