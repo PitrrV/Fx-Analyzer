@@ -3224,10 +3224,23 @@ function BiasFlipNotice({pair,calData,upcoming}){
 function DailyBriefPanel({pair,scores,calData,upcoming,positions,onPosition}){
   const pos=(positions&&positions[pair.pair])||"none";
   const c=detectFundamentalConflict(pair,scores,calData||[],upcoming||[],DAY_WINDOW);
-  const upB=getUpcomingToday(pair.base,upcoming),upQ=getUpcomingToday(pair.quote,upcoming);
+  const ev=mergeEvents(calData||[],upcoming||[]);
+  const dayHiB=getDayHighImpact(pair.base,ev),dayHiQ=getDayHighImpact(pair.quote,ev);
+  const upB=dayHiB.filter(e=>parseEventTime(e.time)>Date.now()&&!e.actual);
+  const upQ=dayHiQ.filter(e=>parseEventTime(e.time)>Date.now()&&!e.actual);
   const hasUp=upB.length+upQ.length>0;
+  const donePast=(dayHiB.length+dayHiQ.length)>0&&!hasUp; // velké zprávy dnes už proběhly (i bez překvapení)
   const ltDir=c.ltDir;
   if(!c.hasData&&!hasUp){
+    if(donePast){
+      const names=[...dayHiB,...dayHiQ].map(e=>e.event).slice(0,2).join(", ");
+      return(
+        <div style={{background:"rgba(88,166,255,.06)",border:"1px solid rgba(88,166,255,.22)",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{fontSize:12,color:"#8fb8e0"}}>🔵 DAILY BRIEF — {pair.pair}: dnes proběhly velké zprávy ({names}) — zatím bez výrazného překvapení. Můžeš ve směru 14d biasu ({ltDir}), ale sleduj reakci trhu.</span>
+          <PosToggle pair={pair.pair} pos={pos} onSet={s=>onPosition(pair.pair,s)} color="#58a6ff"/>
+        </div>
+      );
+    }
     return(
       <div style={{background:"rgba(63,185,80,.05)",border:"1px solid rgba(63,185,80,.18)",borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         <span style={{fontSize:12,color:"#8b949e"}}>🟢 DAILY BRIEF — {pair.pair}: dnes žádné velké fundamenty. Můžeš ve směru 14d biasu ({ltDir}).</span>
