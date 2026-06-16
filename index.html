@@ -8,6 +8,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="sync.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}
@@ -2097,6 +2099,61 @@ function Setup({onSave}){
   );
 }
 
+function SyncSection(){
+  const [sess,setSess]=useState(null);
+  const [email,setEmail]=useState("");
+  const [pw,setPw]=useState("");
+  const [msg,setMsg]=useState("");
+  const [busy,setBusy]=useState(false);
+  const avail=window.Sync&&window.Sync.ready;
+  const fld={width:"100%",padding:"8px 12px",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:13,marginBottom:8,display:"block"};
+  const btn={width:"100%",padding:"9px",background:"#1f6feb",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer"};
+  const sec={...btn,background:"#21262d",border:"1px solid #30363d",marginTop:6};
+  async function doSync(reload){
+    setBusy(true);setMsg("⏳ Synchronizuji…");
+    try{ const st=await window.Sync.syncNow();
+      setMsg(`✅ Sloučeno: ${st.events} událostí · ${st.cotWeeks} COT týdnů · ${st.trades} obchodů · ${st.keys} klíčů`+(reload?" — obnovuji…":""));
+      if(reload) setTimeout(()=>location.reload(),1000);
+    }catch(e){ setMsg("⚠ "+(e&&e.message||e)); }
+    setBusy(false);
+  }
+  useEffect(()=>{ if(!avail)return; window.Sync.session().then(s=>setSess(s)); window.Sync.onAuth((s,event)=>{ setSess(s); if(s&&event==="SIGNED_IN") doSync(true); }); },[]);
+  async function loginOrRegister(){
+    if(!email.trim()||pw.length<6){setMsg("Zadej e-mail a heslo (min. 6 znaků).");return;}
+    setBusy(true);setMsg("⏳ Přihlašuji…");
+    try{ await window.Sync.signInPassword(email,pw); return; }
+    catch(e){ const m=String(e&&e.message||e);
+      if(/invalid login credentials/i.test(m)){
+        try{ const d=await window.Sync.signUpPassword(email,pw);
+          if(d&&d.session){ setMsg("✅ Účet vytvořen, přihlašuji…"); }
+          else { setMsg("⚠ Vypni 'Confirm email' v Supabase a zkus znovu."); setBusy(false); }
+        }catch(e2){ const m2=String(e2&&e2.message||e2);
+          if(/already registered|already exists|User already/i.test(m2)) setMsg("⚠ E-mail už existuje. Dej 'Zapomenuté heslo' a nastav heslo.");
+          else setMsg("⚠ "+m2); setBusy(false); }
+      } else { setMsg("⚠ "+m); setBusy(false); }
+    }
+  }
+  async function reset(){ if(!email.trim()){setMsg("Zadej e-mail.");return;} setBusy(true);setMsg(""); try{ await window.Sync.resetPassword(email); setMsg("📧 Odkaz na nastavení hesla poslán."); }catch(e){ setMsg("⚠ "+(e&&e.message||e)); } setBusy(false); }
+  async function logout(){ await window.Sync.signOut(); setSess(null); setMsg("Odhlášeno."); }
+  return (
+    <div style={{borderBottom:"1px solid #21262d",paddingBottom:14,marginBottom:14}}>
+      <div style={{fontSize:13,fontWeight:700,color:"#e6edf3",marginBottom:8}}>☁️ Cloud sync {sess?"· přihlášen":""}</div>
+      {!avail&&<div style={{fontSize:11,color:"#8b949e"}}>Nedostupné (internet / Supabase se nenačetl).</div>}
+      {avail&&!sess&&<>
+        <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="e-mail" type="email" autoCapitalize="off" autoCorrect="off" style={fld}/>
+        <input value={pw} onChange={e=>setPw(e.target.value)} placeholder="heslo (min. 6, stejné na PC i mobilu)" type="password" style={fld}/>
+        <button disabled={busy} onClick={loginOrRegister} style={btn}>🔐 Přihlásit / Vytvořit účet</button>
+        <button disabled={busy} onClick={reset} style={sec}>Zapomenuté heslo</button>
+      </>}
+      {avail&&sess&&<>
+        <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>Přihlášen: <b style={{color:"#e6edf3"}}>{sess.user&&sess.user.email}</b></div>
+        <button disabled={busy} onClick={()=>doSync(true)} style={btn}>🔄 Synchronizovat teď</button>
+        <button onClick={logout} style={sec}>Odhlásit</button>
+      </>}
+      {msg&&<div style={{fontSize:11,marginTop:8,color:msg[0]==="⚠"?"#f85149":"#3fb950",lineHeight:1.5}}>{msg}</div>}
+    </div>
+  );
+}
 function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
   const [fh,setFh]=useState(fhKey);const [av,setAv]=useState(avKey||"");
   const [fmp,setFmp]=useState(localStorage.getItem("fmp")||"");
@@ -2167,6 +2224,7 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
           <h3>⚙️ Nastavení</h3>
           <button onClick={onClose} style={{background:"none",border:"none",color:"#8b949e",fontSize:18,cursor:"pointer"}}>✕</button>
         </div>
+        <SyncSection/>
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Finnhub API klíč</label>
         <input value={fh} onChange={e=>setFh(e.target.value)} style={inp}/>
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>FMP klíč <span style={{color:"#3fb950"}}>(kalendář, 15 měs zdarma)</span></label>
@@ -4900,6 +4958,8 @@ function App(){
   useEffect(()=>{
     if(!started) return;
     loadData(fhKey||"",cotRef.current,sentRef.current);
+    // Cloud sync na pozadí při startu (když přihlášen): slije cloud → znovu načti. Tiché při selhání.
+    if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ if(s) window.Sync.syncNow().then(()=>loadData(fhKey||"",cotRef.current,sentRef.current)).catch(()=>{}); }).catch(()=>{}); }
     // Po startu na pozadí dotáhni aktuální COT z CFTC API, když je uložený starší
     // než ~4 dny (nebo neznámé datum). Tiché při selhání – uložená data zůstanou.
     (async()=>{
