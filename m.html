@@ -134,6 +134,20 @@ function PairCard({p,f,daily,onTap}){
   );
 }
 
+// ── MINI GRAF (SVG) ─────────────────────────────────────────
+function MiniChart({values,color="#58a6ff",height=54}){
+  const vals=(values||[]).filter(v=>typeof v==="number"&&!isNaN(v));
+  if(vals.length<2) return <div className="muted" style={{fontSize:11,padding:"6px 0"}}>Zatím málo historie (roste časem / po importu).</div>;
+  const min=Math.min(...vals),max=Math.max(...vals),range=(max-min)||1,w=300;
+  const pts=vals.map((v,i)=>((i/(vals.length-1))*w).toFixed(1)+","+(height-((v-min)/range)*(height-8)-4).toFixed(1)).join(" ");
+  const zeroY=(min<0&&max>0)?(height-((0-min)/range)*(height-8)-4):null;
+  return (
+    <svg viewBox={"0 0 "+w+" "+height} preserveAspectRatio="none" style={{width:"100%",height,display:"block"}}>
+      {zeroY!=null&&<line x1="0" y1={zeroY} x2={w} y2={zeroY} stroke="#30363d" strokeWidth="1" strokeDasharray="3 3"/>}
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+    </svg>
+  );
+}
 // ── DETAIL PÁRU ─────────────────────────────────────────────
 function compRow(label,base,quote){
   const diff=(base||0)-(quote||0);
@@ -209,6 +223,12 @@ function PairDetail({p,scores,f,cotData,daily,calData,upcoming,onClose}){
           </div>
           {p.cotPctBase!=null&&<div className="muted" style={{fontSize:11,marginTop:8}}>COT percentil {p.base}: {p.cotPctBase}p {p.cotCrowded?"· 🚨 crowded":""}</div>}
         </div>
+        {(()=>{const bd=buildDailySeries(p.base,60).values,qd=buildDailySeries(p.quote,60).values;const diff=bd.map((v,i)=>v-(qd[i]||0));const up=diff.length&&diff[diff.length-1]>=0;return (
+          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>📈 Historie skóre ({p.pair}, 60 dní)</div><div className="muted" style={{fontSize:10,marginBottom:4}}>skóre {p.base} − {p.quote} (roste = býčí pro pár)</div><MiniChart values={diff} color={up?"#3fb950":"#ff6a5e"}/></div>);})()}
+        {(()=>{const cb=getCOTNetSeries(p.base,52).values,cq=getCOTNetSeries(p.quote,52).values;const diff=cb.map((v,i)=>v-(cq[i]||0));return (
+          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>📊 COT net trend ({p.pair})</div><div className="muted" style={{fontSize:10,marginBottom:4}}>net pozice {p.base} − {p.quote} (smart money)</div><MiniChart values={diff} color="#bf8cff"/></div>);})()}
+        {(()=>{const rs=getRetailSeries(p,52);return (
+          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>👥 Retail long % ({p.pair})</div><div className="muted" style={{fontSize:10,marginBottom:4}}>retail dav (70%+ = kontrariánsky bearish)</div><MiniChart values={rs} color="#d29922"/></div>);})()}
       </div>
     </div>
   );

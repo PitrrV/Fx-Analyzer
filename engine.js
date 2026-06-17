@@ -1987,3 +1987,48 @@ function rankPairs(scores,aiAnalyses){
   });
 }
 
+
+// ── GRAFOVÁ DATA (sdílené PC + mobil) ───────────────────────
+function buildDailySeries(currency,windowDays){
+  const hist=loadScoreHistory();
+  const keys=Object.keys(hist).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
+  if(!keys.length) return {dates:[],values:[]};
+  const today=new Date(); today.setHours(0,0,0,0);
+  let start;
+  if(windowDays>=9999){ start=new Date(keys[0]+"T00:00:00"); }
+  else { start=new Date(today); start.setDate(today.getDate()-(windowDays-1)); }
+  const startMs=start.getTime(), endMs=today.getTime();
+  let last=null;
+  for(let i=0;i<keys.length;i++){
+    if(new Date(keys[i]+"T00:00:00").getTime()<=startMs){ const v=hist[keys[i]]&&hist[keys[i]][currency]; if(typeof v==="number") last=v; }
+    else break;
+  }
+  const dates=[], values=[];
+  for(let t=startMs;t<=endMs;t+=86400000){
+    const d=new Date(t);
+    const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const v=hist[key]&&hist[key][currency];
+    if(typeof v==="number") last=v;
+    dates.push(d); values.push(last==null?0:last);
+  }
+  return {dates,values};
+}
+function getCOTNetSeries(currency,limit=104){
+  const hist=loadCOTHistory();
+  const dates=Object.keys(hist).sort().slice(-limit);
+  const values=dates.map(d=>{
+    const r=hist[d]?.raw?.[currency];
+    if(r&&Number.isFinite(r.levNet)) return r.levNet/10000;
+    return hist[d]?.scores?.[currency]??0;
+  });
+  return {dates,values};
+}
+function getRetailPairData(pair,sentData={}){
+  const bLong=Number(sentData?.[pair.base] ?? 50);
+  const qLong=Number(sentData?.[pair.quote] ?? 50);
+  const retailLong=Math.round(Math.max(0,Math.min(100,(bLong+(100-qLong))/2)));
+  const retailShort=100-retailLong;
+  const crowdBias=retailLong>=60?"LONG":retailShort>=60?"SHORT":"NEUTRAL";
+  const crowded=retailLong>=75||retailShort>=75;
+  return{retailLong,retailShort,crowdBias,crowded};
+}
