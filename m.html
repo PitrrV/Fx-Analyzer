@@ -148,7 +148,29 @@ function compRow(label,base,quote){
     </div>
   );
 }
-function PairDetail({p,scores,f,cotData,daily,onClose}){
+// ── DAILY BRIEF (mobil) ─────────────────────────────────────
+function DailyBriefM({pair,scores,calData,upcoming}){
+  const c=detectFundamentalConflict(pair,scores,calData||[],upcoming||[],DAY_WINDOW);
+  const fd=getPairFundamentalDay(pair,calData||[],upcoming||[]);
+  const ltDir=c.ltDir;
+  const conflict=c.hasData&&c.conflict, confirm=c.hasData&&!c.conflict&&c.stDir===ltDir;
+  const hasPast=fd.todayPast.length>0, hasTodayUp=fd.todayUpcoming.length>0, hasTomorrow=fd.tomorrow.length>0;
+  const tm=e=>evDate(e).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
+  const evL=arr=>arr.slice(0,4).map(e=>`${COUNTRY_FLAGS[(e.country||"").toUpperCase()]||""}${tm(e)} ${e.event}${(e.actual!=null&&e.actual!=="")?` = ${e.actual}`:((e.estimate??e.forecast)!=null&&(e.estimate??e.forecast)!=="")?` (odh. ${e.estimate??e.forecast})`:""}`).join("  ·  ");
+  const col=conflict?"#ff6a5e":confirm?"#3fb950":hasTodayUp?"#d29922":hasPast?"#58a6ff":"#3fb950";
+  const head=conflict?`⚠️ 14d ${ltDir}, dnes krátkodobě PROTI`:confirm?`✅ Dnešní data potvrzují ${ltDir}`:hasTodayUp?`⏳ Dnes ještě přijdou důležité fundamenty`:hasPast?`🔵 Dnes proběhly velké zprávy`:`🟢 Dnes žádné velké fundamenty`;
+  return (
+    <div className="card" style={{borderColor:col+"55"}}>
+      <div style={{fontWeight:800,color:col,marginBottom:6,fontSize:13}}>📋 Daily Brief — {head}</div>
+      {c.hasData&&<div style={{fontSize:12,color:"#c9d1d9",lineHeight:1.5,marginBottom:6}}>{conflict?`14d výhled zůstává ${ltDir}, ale dnešní data tlačí krátkodobě opačně — počkej na uklidnění a potvrzení.`:confirm?`Dnešní data potvrzují směr ${ltDir} i krátkodobě — můžeš jet ve směru biasu.`:`Dnešní data jsou smíšená, bez jasného krátkodobého směru.`}</div>}
+      {!c.hasData&&!hasPast&&!hasTodayUp&&<div style={{fontSize:12,color:"#8b949e",marginBottom:6}}>Můžeš ve směru 14d biasu ({ltDir}).</div>}
+      {hasPast&&!c.hasData&&<div style={{fontSize:12,color:"#8fb8e0",lineHeight:1.5,marginBottom:6}}>🔵 Dnes proběhlo: {evL(fd.todayPast)} — zatím bez výrazného překvapení; sleduj reakci.</div>}
+      {hasTodayUp&&<div style={{fontSize:12,color:"#d6c089",lineHeight:1.5,marginBottom:6}}>⏳ Dnes ještě přijde: {evL(fd.todayUpcoming)}. Trh bývá před zprávou opatrný.</div>}
+      {hasTomorrow&&<div style={{fontSize:11,color:"#6e8aa0",lineHeight:1.5,borderTop:"1px solid rgba(255,255,255,.06)",paddingTop:6}}>📅 Zítra: {evL(fd.tomorrow)}</div>}
+    </div>
+  );
+}
+function PairDetail({p,scores,f,cotData,daily,calData,upcoming,onClose}){
   const b=scores[p.base]||{}, q=scores[p.quote]||{};
   const buy=p.dir==="BUY";
   return (
@@ -166,6 +188,7 @@ function PairDetail({p,scores,f,cotData,daily,onClose}){
           </div>
           {daily&&daily.dot&&<div style={{marginTop:8,fontSize:13}}>{daily.dot} <span className="muted">{daily.level==="conflict"?"Dnešní data jdou PROTI biasu":daily.level==="confirm"?"Dnešní data potvrzují bias":daily.level==="upcoming"?"Dnes přijde důležitá zpráva":daily.level==="done"?"Dnes proběhly velké zprávy (beze změny)":""}</span></div>}
         </div>
+        <DailyBriefM pair={p} scores={scores} calData={calData} upcoming={upcoming}/>
         <div className="card">
           <div className="seg" style={{fontWeight:800,color:"#8b949e",fontSize:11}}>
             <span>KOMPONENTA</span><span className="row" style={{gap:10}}><span style={{minWidth:42,textAlign:"right"}}>{p.base}</span><span style={{minWidth:42,textAlign:"right"}}>{p.quote}</span><span style={{minWidth:46,textAlign:"right"}}>DIFF</span></span>
@@ -614,7 +637,7 @@ function MApp(){
           ))}
         </div>
       </div>}
-      {sel&&data&&<PairDetail p={sel} scores={data.scores} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} onClose={()=>setSel(null)}/>}
+      {sel&&data&&<PairDetail p={sel} scores={data.scores} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} calData={data.cal} upcoming={data.upcoming} onClose={()=>setSel(null)}/>}
     </div>
   );
 }
