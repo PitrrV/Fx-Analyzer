@@ -586,43 +586,47 @@ async function generateSessionReport(items, sessionLabel, settings){
 }
 
 /* ---------- data sources ---------- */
+let SRC_DIAG={ran:false,fh:{n:0,err:''},rss:{n:0,err:''}};
 async function fetchFinnhub(settings){
-  if(!settings.finnhubKey) return [];
-  const cats=['general','forex','crypto'], out=[];
+  if(!settings.finnhubKey){ SRC_DIAG.fh={n:0,err:'no-key'}; return []; }
+  const cats=['general','forex','crypto'], out=[]; let err='';
   // News endpoint je ve free tieru zdarma (na rozdíl od /calendar/economic). Vrací skutečné médium v poli source.
   const results=await Promise.all(cats.map(async c=>{
     try{
       const r=await fetch('https://finnhub.io/api/v1/news?category='+c+'&token='+encodeURIComponent(settings.finnhubKey));
-      if(!r.ok) return [];
+      if(!r.ok){ if(!err) err='HTTP '+r.status; return []; }
       const arr=await r.json();
       return (Array.isArray(arr)?arr:[]).slice(0,25).map(n=>({
-        id:'f'+n.id, source:n.source||'Finnhub', headline:n.headline, url:n.url,
+        id:'f'+n.id, provider:'finnhub', source:n.source||'Finnhub', headline:n.headline, url:n.url,
         publishedAt:n.datetime? new Date(n.datetime*1000).toISOString() : new Date().toISOString()
       }));
-    }catch(e){ return []; }
+    }catch(e){ if(!err) err='network/CORS'; return []; }
   }));
   results.forEach(a=>a.forEach(n=>out.push(n)));
+  SRC_DIAG.fh={n:out.length, err: out.length?'':(err||'prázdná odpověď')};
   return out;
 }
 async function fetchRSS(settings, force){
   const feeds=(force&&force.length)? force : (settings.rssFeeds||'').split('\n').map(s=>s.trim()).filter(Boolean);
-  if(!feeds.length) return [];
+  if(!feeds.length){ SRC_DIAG.rss={n:0,err:'no-feeds'}; return []; }
   const out=[];
   for(const f of feeds.slice(0,4)){
     try{
       const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(f));
       if(r.ok){ const d=await r.json(); const sn=(d.feed&&d.feed.title)||'RSS';
         (d.items||[]).slice(0,12).forEach(it=>out.push({
-          id:'r'+hashStr(it.link||it.title||''), source:sn, headline:it.title, url:it.link,
+          id:'r'+hashStr(it.link||it.title||''), provider:'rss', source:sn, headline:it.title, url:it.link,
           publishedAt:it.pubDate? new Date(it.pubDate).toISOString() : new Date().toISOString()
         })); }
     }catch(e){}
   }
+  SRC_DIAG.rss={n:out.length,err:''};
   return out;
 }
 async function fetchRawNews(settings){
   // Finnhub (pokud je klíč) = hlavní zdroj se skutečnými médii → lepší tiering i slučování.
   // RSS běží navíc kvůli křížovému potvrzení (stejná zpráva z víc zdrojů → „Ověřeno").
+  SRC_DIAG.ran=true;
   const userRss = !!(settings.rssFeeds||'').trim();
   const arr = await Promise.all([fetchFinnhub(settings), fetchRSS(settings, userRss?null:DEFAULT_RSS)]);
   let all=arr[0].concat(arr[1]).filter(n=>n.headline);
@@ -796,8 +800,9 @@ function cardHTML(n){
   const credBadge='<span class="cred '+cr.cls+'" title="Důvěryhodnost: '+esc(cr.label)+'"><span class="dot"></span>'+esc(cr.label)+'</span>';
   const tierBadge='<span class="tier t'+tier+'" title="Úroveň zdroje (Tier 1 = Reuters/Bloomberg/ČB)">Tier '+tier+'</span>';
   const srcCount=(n.srcCount>1)?'<span class="srccount" title="Stejnou událost hlásí více zdrojů">🔗 '+n.srcCount+' zdrojů</span>':'';
+  const prov=n.provider?'<span class="tier" title="Odkud zpráva přišla" style="opacity:.75">'+(n.provider==='finnhub'?'⬡ Finnhub':'⌁ RSS')+'</span>':'';
   return '<div class="card s'+sc+'">'+
-    '<div class="card-top"><span class="badge '+(n.cb?'cb':'cat')+'">'+esc(n.cat)+'</span>'+credBadge+tierBadge+srcCount+
+    '<div class="card-top"><span class="badge '+(n.cb?'cb':'cat')+'">'+esc(n.cat)+'</span>'+credBadge+tierBadge+srcCount+prov+
     '<div class="date-row"><span class="date-badge">'+formatDateTime(n.publishedAt)+'</span><span class="age-badge '+(isOld(n.publishedAt)?'old':'')+'">'+ageText(n.publishedAt)+'</span></div>'+
     '<div class="gauge '+scoreCls(sc)+'" title="důležitost '+sc+'/10"><span>'+sc+'</span><small>imp</small></div></div>'+
     '<div class="headline">'+head+'</div>'+orig+
@@ -851,10 +856,23 @@ function railHTML(){
     '<div class="heat">'+heat+'</div>'+
     '<p style="font-size:11px;color:var(--txt-faint);line-height:1.5;margin-top:4px">Čisté skóre mediálního obrazu měny z uložené historie ('+HISTORY_DAYS+' dní).</p></aside>';
 }
+function srcDiagHTML(){
+  if(!SRC_DIAG.ran || !state.settings.finnhubKey) return '';
+  const f=SRC_DIAG.fh||{n:0}, r=SRC_DIAG.rss||{n:0};
+  if(f.n>0) return '<div class="notice" style="margin-bottom:12px;background:rgba(40,209,124,.08);border-color:rgba(40,209,124,.3);color:var(--green)">✅ <b>Finnhub aktivní</b> — načteno '+f.n+' zpráv (skutečná média). RSS: '+(r.n||0)+'. Hledej karty s Reuters/Bloomberg/CNBC a odznak 🟢 Tier 1.</div>';
+  const e=f.err||'?';
+  let tip = e.indexOf('401')>=0?'Klíč je neplatný — zkontroluj/přegeneruj na finnhub.io.':
+            e.indexOf('403')>=0?'Přístup odepřen (403) — klíč nebo omezení účtu.':
+            e.indexOf('429')>=0?'Překročen limit 60 volání/min — počkej ~1 min a obnov.':
+            e.indexOf('network')>=0?'Prohlížeč nedovolil požadavek (síť/CORS) — zkus jiný prohlížeč/síť.':
+            e==='no-key'?'Klíč není uložený — vlož ho a klikni Uložit nastavení.':
+            'Finnhub vrátil prázdno.';
+  return '<div class="notice err" style="margin-bottom:12px">⚠️ <b>Finnhub nevrací data</b> ('+esc(e)+'). '+tip+' Zatím zobrazuji RSS: '+(r.n||0)+' zpráv.</div>';
+}
 function feedHTML(){
   const meta = state.loading? '<span class="spin"></span> načítám…' : (filterList().length+' z '+state.news.length+' zpráv · řazeno dle důležitosti');
   return '<div class="col"><div class="sec-head"><h2><span class="bar"></span>Živý feed</h2><span class="meta">'+meta+'</span></div>'+
-    deskHTML(state.desk)+toolbarHTML()+'<div id="feed-list">'+feedListHTML()+'</div></div>'+railHTML();
+    deskHTML(state.desk)+srcDiagHTML()+toolbarHTML()+'<div id="feed-list">'+feedListHTML()+'</div></div>'+railHTML();
 }
 function connHTML(){
   const body = state.conns.length? state.conns.map(c=>'<div class="conn" style="max-width:760px"><div class="tag">'+esc(c.tag)+'</div><p style="font-size:14px">'+esc(c.text)+' '+(c.pairs||[]).map(p=>'<span class="pair">'+esc(p)+'</span>').join(' ')+'</p></div>').join('') : '<div class="empty"><div class="ic">🔗</div>Zatím žádné souvislosti. Obnov zprávy s připojenou AI.</div>';
