@@ -448,10 +448,11 @@ async function analyzeBatch(items, settings){
   const list = items.map((it,i)=>(i+1)+'. "'+it.headline+'" (zdroj: '+(it.source||'?')+')').join('\n');
   const prompt =
 'Analyzuj těchto '+items.length+' finančních zpráv. Vrať POUZE JSON pole stejné délky a pořadí:\n'+
-'[{"i":1,"cat":"MAKRO|CENTRÁLNÍ BANKA|POLITIKA|KOMODITY|TRH","cb":true,'+
+'[{"i":1,"cs":"český překlad titulku","cat":"MAKRO|CENTRÁLNÍ BANKA|POLITIKA|KOMODITY|TRH","cb":true,'+
 '"ai":"1-2 věty interpretace dopadu, bez doporučení",'+
 '"story":"1 věta: do jakého širšího příběhu zpráva zapadá",'+
 '"affects":[["SYMBOL","pos"]],"score":5}]\n'+
+'"cs" = výstižný český překlad titulku (zachovej čísla a názvy). '+
 'SYMBOL jen z: '+INSTRUMENTS.join(',')+'. score 1-10: 10=Fed sazby/CPI/NFP, 7-8=důležitý projev/data, 3-4=běžná zpráva.\nZprávy:\n'+list;
   const arr = parseJSON(await callAI([{role:'system',content:SYSTEM_ANALYST},{role:'user',content:prompt}],settings));
   if(!Array.isArray(arr)) throw new Error('BAD_BATCH');
@@ -471,6 +472,12 @@ async function generateDesk(analyzed, settings){
   o.updatedAt = new Date().toISOString();
   o.sources = top.slice(0,5).map(n=>({headline:n.headline,url:n.url,source:n.source}));
   return o;
+}
+async function generateSessionReport(items, sessionLabel, settings){
+  const ctx = items.map((n,i)=>(i+1)+'. '+n.headline+' ('+n.source+', skóre '+(n.score||'?')+')').join('\n');
+  const prompt='Jsi finanční analytik. Napiš ČESKY souvislý report pro obchodní seanci „'+sessionLabel+'" jako krátký článek (3-5 vět): (1) hlavní téma seance, (2) co hýbalo trhem a proč, (3) které měny/komodity to zasáhlo, (4) co z toho plyne do dalšího obchodování. Bez obchodních doporučení (žádné vstupy/cíle/SL/TP). Vrať POUZE JSON: {"summary":"3-5 vět souvislého českého textu"}\nZprávy této seance:\n'+ctx;
+  const o = parseJSON(await callAI([{role:'system',content:SYSTEM_ANALYST},{role:'user',content:prompt}],settings));
+  return (o && o.summary) ? String(o.summary) : '';
 }
 
 /* ---------- data sources ---------- */
@@ -566,6 +573,7 @@ async function runRefresh(settings){
         const rec = {
           cat: CATEGORIES.indexOf(a.cat)>=0? a.cat : 'TRH',
           cb: !!a.cb,
+          cs: (a.cs && String(a.cs).trim()) ? String(a.cs).trim() : '',
           ai: a.ai || 'Bez interpretace.',
           story: a.story || '',
           affects: Array.isArray(a.affects)? a.affects.filter(p=>Array.isArray(p)&&INSTRUMENTS.indexOf(p[0])>=0) : [],
@@ -604,9 +612,12 @@ const state = {
   filter:{q:'',cat:'',inst:'',min:0,today:false},
   repTab:'asia',
   histSel:null,
+  reports: LS.get('session_reports',{}),
+  repLoading:'',
   heat:(function(){ const h=heatFromHistory(getHistory()); return Object.keys(h).some(k=>h[k]!==0)?h:{USD:5,EUR:-4,GBP:-1,JPY:3,AUD:-3,CAD:-2,CHF:1,NZD:-2}; })()
 };
 let refreshTimer=null;
+function repKey(sessionId){ return new Date().toISOString().slice(0,10)+'|'+sessionId; }
 
 /* ============================================================
    RENDER (HTML strings)
@@ -653,13 +664,15 @@ function sourceRowHTML(n){
 }
 function cardHTML(n){
   const aff=(n.affects||[]).map(a=>'<span class="chip '+(a[1]||'')+'">'+esc(a[0])+(a[1]==='pos'?' ↑':a[1]==='neg'?' ↓':'')+'</span>').join('');
-  const head = n.url? '<a href="'+esc(n.url)+'" target="_blank" rel="noopener">'+esc(n.headline)+'</a>' : esc(n.headline);
+  const title = n.cs && n.cs!==n.headline ? n.cs : n.headline;
+  const head = n.url? '<a href="'+esc(n.url)+'" target="_blank" rel="noopener">'+esc(title)+'</a>' : esc(title);
+  const orig = (n.cs && n.cs!==n.headline) ? '<div style="font-size:11px;color:var(--txt-faint);margin-top:-4px;margin-bottom:9px">'+esc(n.headline)+'</div>' : '';
   const sc=n.score||0;
   return '<div class="card s'+sc+'">'+
     '<div class="card-top"><span class="badge '+(n.cb?'cb':'cat')+'">'+esc(n.cat)+'</span>'+
     '<div class="date-row"><span class="date-badge">'+formatDateTime(n.publishedAt)+'</span><span class="age-badge '+(isOld(n.publishedAt)?'old':'')+'">'+ageText(n.publishedAt)+'</span></div>'+
     '<div class="gauge '+scoreCls(sc)+'" title="důležitost '+sc+'/10"><span>'+sc+'</span><small>imp</small></div></div>'+
-    '<div class="headline">'+head+'</div>'+
+    '<div class="headline">'+head+'</div>'+orig+
     sourceRowHTML(n)+
     '<div class="ai-block"><div class="ai-label"><span>✦</span> AI komentář</div><div class="ai-text">'+esc(n.ai)+'</div>'+
     (n.story?'<div class="storyline"><b>Zařazení do příběhu:</b> '+esc(n.story)+'</div>':'')+'</div>'+
@@ -750,10 +763,26 @@ function repHTML(){
   let body;
   if(!today.length) body='<div class="notice">Reporty se sestavují z reálných dnešních zpráv. Zatím nejsou načtené žádné dnešní zprávy — zkus „Obnovit zprávy" v Nastavení.</div>';
   else if(!inRange.length) body='<div class="empty"><div class="ic">🕒</div>Pro tuto seanci ('+cur[3]+':00–'+cur[4]+':00) zatím nejsou dnešní zprávy.</div>';
-  else body='<div class="rep-list">'+inRange.map(n=>{ const t=new Date(n.publishedAt).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}); const h=n.url?'<a href="'+esc(n.url)+'" target="_blank" rel="noopener">'+esc(n.headline)+' ↗</a>':esc(n.headline); return '<div class="rep-item"><span class="t">'+t+'</span><span class="h">'+h+'</span></div>'; }).join('')+'</div>';
+  else body='<div class="rep-list">'+inRange.map(n=>{ const t=new Date(n.publishedAt).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}); const title=(n.cs&&n.cs!==n.headline)?n.cs:n.headline; const link=n.url?'<a href="'+esc(n.url)+'" target="_blank" rel="noopener">'+esc(title)+' ↗</a>':esc(title); const orig=(n.cs&&n.cs!==n.headline)?'<div style="font-size:10px;color:var(--txt-faint);margin-top:2px">'+esc(n.headline)+'</div>':''; return '<div class="rep-item"><span class="t">'+t+'</span><span class="h">'+link+orig+'</span></div>'; }).join('')+'</div>';
+  // AI report seance (česky)
+  const saved=state.reports[repKey(cur[0])];
+  let aiBlock='';
+  if(inRange.length){
+    if(state.repLoading===cur[0]){
+      aiBlock='<div class="ai-block" style="margin-bottom:14px"><div class="ai-label"><span>✦</span> AI report seance (česky)</div><div class="ai-text"><span class="spin"></span> generuji český report…</div></div>';
+    } else if(saved && saved.summary){
+      aiBlock='<div class="ai-block" style="margin-bottom:14px"><div class="ai-label"><span>✦</span> AI report seance (česky)</div><div class="ai-text" style="font-style:normal;color:var(--txt)">'+esc(saved.summary)+'</div>'+
+        '<div style="margin-top:8px"><button class="btn ghost" data-genrep="'+esc(cur[0])+'" style="padding:6px 12px;font-size:11px">↻ Přegenerovat</button> <span style="font-size:10px;color:var(--txt-faint)">vytvořeno '+ageText(saved.generatedAt)+'</span></div></div>';
+    } else if(state.settings.apiKey){
+      aiBlock='<div class="ai-block" style="margin-bottom:14px"><div class="ai-label"><span>✦</span> AI report seance (česky)</div><div class="ai-text">Klikni a AI napíše souvislý český report této seance z '+inRange.length+' zpráv.</div>'+
+        '<div style="margin-top:9px"><button class="btn" data-genrep="'+esc(cur[0])+'" style="padding:8px 15px;font-size:12px">✨ Generovat český report</button></div></div>';
+    } else {
+      aiBlock='<div class="notice" style="margin-bottom:14px">Souvislý <b>český report</b> seance vytvoří AI — vlož OpenRouter klíč v ⚙️ Nastavení. Bez klíče se zobrazí jen seznam titulků.</div>';
+    }
+  }
   return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>Reporty po seancích</h2><span class="meta">sestaveno z reálných dnešních zpráv · '+new Date().toLocaleDateString('cs-CZ')+'</span></div>'+
     '<div class="rep-tabs">'+tabs+'</div>'+
-    '<div class="report"><h3>'+esc(cur[2])+' ('+cur[3]+':00–'+cur[4]+':00)</h3><div class="stamp">'+inRange.length+' zpráv v této seanci · časy v lokálním pásmu · každý titulek s odkazem na originál</div>'+body+'</div></div>';
+    '<div class="report"><h3>'+esc(cur[2])+' ('+cur[3]+':00–'+cur[4]+':00)</h3><div class="stamp">'+inRange.length+' zpráv v této seanci · časy v lokálním pásmu · titulky přeložené do češtiny (originál pod nimi)</div>'+aiBlock+body+'</div></div>';
 }
 function setHTML(){
   const s=state.settings;
@@ -838,13 +867,32 @@ function bindView(){
   }
   if(state.tab==='conn'){}
   if(state.tab==='hist'){ $$('[data-hist]').forEach(b=> b.onclick=()=>{ const c=b.getAttribute('data-hist'); state.histSel = state.histSel===c?null:c; repaintMain(); }); }
-  if(state.tab==='rep'){ $$('[data-rep]').forEach(b=> b.onclick=()=>{ state.repTab=b.getAttribute('data-rep'); repaintMain(); }); }
+  if(state.tab==='rep'){
+    $$('[data-rep]').forEach(b=> b.onclick=()=>{ state.repTab=b.getAttribute('data-rep'); repaintMain(); });
+    $$('[data-genrep]').forEach(b=> b.onclick=()=> genSessionReport(b.getAttribute('data-genrep')));
+  }
   if(state.tab==='set'){
     $$('[data-src]').forEach(t=> t.onclick=()=>{ const name=t.getAttribute('data-src'); state.settings.sources=state.settings.sources||{}; state.settings.sources[name]=!(state.settings.sources[name]!==false); t.classList.toggle('on'); });
     const save=$('#set-save'); if(save) save.onclick=()=>{ state.settings=readSettingsForm(); LS.set('settings',state.settings); const sv=$('#set-saved'); if(sv) sv.style.display='inline'; setupAutoRefresh(); refresh(); };
     const rf=$('#set-refresh'); if(rf) rf.onclick=()=>{ state.settings=readSettingsForm(); LS.set('settings',state.settings); refresh(); };
     const cl=$('#set-clear'); if(cl) cl.onclick=()=>{ LS.set('history',[]); LS.set('analysis_cache',{}); state.heat={USD:0,EUR:0,GBP:0,JPY:0,AUD:0,CAD:0,CHF:0,NZD:0}; alert('Historie a cache vymazány.'); };
   }
+}
+
+async function genSessionReport(sessionId){
+  const cur=SESSIONS.find(x=>x[0]===sessionId); if(!cur) return;
+  if(!state.settings.apiKey){ alert('Pro AI report vlož OpenRouter klíč v Nastavení.'); return; }
+  const today=state.news.filter(n=>isTodayIso(n.publishedAt));
+  const inRange=today.filter(n=>{ const h=new Date(n.publishedAt).getHours(); return h>=cur[3]&&h<cur[4]; }).sort((a,b)=> new Date(a.publishedAt||0)-new Date(b.publishedAt||0));
+  if(!inRange.length){ alert('Tato seance zatím nemá dnešní zprávy.'); return; }
+  state.repLoading=sessionId; if(state.tab==='rep') repaintMain();
+  try{
+    const summary=await generateSessionReport(inRange, cur[2], state.settings);
+    if(summary){ state.reports[repKey(sessionId)]={summary:summary,generatedAt:new Date().toISOString()}; LS.set('session_reports',state.reports); }
+    else alert('AI nevrátila report, zkus to znovu.');
+  }catch(e){ alert('Generování reportu selhalo: '+e.message); }
+  state.repLoading='';
+  if(state.tab==='rep') repaintMain();
 }
 
 /* ============================================================
