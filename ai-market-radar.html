@@ -701,9 +701,15 @@ async function runRefresh(settings){
       });
       setCache(cache);
     }catch(e){
-      toAnalyze.forEach(it=>analyzed.push(Object.assign({},it,{cat:'TRH',cb:false,ai:'AI analýza selhala — zobrazen jen titulek.',story:'',affects:[],score:clampScore(scoreFloor(it.headline)||3),analyzedAt:new Date().toISOString()})));
-      if(!analyzed.some(n=>n.ai && n.ai!=='AI analýza selhala — zobrazen jen titulek.'))
-        return { status:'error', error:'AI analýza selhala: '+e.message, news:analyzed.sort((a,b)=>b.score-a.score), conns:[], desk:null };
+      // AI selhala → nezahazuj zprávy: degraduj na „živé titulky" + ukaž konkrétní důvod
+      const items = raw.map(it=>{ const key=hashStr(normHeadline(it.headline));
+        if(cache[key]) return Object.assign({},it,{hid:key},cache[key]);
+        const qc=quickCat(it.headline);
+        return Object.assign({},it,{ hid:key, cat:qc[0], cb:qc[1], cs:'', ai:'AI dočasně nedostupná na tomto zařízení — zobrazen titulek bez interpretace.', story:'', affects:quickAffects(it.headline), score:clampScore(scoreFloor(it.headline)||3) });
+      });
+      items.sort((a,b)=> b.score-a.score || new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
+      mergeHistory(items);
+      return { status:'headlines', error:'AI analýza selhala ('+e.message+'). Zobrazuji živé titulky bez AI. Příčina bývá: neplatný/jiný OpenRouter klíč na tomto zařízení (klíče se mezi PC a mobilem nesdílí) nebo blokující rozšíření/síť na PC.', news:items, conns:buildConnectionsFromNews(items), desk:buildDeskFromNews(items) };
     }
   }
   analyzed.sort((a,b)=> b.score-a.score || new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
@@ -871,10 +877,14 @@ function srcDiagHTML(){
             'Finnhub vrátil prázdno.';
   return '<div class="notice err" style="margin-bottom:12px">⚠️ <b>Finnhub nevrací data</b> ('+esc(e)+'). '+tip+' Zatím zobrazuji RSS: '+(r.n||0)+' zpráv.</div>';
 }
+function errBannerHTML(){
+  if(!state.lastError) return '';
+  return '<div class="notice err" style="margin-bottom:12px">⚠️ '+esc(state.lastError)+'</div>';
+}
 function feedHTML(){
   const meta = state.loading? '<span class="spin"></span> načítám…' : (filterList().length+' z '+state.news.length+' zpráv · řazeno dle důležitosti');
   return '<div class="col"><div class="sec-head"><h2><span class="bar"></span>Živý feed</h2><span class="meta">'+meta+'</span></div>'+
-    deskHTML(state.desk)+srcDiagHTML()+toolbarHTML()+'<div id="feed-list">'+feedListHTML()+'</div></div>'+railHTML();
+    deskHTML(state.desk)+errBannerHTML()+srcDiagHTML()+toolbarHTML()+'<div id="feed-list">'+feedListHTML()+'</div></div>'+railHTML();
 }
 function connHTML(){
   const body = state.conns.length? state.conns.map(c=>'<div class="conn" style="max-width:760px"><div class="tag">'+esc(c.tag)+'</div><p style="font-size:14px">'+esc(c.text)+' '+(c.pairs||[]).map(p=>'<span class="pair">'+esc(p)+'</span>').join(' ')+'</p></div>').join('') : '<div class="empty"><div class="ic">🔗</div>Zatím žádné souvislosti. Obnov zprávy s připojenou AI.</div>';
@@ -1066,9 +1076,10 @@ async function refresh(){
   try{
     const r=await runRefresh(state.settings);
     state.news=r.news||[]; state.conns=r.conns||[]; if(r.desk) state.desk=r.desk; state.status=r.status||'mock';
+    state.lastError = r.error || '';
     const h=heatFromHistory(getHistory()); if(Object.keys(h).some(k=>h[k]!==0)) state.heat=h;
     if(r.error) console.warn('[AI Market Radar]', r.error);
-  }catch(e){ state.status='error'; console.error(e); }
+  }catch(e){ state.status='error'; state.lastError='Neočekávaná chyba: '+(e&&e.message||e); console.error(e); }
   state.loading=false;
   repaintHeader();
   try{ runSquawk(); }catch(e){}
