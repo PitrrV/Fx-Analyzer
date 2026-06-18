@@ -651,7 +651,12 @@ async function fetchFromBackend(settings){
 async function runRefresh(settings){
   if((settings.backendUrl||'').trim()){
     try{ return await fetchFromBackend(settings); }
-    catch(e){ return { status:'error', error:'Backend nedostupný: '+e.message, news:MOCK_NEWS.slice().sort((a,b)=>b.score-a.score), conns:MOCK_CONNECTIONS, desk:MOCK_DESK }; }
+    catch(e){
+      // Backend selhal → nezamrzni na ukázce: spusť normální živý pipeline (Finnhub + RSS) a vysvětli důvod
+      const r = await runRefresh(Object.assign({},settings,{backendUrl:''}));
+      r.error = 'Backend nedostupný ('+e.message+') — přepnuto na živé zprávy (Finnhub + RSS). Pokud jsi „Backend URL" nevyplnil schválně, vymaž ho v ⚙️ Nastavení.' + (r.error? ' · '+r.error : '');
+      return r;
+    }
   }
   // VŽDY zkus načíst reálné zprávy (uživatelův zdroj nebo výchozí RSS)
   let raw;
