@@ -588,16 +588,20 @@ async function generateSessionReport(items, sessionLabel, settings){
 /* ---------- data sources ---------- */
 async function fetchFinnhub(settings){
   if(!settings.finnhubKey) return [];
-  const cats=['general','forex'], out=[];
-  for(const c of cats){
+  const cats=['general','forex','crypto'], out=[];
+  // News endpoint je ve free tieru zdarma (na rozdíl od /calendar/economic). Vrací skutečné médium v poli source.
+  const results=await Promise.all(cats.map(async c=>{
     try{
       const r=await fetch('https://finnhub.io/api/v1/news?category='+c+'&token='+encodeURIComponent(settings.finnhubKey));
-      if(r.ok){ const arr=await r.json(); (arr||[]).slice(0,20).forEach(n=>out.push({
+      if(!r.ok) return [];
+      const arr=await r.json();
+      return (Array.isArray(arr)?arr:[]).slice(0,25).map(n=>({
         id:'f'+n.id, source:n.source||'Finnhub', headline:n.headline, url:n.url,
         publishedAt:n.datetime? new Date(n.datetime*1000).toISOString() : new Date().toISOString()
-      })); }
-    }catch(e){}
-  }
+      }));
+    }catch(e){ return []; }
+  }));
+  results.forEach(a=>a.forEach(n=>out.push(n)));
   return out;
 }
 async function fetchRSS(settings, force){
@@ -617,13 +621,14 @@ async function fetchRSS(settings, force){
   return out;
 }
 async function fetchRawNews(settings){
-  // Vlastní RSS feedy mají přednost; jinak vždy použij výchozí (i když je zadán Finnhub) → zprávy se načtou vždy.
+  // Finnhub (pokud je klíč) = hlavní zdroj se skutečnými médii → lepší tiering i slučování.
+  // RSS běží navíc kvůli křížovému potvrzení (stejná zpráva z víc zdrojů → „Ověřeno").
   const userRss = !!(settings.rssFeeds||'').trim();
   const arr = await Promise.all([fetchFinnhub(settings), fetchRSS(settings, userRss?null:DEFAULT_RSS)]);
   let all=arr[0].concat(arr[1]).filter(n=>n.headline);
   all=clusterize(all);
   all.sort((a,b)=> new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
-  return all.slice(0,24);
+  return all.slice(0,28);
 }
 
 /* ---------- backend mode (volitelné) ---------- */
@@ -919,7 +924,7 @@ function setHTML(){
     '<div class="field"><label>Backend URL (volitelné — nech PRÁZDNÉ)</label><input type="text" id="set-backendUrl" value="'+esc(s.backendUrl||'')+'" placeholder="nech prázdné"><div class="hint">Vyplň POUZE pokud sis spustil vlastní server (server.js) — viz README-backend.md. Většina lidí tu nic nevyplňuje a nechá prázdné.</div></div>'+
     '<div class="field"><label>OpenRouter API klíč '+(s.apiKey?'<span style="color:var(--green)">● vyplněn → AI zapnutá</span>':'<span style="color:var(--txt-faint)">● prázdný → AI vypnutá (běží jen živé titulky)</span>')+'</label><input type="password" id="set-apiKey" value="'+esc(s.apiKey||'')+'" placeholder="sk-or-v1-… (nepovinné)"><div class="hint">Bez klíče vidíš reálné dnešní titulky s odkazy. Klíč přidá AI komentář, skóre, souvislosti a šéfredaktora. Vytvoříš na openrouter.ai/keys.</div></div>'+
     '<div class="field"><label>AI model (NENÍ to klíč — jen volba „mozku")</label><select id="set-model">'+modelOpt('openai/gpt-4o-mini','openai/gpt-4o-mini (levný, rychlý)')+modelOpt('openai/gpt-4o','openai/gpt-4o')+modelOpt('anthropic/claude-3.5-sonnet','anthropic/claude-3.5-sonnet')+modelOpt('google/gemini-1.5-flash','google/gemini-1.5-flash')+modelOpt('meta-llama/llama-3.1-70b-instruct','llama-3.1-70b')+'</select><div class="hint">Tohle určuje, KTERÝ AI model zpracuje zprávy. Funguje jen když je vyplněný klíč výše. Výchozí gpt-4o-mini je levný a stačí. (To, co se ti tu ukazovalo „samo", je právě tahle výchozí volba — ne klíč.)</div><input type="text" id="set-modelCustom" style="margin-top:7px" value="" placeholder="vlastní model ID (volitelné)"></div>'+
-    '<div class="field"><label>Finnhub API klíč (zdroj zpráv)</label><input type="password" id="set-finnhubKey" value="'+esc(s.finnhubKey||'')+'" placeholder="volitelné — finnhub.io"><div class="hint">Načítá kategorie general + forex.</div></div>'+
+    '<div class="field"><label>Finnhub API klíč — hlavní zdroj zpráv '+(s.finnhubKey?'<span style="color:var(--green)">● vyplněn → Finnhub aktivní</span>':'<span style="color:var(--amber)">● doporučeno vyplnit</span>')+'</label><input type="password" id="set-finnhubKey" value="'+esc(s.finnhubKey||'')+'" placeholder="d1abcd… (zdarma na finnhub.io)"><div class="hint"><b>News endpoint je ZDARMA</b> (free tier, 60 volání/min) — narozdíl od ekonomického kalendáře, který je placený. Vrací <b>skutečná média</b> u každého článku (Reuters, Bloomberg…), takže funguje tiering i slučování („Ověřeno · N zdrojů"). <b>Můžeš použít stejný klíč jako v analyzeru.</b> Načítá kategorie general + forex + crypto.</div></div>'+
     '<div class="field"><label>RSS feedy (zdroj zpráv)</label><textarea id="set-rssFeeds" placeholder="jeden URL na řádek (necháš-li prázdné, použijí se výchozí: ForexLive, FXStreet, Investing, MarketWatch)">'+esc(s.rssFeeds||'')+'</textarea><div class="hint">Když necháš prázdné, načítají se výchozí finanční feedy automaticky. Vlastní URL (jeden na řádek) je nahradí. Načítá se přes rss2json (CORS), max 4 feedy.</div></div>'+
     '<div class="field"><label>Max. zpráv k analýze / refresh</label><select id="set-maxItems">'+maxOpt(8,'8 (nejlevnější)')+maxOpt(14,'14 (doporučeno)')+maxOpt(20,'20')+'</select><div class="hint">Analyzuje se dávkově v jednom AI volání. Známé titulky se berou z cache.</div></div>'+
     '<div class="field"><label>Sledované zdroje (vizuální filtr)</label><div class="src-grid">'+sources+'</div></div>'+
