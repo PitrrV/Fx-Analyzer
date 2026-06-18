@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AI Market Radar v4</title>
+<style>
+  :root{
+    --bg:#0a0b0d; --bg-2:#101216; --panel:#14171c; --panel-2:#191d24;
+    --line:#23272f; --line-2:#2d323c;
+    --txt:#e6e9ef; --txt-dim:#8b929e; --txt-faint:#5a606c;
+    --amber:#ffb000; --amber-dim:#a9750a;
+    --cyan:#36c5d6; --green:#28d17c; --red:#ff5a52; --yellow:#ffd23f; --blue:#5b9dff;
+    --mono:ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace;
+    --disp:system-ui,'Archivo',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--txt);font-family:var(--mono);font-size:14px;-webkit-font-smoothing:antialiased}
+  body{
+    background-image:
+      radial-gradient(900px 500px at 100% -10%, rgba(255,176,0,0.04), transparent 60%),
+      radial-gradient(700px 500px at -10% 110%, rgba(54,197,214,0.04), transparent 60%);
+    min-height:100vh;
+  }
+  #app{min-height:100vh;display:flex;flex-direction:column}
+  ::selection{background:var(--amber);color:#000}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-track{background:var(--bg)}
+  ::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:6px}
+  ::-webkit-scrollbar-thumb:hover{background:#3a414d}
+  button{font-family:var(--mono);cursor:pointer;color:inherit}
+  input,select,textarea{font-family:var(--mono)}
+  a{color:var(--cyan);text-decoration:none}
+  :focus-visible{outline:2px solid var(--amber);outline-offset:2px;border-radius:6px}
+
+  .ticker{position:sticky;top:0;z-index:40;background:#000;border-bottom:1px solid var(--line);overflow:hidden;height:34px;display:flex;align-items:center}
+  .ticker-track{display:flex;gap:30px;white-space:nowrap;animation:scroll 70s linear infinite;padding-left:30px}
+  .ticker:hover .ticker-track{animation-play-state:paused}
+  @keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .tk{display:inline-flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.02em}
+  .tk b{color:var(--txt);font-weight:700}
+  .tk .news{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-weight:900;padding:2px 7px;border-radius:999px;border:1px solid var(--line-2);background:rgba(255,255,255,.03);color:var(--txt-faint)}
+  .tk .news.pos{color:var(--green);border-color:rgba(40,209,124,.45);box-shadow:0 0 10px rgba(40,209,124,.18)}
+  .tk .news.neg{color:var(--red);border-color:rgba(255,90,82,.45);box-shadow:0 0 10px rgba(255,90,82,.18)}
+
+  header.app{display:flex;align-items:center;justify-content:space-between;padding:16px 22px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#12141a,var(--bg));gap:14px;flex-wrap:wrap;box-shadow:inset 0 -1px 0 rgba(255,176,0,.18)}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:32px;height:32px;border:1.5px solid var(--amber);border-radius:7px;display:grid;place-items:center;position:relative;overflow:hidden;background:#000}
+  .logo .dot{width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 12px var(--amber);animation:pulse 2s ease-in-out infinite}
+  .logo .ring{position:absolute;inset:0;border:1px solid var(--amber);border-radius:50%;opacity:0;animation:radar 3s linear infinite}
+  @keyframes radar{0%{transform:scale(.2);opacity:.7}100%{transform:scale(1.6);opacity:0}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .brand h1{font-family:var(--disp);font-size:19px;font-weight:900;letter-spacing:-.01em;line-height:1}
+  .brand h1 span{color:var(--amber)}
+  .brand .sub{font-size:10px;color:var(--txt-faint);letter-spacing:.18em;text-transform:uppercase;margin-top:3px}
+  .status{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .clock{font-size:13px;color:var(--txt-dim);font-variant-numeric:tabular-nums}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:5px 11px;border-radius:999px;border:1px solid var(--line-2);font-weight:700}
+  .pill .blip{width:7px;height:7px;border-radius:50%}
+  .pill.live{color:var(--green);border-color:rgba(40,209,124,.4);background:rgba(40,209,124,.07)}
+  .pill.live .blip{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 1.4s infinite}
+  .pill.mock{color:var(--amber);border-color:rgba(255,176,0,.4);background:rgba(255,176,0,.07)}
+  .pill.mock .blip{background:var(--amber)}
+  .pill.error{color:var(--red);border-color:rgba(255,90,82,.4);background:rgba(255,90,82,.07)}
+  .pill.error .blip{background:var(--red)}
+  .pill.loading{color:var(--cyan);border-color:rgba(54,197,214,.4);background:rgba(54,197,214,.07)}
+  .pill.loading .blip{background:var(--cyan);animation:pulse 1s infinite}
+
+  nav.tabs{display:flex;gap:8px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--bg-2);overflow-x:auto}
+  nav.tabs button{background:var(--panel);border:1px solid var(--line-2);border-radius:999px;padding:8px 15px;font-size:13px;color:var(--txt-dim);display:flex;align-items:center;gap:8px;white-space:nowrap;transition:all .15s}
+  nav.tabs button:hover{color:var(--txt);border-color:var(--txt-faint)}
+  nav.tabs button.on{color:#000;background:var(--amber);border-color:var(--amber);font-weight:700;box-shadow:0 0 18px rgba(255,176,0,.25)}
+
+  main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:0;align-items:start}
+  @media(max-width:980px){main{grid-template-columns:1fr}.rail{display:none}}
+  .col{padding:22px;min-width:0}
+  .rail{border-left:1px solid var(--line);padding:22px;position:sticky;top:34px;align-self:stretch;background:linear-gradient(180deg,var(--bg-2),transparent 30%)}
+  .sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:12px;flex-wrap:wrap}
+  .sec-head h2{font-family:var(--disp);font-size:15px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;display:flex;align-items:center;gap:9px}
+  .sec-head h2 .bar{width:3px;height:15px;background:var(--amber);border-radius:2px}
+  .sec-head .meta{font-size:11px;color:var(--txt-faint)}
+
+  .toolbar{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
+  .toolbar input,.toolbar select{background:var(--bg);border:1px solid var(--line-2);border-radius:8px;padding:9px 11px;color:var(--txt);font-size:12px;outline:none}
+  .toolbar input:focus,.toolbar select:focus{border-color:var(--amber)}
+  .toolbar input[type=search]{flex:1;min-width:160px}
+  .fchip{font-size:11px;padding:7px 11px;border-radius:999px;background:var(--panel);border:1px solid var(--line-2);color:var(--txt-dim);font-weight:600;transition:all .12s}
+  .fchip.on{color:#000;background:var(--amber);border-color:var(--amber)}
+
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg-2));border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:14px;position:relative;transition:border-color .15s,transform .15s,box-shadow .15s}
+  .card:hover{border-color:var(--line-2);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .card.s9,.card.s10{border-left:3px solid var(--red)}
+  .card.s7,.card.s8{border-left:3px solid var(--amber)}
+  .card.s5,.card.s6{border-left:3px solid var(--yellow)}
+  .card.s0,.card.s1,.card.s2,.card.s3,.card.s4{border-left:3px solid var(--line-2)}
+  .card-top{display:flex;align-items:center;gap:9px;margin-bottom:9px;flex-wrap:wrap}
+  .badge{font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:5px;font-weight:700}
+  .badge.src{background:rgba(91,157,255,.12);color:var(--blue);border:1px solid rgba(91,157,255,.25)}
+  .badge.cat{background:rgba(54,197,214,.1);color:var(--cyan);border:1px solid rgba(54,197,214,.22)}
+  .badge.cb{background:rgba(255,176,0,.12);color:var(--amber);border:1px solid rgba(255,176,0,.28)}
+  .headline{font-size:15px;line-height:1.45;color:var(--txt);font-weight:500;margin-bottom:11px}
+  .headline a{color:var(--txt)} .headline a:hover{color:var(--amber)}
+  .ai-block{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 12px;margin-bottom:11px}
+  .ai-label{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);margin-bottom:5px;display:flex;align-items:center;gap:6px}
+  .ai-text{font-size:13px;line-height:1.55;color:var(--txt-dim);font-style:italic}
+  .storyline{margin-top:9px;border-top:1px solid var(--line);padding-top:9px;font-size:12px;line-height:1.55;color:var(--txt-dim)}
+  .storyline b{color:var(--amber);font-weight:700}
+  .card-bottom{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{font-size:11px;padding:2px 8px;border-radius:20px;background:var(--panel-2);border:1px solid var(--line-2);color:var(--txt-dim);font-weight:500}
+  .chip.pos{color:var(--green);border-color:rgba(40,209,124,.3)}
+  .chip.neg{color:var(--red);border-color:rgba(255,90,82,.3)}
+  .score{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .score .lbl{font-size:10px;color:var(--txt-faint);letter-spacing:.1em;text-transform:uppercase}
+  .score .val{font-family:var(--disp);font-weight:900;font-size:17px;font-variant-numeric:tabular-nums}
+  .score .val.hi{color:var(--red)} .score .val.md{color:var(--amber)} .score .val.lo{color:var(--txt-dim)}
+  .scorebar{width:54px;height:4px;background:var(--line);border-radius:3px;overflow:hidden}
+  .scorebar i{display:block;height:100%;border-radius:3px}
+  .date-row{display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+  .date-badge{font-size:10px;color:var(--txt-dim);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:3px 7px;font-variant-numeric:tabular-nums}
+  .age-badge{font-size:10px;border-radius:6px;padding:3px 7px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;background:rgba(54,197,214,.1);border:1px solid rgba(54,197,214,.24);color:var(--cyan)}
+  .age-badge.old{background:rgba(255,176,0,.09);border-color:rgba(255,176,0,.26);color:var(--amber)}
+  .card-top{align-items:center}
+  .gauge{margin-left:auto;width:44px;height:44px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px solid var(--line-2);background:var(--bg);flex-shrink:0}
+  .gauge span{font-family:var(--disp);font-weight:900;font-size:16px;line-height:1;font-variant-numeric:tabular-nums}
+  .gauge small{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--txt-faint);margin-top:1px}
+  .gauge.hi{border-color:var(--red);box-shadow:0 0 14px rgba(255,90,82,.25)} .gauge.hi span{color:var(--red)}
+  .gauge.md{border-color:var(--amber);box-shadow:0 0 14px rgba(255,176,0,.22)} .gauge.md span{color:var(--amber)}
+  .gauge.lo{border-color:var(--line-2)} .gauge.lo span{color:var(--txt-dim)}
+  .source-row{display:flex;align-items:center;gap:9px;margin:0 0 11px;padding:8px 11px;background:var(--bg);border:1px solid var(--line);border-radius:9px}
+  .source-row .fav{width:18px;height:18px;border-radius:4px;flex-shrink:0;background:var(--panel-2)}
+  .source-row .src-meta{font-size:12px;color:var(--txt-dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .source-row .src-meta b{color:var(--txt);font-weight:700}
+  .source-row .src-meta.no{color:var(--txt-faint)}
+  .source-row .verify{margin-left:auto;flex-shrink:0;font-size:11px;font-weight:700;letter-spacing:.03em;padding:6px 11px;border-radius:7px;background:rgba(54,197,214,.1);border:1px solid rgba(54,197,214,.3);color:var(--cyan);transition:all .12s}
+  .source-row .verify:hover{background:var(--cyan);color:#000}
+  .source-row .verify.search{background:rgba(255,176,0,.08);border-color:rgba(255,176,0,.28);color:var(--amber)}
+  .source-row .verify.search:hover{background:var(--amber);color:#000}
+  @media(max-width:560px){.source-row{flex-wrap:wrap}.source-row .verify{margin-left:0}}
+
+  .sk{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 17px;margin-bottom:13px}
+  .sk .ln{height:11px;border-radius:5px;background:linear-gradient(90deg,var(--line),var(--line-2),var(--line));background-size:200% 100%;animation:shimmer 1.2s linear infinite;margin-bottom:9px}
+  @keyframes shimmer{to{background-position:-200% 0}}
+
+  .editorial{background:linear-gradient(135deg,rgba(255,176,0,.10),rgba(54,197,214,.06));border:1px solid rgba(255,176,0,.28);border-radius:12px;padding:18px;margin-bottom:18px;position:relative;overflow:hidden}
+  .editorial:before{content:"";position:absolute;inset:-80px auto auto -80px;width:180px;height:180px;background:radial-gradient(circle,rgba(255,176,0,.16),transparent 65%);pointer-events:none}
+  .ed-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;position:relative}
+  .ed-kicker{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--amber);font-weight:800;display:flex;align-items:center;gap:7px}
+  .ed-stamp{font-size:10px;color:var(--txt-faint);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .ed-title{font-family:var(--disp);font-size:21px;line-height:1.2;font-weight:900;margin-bottom:9px;position:relative}
+  .ed-summary{font-size:13px;line-height:1.65;color:var(--txt-dim);max-width:880px;position:relative}
+  .ed-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px;position:relative}
+  .ed-mini{background:rgba(10,11,13,.62);border:1px solid var(--line);border-radius:9px;padding:11px}
+  .ed-mini b{display:block;color:var(--txt);font-size:12px;margin-bottom:5px}
+  .ed-mini span{font-size:11px;color:var(--txt-dim);line-height:1.5}
+  .ed-sources{margin-top:14px;position:relative;display:flex;flex-direction:column;gap:5px;border-top:1px solid rgba(255,176,0,.2);padding-top:11px}
+  .ed-srclabel{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--txt-faint);margin-bottom:2px}
+  .ed-sources a{font-size:11.5px;color:var(--cyan);line-height:1.4}
+  .ed-sources a:hover{color:var(--amber)}
+  .ed-sources span{font-size:11.5px;color:var(--txt-dim)}
+  .rep-list{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .rep-item{display:flex;gap:12px;align-items:flex-start;padding:10px 12px;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+  .rep-item .t{font-size:11px;color:var(--amber);font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:2px;min-width:42px}
+  .rep-item .h{font-size:13px;line-height:1.45;color:var(--txt-dim)}
+  .rep-item .h a{color:var(--txt)} .rep-item .h a:hover{color:var(--amber)}
+  @media(max-width:760px){.ed-grid{grid-template-columns:1fr}.ed-top{align-items:flex-start;flex-direction:column}.ed-stamp{white-space:normal}}
+
+  .rail h3{font-family:var(--disp);font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--txt-dim);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+  .rail h3 .dotc{width:6px;height:6px;border-radius:50%;background:var(--cyan)}
+  .conn{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px;margin-bottom:12px}
+  .conn .tag{font-size:10px;color:var(--cyan);letter-spacing:.1em;text-transform:uppercase;margin-bottom:7px}
+  .conn p{font-size:12.5px;line-height:1.6;color:var(--txt-dim)}
+  .conn .pair{display:inline-block;color:var(--amber);font-weight:700}
+  .heat{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+  .heat .cell{aspect-ratio:1;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;border:1px solid var(--line);background:var(--panel)}
+  .heat .cell .sym{font-size:11px;font-weight:700;color:var(--txt)}
+  .heat .cell .sc{font-size:14px;font-weight:900;font-family:var(--disp);font-variant-numeric:tabular-nums;margin-top:2px}
+
+  .cur-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:11px;margin-bottom:22px}
+  .cur-btn{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px;text-align:left;transition:all .15s}
+  .cur-btn:hover{border-color:var(--amber);transform:translateY(-2px)}
+  .cur-btn.on{border-color:var(--amber);background:var(--panel-2)}
+  .cur-btn .sym{font-family:var(--disp);font-size:18px;font-weight:900}
+  .cur-btn .bias{font-size:11px;margin-top:5px;display:flex;align-items:center;gap:6px}
+  .cur-btn .net{margin-top:9px;height:4px;border-radius:3px;background:var(--line);overflow:hidden;display:flex}
+  .cur-btn .net .g{background:var(--green)} .cur-btn .net .r{background:var(--red)}
+  .detail{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px}
+  .detail-head{display:flex;align-items:center;gap:14px;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+  .detail-head .big{font-family:var(--disp);font-size:32px;font-weight:900}
+  .stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+  .stat{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:13px}
+  .stat .n{font-family:var(--disp);font-size:24px;font-weight:900;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:10px;color:var(--txt-faint);letter-spacing:.1em;text-transform:uppercase;margin-top:3px}
+
+  .rep-tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+  .rep-tabs button{background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:9px 14px;font-size:12px;color:var(--txt-dim)}
+  .rep-tabs button.on{border-color:var(--amber);color:var(--amber);background:var(--panel-2)}
+  .report{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:24px;max-width:760px}
+  .report h3{font-family:var(--disp);font-size:20px;font-weight:900;margin-bottom:6px}
+  .report .stamp{font-size:11px;color:var(--txt-faint);letter-spacing:.08em;margin-bottom:18px}
+  .report p{font-size:14px;line-height:1.75;color:var(--txt-dim);margin-bottom:14px}
+  .report p b{color:var(--txt);font-weight:700}
+
+  .set{max-width:640px}
+  .field{margin-bottom:20px}
+  .field label{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--txt-dim);margin-bottom:7px}
+  .field .hint{font-size:11px;color:var(--txt-faint);margin-top:6px;line-height:1.5}
+  .field input[type=text],.field input[type=password],.field select,.field textarea{width:100%;background:var(--bg);border:1px solid var(--line-2);border-radius:8px;padding:11px 13px;color:var(--txt);font-size:13px;outline:none}
+  .field textarea{min-height:74px;resize:vertical;line-height:1.5}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--amber)}
+  .src-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:9px}
+  .toggle{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 12px;font-size:12px;cursor:pointer;transition:border-color .15s}
+  .toggle:hover{border-color:var(--line-2)}
+  .toggle .sw{width:34px;height:19px;border-radius:12px;background:var(--line-2);position:relative;flex-shrink:0;transition:background .2s}
+  .toggle .sw i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--txt-faint);transition:all .2s}
+  .toggle.on .sw{background:var(--amber)}
+  .toggle.on .sw i{left:17px;background:#000}
+  .btn{background:var(--amber);color:#000;border:none;border-radius:8px;padding:11px 20px;font-weight:700;font-size:13px;letter-spacing:.02em;transition:filter .15s}
+  .btn:hover{filter:brightness(1.1)}
+  .btn.ghost{background:none;border:1px solid var(--line-2);color:var(--txt-dim)}
+  .btn.ghost:hover{border-color:var(--amber);color:var(--amber)}
+  .btn-row{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap;align-items:center}
+  .saved{color:var(--green);font-size:12px}
+
+  .empty{text-align:center;padding:60px 20px;color:var(--txt-faint)}
+  .empty .ic{font-size:34px;margin-bottom:12px;opacity:.5}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line-2);border-top-color:var(--amber);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .notice{background:rgba(255,176,0,.08);border:1px solid rgba(255,176,0,.25);border-radius:8px;padding:12px 14px;font-size:12px;line-height:1.6;color:var(--amber);margin-bottom:18px}
+  .notice.err{background:rgba(255,90,82,.08);border-color:rgba(255,90,82,.3);color:var(--red)}
+  footer{padding:16px 22px;border-top:1px solid var(--line);font-size:11px;color:var(--txt-faint);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  footer .disc{max-width:520px;line-height:1.5}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   AI MARKET RADAR v4 — single-file, ZERO dependencies.
+   Žádný React/Babel/CDN → funguje offline z file://.
+   DATA  -> fetchRawNews (Finnhub + RSS, dedup) nebo Backend URL
+   AI    -> analyzeBatch / generateDesk / generateConnections (OpenRouter)
+   STORE -> rolling 7denní historie + cache analýzy v localStorage
+   ============================================================ */
+(function(){
+
+/* ---------- helpers ---------- */
+const $ = (s,r)=> (r||document).querySelector(s);
+const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+const LS = {
+  get(k,d){ try{const v=localStorage.getItem('amr_'+k);return v?JSON.parse(v):d}catch(e){return d} },
+  set(k,v){ try{localStorage.setItem('amr_'+k,JSON.stringify(v))}catch(e){} }
+};
+
+const INSTRUMENTS = ['USD','EUR','GBP','JPY','AUD','CAD','CHF','NZD','Gold','Silver','Oil','BTC','US100','US500','US30'];
+const CURRENCIES  = ['USD','EUR','GBP','JPY','AUD','CAD','CHF','NZD'];
+const CATEGORIES  = ['MAKRO','CENTRÁLNÍ BANKA','POLITIKA','KOMODITY','TRH'];
+const SOURCES = ['Reuters','Bloomberg','CNBC','Financial Times','MarketWatch','Investing','ForexFactory','X (Twitter)'];
+const TICKER_ITEMS = ['EURUSD','GBPUSD','USDJPY','AUDUSD','US100','US500','US30','Gold','Silver','Oil','BTC'];
+const HISTORY_DAYS = 7;
+// Výchozí finanční RSS zdroje — použijí se, když uživatel nezadá vlastní (přes rss2json, bez klíče).
+const DEFAULT_RSS = [
+  'https://www.forexlive.com/feed/',
+  'https://www.fxstreet.com/rss/news',
+  'https://www.investing.com/rss/news.rss',
+  'http://feeds.marketwatch.com/marketwatch/topstories/'
+];
+
+const SCORE_RULES = [
+  [/\b(FOMC|rate decision|interest rate|úrokov\w*|sazb\w*|rate cut|rate hike)\b/i, 9],
+  [/\b(CPI|inflation|inflac\w*|PCE)\b/i, 8],
+  [/\b(NFP|non-?farm|payrolls|unemployment|nezaměstnan\w*)\b/i, 8],
+  [/\b(Powell|Lagarde|Fed|FED|ECB|BoJ|BOE|central bank|centráln\w* bank\w*)\b/i, 7],
+  [/\b(GDP|HDP|PMI|retail sales|maloobchod\w*)\b/i, 6],
+  [/\b(war|válk\w*|sanction\w*|sankc\w*|tariff\w*|invasion|útok)\b/i, 6]
+];
+function scoreFloor(h){ let f=0; for(const r of SCORE_RULES){ if(r[0].test(h)&&r[1]>f) f=r[1]; } return f; }
+function clampScore(s){ s=Math.round(Number(s)||0); return Math.max(1,Math.min(10,s)); }
+// Rychlé odhady bez AI (pro režim „živé titulky")
+function quickCat(h){
+  h=h||'';
+  if(/\b(fed|ecb|boj|boe|powell|lagarde|rate|sazb|central bank|interest rate|monetary)\b/i.test(h)) return ['CENTRÁLNÍ BANKA',true];
+  if(/\b(oil|ropa|crude|wti|brent|gold|zlat|silver|stříbr|gas|copper|commodit|komodit)\b/i.test(h)) return ['KOMODITY',false];
+  if(/\b(elect|war|válk|tariff|sanction|sankc|geopolit|trade war|trump|china|čín|politi)\b/i.test(h)) return ['POLITIKA',false];
+  if(/\b(cpi|gdp|hdp|pmi|payroll|nfp|jobs|inflation|inflac|unemployment|nezaměstn|retail|sentiment|data)\b/i.test(h)) return ['MAKRO',false];
+  return ['TRH',false];
+}
+function quickAffects(h){
+  h=h||'';
+  const map={USD:/\b(usd|dollar|dolar|fed|wall street|treasury)\b/i,EUR:/\b(eur|euro|ecb|eurozone|eurozón)\b/i,GBP:/\b(gbp|pound|sterling|libra|boe)\b/i,JPY:/\b(jpy|yen|jen|boj)\b/i,AUD:/\b(aud|aussie)\b/i,CAD:/\b(cad|loonie|canada|kanad)\b/i,CHF:/\b(chf|franc|frank|swiss|švýc)\b/i,Gold:/\b(gold|zlat|xau)\b/i,Oil:/\b(oil|ropa|crude|wti|brent)\b/i,BTC:/\b(bitcoin|btc|crypto|krypto)\b/i,US100:/\b(nasdaq|us100)\b/i,US500:/\b(s&p|sp500|us500)\b/i};
+  const out=[]; Object.keys(map).forEach(k=>{ if(map[k].test(h)) out.push([k]); }); return out.slice(0,5);
+}
+// --- heuristiky pro režim bez AI klíče (reálná data, žádný mock) ---
+function topItems(items,n){ return items.slice().sort((a,b)=> (b.score||0)-(a.score||0) || new Date(b.publishedAt||0)-new Date(a.publishedAt||0)).slice(0,n); }
+function dominantTheme(items){
+  const catCount={}, instCount={};
+  items.forEach(n=>{ catCount[n.cat]=(catCount[n.cat]||0)+1; (n.affects||[]).forEach(a=>instCount[a[0]]=(instCount[a[0]]||0)+1); });
+  const topCat=Object.keys(catCount).sort((a,b)=>catCount[b]-catCount[a])[0]||'TRH';
+  const insts=Object.keys(instCount).sort((a,b)=>instCount[b]-instCount[a]);
+  return {topCat,insts,catCount,instCount};
+}
+function buildDeskFromNews(items){
+  const top=topItems(items,5), th=dominantTheme(items), lead=top[0];
+  const insts=th.insts.slice(0,3);
+  const summary=[
+    'Dnešní zpravodajství vede téma „'+(th.topCat||'TRH')+'".',
+    lead? 'Nejsledovanější zpráva právě teď: „'+lead.headline+'" ('+lead.source+').':'',
+    insts.length? 'Nejčastěji zmiňované trhy dnes: '+insts.join(', ')+'.':'',
+    'Zpracováno '+items.length+' reálných zpráv — u každé karty je odkaz na originál a čas publikace, takže si ověříš aktuálnost.',
+    'Toto je automatické shrnutí podle četnosti témat; pro plný redakční rozbor (proč to hýbe trhem a co sledovat dál) přidej OpenRouter klíč v Nastavení.'
+  ].filter(Boolean).join(' ');
+  return { updatedAt:new Date().toISOString(), title: lead? lead.headline : 'Přehled dne', summary,
+    points:[['Hlavní téma',th.topCat||'—'],['Nejvíc zmiňováno',insts.join(', ')||'—'],['Počet zpráv',String(items.length)]],
+    sources: top.map(n=>({headline:n.headline,url:n.url,source:n.source})) };
+}
+function buildConnectionsFromNews(items){
+  const map={}; items.forEach(n=>(n.affects||[]).forEach(a=>{ (map[a[0]]=map[a[0]]||[]).push(n); }));
+  const out=[];
+  Object.keys(map).sort((a,b)=>map[b].length-map[a].length).slice(0,3).forEach(sym=>{
+    const arr=map[sym]; if(arr.length<2) return;
+    out.push({ tag:sym+' · '+arr.length+' zpráv dnes', text:'Dnešní zprávy opakovaně zmiňují '+sym+'. Například: '+arr.slice(0,3).map(n=>'„'+n.headline+'"').join('; ')+'.', pairs:[sym] });
+  });
+  if(!out.length) out.push({tag:'PŘEHLED',text:'Zatím není dost překrývajících se témat pro propojení. S OpenRouter klíčem AI najde souvislosti i tam, kde se titulky textově neshodují.',pairs:[]});
+  return out;
+}
+
+function isoHoursAgo(h){ return new Date(Date.now()-h*3600*1000).toISOString(); }
+function formatDateTime(iso){ if(!iso) return 'datum neznámé'; return new Date(iso).toLocaleString('cs-CZ',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function ageText(iso){
+  if(!iso) return 'stáří neznámé';
+  const mins=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/60000));
+  if(mins<60) return 'před '+mins+' min';
+  const hrs=Math.floor(mins/60), rem=mins%60;
+  if(hrs<24) return rem? 'před '+hrs+' h '+rem+' min' : 'před '+hrs+' h';
+  return 'před '+Math.floor(hrs/24)+' dny';
+}
+function isOld(iso){ return iso && (Date.now()-new Date(iso).getTime())>6*3600*1000; }
+function isTodayIso(iso){ if(!iso) return true; const d=new Date(iso),n=new Date(); return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate(); }
+
+function hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h<<5)-h+s.charCodeAt(i); h|=0; } return 'h'+(h>>>0).toString(36); }
+function normHeadline(s){ return (s||'').toLowerCase().replace(/[^a-z0-9á-ž ]/gi,'').replace(/\s+/g,' ').trim(); }
+function dedupe(items){
+  const seen=new Set(), out=[];
+  for(const it of items){ const k=normHeadline(it.headline).slice(0,80); if(!k||seen.has(k)) continue; seen.add(k); out.push(it); }
+  return out;
+}
+
+/* ---------- store ---------- */
+function getHistory(){ return LS.get('history',[]); }
+function pruneHistory(arr){ const cut=Date.now()-HISTORY_DAYS*24*3600*1000; return arr.filter(n=> new Date(n.analyzedAt||n.publishedAt||Date.now()).getTime()>=cut); }
+function mergeHistory(items){
+  const cur=getHistory(), byId=new Map(cur.map(n=>[n.hid,n]));
+  for(const n of items){ if(n.hid && !byId.has(n.hid)) byId.set(n.hid,n); }
+  const merged=pruneHistory(Array.from(byId.values())).sort((a,b)=> new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
+  LS.set('history',merged); return merged;
+}
+function getCache(){ return LS.get('analysis_cache',{}); }
+function setCache(c){ LS.set('analysis_cache',c); }
+function mediaImage(history){
+  const m={}; INSTRUMENTS.forEach(c=>m[c]={pos:0,neg:0});
+  (history||[]).forEach(n=> (n.affects||[]).forEach(a=>{ const s=a[0],d=a[1]; if(m[s]){ if(d==='pos')m[s].pos++; else if(d==='neg')m[s].neg++; } }));
+  return m;
+}
+function heatFromHistory(history){ const m=mediaImage(history), o={}; CURRENCIES.forEach(c=>{ o[c]=Math.max(-10,Math.min(10,(m[c]?m[c].pos:0)-(m[c]?m[c].neg:0))); }); return o; }
+
+/* ---------- mock ---------- */
+const MOCK_NEWS = [
+  {id:'m1',hid:'m1',publishedAt:isoHoursAgo(0.35),source:'Reuters',cat:'CENTRÁLNÍ BANKA',cb:true,
+   headline:'Powell: Inflace zůstává příliš vysoká, sazby mohou zůstat výš po delší dobu.',
+   ai:'Jestřábí tón posiluje scénář „higher for longer". Podporuje USD, vytváří tlak na zlato a růstové akcie.',
+   affects:[['USD','pos'],['Gold','neg'],['US100','neg'],['US500','neg']],score:9,
+   story:'Hlavní konflikt dne: jestřábí Fed proti známkám zpomalování ekonomiky.'},
+  {id:'m2',hid:'m2',publishedAt:isoHoursAgo(0.9),source:'Bloomberg',cat:'MAKRO',cb:false,
+   headline:'US PMI ve výrobě klesl na 48.7, pod očekáváním (49.5) i pod hranicí expanze.',
+   ai:'Třetí slabší report za dva týdny. Signalizuje zpomalování poptávky — dlouhodobě protichůdné vůči jestřábí rétorice Fedu.',
+   affects:[['USD','neg'],['US100','pos']],score:7,
+   story:'Data oslabují argument pro vyšší sazby, ale zatím nepřebíjí komunikaci Fedu.'},
+  {id:'m3',hid:'m3',publishedAt:isoHoursAgo(1.6),source:'X (Twitter)',cat:'POLITIKA',cb:false,
+   headline:'EU oznámila návrh nových cel na čínské elektromobily; Peking slibuje odvetu.',
+   ai:'Eskalace obchodního napětí. Riziková nálada negativní pro EUR a růstové měny, pozitivní pro bezpečné přístavy.',
+   affects:[['EUR','neg'],['JPY','pos'],['Gold','pos'],['AUD','neg']],score:6,
+   story:'Politické riziko zvyšuje citlivost trhu na safe-haven aktiva.'},
+  {id:'m4',hid:'m4',publishedAt:isoHoursAgo(2.2),source:'Financial Times',cat:'CENTRÁLNÍ BANKA',cb:true,
+   headline:'ECB Lagardová: Snižování sazeb v červnu zůstává na stole, data jsou klíčová.',
+   ai:'Holubičí náznak. Pokud Fed drží a ECB řeže, divergence sazeb tlačí EURUSD dolů.',
+   affects:[['EUR','neg'],['USD','pos']],score:7,
+   story:'Sazbová divergence Fed vs. ECB zůstává hlavní makro téma pro EURUSD.'},
+  {id:'m5',hid:'m5',publishedAt:isoHoursAgo(3.4),source:'CNBC',cat:'MAKRO',cb:false,
+   headline:'US Jobless Claims 218k, mírně pod očekáváním — trh práce zůstává odolný.',
+   ai:'Solidní trh práce dává Fedu prostor držet sazby výš. Mírně pozitivní pro USD.',
+   affects:[['USD','pos']],score:5,
+   story:'Trh práce stále nedává Fedu jasný důvod rychle otočit politiku.'},
+  {id:'m6',hid:'m6',publishedAt:isoHoursAgo(4.7),source:'MarketWatch',cat:'KOMODITY',cb:false,
+   headline:'Ropa WTI klesá pod 81 USD po nárůstu zásob v USA.',
+   ai:'Vyšší zásoby = nižší ropa. Negativní pro CAD jako komoditní měnu.',
+   affects:[['Oil','neg'],['CAD','neg']],score:4,
+   story:'Komoditní tlak zasahuje hlavně CAD a energetický sentiment.'},
+  {id:'m7',hid:'m7',publishedAt:isoHoursAgo(6.8),source:'ForexFactory',cat:'MAKRO',cb:false,
+   headline:'Německý Ifo index podnikatelské nálady vzrostl na 87.8.',
+   ai:'Mírně lepší sentiment v EU. Krátkodobá podpora EUR, ale nepřebíjí divergenci sazeb.',
+   affects:[['EUR','pos']],score:3,
+   story:'Lokální pozitivní data z EU jsou slabší než širší příběh sazeb a růstu.'}
+];
+const MOCK_CONNECTIONS = [
+  {tag:'USA · MAKRO TREND',text:'Poslední tři reporty z USA (PMI, Retail Sales, dnešní PMI) přišly slabší než očekávání. Trh začíná intenzivněji počítat se snižováním sazeb ve druhé polovině roku — navzdory jestřábí rétorice Powella.',pairs:['USD','US100']},
+  {tag:'DIVERGENCE SAZEB',text:'ECB otevřeně signalizuje červnové snížení, zatímco Fed drží „higher for longer". Tato divergence je hlavní fundamentální tah pro pokles EURUSD.',pairs:['EURUSD']},
+  {tag:'RIZIKOVÁ NÁLADA',text:'Eskalace obchodního napětí EU–Čína spolu se slabšími daty zvyšuje poptávku po bezpečných přístavech. JPY a zlato profitují, komoditní měny (AUD) pod tlakem.',pairs:['Gold','JPY','AUD']}
+];
+const MOCK_DESK = {
+  updatedAt:isoHoursAgo(0.2),
+  title:'Hlavní příběh dne: Fed drží tvrdý tón, ale americká data začínají měknout',
+  summary:'Trh dnes neřeší jednu izolovanou zprávu, ale konflikt mezi jestřábí komunikací Fedu a slabšími makrodaty. Důležité je sledovat, zda data začnou přepisovat očekávání sazeb.',
+  points:[['Co se změnilo','Slabší PMI přidává další důkaz zpomalování USA.'],['Protiargument','Powell stále drží vyšší sazby jako hlavní narativ.'],['Proč je to důležité','USD, zlato a indexy budou citlivé na výnosy a další data.']]
+};
+const REPORTS = {
+  morning:{t:'Ranní report',stamp:'07:00 SEČ · Asijská seance',body:['Asijská seance proběhla v <b>rizikově averzním</b> duchu. JPY posílil napříč spektrem po komentářích BoJ a v reakci na obchodní napětí EU–Čína.','Klíčové pro evropskou seanci: <b>německý Ifo</b> (10:00) a série projevů z ECB.','Dominantní téma dne zůstává <b>divergence sazeb Fed vs. ECB</b> a její dopad na EURUSD.']},
+  europe:{t:'Evropský report',stamp:'10:30 SEČ · Otevření Evropy',body:['Evropa otevřela <b>smíšeně</b>. Lepší Ifo dal EUR krátkodobou podporu, kterou brzdí očekávání holubičí ECB.','Indexy v mírném plusu, ropa pod tlakem rostoucích zásob — <b>CAD nejslabší</b> z G8.','Pozornost se přesouvá k americkým datům před otevřením Wall Street.']},
+  preus:{t:'Report před otevřením USA',stamp:'14:00 SEČ · Pre-market US',body:['Hlavní událost dne: <b>US PMI 48.7</b>, pod očekáváním — třetí slabší report za dva týdny.','Trh řeší rozpor mezi <b>jestřábí rétorikou Powella</b> a měkčími tvrdými daty.','Sledovat reakci výnosů: pokles výnosů by potvrdil narůstající sázky na snižování sazeb.']},
+  evening:{t:'Večerní report',stamp:'22:00 SEČ · Uzávěrka US',body:['Den uzavřel ve znamení <b>silnějšího USD</b> navzdory slabšímu PMI — jestřábí Powell přebil makro slabost.','EURUSD pod tlakem divergence sazeb, zlato korigovalo na vyšších výnosech.','Zítra: <b>jobless claims</b> a další ECB projevy. Hlavní vyprávění pokračuje.']}
+};
+
+/* ---------- AI (OpenRouter) ---------- */
+async function callAI(messages, settings){
+  if(!settings.apiKey) throw new Error('NO_KEY');
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+settings.apiKey,'HTTP-Referer':location.origin,'X-Title':'AI Market Radar'},
+    body:JSON.stringify({model:settings.model||'openai/gpt-4o-mini',messages,temperature:0.3})
+  });
+  if(!res.ok) throw new Error('API '+res.status);
+  const d = await res.json();
+  return (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
+}
+function parseJSON(raw){
+  let s=(raw||'').replace(/```json|```/g,'').trim();
+  const a=s.indexOf('{'), b=s.indexOf('[');
+  let start=(a>=0&&b>=0)?Math.min(a,b):Math.max(a,b);
+  if(start>=0){ const end=Math.max(s.lastIndexOf('}'),s.lastIndexOf(']')); if(end>start) s=s.slice(start,end+1); }
+  return JSON.parse(s);
+}
+const SYSTEM_ANALYST = 'Jsi finanční analytik aplikace AI Market Radar. NIKDY nedáváš obchodní doporučení, BUY/SELL signály, vstupy, výstupy, supporty ani rezistence. Pouze interpretuješ zprávy a souvislosti. Odpovídáš česky, stručně a věcně. Vždy vrať POUZE validní JSON bez markdownu.';
+
+async function analyzeBatch(items, settings){
+  const list = items.map((it,i)=>(i+1)+'. "'+it.headline+'" (zdroj: '+(it.source||'?')+')').join('\n');
+  const prompt =
+'Analyzuj těchto '+items.length+' finančních zpráv. Vrať POUZE JSON pole stejné délky a pořadí:\n'+
+'[{"i":1,"cat":"MAKRO|CENTRÁLNÍ BANKA|POLITIKA|KOMODITY|TRH","cb":true,'+
+'"ai":"1-2 věty interpretace dopadu, bez doporučení",'+
+'"story":"1 věta: do jakého širšího příběhu zpráva zapadá",'+
+'"affects":[["SYMBOL","pos"]],"score":5}]\n'+
+'SYMBOL jen z: '+INSTRUMENTS.join(',')+'. score 1-10: 10=Fed sazby/CPI/NFP, 7-8=důležitý projev/data, 3-4=běžná zpráva.\nZprávy:\n'+list;
+  const arr = parseJSON(await callAI([{role:'system',content:SYSTEM_ANALYST},{role:'user',content:prompt}],settings));
+  if(!Array.isArray(arr)) throw new Error('BAD_BATCH');
+  return arr;
+}
+async function generateConnections(analyzed, settings){
+  const ctx = topItems(analyzed,12).map((n,i)=>(i+1)+'. '+n.headline+' ('+n.source+', skóre '+n.score+')').join('\n');
+  const prompt='Najdi 2-3 hlavní souvislosti/vyprávění napříč VÍCE zprávami (ne jednotlivé titulky). U každé uveď, KTERÉ zprávy se spojují a PROČ to spolu souvisí. Bez obchodních doporučení. Vrať POUZE JSON pole: [{"tag":"KRÁTKÝ NADPIS","text":"2-3 věty: které zprávy a proč souvisí","pairs":["EURUSD","USD"]}]\nDnešní zprávy:\n'+ctx;
+  const arr = parseJSON(await callAI([{role:'system',content:SYSTEM_ANALYST},{role:'user',content:prompt}],settings));
+  return Array.isArray(arr)?arr:[];
+}
+async function generateDesk(analyzed, settings){
+  const top = topItems(analyzed,8);
+  const ctx = top.map((n,i)=>(i+1)+'. '+n.headline+' ('+n.source+', skóre '+n.score+')').join('\n');
+  const prompt='Jsi AI šéfredaktor finančního deníku. Z dnešních zpráv napiš HLAVNÍ příběh dne jako krátký souvislý článek (PŘESNĚ 4-5 vět) v poli summary: (1) hlavní téma, (2) PROČ trh řeší právě tohle, (3) ODKUD to pramení — odkaž na konkrétní dnešní události/data ze seznamu, (4) co je v protisměru, (5) co sledovat dál. Bez obchodních doporučení (žádné vstupy/cíle). Vrať POUZE JSON: {"title":"výstižný titulek příběhu dne","summary":"4-5 vět souvislého textu","points":[["Co se změnilo","..."],["Protiargument","..."],["Co sledovat dál","..."]]}\nDnešní zprávy:\n'+ctx;
+  const o = parseJSON(await callAI([{role:'system',content:SYSTEM_ANALYST},{role:'user',content:prompt}],settings));
+  o.updatedAt = new Date().toISOString();
+  o.sources = top.slice(0,5).map(n=>({headline:n.headline,url:n.url,source:n.source}));
+  return o;
+}
+
+/* ---------- data sources ---------- */
+async function fetchFinnhub(settings){
+  if(!settings.finnhubKey) return [];
+  const cats=['general','forex'], out=[];
+  for(const c of cats){
+    try{
+      const r=await fetch('https://finnhub.io/api/v1/news?category='+c+'&token='+encodeURIComponent(settings.finnhubKey));
+      if(r.ok){ const arr=await r.json(); (arr||[]).slice(0,20).forEach(n=>out.push({
+        id:'f'+n.id, source:n.source||'Finnhub', headline:n.headline, url:n.url,
+        publishedAt:n.datetime? new Date(n.datetime*1000).toISOString() : new Date().toISOString()
+      })); }
+    }catch(e){}
+  }
+  return out;
+}
+async function fetchRSS(settings, force){
+  const feeds=(force&&force.length)? force : (settings.rssFeeds||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!feeds.length) return [];
+  const out=[];
+  for(const f of feeds.slice(0,4)){
+    try{
+      const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(f));
+      if(r.ok){ const d=await r.json(); const sn=(d.feed&&d.feed.title)||'RSS';
+        (d.items||[]).slice(0,12).forEach(it=>out.push({
+          id:'r'+hashStr(it.link||it.title||''), source:sn, headline:it.title, url:it.link,
+          publishedAt:it.pubDate? new Date(it.pubDate).toISOString() : new Date().toISOString()
+        })); }
+    }catch(e){}
+  }
+  return out;
+}
+async function fetchRawNews(settings){
+  // Vlastní RSS feedy mají přednost; jinak vždy použij výchozí (i když je zadán Finnhub) → zprávy se načtou vždy.
+  const userRss = !!(settings.rssFeeds||'').trim();
+  const arr = await Promise.all([fetchFinnhub(settings), fetchRSS(settings, userRss?null:DEFAULT_RSS)]);
+  let all=arr[0].concat(arr[1]).filter(n=>n.headline);
+  all=dedupe(all);
+  all.sort((a,b)=> new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
+  return all.slice(0,24);
+}
+
+/* ---------- backend mode (volitelné) ---------- */
+async function fetchFromBackend(settings){
+  const base=(settings.backendUrl||'').replace(/\/$/,'');
+  const r=await fetch(base+'/api/feed');
+  if(!r.ok) throw new Error('Backend '+r.status);
+  const d=await r.json();
+  if(Array.isArray(d.news)) mergeHistory(d.news.map(n=>Object.assign({hid:n.hid||hashStr(normHeadline(n.headline))},n)));
+  return { status:'live', news:d.news||[], conns:(d.conns&&d.conns.length)?d.conns:MOCK_CONNECTIONS, desk:d.desk||Object.assign({},MOCK_DESK,{updatedAt:new Date().toISOString()}) };
+}
+
+/* ---------- refresh pipeline ---------- */
+async function runRefresh(settings){
+  if((settings.backendUrl||'').trim()){
+    try{ return await fetchFromBackend(settings); }
+    catch(e){ return { status:'error', error:'Backend nedostupný: '+e.message, news:MOCK_NEWS.slice().sort((a,b)=>b.score-a.score), conns:MOCK_CONNECTIONS, desk:MOCK_DESK }; }
+  }
+  // VŽDY zkus načíst reálné zprávy (uživatelův zdroj nebo výchozí RSS)
+  let raw;
+  try{ raw = await fetchRawNews(settings); }
+  catch(e){ raw = []; }
+  if(!raw.length)
+    return { status:'mock', error:'Nepodařilo se načíst živé zprávy (offline / zdroj nedostupný) — zobrazuji ukázku.', news:MOCK_NEWS.slice().sort((a,b)=>b.score-a.score), conns:MOCK_CONNECTIONS, desk:MOCK_DESK };
+
+  raw = raw.slice(0, settings.maxItems||14);
+
+  // Bez OpenRouter klíče → režim „živé titulky": reálné zprávy s odkazy a datem, bez AI interpretace
+  if(!settings.apiKey){
+    const items = raw.map(it=>{ const qc=quickCat(it.headline); return Object.assign({},it,{
+      hid:hashStr(normHeadline(it.headline)), cat:qc[0], cb:qc[1],
+      ai:'AI komentář je vypnutý. Vlož OpenRouter klíč v Nastavení a získáš interpretaci dopadu, skóre, souvislosti i šéfredaktora.',
+      story:'', affects:quickAffects(it.headline), score:clampScore(scoreFloor(it.headline)||3)
+    }); });
+    items.sort((a,b)=> b.score-a.score || new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
+    mergeHistory(items);
+    return { status:'headlines', news:items, conns:buildConnectionsFromNews(items), desk:buildDeskFromNews(items) };
+  }
+
+  // S klíčem → plná AI analýza (cache + dávka)
+  const cache=getCache(), toAnalyze=[], analyzed=[];
+  for(const it of raw){
+    const key=hashStr(normHeadline(it.headline));
+    if(cache[key]) analyzed.push(Object.assign({},it,{hid:key},cache[key]));
+    else toAnalyze.push(Object.assign({},it,{hid:key}));
+  }
+  if(toAnalyze.length){
+    try{
+      const res = await analyzeBatch(toAnalyze, settings);
+      toAnalyze.forEach((it,idx)=>{
+        const a = res[idx] || res.find(x=>x&&x.i===idx+1) || {};
+        const rec = {
+          cat: CATEGORIES.indexOf(a.cat)>=0? a.cat : 'TRH',
+          cb: !!a.cb,
+          ai: a.ai || 'Bez interpretace.',
+          story: a.story || '',
+          affects: Array.isArray(a.affects)? a.affects.filter(p=>Array.isArray(p)&&INSTRUMENTS.indexOf(p[0])>=0) : [],
+          score: clampScore(Math.max(Number(a.score)||0, scoreFloor(it.headline))),
+          analyzedAt: new Date().toISOString()
+        };
+        cache[it.hid]=rec;
+        analyzed.push(Object.assign({},it,rec));
+      });
+      setCache(cache);
+    }catch(e){
+      toAnalyze.forEach(it=>analyzed.push(Object.assign({},it,{cat:'TRH',cb:false,ai:'AI analýza selhala — zobrazen jen titulek.',story:'',affects:[],score:clampScore(scoreFloor(it.headline)||3),analyzedAt:new Date().toISOString()})));
+      if(!analyzed.some(n=>n.ai && n.ai!=='AI analýza selhala — zobrazen jen titulek.'))
+        return { status:'error', error:'AI analýza selhala: '+e.message, news:analyzed.sort((a,b)=>b.score-a.score), conns:[], desk:null };
+    }
+  }
+  analyzed.sort((a,b)=> b.score-a.score || new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
+  mergeHistory(analyzed);
+  let conns=[], desk=null;
+  try{ conns = await generateConnections(analyzed, settings); }catch(e){ conns=[]; }
+  try{ desk  = await generateDesk(analyzed, settings); }catch(e){ desk=null; }
+  return { status:'live', news:analyzed, conns:conns.length?conns:buildConnectionsFromNews(analyzed), desk:desk||buildDeskFromNews(analyzed) };
+}
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  tab:'feed',
+  settings: LS.get('settings',{apiKey:'',finnhubKey:'',rssFeeds:'',backendUrl:'',model:'openai/gpt-4o-mini',interval:5,maxItems:14,sources:{}}),
+  news: MOCK_NEWS.slice().sort((a,b)=>b.score-a.score),
+  conns: MOCK_CONNECTIONS,
+  desk: MOCK_DESK,
+  status:'mock',
+  loading:false,
+  filter:{q:'',cat:'',inst:'',min:0,today:false},
+  repTab:'asia',
+  histSel:null,
+  heat:(function(){ const h=heatFromHistory(getHistory()); return Object.keys(h).some(k=>h[k]!==0)?h:{USD:5,EUR:-4,GBP:-1,JPY:3,AUD:-3,CAD:-2,CHF:1,NZD:-2}; })()
+};
+let refreshTimer=null;
+
+/* ============================================================
+   RENDER (HTML strings)
+   ============================================================ */
+const TABS=[['feed','📰','Feed'],['conn','🔗','Souvislosti'],['hist','📊','Historie'],['rep','📑','Reporty'],['set','⚙️','Nastavení']];
+const scoreCls=s=> s>=7?'hi':s>=5?'md':'lo';
+const scoreCol=s=> s>=7?'var(--red)':s>=5?'var(--amber)':'var(--txt-dim)';
+
+function tickerStatus(news){
+  const sc={}; INSTRUMENTS.forEach(x=>sc[x]=0);
+  (news||[]).filter(n=>isTodayIso(n.publishedAt)&&Number(n.score||0)>=5).forEach(n=>{
+    (n.affects||[]).forEach(a=>{ const w=Number(n.score||1); if(sc[a[0]]!==undefined) sc[a[0]]+= a[1]==='pos'?w:a[1]==='neg'?-w:0; });
+  });
+  const pair=(x,y)=>(sc[x]||0)-(sc[y]||0);
+  const raw={EURUSD:pair('EUR','USD'),GBPUSD:pair('GBP','USD'),USDJPY:pair('USD','JPY'),AUDUSD:pair('AUD','USD'),US100:sc.US100,US500:sc.US500,US30:sc.US30,Gold:sc.Gold,Silver:sc.Silver,Oil:sc.Oil,BTC:sc.BTC};
+  const o={}; Object.keys(raw).forEach(k=>{ const v=raw[k]; o[k]= v>1?'pos':v<-1?'neg':''; }); return o;
+}
+function tickerHTML(){
+  const st=tickerStatus(state.news), row=TICKER_ITEMS.concat(TICKER_ITEMS);
+  return '<div class="ticker-track">'+row.map(s=>'<span class="tk"><b>'+esc(s)+'</b><span class="news '+(st[s]||'')+'">NEWS</span></span>').join('')+'</div>';
+}
+function pillHTML(){
+  const s = state.loading?'loading':state.status;
+  const cls={live:'live',headlines:'live',mock:'mock',error:'error',loading:'loading'}[s]||'mock';
+  const m={live:'AI živě',headlines:'Živé titulky',mock:'Ukázka (mock)',error:'Chyba zdroje',loading:'Načítám…'};
+  return '<span class="pill '+cls+'"><span class="blip"></span>'+(m[s]||'Ukázka')+'</span>';
+}
+
+function hostFromUrl(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
+function faviconUrl(u){ const h=hostFromUrl(u); return h? 'https://www.google.com/s2/favicons?domain='+h+'&sz=64' : ''; }
+function sourceRowHTML(n){
+  if(n.url){
+    const host=hostFromUrl(n.url)||n.source, fav=faviconUrl(n.url);
+    return '<div class="source-row">'+
+      (fav?'<img class="fav" src="'+esc(fav)+'" alt="" onerror="this.style.display=\'none\'">':'')+
+      '<span class="src-meta"><b>'+esc(n.source)+'</b> · '+esc(host)+'</span>'+
+      '<a class="verify" href="'+esc(n.url)+'" target="_blank" rel="noopener" title="Otevřít původní článek">Ověřit u zdroje ↗</a></div>';
+  }
+  // mock / bez URL → odkaz na vyhledání původní zprávy (poctivě označeno)
+  const q='https://www.google.com/search?q='+encodeURIComponent(n.headline);
+  return '<div class="source-row">'+
+    '<span class="src-meta no"><b>'+esc(n.source)+'</b> · ukázková zpráva (bez živého zdroje)</span>'+
+    '<a class="verify search" href="'+esc(q)+'" target="_blank" rel="noopener" title="Vyhledat zprávu na webu">Vyhledat zdroj ↗</a></div>';
+}
+function cardHTML(n){
+  const aff=(n.affects||[]).map(a=>'<span class="chip '+(a[1]||'')+'">'+esc(a[0])+(a[1]==='pos'?' ↑':a[1]==='neg'?' ↓':'')+'</span>').join('');
+  const head = n.url? '<a href="'+esc(n.url)+'" target="_blank" rel="noopener">'+esc(n.headline)+'</a>' : esc(n.headline);
+  const sc=n.score||0;
+  return '<div class="card s'+sc+'">'+
+    '<div class="card-top"><span class="badge '+(n.cb?'cb':'cat')+'">'+esc(n.cat)+'</span>'+
+    '<div class="date-row"><span class="date-badge">'+formatDateTime(n.publishedAt)+'</span><span class="age-badge '+(isOld(n.publishedAt)?'old':'')+'">'+ageText(n.publishedAt)+'</span></div>'+
+    '<div class="gauge '+scoreCls(sc)+'" title="důležitost '+sc+'/10"><span>'+sc+'</span><small>imp</small></div></div>'+
+    '<div class="headline">'+head+'</div>'+
+    sourceRowHTML(n)+
+    '<div class="ai-block"><div class="ai-label"><span>✦</span> AI komentář</div><div class="ai-text">'+esc(n.ai)+'</div>'+
+    (n.story?'<div class="storyline"><b>Zařazení do příběhu:</b> '+esc(n.story)+'</div>':'')+'</div>'+
+    '<div class="card-bottom"><div class="chips">'+aff+'</div></div></div>';
+}
+function deskHTML(d){
+  if(!d) return '';
+  return '<div class="editorial"><div class="ed-top"><div class="ed-kicker">✦ AI šéfredaktor</div><div class="ed-stamp">aktualizováno '+formatDateTime(d.updatedAt)+' · '+ageText(d.updatedAt)+'</div></div>'+
+    '<div class="ed-title">'+esc(d.title)+'</div><div class="ed-summary">'+esc(d.summary)+'</div>'+
+    ((d.points&&d.points.length)?'<div class="ed-grid">'+d.points.map(p=>'<div class="ed-mini"><b>'+esc(p[0])+'</b><span>'+esc(p[1])+'</span></div>').join('')+'</div>':'')+
+    ((d.sources&&d.sources.length)?'<div class="ed-sources"><span class="ed-srclabel">Na základě těchto zpráv (ověř si):</span>'+d.sources.map(x=> x.url? '<a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.source)+': '+esc(x.headline)+' ↗</a>' : '<span>'+esc(x.headline)+'</span>').join('')+'</div>':'')+
+    '</div>';
+}
+function skeletonHTML(){ const one='<div class="sk"><div class="ln" style="width:40%"></div><div class="ln" style="width:90%;height:14px"></div><div class="ln" style="width:75%"></div><div class="ln" style="width:55%"></div></div>'; return one+one+one; }
+
+function filterList(){
+  const f=state.filter;
+  return state.news.filter(n=>{
+    if(f.q && (n.headline||'').toLowerCase().indexOf(f.q.toLowerCase())<0) return false;
+    if(f.cat && n.cat!==f.cat) return false;
+    if(f.min && (n.score||0)<f.min) return false;
+    if(f.inst && !(n.affects||[]).some(a=>a[0]===f.inst)) return false;
+    if(f.today && !isTodayIso(n.publishedAt)) return false;
+    return true;
+  });
+}
+function feedListHTML(){
+  if(state.loading) return skeletonHTML();
+  const list=filterList();
+  if(!list.length) return '<div class="empty"><div class="ic">📡</div>'+(state.news.length?'Žádná zpráva neodpovídá filtru.':'Žádné zprávy. Zapni zdroj v Nastavení.')+'</div>';
+  return list.map(cardHTML).join('');
+}
+function toolbarHTML(){
+  const f=state.filter;
+  const opt=(arr,sel)=>arr.map(c=>'<option value="'+esc(c)+'"'+(c===sel?' selected':'')+'>'+esc(c)+'</option>').join('');
+  return '<div class="toolbar">'+
+    '<input type="search" id="f-q" placeholder="Hledat v titulcích…" value="'+esc(f.q)+'">'+
+    '<select id="f-cat"><option value="">Všechny kategorie</option>'+opt(CATEGORIES,f.cat)+'</select>'+
+    '<select id="f-inst"><option value="">Všechny instrumenty</option>'+opt(INSTRUMENTS,f.inst)+'</select>'+
+    '<select id="f-min"><option value="0"'+(f.min===0?' selected':'')+'>Důležitost 0+</option><option value="5"'+(f.min===5?' selected':'')+'>5+</option><option value="7"'+(f.min===7?' selected':'')+'>7+ (jen klíčové)</option></select>'+
+    '<button class="fchip'+(f.today?' on':'')+'" id="f-today">Jen dnešní</button></div>';
+}
+function railHTML(){
+  const conns=state.conns.slice(0,2).map(c=>'<div class="conn"><div class="tag">'+esc(c.tag)+'</div><p>'+esc(c.text)+' '+(c.pairs||[]).map(p=>'<span class="pair">'+esc(p)+'</span>').join(' ')+'</p></div>').join('');
+  const heat=Object.keys(state.heat).map(k=>{ const v=state.heat[k]; return '<div class="cell" title="'+esc(k+': '+(v>0?'+':'')+v)+'"><span class="sym">'+esc(k)+'</span><span class="sc" style="color:'+(v>0?'var(--green)':v<0?'var(--red)':'var(--txt-dim)')+'">'+(v>0?'+':'')+v+'</span></div>'; }).join('');
+  return '<aside class="rail"><h3><span class="dotc"></span>AI Souvislosti</h3>'+conns+
+    '<h3 style="margin-top:24px"><span class="dotc" style="background:var(--amber)"></span>Měnová heat-mapa</h3>'+
+    '<div class="heat">'+heat+'</div>'+
+    '<p style="font-size:11px;color:var(--txt-faint);line-height:1.5;margin-top:4px">Čisté skóre mediálního obrazu měny z uložené historie ('+HISTORY_DAYS+' dní).</p></aside>';
+}
+function feedHTML(){
+  const meta = state.loading? '<span class="spin"></span> načítám…' : (filterList().length+' z '+state.news.length+' zpráv · řazeno dle důležitosti');
+  return '<div class="col"><div class="sec-head"><h2><span class="bar"></span>Živý feed</h2><span class="meta">'+meta+'</span></div>'+
+    deskHTML(state.desk)+toolbarHTML()+'<div id="feed-list">'+feedListHTML()+'</div></div>'+railHTML();
+}
+function connHTML(){
+  const body = state.conns.length? state.conns.map(c=>'<div class="conn" style="max-width:760px"><div class="tag">'+esc(c.tag)+'</div><p style="font-size:14px">'+esc(c.text)+' '+(c.pairs||[]).map(p=>'<span class="pair">'+esc(p)+'</span>').join(' ')+'</p></div>').join('') : '<div class="empty"><div class="ic">🔗</div>Zatím žádné souvislosti. Obnov zprávy s připojenou AI.</div>';
+  return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>AI Souvislosti</h2><span class="meta">interpretace více zpráv najednou — hlavní hodnota aplikace</span></div>'+
+    '<div class="notice">Toto nejsou jednotlivé zprávy. AI zde spojuje souvislosti napříč více reporty a hledá vyprávění, které právě hýbe trhem.</div>'+body+'</div>';
+}
+function histHTML(){
+  const history=getHistory(), stats=mediaImage(history);
+  const list=['USD','EUR','GBP','JPY','AUD','CAD','CHF','Gold','Oil'];
+  const grid=list.map(c=>{ const s=stats[c]||{pos:0,neg:0}, tot=(s.pos+s.neg)||1, net=s.pos-s.neg;
+    return '<button class="cur-btn'+(state.histSel===c?' on':'')+'" data-hist="'+esc(c)+'"><div class="sym">'+esc(c)+'</div>'+
+      '<div class="bias" style="color:'+(net>0?'var(--green)':net<0?'var(--red)':'var(--txt-dim)')+'">'+(net>0?'▲ pozitivní':net<0?'▼ negativní':'– neutrální')+' ('+(net>0?'+':'')+net+')</div>'+
+      '<div class="net"><span class="g" style="width:'+(s.pos/tot*100)+'%"></span><span class="r" style="width:'+(s.neg/tot*100)+'%"></span></div></button>';
+  }).join('');
+  let detail='';
+  if(state.histSel){ const s=stats[state.histSel]||{pos:0,neg:0}, net=s.pos-s.neg;
+    detail='<div class="detail"><div class="detail-head"><span class="big">'+esc(state.histSel)+'</span><div><div style="font-size:13px;color:var(--txt-dim)">Mediální obraz · '+HISTORY_DAYS+' dní</div>'+
+      '<div style="font-size:18px;font-weight:900;color:'+(net>0?'var(--green)':net<0?'var(--red)':'var(--txt-dim)')+'">'+(net>0?'Celkově pozitivní':net<0?'Celkově negativní':'Neutrální')+'</div></div></div>'+
+      '<div class="stat-row"><div class="stat"><div class="n" style="color:var(--green)">'+s.pos+'</div><div class="l">pozitivních zmínek</div></div>'+
+      '<div class="stat"><div class="n" style="color:var(--red)">'+s.neg+'</div><div class="l">negativních zmínek</div></div>'+
+      '<div class="stat"><div class="n" style="color:'+(net>0?'var(--green)':'var(--red)')+'">'+(net>0?'+':'')+net+'</div><div class="l">čisté skóre</div></div></div>'+
+      '<p style="font-size:13px;line-height:1.7;color:var(--txt-dim)"><b style="color:var(--amber)">Souhrn: </b>U '+esc(state.histSel)+' je za posledních '+HISTORY_DAYS+' dní '+s.pos+' pozitivních a '+s.neg+' negativních zmínek. Celkový mediální obraz je '+(net>0?'pozitivní':net<0?'negativní':'smíšený')+' (čisté skóre '+(net>0?'+':'')+net+').</p></div>';
+  } else { detail='<div class="empty"><div class="ic">📊</div>Vyber instrument pro detail mediálního obrazu.</div>'; }
+  return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>Historie &amp; mediální obraz</h2><span class="meta">'+history.length+' uložených zpráv · '+HISTORY_DAYS+' dní · klikni na instrument</span></div>'+
+    (history.length?'':'<div class="notice">Historie se plní automaticky z načtených zpráv. Pozitivní/negativní mediální obraz se počítá jen u zpráv s AI analýzou (OpenRouter klíč) — bez klíče se ukládají titulky, ale bez směru dopadu. Zatím prázdné: zkus „Obnovit zprávy".</div>')+
+    '<div class="cur-grid">'+grid+'</div>'+detail+'</div>';
+}
+const SESSIONS=[['asia','🌅','Asijská / ranní',0,8],['europe','🇪🇺','Evropská',8,13],['us','🇺🇸','Americká',13,18],['evening','🌙','Večerní',18,24]];
+function repHTML(){
+  const cur=SESSIONS.find(x=>x[0]===state.repTab)||SESSIONS[0];
+  const today=state.news.filter(n=>isTodayIso(n.publishedAt));
+  const inRange=today.filter(n=>{ const h=new Date(n.publishedAt).getHours(); return h>=cur[3]&&h<cur[4]; }).sort((a,b)=> new Date(a.publishedAt||0)-new Date(b.publishedAt||0));
+  const tabs=SESSIONS.map(sx=>'<button data-rep="'+sx[0]+'" class="'+(state.repTab===sx[0]?'on':'')+'">'+sx[1]+' '+sx[2]+' ('+today.filter(n=>{const h=new Date(n.publishedAt).getHours();return h>=sx[3]&&h<sx[4];}).length+')</button>').join('');
+  let body;
+  if(!today.length) body='<div class="notice">Reporty se sestavují z reálných dnešních zpráv. Zatím nejsou načtené žádné dnešní zprávy — zkus „Obnovit zprávy" v Nastavení.</div>';
+  else if(!inRange.length) body='<div class="empty"><div class="ic">🕒</div>Pro tuto seanci ('+cur[3]+':00–'+cur[4]+':00) zatím nejsou dnešní zprávy.</div>';
+  else body='<div class="rep-list">'+inRange.map(n=>{ const t=new Date(n.publishedAt).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}); const h=n.url?'<a href="'+esc(n.url)+'" target="_blank" rel="noopener">'+esc(n.headline)+' ↗</a>':esc(n.headline); return '<div class="rep-item"><span class="t">'+t+'</span><span class="h">'+h+'</span></div>'; }).join('')+'</div>';
+  return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>Reporty po seancích</h2><span class="meta">sestaveno z reálných dnešních zpráv · '+new Date().toLocaleDateString('cs-CZ')+'</span></div>'+
+    '<div class="rep-tabs">'+tabs+'</div>'+
+    '<div class="report"><h3>'+esc(cur[2])+' ('+cur[3]+':00–'+cur[4]+':00)</h3><div class="stamp">'+inRange.length+' zpráv v této seanci · časy v lokálním pásmu · každý titulek s odkazem na originál</div>'+body+'</div></div>';
+}
+function setHTML(){
+  const s=state.settings;
+  const sources=SOURCES.map(src=>{ const on=s.sources&&s.sources[src]===false?false:true; return '<div class="toggle'+(on?' on':'')+'" data-src="'+esc(src)+'"><div class="sw"><i></i></div>'+esc(src)+'</div>'; }).join('');
+  const modelOpt=(v,l)=>'<option value="'+v+'"'+((s.model||'openai/gpt-4o-mini')===v?' selected':'')+'>'+l+'</option>';
+  const intOpt=(v,l)=>'<option value="'+v+'"'+((s.interval||5)===v?' selected':'')+'>'+l+'</option>';
+  const maxOpt=(v,l)=>'<option value="'+v+'"'+((s.maxItems||14)===v?' selected':'')+'>'+l+'</option>';
+  return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>Nastavení</h2></div><div class="set">'+
+    '<div class="notice">Hned po otevření se načítají <b>reálné aktuální zprávy</b> z výchozích RSS zdrojů (s odkazem a datem). OpenRouter klíč přidá navrch AI komentář, skóre a souvislosti. Ukázková (mock) data se zobrazí jen když jsi offline.</div>'+
+    '<div class="field"><label>Backend URL (volitelné — nech PRÁZDNÉ)</label><input type="text" id="set-backendUrl" value="'+esc(s.backendUrl||'')+'" placeholder="nech prázdné"><div class="hint">Vyplň POUZE pokud sis spustil vlastní server (server.js) — viz README-backend.md. Většina lidí tu nic nevyplňuje a nechá prázdné.</div></div>'+
+    '<div class="field"><label>OpenRouter API klíč '+(s.apiKey?'<span style="color:var(--green)">● vyplněn → AI zapnutá</span>':'<span style="color:var(--txt-faint)">● prázdný → AI vypnutá (běží jen živé titulky)</span>')+'</label><input type="password" id="set-apiKey" value="'+esc(s.apiKey||'')+'" placeholder="sk-or-v1-… (nepovinné)"><div class="hint">Bez klíče vidíš reálné dnešní titulky s odkazy. Klíč přidá AI komentář, skóre, souvislosti a šéfredaktora. Vytvoříš na openrouter.ai/keys.</div></div>'+
+    '<div class="field"><label>AI model (NENÍ to klíč — jen volba „mozku")</label><select id="set-model">'+modelOpt('openai/gpt-4o-mini','openai/gpt-4o-mini (levný, rychlý)')+modelOpt('openai/gpt-4o','openai/gpt-4o')+modelOpt('anthropic/claude-3.5-sonnet','anthropic/claude-3.5-sonnet')+modelOpt('google/gemini-1.5-flash','google/gemini-1.5-flash')+modelOpt('meta-llama/llama-3.1-70b-instruct','llama-3.1-70b')+'</select><div class="hint">Tohle určuje, KTERÝ AI model zpracuje zprávy. Funguje jen když je vyplněný klíč výše. Výchozí gpt-4o-mini je levný a stačí. (To, co se ti tu ukazovalo „samo", je právě tahle výchozí volba — ne klíč.)</div><input type="text" id="set-modelCustom" style="margin-top:7px" value="" placeholder="vlastní model ID (volitelné)"></div>'+
+    '<div class="field"><label>Finnhub API klíč (zdroj zpráv)</label><input type="password" id="set-finnhubKey" value="'+esc(s.finnhubKey||'')+'" placeholder="volitelné — finnhub.io"><div class="hint">Načítá kategorie general + forex.</div></div>'+
+    '<div class="field"><label>RSS feedy (zdroj zpráv)</label><textarea id="set-rssFeeds" placeholder="jeden URL na řádek (necháš-li prázdné, použijí se výchozí: ForexLive, FXStreet, Investing, MarketWatch)">'+esc(s.rssFeeds||'')+'</textarea><div class="hint">Když necháš prázdné, načítají se výchozí finanční feedy automaticky. Vlastní URL (jeden na řádek) je nahradí. Načítá se přes rss2json (CORS), max 4 feedy.</div></div>'+
+    '<div class="field"><label>Max. zpráv k analýze / refresh</label><select id="set-maxItems">'+maxOpt(8,'8 (nejlevnější)')+maxOpt(14,'14 (doporučeno)')+maxOpt(20,'20')+'</select><div class="hint">Analyzuje se dávkově v jednom AI volání. Známé titulky se berou z cache.</div></div>'+
+    '<div class="field"><label>Sledované zdroje (vizuální filtr)</label><div class="src-grid">'+sources+'</div></div>'+
+    '<div class="field"><label>Interval obnovení</label><select id="set-interval">'+intOpt(1,'každou 1 minutu')+intOpt(5,'každých 5 minut')+intOpt(15,'každých 15 minut')+intOpt(0,'jen ručně')+'</select></div>'+
+    '<div class="btn-row"><button class="btn" id="set-save">Uložit nastavení</button><button class="btn ghost" id="set-refresh">↻ Obnovit zprávy teď</button><button class="btn ghost" id="set-clear">🗑 Vymazat historii &amp; cache</button><span class="saved" id="set-saved" style="display:none">✓ uloženo</span></div>'+
+    '</div></div>';
+}
+
+function viewHTML(){
+  switch(state.tab){
+    case 'feed': return feedHTML();
+    case 'conn': return connHTML();
+    case 'hist': return histHTML();
+    case 'rep':  return repHTML();
+    case 'set':  return setHTML();
+    default: return feedHTML();
+  }
+}
+
+/* ============================================================
+   MOUNT + EVENTS
+   ============================================================ */
+function mount(){
+  document.getElementById('app').innerHTML =
+    '<div class="ticker" id="ticker" title="NEWS = existuje dnes důležitá pozitivní/negativní zpráva pro instrument. Není to live cena ani obchodní signál.">'+tickerHTML()+'</div>'+
+    '<header class="app"><div class="brand"><div class="logo"><span class="ring"></span><span class="dot"></span></div>'+
+      '<div><h1>AI Market <span>Radar</span></h1><div class="sub">Automatické finanční noviny pro tradery</div></div></div>'+
+      '<div class="status"><div class="clock" id="clock"></div><span id="pillwrap">'+pillHTML()+'</span></div></header>'+
+    '<nav class="tabs" id="nav">'+TABS.map(t=>'<button data-tab="'+t[0]+'" class="'+(state.tab===t[0]?'on':'')+'"><span>'+t[1]+'</span> '+t[2]+'</button>').join('')+'</nav>'+
+    '<main id="main">'+viewHTML()+'</main>'+
+    '<footer><span>AI Market Radar · v4</span><span class="disc">Informační a vzdělávací nástroj. Negeneruje obchodní signály, vstupy ani doporučení. Každý si dělá vlastní závěr.</span></footer>';
+  bindView();
+  startClock();
+}
+function repaintMain(){ $('#main').innerHTML=viewHTML(); bindView(); $$('#nav button').forEach(b=>b.classList.toggle('on',b.getAttribute('data-tab')===state.tab)); }
+function repaintHeader(){ const p=$('#pillwrap'); if(p) p.innerHTML=pillHTML(); const t=$('#ticker'); if(t) t.innerHTML=tickerHTML(); }
+function repaintFeedList(){ const el=$('#feed-list'); if(el) el.innerHTML=feedListHTML(); const meta=$('#main .sec-head .meta'); if(meta&&!state.loading) meta.textContent=filterList().length+' z '+state.news.length+' zpráv · řazeno dle důležitosti'; }
+
+function startClock(){
+  const upd=()=>{ const c=$('#clock'); if(c) c.textContent=new Date().toLocaleString('cs-CZ',{weekday:'short',hour:'2-digit',minute:'2-digit',second:'2-digit'}); };
+  upd(); setInterval(upd,1000);
+}
+
+function readSettingsForm(){
+  const g=id=>{ const el=$('#'+id); return el?el.value:''; };
+  const custom=g('set-modelCustom').trim();
+  const ns=Object.assign({},state.settings,{
+    backendUrl:g('set-backendUrl').trim(),
+    apiKey:g('set-apiKey').trim(),
+    model: custom || g('set-model'),
+    finnhubKey:g('set-finnhubKey').trim(),
+    rssFeeds:g('set-rssFeeds'),
+    maxItems:Number(g('set-maxItems'))||14,
+    interval:Number(g('set-interval'))
+  });
+  return ns;
+}
+
+function bindView(){
+  // nav
+  $$('#nav button').forEach(b=> b.onclick=()=>{ state.tab=b.getAttribute('data-tab'); repaintMain(); });
+
+  if(state.tab==='feed'){
+    const q=$('#f-q'); if(q) q.oninput=()=>{ state.filter.q=q.value; repaintFeedList(); };
+    const cat=$('#f-cat'); if(cat) cat.onchange=()=>{ state.filter.cat=cat.value; repaintFeedList(); };
+    const inst=$('#f-inst'); if(inst) inst.onchange=()=>{ state.filter.inst=inst.value; repaintFeedList(); };
+    const min=$('#f-min'); if(min) min.onchange=()=>{ state.filter.min=Number(min.value); repaintFeedList(); };
+    const today=$('#f-today'); if(today) today.onclick=()=>{ state.filter.today=!state.filter.today; today.classList.toggle('on',state.filter.today); repaintFeedList(); };
+  }
+  if(state.tab==='conn'){}
+  if(state.tab==='hist'){ $$('[data-hist]').forEach(b=> b.onclick=()=>{ const c=b.getAttribute('data-hist'); state.histSel = state.histSel===c?null:c; repaintMain(); }); }
+  if(state.tab==='rep'){ $$('[data-rep]').forEach(b=> b.onclick=()=>{ state.repTab=b.getAttribute('data-rep'); repaintMain(); }); }
+  if(state.tab==='set'){
+    $$('[data-src]').forEach(t=> t.onclick=()=>{ const name=t.getAttribute('data-src'); state.settings.sources=state.settings.sources||{}; state.settings.sources[name]=!(state.settings.sources[name]!==false); t.classList.toggle('on'); });
+    const save=$('#set-save'); if(save) save.onclick=()=>{ state.settings=readSettingsForm(); LS.set('settings',state.settings); const sv=$('#set-saved'); if(sv) sv.style.display='inline'; setupAutoRefresh(); refresh(); };
+    const rf=$('#set-refresh'); if(rf) rf.onclick=()=>{ state.settings=readSettingsForm(); LS.set('settings',state.settings); refresh(); };
+    const cl=$('#set-clear'); if(cl) cl.onclick=()=>{ LS.set('history',[]); LS.set('analysis_cache',{}); state.heat={USD:0,EUR:0,GBP:0,JPY:0,AUD:0,CAD:0,CHF:0,NZD:0}; alert('Historie a cache vymazány.'); };
+  }
+}
+
+/* ============================================================
+   REFRESH + auto interval
+   ============================================================ */
+async function refresh(){
+  state.loading=true; repaintHeader(); if(state.tab==='feed') repaintFeedList();
+  try{
+    const r=await runRefresh(state.settings);
+    state.news=r.news||[]; state.conns=r.conns||[]; if(r.desk) state.desk=r.desk; state.status=r.status||'mock';
+    const h=heatFromHistory(getHistory()); if(Object.keys(h).some(k=>h[k]!==0)) state.heat=h;
+    if(r.error) console.warn('[AI Market Radar]', r.error);
+  }catch(e){ state.status='error'; console.error(e); }
+  state.loading=false;
+  repaintHeader();
+  // nepřekresluj formulář Nastavení (zachová rozepsaný text); jinak překresli aktuální záložku
+  if(state.tab!=='set') repaintMain();
+}
+function setupAutoRefresh(){
+  if(refreshTimer){ clearInterval(refreshTimer); refreshTimer=null; }
+  const iv=Number(state.settings.interval);
+  if(iv>0) refreshTimer=setInterval(refresh, iv*60000);
+}
+
+/* ---------- boot ---------- */
+mount();
+setupAutoRefresh();
+refresh();
+
+})();
+</script>
+</body>
+</html>
