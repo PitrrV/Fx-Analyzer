@@ -98,7 +98,8 @@
   .badge.src{background:rgba(91,157,255,.12);color:var(--blue);border:1px solid rgba(91,157,255,.25)}
   .badge.cat{background:rgba(54,197,214,.1);color:var(--cyan);border:1px solid rgba(54,197,214,.22)}
   .badge.cb{background:rgba(255,176,0,.12);color:var(--amber);border:1px solid rgba(255,176,0,.28)}
-  .cred{font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:5px;font-weight:800;display:inline-flex;align-items:center;gap:5px}
+  .cred{font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:5px;font-weight:800;display:inline-flex;align-items:center;gap:6px}
+  .cred .dot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 7px currentColor;flex-shrink:0}
   .cred.conf{background:rgba(40,209,124,.12);color:var(--green);border:1px solid rgba(40,209,124,.32)}
   .cred.single{background:rgba(255,210,63,.10);color:var(--yellow);border:1px solid rgba(255,210,63,.30)}
   .cred.rumor{background:rgba(255,90,82,.12);color:var(--red);border:1px solid rgba(255,90,82,.32)}
@@ -364,17 +365,17 @@ function dedupe(items){
 
 /* ---------- source tier + credibility (Tier / Ověřeno / Rumor) ---------- */
 const SOURCE_TIERS = {
-  'reuters':1,'bloomberg':1,'associated press':1,' ap ':1,'wall street journal':1,'wsj':1,'financial times':1,'ft.com':1,
-  'federal reserve':1,'european central bank':1,'ecb':1,'bank of england':1,
-  'cnbc':2,'marketwatch':2,'investing':2,'fxstreet':2,'forexlive':2,'forex factory':2,'forexfactory':2,'yahoo':2,'business insider':2,'barron':2,'the economist':2,'guardian':2,
-  'twitter':3,'x (twitter)':3,'reddit':3,'seeking alpha':3,'zerohedge':3,'telegram':3
+  'reuters':1,'bloomberg':1,'associated press':1,'apnews':1,' ap ':1,'wall street journal':1,'wsj':1,'financial times':1,'ft.com':1,
+  'federal reserve':1,'european central bank':1,'ecb':1,'bank of england':1,'cnbc':1,
+  'marketwatch':2,'investing':2,'fxstreet':2,'forexlive':2,'forex factory':2,'forexfactory':2,'yahoo':2,'business insider':2,'barron':2,'the economist':2,'guardian':2,'dailyfx':2,'kitco':2,'tradingview':2,
+  'twitter':3,'x (twitter)':3,'reddit':3,'seeking alpha':3,'seekingalpha':3,'zerohedge':3,'telegram':3,'blog':3
 };
 function sourceTier(name,url){
-  const s=' '+(name||'').toLowerCase()+' ';
-  for(const k in SOURCE_TIERS){ if(s.indexOf(k.trim())>=0) return SOURCE_TIERS[k]; }
+  let t=null; const s=' '+(name||'').toLowerCase()+' ';
+  for(const k in SOURCE_TIERS){ if(s.indexOf(k.trim())>=0) t=Math.min(t==null?9:t,SOURCE_TIERS[k]); }
   const h=hostFromUrl(url);
-  for(const k in SOURCE_TIERS){ if(h && h.indexOf(k.trim())>=0) return SOURCE_TIERS[k]; }
-  return 2;
+  if(h) for(const k in SOURCE_TIERS){ if(h.indexOf(k.trim())>=0) t=Math.min(t==null?9:t,SOURCE_TIERS[k]); }
+  return t==null?2:t;
 }
 const RUMOR_RE = /\b(reportedly|sources say|according to sources|people familiar|rumou?r\w*|speculat\w*|unconfirmed|allegedly|mulls?|weighs?|in talks|could|denies|denied|údajně|podle zdroj\w*|spekul\w*|nepotvrzen\w*|zvažuj\w*|jedná o|popír\w*)\b/i;
 function credibility(n){
@@ -390,6 +391,25 @@ function credibility(n){
 const STOP = new Set('the a an of to in on for and or is are be as at by with from that this it its has have had will would after over into amid said says say report reports reported update updates live new news today after near amid sees set'.split(' '));
 function clTokens(h){ return Array.from(new Set(normHeadline(h).split(' ').filter(w=>w.length>=4 && !STOP.has(w)))); }
 function jaccard(a,b){ if(!a.length||!b.length) return 0; const B=new Set(b); let inter=0; for(const x of a){ if(B.has(x)) inter++; } return inter/(a.length+b.length-inter); }
+// kanonické entity (měny, ČB, aktiva, makro) — slouží k poznání, že jde o TÉŽE téma
+const ENTITY_RULES = [
+  ['USD',/\b(usd|dollar|dolar|greenback)\b/],['EUR',/\b(eur|euro|eurozone|eurozón\w*)\b/],['GBP',/\b(gbp|pound|sterling|cable|libr\w*)\b/],
+  ['JPY',/\b(jpy|yen|jen)\b/],['AUD',/\b(aud|aussie)\b/],['CAD',/\b(cad|loonie|canad\w*)\b/],['CHF',/\b(chf|franc|frank|swiss\w*|švýc\w*)\b/],['NZD',/\b(nzd|kiwi)\b/],
+  ['GOLD',/\b(gold|xau|bullion|zlat\w*)\b/],['SILVER',/\b(silver|xag|stříbr\w*)\b/],['OIL',/\b(oil|crude|wti|brent|ropa|ropy)\b/],['BTC',/\b(bitcoin|btc|crypto|krypto)\b/],
+  ['FED',/\b(fed|fomc|powell|federal reserve)\b/],['ECB',/\b(ecb|lagarde)\b/],['BOJ',/\b(boj|ueda)\b/],['BOE',/\b(boe|bailey)\b/],
+  ['RATES',/\b(rate|rates|hike|hikes|cut|cuts|sazb\w*|úrok\w*)\b/],['CPI',/\b(cpi|inflation|inflac\w*|pce)\b/],['JOBS',/\b(nfp|payroll\w*|jobs|jobless|unemploy\w*|nezaměstn\w*)\b/],
+  ['GDP',/\b(gdp|hdp|growth)\b/],['PMI',/\b(pmi)\b/],['NASDAQ',/\b(nasdaq|us100)\b/],['SP500',/\b(sp500|us500)\b/],['DOW',/\b(dow|us30)\b/],['TARIFF',/\b(tariff\w*|sanction\w*|clo|cla|sankc\w*)\b/]
+];
+function entities(h){
+  const s=' '+(h||'').toLowerCase().replace(/[^a-z0-9á-ž]+/gi,' ').replace(/\s+/g,' ').trim()+' ', out=new Set();
+  for(const r of ENTITY_RULES){ if(r[1].test(s)) out.add(r[0]); }
+  const FX=['usd','eur','gbp','jpy','aud','cad','chf','nzd']; // spojené páry typu „eurusd"
+  FX.forEach(a=>FX.forEach(b=>{ if(a!==b && s.indexOf(' '+a+b)>=0){ out.add(a.toUpperCase()); out.add(b.toUpperCase()); } }));
+  return out;
+}
+function sharedCount(a,b){ let n=0; a.forEach(x=>{ if(b.has(x)) n++; }); return n; }
+// slouč, když sdílí ≥2 entity a aspoň trochu se překrývají, NEBO mají silný textový překryv
+function clMerge(tkA,enA,tkB,enB){ const jac=jaccard(tkA,tkB); const sh=sharedCount(enA,enB); return (sh>=2 && jac>=0.18) || jac>=0.35; }
 function buildCluster(members){
   // representative = nejlepší tier, pak nejvyšší skóre, pak nejnovější
   const withTier=members.map(m=>Object.assign({_tier:sourceTier(m.source,m.url)},m));
@@ -406,10 +426,10 @@ function buildCluster(members){
 function clusterize(items){
   const clusters=[];
   for(const it of items){
-    const tk=clTokens(it.headline); let best=null,bestSim=0;
-    for(const c of clusters){ const sim=jaccard(tk,c._tk); if(sim>bestSim){ bestSim=sim; best=c; } }
-    if(best && bestSim>=0.45) best.members.push(it);
-    else clusters.push({_tk:tk,members:[it]});
+    const tk=clTokens(it.headline), en=entities(it.headline); let best=null,bestJac=-1;
+    for(const c of clusters){ if(clMerge(tk,en,c._tk,c._en)){ const j=jaccard(tk,c._tk); if(j>bestJac){ bestJac=j; best=c; } } }
+    if(best) best.members.push(it);
+    else clusters.push({_tk:tk,_en:en,members:[it]});
   }
   return clusters.map(c=>buildCluster(c.members));
 }
@@ -768,7 +788,7 @@ function cardHTML(n){
   const sc=n.score||0;
   const cr=credibility(n);
   const tier=n.bestTier||sourceTier(n.source,n.url);
-  const credBadge='<span class="cred '+cr.cls+'" title="Důvěryhodnost: '+esc(cr.label)+'"><span>'+cr.ico+'</span>'+esc(cr.label)+'</span>';
+  const credBadge='<span class="cred '+cr.cls+'" title="Důvěryhodnost: '+esc(cr.label)+'"><span class="dot"></span>'+esc(cr.label)+'</span>';
   const tierBadge='<span class="tier t'+tier+'" title="Úroveň zdroje (Tier 1 = Reuters/Bloomberg/ČB)">Tier '+tier+'</span>';
   const srcCount=(n.srcCount>1)?'<span class="srccount" title="Stejnou událost hlásí více zdrojů">🔗 '+n.srcCount+' zdrojů</span>':'';
   return '<div class="card s'+sc+'">'+
