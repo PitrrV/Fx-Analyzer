@@ -281,7 +281,9 @@ const DEFAULT_RSS = [
   'https://www.forexlive.com/feed/',
   'https://www.fxstreet.com/rss/news',
   'https://www.investing.com/rss/news.rss',
-  'http://feeds.marketwatch.com/marketwatch/topstories/'
+  'http://feeds.marketwatch.com/marketwatch/topstories/',
+  'https://www.aljazeera.com/xml/rss/all.xml',
+  'https://feeds.bbci.co.uk/news/world/rss.xml'
 ];
 
 const SCORE_RULES = [
@@ -610,7 +612,7 @@ async function fetchRSS(settings, force){
   const feeds=(force&&force.length)? force : (settings.rssFeeds||'').split('\n').map(s=>s.trim()).filter(Boolean);
   if(!feeds.length){ SRC_DIAG.rss={n:0,err:'no-feeds'}; return []; }
   const out=[];
-  for(const f of feeds.slice(0,4)){
+  for(const f of feeds.slice(0,6)){
     try{
       const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(f));
       if(r.ok){ const d=await r.json(); const sn=(d.feed&&d.feed.title)||'RSS';
@@ -943,7 +945,7 @@ function setHTML(){
     '<div class="field"><label>OpenRouter API klíč '+(s.apiKey?'<span style="color:var(--green)">● vyplněn → AI zapnutá</span>':'<span style="color:var(--txt-faint)">● prázdný → AI vypnutá (běží jen živé titulky)</span>')+'</label><input type="password" id="set-apiKey" value="'+esc(s.apiKey||'')+'" placeholder="sk-or-v1-… (nepovinné)"><div class="hint">Bez klíče vidíš reálné dnešní titulky s odkazy. Klíč přidá AI komentář, skóre, souvislosti a šéfredaktora. Vytvoříš na openrouter.ai/keys.</div></div>'+
     '<div class="field"><label>AI model (NENÍ to klíč — jen volba „mozku")</label><select id="set-model">'+modelOpt('openai/gpt-4o-mini','openai/gpt-4o-mini (levný, rychlý)')+modelOpt('openai/gpt-4o','openai/gpt-4o')+modelOpt('anthropic/claude-3.5-sonnet','anthropic/claude-3.5-sonnet')+modelOpt('google/gemini-1.5-flash','google/gemini-1.5-flash')+modelOpt('meta-llama/llama-3.1-70b-instruct','llama-3.1-70b')+'</select><div class="hint">Tohle určuje, KTERÝ AI model zpracuje zprávy. Funguje jen když je vyplněný klíč výše. Výchozí gpt-4o-mini je levný a stačí. (To, co se ti tu ukazovalo „samo", je právě tahle výchozí volba — ne klíč.)</div><input type="text" id="set-modelCustom" style="margin-top:7px" value="" placeholder="vlastní model ID (volitelné)"></div>'+
     '<div class="field"><label>Finnhub API klíč — hlavní zdroj zpráv '+(s.finnhubKey?'<span style="color:var(--green)">● vyplněn → Finnhub aktivní</span>':'<span style="color:var(--amber)">● doporučeno vyplnit</span>')+'</label><input type="password" id="set-finnhubKey" value="'+esc(s.finnhubKey||'')+'" placeholder="d1abcd… (zdarma na finnhub.io)"><div class="hint"><b>News endpoint je ZDARMA</b> (free tier, 60 volání/min) — narozdíl od ekonomického kalendáře, který je placený. Vrací <b>skutečná média</b> u každého článku (Reuters, Bloomberg…), takže funguje tiering i slučování („Ověřeno · N zdrojů"). <b>Můžeš použít stejný klíč jako v analyzeru.</b> Načítá kategorie general + forex + crypto.</div></div>'+
-    '<div class="field"><label>RSS feedy (zdroj zpráv)</label><textarea id="set-rssFeeds" placeholder="jeden URL na řádek (necháš-li prázdné, použijí se výchozí: ForexLive, FXStreet, Investing, MarketWatch)">'+esc(s.rssFeeds||'')+'</textarea><div class="hint">Když necháš prázdné, načítají se výchozí finanční feedy automaticky. Vlastní URL (jeden na řádek) je nahradí. Načítá se přes rss2json (CORS), max 4 feedy.</div></div>'+
+    '<div class="field"><label>RSS feedy (zdroj zpráv)</label><textarea id="set-rssFeeds" placeholder="jeden URL na řádek (necháš-li prázdné, použijí se výchozí: ForexLive, FXStreet, Investing, MarketWatch + světové: Al Jazeera, BBC World)">'+esc(s.rssFeeds||'')+'</textarea><div class="hint">Když necháš prázdné, načítají se výchozí feedy: 4 finanční + 2 světové (Al Jazeera, BBC World) pro geopolitiku/breaking. Vlastní URL (jeden na řádek) je nahradí. Načítá se přes rss2json (CORS), max 6 feedů.</div></div>'+
     '<div class="field"><label>Max. zpráv k analýze / refresh</label><select id="set-maxItems">'+maxOpt(8,'8 (nejlevnější)')+maxOpt(14,'14 (doporučeno)')+maxOpt(20,'20')+'</select><div class="hint">Analyzuje se dávkově v jednom AI volání. Známé titulky se berou z cache.</div></div>'+
     '<div class="field"><label>Sledované zdroje (vizuální filtr)</label><div class="src-grid">'+sources+'</div></div>'+
     '<div class="field"><label>Interval obnovení</label><select id="set-interval">'+intOpt(1,'každou 1 minutu')+intOpt(5,'každých 5 minut')+intOpt(15,'každých 15 minut')+intOpt(0,'jen ručně')+'</select></div>'+
