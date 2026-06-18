@@ -98,6 +98,19 @@
   .badge.src{background:rgba(91,157,255,.12);color:var(--blue);border:1px solid rgba(91,157,255,.25)}
   .badge.cat{background:rgba(54,197,214,.1);color:var(--cyan);border:1px solid rgba(54,197,214,.22)}
   .badge.cb{background:rgba(255,176,0,.12);color:var(--amber);border:1px solid rgba(255,176,0,.28)}
+  .cred{font-size:10px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:5px;font-weight:800;display:inline-flex;align-items:center;gap:5px}
+  .cred.conf{background:rgba(40,209,124,.12);color:var(--green);border:1px solid rgba(40,209,124,.32)}
+  .cred.single{background:rgba(255,210,63,.10);color:var(--yellow);border:1px solid rgba(255,210,63,.30)}
+  .cred.rumor{background:rgba(255,90,82,.12);color:var(--red);border:1px solid rgba(255,90,82,.32)}
+  .srccount{font-size:10px;font-weight:700;letter-spacing:.04em;padding:3px 8px;border-radius:5px;background:rgba(91,157,255,.10);color:var(--blue);border:1px solid rgba(91,157,255,.26);cursor:default}
+  .tier{font-size:9px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:4px;border:1px solid var(--line-2);color:var(--txt-faint)}
+  .tier.t1{color:var(--green);border-color:rgba(40,209,124,.4)} .tier.t2{color:var(--cyan);border-color:rgba(54,197,214,.35)} .tier.t3{color:var(--txt-faint)}
+  .cluster-srcs{margin-top:8px;display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--txt-dim)}
+  .cluster-srcs .first{color:var(--amber);font-weight:700}
+  .cluster-srcs a{color:var(--cyan)} .cluster-srcs a:hover{color:var(--amber)}
+  .squawk-btn{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:5px 11px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel);color:var(--txt-dim);font-weight:700}
+  .squawk-btn.on{color:#000;background:var(--amber);border-color:var(--amber);box-shadow:0 0 14px rgba(255,176,0,.3)}
+  .squawk-btn.on .blip{animation:pulse 1.2s infinite}
   .headline{font-size:15px;line-height:1.45;color:var(--txt);font-weight:500;margin-bottom:11px}
   .headline a{color:var(--txt)} .headline a:hover{color:var(--amber)}
   .ai-block{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 12px;margin-bottom:11px}
@@ -349,6 +362,78 @@ function dedupe(items){
   return out;
 }
 
+/* ---------- source tier + credibility (Tier / Ověřeno / Rumor) ---------- */
+const SOURCE_TIERS = {
+  'reuters':1,'bloomberg':1,'associated press':1,' ap ':1,'wall street journal':1,'wsj':1,'financial times':1,'ft.com':1,
+  'federal reserve':1,'european central bank':1,'ecb':1,'bank of england':1,
+  'cnbc':2,'marketwatch':2,'investing':2,'fxstreet':2,'forexlive':2,'forex factory':2,'forexfactory':2,'yahoo':2,'business insider':2,'barron':2,'the economist':2,'guardian':2,
+  'twitter':3,'x (twitter)':3,'reddit':3,'seeking alpha':3,'zerohedge':3,'telegram':3
+};
+function sourceTier(name,url){
+  const s=' '+(name||'').toLowerCase()+' ';
+  for(const k in SOURCE_TIERS){ if(s.indexOf(k.trim())>=0) return SOURCE_TIERS[k]; }
+  const h=hostFromUrl(url);
+  for(const k in SOURCE_TIERS){ if(h && h.indexOf(k.trim())>=0) return SOURCE_TIERS[k]; }
+  return 2;
+}
+const RUMOR_RE = /\b(reportedly|sources say|according to sources|people familiar|rumou?r\w*|speculat\w*|unconfirmed|allegedly|mulls?|weighs?|in talks|could|denies|denied|údajně|podle zdroj\w*|spekul\w*|nepotvrzen\w*|zvažuj\w*|jedná o|popír\w*)\b/i;
+function credibility(n){
+  const count=n.srcCount||1, tier=n.bestTier||sourceTier(n.source,n.url);
+  const rumor=RUMOR_RE.test(n.headline)||tier>=3;
+  if(rumor && count<2) return {label:'Nepotvrzeno',cls:'rumor',ico:'◌'};
+  if(count>=2 && tier<=2) return {label:'Ověřeno · '+count+' zdroje',cls:'conf',ico:'✓'};
+  if(tier===1) return {label:'Ověřeno',cls:'conf',ico:'✓'};
+  return {label:'Jeden zdroj',cls:'single',ico:'•'};
+}
+
+/* ---------- story clustering (1 příběh / N zdrojů) ---------- */
+const STOP = new Set('the a an of to in on for and or is are be as at by with from that this it its has have had will would after over into amid said says say report reports reported update updates live new news today after near amid sees set'.split(' '));
+function clTokens(h){ return Array.from(new Set(normHeadline(h).split(' ').filter(w=>w.length>=4 && !STOP.has(w)))); }
+function jaccard(a,b){ if(!a.length||!b.length) return 0; const B=new Set(b); let inter=0; for(const x of a){ if(B.has(x)) inter++; } return inter/(a.length+b.length-inter); }
+function buildCluster(members){
+  // representative = nejlepší tier, pak nejvyšší skóre, pak nejnovější
+  const withTier=members.map(m=>Object.assign({_tier:sourceTier(m.source,m.url)},m));
+  const rep=withTier.slice().sort((a,b)=> a._tier-b._tier || (b.score||0)-(a.score||0) || new Date(b.publishedAt||0)-new Date(a.publishedAt||0))[0];
+  // unikátní zdroje
+  const seen=new Set(), srcs=[];
+  withTier.forEach(m=>{ const key=(m.source||'').toLowerCase(); if(key&&!seen.has(key)){ seen.add(key); srcs.push({source:m.source,url:m.url,tier:m._tier,publishedAt:m.publishedAt}); } });
+  const first=srcs.slice().sort((a,b)=> new Date(a.publishedAt||0)-new Date(b.publishedAt||0))[0];
+  return Object.assign({},rep,{
+    srcCount:srcs.length, sources:srcs, bestTier:Math.min.apply(null,srcs.map(s=>s.tier)),
+    firstSource:first?first.source:rep.source, firstAt:first?first.publishedAt:rep.publishedAt
+  });
+}
+function clusterize(items){
+  const clusters=[];
+  for(const it of items){
+    const tk=clTokens(it.headline); let best=null,bestSim=0;
+    for(const c of clusters){ const sim=jaccard(tk,c._tk); if(sim>bestSim){ bestSim=sim; best=c; } }
+    if(best && bestSim>=0.45) best.members.push(it);
+    else clusters.push({_tk:tk,members:[it]});
+  }
+  return clusters.map(c=>buildCluster(c.members));
+}
+
+/* ---------- audio squawk (čtené breaking news) ---------- */
+function ttsSpeak(text){
+  try{
+    if(!('speechSynthesis' in window)) return;
+    const u=new SpeechSynthesisUtterance(text); u.lang='cs-CZ'; u.rate=1.02; u.pitch=1;
+    const vs=window.speechSynthesis.getVoices()||[]; const cz=vs.find(v=>/cs|cz/i.test(v.lang));
+    if(cz) u.voice=cz;
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+function runSquawk(){
+  if(!state.settings.squawk) return;
+  if(!state.squawkPrimed){ state.squawkPrimed=true; seedSpoken(); return; } // po zapnutí/otevření nečíst backlog
+  const min=Number(state.settings.squawkMin||8);
+  const fresh=state.news.filter(n=>(n.score||0)>=min && isTodayIso(n.publishedAt) && n.hid && !state.spoken.has(n.hid))
+    .sort((a,b)=> new Date(a.publishedAt||0)-new Date(b.publishedAt||0)).slice(0,3);
+  fresh.forEach(n=>{ state.spoken.add(n.hid); const title=(n.cs&&n.cs!==n.headline)?n.cs:n.headline; ttsSpeak('Důležitá zpráva, skóre '+(n.score||0)+'. '+title); });
+}
+function seedSpoken(){ state.spoken=state.spoken||new Set(); state.news.forEach(n=>{ if(n.hid) state.spoken.add(n.hid); }); }
+
 /* ---------- store ---------- */
 function getHistory(){ return LS.get('history',[]); }
 function pruneHistory(arr){ const cut=Date.now()-HISTORY_DAYS*24*3600*1000; return arr.filter(n=> new Date(n.analyzedAt||n.publishedAt||Date.now()).getTime()>=cut); }
@@ -516,7 +601,7 @@ async function fetchRawNews(settings){
   const userRss = !!(settings.rssFeeds||'').trim();
   const arr = await Promise.all([fetchFinnhub(settings), fetchRSS(settings, userRss?null:DEFAULT_RSS)]);
   let all=arr[0].concat(arr[1]).filter(n=>n.headline);
-  all=dedupe(all);
+  all=clusterize(all);
   all.sort((a,b)=> new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
   return all.slice(0,24);
 }
@@ -603,12 +688,13 @@ async function runRefresh(settings){
    ============================================================ */
 const state = {
   tab:'feed',
-  settings: LS.get('settings',{apiKey:'',finnhubKey:'',rssFeeds:'',backendUrl:'',model:'openai/gpt-4o-mini',interval:5,maxItems:14,sources:{}}),
+  settings: LS.get('settings',{apiKey:'',finnhubKey:'',rssFeeds:'',backendUrl:'',model:'openai/gpt-4o-mini',interval:5,maxItems:14,sources:{},squawk:false,squawkMin:8}),
   news: MOCK_NEWS.slice().sort((a,b)=>b.score-a.score),
   conns: MOCK_CONNECTIONS,
   desk: MOCK_DESK,
   status:'mock',
   loading:false,
+  spoken:new Set(),
   filter:{q:'',cat:'',inst:'',min:0,today:false},
   repTab:'asia',
   histSel:null,
@@ -616,6 +702,7 @@ const state = {
   repLoading:'',
   heat:(function(){ const h=heatFromHistory(getHistory()); return Object.keys(h).some(k=>h[k]!==0)?h:{USD:5,EUR:-4,GBP:-1,JPY:3,AUD:-3,CAD:-2,CHF:1,NZD:-2}; })()
 };
+state.settings.squawkMin = Number(state.settings.squawkMin)||8;
 let refreshTimer=null;
 function repKey(sessionId){ return new Date().toISOString().slice(0,10)+'|'+sessionId; }
 
@@ -645,6 +732,11 @@ function pillHTML(){
   const m={live:'AI živě',headlines:'Živé titulky',mock:'Ukázka (mock)',error:'Chyba zdroje',loading:'Načítám…'};
   return '<span class="pill '+cls+'"><span class="blip"></span>'+(m[s]||'Ukázka')+'</span>';
 }
+function squawkBtnHTML(){
+  const on=!!state.settings.squawk;
+  return '<button class="squawk-btn'+(on?' on':'')+'" id="squawkBtn" title="Audio squawk: hlas přečte breaking zprávy se skóre ≥ '+(state.settings.squawkMin||8)+'">'+
+    '<span class="blip" style="width:7px;height:7px;border-radius:50%;background:currentColor"></span>'+(on?'🔊 Squawk ON':'🔈 Squawk')+'</button>';
+}
 
 function hostFromUrl(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
 function faviconUrl(u){ const h=hostFromUrl(u); return h? 'https://www.google.com/s2/favicons?domain='+h+'&sz=64' : ''; }
@@ -662,18 +754,29 @@ function sourceRowHTML(n){
     '<span class="src-meta no"><b>'+esc(n.source)+'</b> · ukázková zpráva (bez živého zdroje)</span>'+
     '<a class="verify search" href="'+esc(q)+'" target="_blank" rel="noopener" title="Vyhledat zprávu na webu">Vyhledat zdroj ↗</a></div>';
 }
+function clusterSrcsHTML(n){
+  if(!(n.srcCount>1) || !Array.isArray(n.sources)) return '';
+  const list=n.sources.slice(0,6).map(s=>{ const t='t'+(s.tier||2); const a=s.url?'<a href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.source)+'</a>':esc(s.source); return '<span class="tier '+t+'">T'+(s.tier||2)+'</span> '+a; }).join(' · ');
+  const ft=n.firstAt?new Date(n.firstAt).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}):'';
+  return '<div class="cluster-srcs"><span class="first">⚑ První: '+esc(n.firstSource||'?')+(ft?' v '+ft:'')+'</span><span>Zdroje: '+list+'</span></div>';
+}
 function cardHTML(n){
   const aff=(n.affects||[]).map(a=>'<span class="chip '+(a[1]||'')+'">'+esc(a[0])+(a[1]==='pos'?' ↑':a[1]==='neg'?' ↓':'')+'</span>').join('');
   const title = n.cs && n.cs!==n.headline ? n.cs : n.headline;
   const head = n.url? '<a href="'+esc(n.url)+'" target="_blank" rel="noopener">'+esc(title)+'</a>' : esc(title);
   const orig = (n.cs && n.cs!==n.headline) ? '<div style="font-size:11px;color:var(--txt-faint);margin-top:-4px;margin-bottom:9px">'+esc(n.headline)+'</div>' : '';
   const sc=n.score||0;
+  const cr=credibility(n);
+  const tier=n.bestTier||sourceTier(n.source,n.url);
+  const credBadge='<span class="cred '+cr.cls+'" title="Důvěryhodnost: '+esc(cr.label)+'"><span>'+cr.ico+'</span>'+esc(cr.label)+'</span>';
+  const tierBadge='<span class="tier t'+tier+'" title="Úroveň zdroje (Tier 1 = Reuters/Bloomberg/ČB)">Tier '+tier+'</span>';
+  const srcCount=(n.srcCount>1)?'<span class="srccount" title="Stejnou událost hlásí více zdrojů">🔗 '+n.srcCount+' zdrojů</span>':'';
   return '<div class="card s'+sc+'">'+
-    '<div class="card-top"><span class="badge '+(n.cb?'cb':'cat')+'">'+esc(n.cat)+'</span>'+
+    '<div class="card-top"><span class="badge '+(n.cb?'cb':'cat')+'">'+esc(n.cat)+'</span>'+credBadge+tierBadge+srcCount+
     '<div class="date-row"><span class="date-badge">'+formatDateTime(n.publishedAt)+'</span><span class="age-badge '+(isOld(n.publishedAt)?'old':'')+'">'+ageText(n.publishedAt)+'</span></div>'+
     '<div class="gauge '+scoreCls(sc)+'" title="důležitost '+sc+'/10"><span>'+sc+'</span><small>imp</small></div></div>'+
     '<div class="headline">'+head+'</div>'+orig+
-    sourceRowHTML(n)+
+    sourceRowHTML(n)+clusterSrcsHTML(n)+
     '<div class="ai-block"><div class="ai-label"><span>✦</span> AI komentář</div><div class="ai-text">'+esc(n.ai)+'</div>'+
     (n.story?'<div class="storyline"><b>Zařazení do příběhu:</b> '+esc(n.story)+'</div>':'')+'</div>'+
     '<div class="card-bottom"><div class="chips">'+aff+'</div></div></div>';
@@ -790,6 +893,7 @@ function setHTML(){
   const modelOpt=(v,l)=>'<option value="'+v+'"'+((s.model||'openai/gpt-4o-mini')===v?' selected':'')+'>'+l+'</option>';
   const intOpt=(v,l)=>'<option value="'+v+'"'+((s.interval||5)===v?' selected':'')+'>'+l+'</option>';
   const maxOpt=(v,l)=>'<option value="'+v+'"'+((s.maxItems||14)===v?' selected':'')+'>'+l+'</option>';
+  const sqOpt=(v,l)=>'<option value="'+v+'"'+((Number(s.squawkMin)||8)===v?' selected':'')+'>'+l+'</option>';
   return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>Nastavení</h2></div><div class="set">'+
     '<div class="notice">Hned po otevření se načítají <b>reálné aktuální zprávy</b> z výchozích RSS zdrojů (s odkazem a datem). OpenRouter klíč přidá navrch AI komentář, skóre a souvislosti. Ukázková (mock) data se zobrazí jen když jsi offline.</div>'+
     '<div class="field"><label>Backend URL (volitelné — nech PRÁZDNÉ)</label><input type="text" id="set-backendUrl" value="'+esc(s.backendUrl||'')+'" placeholder="nech prázdné"><div class="hint">Vyplň POUZE pokud sis spustil vlastní server (server.js) — viz README-backend.md. Většina lidí tu nic nevyplňuje a nechá prázdné.</div></div>'+
@@ -800,6 +904,7 @@ function setHTML(){
     '<div class="field"><label>Max. zpráv k analýze / refresh</label><select id="set-maxItems">'+maxOpt(8,'8 (nejlevnější)')+maxOpt(14,'14 (doporučeno)')+maxOpt(20,'20')+'</select><div class="hint">Analyzuje se dávkově v jednom AI volání. Známé titulky se berou z cache.</div></div>'+
     '<div class="field"><label>Sledované zdroje (vizuální filtr)</label><div class="src-grid">'+sources+'</div></div>'+
     '<div class="field"><label>Interval obnovení</label><select id="set-interval">'+intOpt(1,'každou 1 minutu')+intOpt(5,'každých 5 minut')+intOpt(15,'každých 15 minut')+intOpt(0,'jen ručně')+'</select></div>'+
+    '<div class="field"><label>🔊 Audio squawk — práh hlasitého čtení</label><select id="set-squawkMin">'+sqOpt(7,'skóre 7+ (víc zpráv)')+sqOpt(8,'skóre 8+ (doporučeno)')+sqOpt(9,'skóre 9+ (jen klíčové)')+'</select><div class="hint">Když je squawk zapnutý (tlačítko v hlavičce), hlas přečte nově příchozí zprávy s tímhle skóre a výš. Po otevření/zapnutí se backlog nečte — jen nové. <button class="btn ghost" id="set-squawkTest" style="padding:5px 10px;font-size:11px;margin-top:6px">🔈 Test hlasu</button></div></div>'+
     '<div class="btn-row"><button class="btn" id="set-save">Uložit nastavení</button><button class="btn ghost" id="set-refresh">↻ Obnovit zprávy teď</button><button class="btn ghost" id="set-clear">🗑 Vymazat historii &amp; cache</button><span class="saved" id="set-saved" style="display:none">✓ uloženo</span></div>'+
     '</div></div>';
 }
@@ -823,15 +928,26 @@ function mount(){
     '<div class="ticker" id="ticker" title="NEWS = existuje dnes důležitá pozitivní/negativní zpráva pro instrument. Není to live cena ani obchodní signál.">'+tickerHTML()+'</div>'+
     '<header class="app"><div class="brand"><div class="logo"><span class="ring"></span><span class="dot"></span></div>'+
       '<div><h1>AI Market <span>Radar</span></h1><div class="sub">Automatické finanční noviny pro tradery</div></div></div>'+
-      '<div class="status"><div class="clock" id="clock"></div><span id="pillwrap">'+pillHTML()+'</span></div></header>'+
+      '<div class="status"><div class="clock" id="clock"></div><span id="squawkwrap">'+squawkBtnHTML()+'</span><span id="pillwrap">'+pillHTML()+'</span></div></header>'+
     '<nav class="tabs" id="nav">'+TABS.map(t=>'<button data-tab="'+t[0]+'" class="'+(state.tab===t[0]?'on':'')+'"><span>'+t[1]+'</span> '+t[2]+'</button>').join('')+'</nav>'+
     '<main id="main">'+viewHTML()+'</main>'+
     '<footer><span>AI Market Radar · v4</span><span class="disc">Informační a vzdělávací nástroj. Negeneruje obchodní signály, vstupy ani doporučení. Každý si dělá vlastní závěr.</span></footer>';
   bindView();
+  bindSquawk();
   startClock();
 }
 function repaintMain(){ $('#main').innerHTML=viewHTML(); bindView(); $$('#nav button').forEach(b=>b.classList.toggle('on',b.getAttribute('data-tab')===state.tab)); }
 function repaintHeader(){ const p=$('#pillwrap'); if(p) p.innerHTML=pillHTML(); const t=$('#ticker'); if(t) t.innerHTML=tickerHTML(); }
+function repaintSquawk(){ const w=$('#squawkwrap'); if(w){ w.innerHTML=squawkBtnHTML(); bindSquawk(); } }
+function bindSquawk(){
+  const b=$('#squawkBtn'); if(!b) return;
+  b.onclick=()=>{
+    state.settings.squawk=!state.settings.squawk; LS.set('settings',state.settings);
+    if(state.settings.squawk){ seedSpoken(); ttsSpeak('Audio squawk zapnut. Budu číst zprávy se skóre '+(state.settings.squawkMin||8)+' a výš.'); }
+    else { try{ window.speechSynthesis.cancel(); }catch(e){} }
+    repaintSquawk(); if(state.tab==='set') repaintMain();
+  };
+}
 function repaintFeedList(){ const el=$('#feed-list'); if(el) el.innerHTML=feedListHTML(); const meta=$('#main .sec-head .meta'); if(meta&&!state.loading) meta.textContent=filterList().length+' z '+state.news.length+' zpráv · řazeno dle důležitosti'; }
 
 function startClock(){
@@ -849,7 +965,8 @@ function readSettingsForm(){
     finnhubKey:g('set-finnhubKey').trim(),
     rssFeeds:g('set-rssFeeds'),
     maxItems:Number(g('set-maxItems'))||14,
-    interval:Number(g('set-interval'))
+    interval:Number(g('set-interval')),
+    squawkMin:Number(g('set-squawkMin'))||8
   });
   return ns;
 }
@@ -876,6 +993,7 @@ function bindView(){
     const save=$('#set-save'); if(save) save.onclick=()=>{ state.settings=readSettingsForm(); LS.set('settings',state.settings); const sv=$('#set-saved'); if(sv) sv.style.display='inline'; setupAutoRefresh(); refresh(); };
     const rf=$('#set-refresh'); if(rf) rf.onclick=()=>{ state.settings=readSettingsForm(); LS.set('settings',state.settings); refresh(); };
     const cl=$('#set-clear'); if(cl) cl.onclick=()=>{ LS.set('history',[]); LS.set('analysis_cache',{}); state.heat={USD:0,EUR:0,GBP:0,JPY:0,AUD:0,CAD:0,CHF:0,NZD:0}; alert('Historie a cache vymazány.'); };
+    const sqt=$('#set-squawkTest'); if(sqt) sqt.onclick=()=>{ const min=Number(($('#set-squawkMin')||{}).value)||state.settings.squawkMin||8; ttsSpeak('Toto je ukázka hlasu audio squawku. Budu číst zprávy se skóre '+min+' a výš.'); };
   }
 }
 
@@ -908,6 +1026,7 @@ async function refresh(){
   }catch(e){ state.status='error'; console.error(e); }
   state.loading=false;
   repaintHeader();
+  try{ runSquawk(); }catch(e){}
   // nepřekresluj formulář Nastavení (zachová rozepsaný text); jinak překresli aktuální záložku
   if(state.tab!=='set') repaintMain();
 }
