@@ -72,8 +72,10 @@ async function loadDataMobile(){
   const key=(localStorage.getItem("fh")||"").trim();
   const fmpKey=(localStorage.getItem("fmp")||"").trim();
   let cal=[],calSource="",fmpErr="";
+  // PRIMÁRNÍ: server-side kalendář z GitHub Action (forexfactory web — actual + plné pokrytí)
+  try{ const fresh=await fetchActionCalendar(); cal=mergeFFHistory(fresh); calSource="action"; }catch(e){}
   const fmpBlocked=!!fmpKey&&localStorage.getItem("fmp_cal_block")===fmpKey;
-  if(fmpKey&&!fmpBlocked){
+  if(!cal.length&&fmpKey&&!fmpBlocked){
     try{ cal=await fetchFMPCalendar(fmpKey,15); calSource="fmp"; localStorage.removeItem("fmp_cal_block"); }
     catch(e){ fmpErr=String(e&&e.message||e); if(/Error Message|Restricted|not available|Invalid API|Exclusive|subscription|plan|HTTP 40/i.test(fmpErr)) localStorage.setItem("fmp_cal_block",fmpKey); }
   }
@@ -88,7 +90,7 @@ async function loadDataMobile(){
     try{ const fresh=await fetchFFEventsCached(false); calSource="forexfactory"; cal=mergeFFHistory(fresh); }
     catch(e2){ cal=loadFFHistory(); if(cal.length) calSource="forexfactory"; }
   }
-  if(calSource==="fmp"||calSource==="finnhub") g_fundConfidence=1;
+  if(calSource==="action"||calSource==="fmp"||calSource==="finnhub") g_fundConfidence=1;
   else if(calSource==="forexfactory") g_fundConfidence=ffConfidence(cal);
   else g_fundConfidence=FF_FUND_DAMP;
   try{ autoUpdateFromCalendar(cal); }catch(e){}

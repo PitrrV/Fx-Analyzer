@@ -2032,3 +2032,13 @@ function getRetailPairData(pair,sentData={}){
   const crowded=retailLong>=75||retailShort>=75;
   return{retailLong,retailShort,crowdBias,crowded};
 }
+
+// ── KALENDÁŘ Z GITHUB ACTION (forexfactory web, má actual + plné pokrytí) ──
+// Soubor data/calendar.json generuje hodinová Action ze serveru (bez proxy/CORS).
+async function fetchActionCalendar(){
+  const r=await fetch("data/calendar.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const j=await r.json();
+  if(!j||!Array.isArray(j.events)||j.events.length<10) throw new Error("calendar.json prázdné");
+  return j.events.map(mapFFEvent);
+}
