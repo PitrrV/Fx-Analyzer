@@ -1,68 +1,53 @@
-// Ekonomický kalendář — běží v GitHub Action (na serveru, ne v prohlížeči).
-// Stáhne feed spolehlivě (správné hlavičky, bez CORS/proxy), uloží data/calendar.json.
-// Diagnostika v logu ukáže, jestli zdroj posílá i `actual`.
+// Ekonomický kalendář — běží v GitHub Action (server, ne prohlížeč).
+// DIAGNOSTIKA ZDROJŮ: zjistí, který zdroj má actual + budoucí týdny a je
+// ze serveru dosažitelný (Cloudflare). Podle výsledku pak postavíme primární zdroj.
 const fs = require("fs");
-
-const FEEDS = ["lastweek", "thisweek", "nextweek"].map(
-  (w) => `https://nfs.faireconomy.media/ff_calendar_${w}.json`
-);
 const UA = {
   "User-Agent":
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
-  Accept: "application/json,text/plain,*/*",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+  "Accept-Language": "en-US,en;q=0.9",
 };
 
-async function getJSON(url) {
-  const r = await fetch(url, { headers: UA });
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  return r.json();
+async function tryFetch(label, url, headers) {
+  try {
+    const r = await fetch(url, { headers: { ...UA, ...(headers || {}) } });
+    const body = await r.text();
+    return { label, url, status: r.status, len: body.length, body };
+  } catch (e) {
+    return { label, url, status: "ERR", err: e.message, body: "" };
+  }
 }
 
 (async () => {
-  let all = [];
-  for (const url of FEEDS) {
-    try {
-      const arr = await getJSON(url);
-      console.log("OK  ", url, Array.isArray(arr) ? arr.length + " událostí" : "(není pole)");
-      if (Array.isArray(arr)) all = all.concat(arr);
-    } catch (e) {
-      console.log("FAIL", url, e.message);
-    }
+  // ── 1) faireconomy thisweek (základ, forecast/previous) ──
+  let events = [];
+  const fe = await tryFetch("faireconomy", "https://nfs.faireconomy.media/ff_calendar_thisweek.json");
+  console.log("faireconomy:", fe.status, fe.len + "B");
+  try { events = JSON.parse(fe.body); } catch (e) {}
+
+  // ── 2) ForexFactory web HTML (má actual + budoucí týdny; test Cloudflare) ──
+  for (const wk of ["this", "next"]) {
+    const url = "https://www.forexfactory.com/calendar?week=" + wk;
+    const ff = await tryFetch("FF-" + wk, url);
+    const hasJSON = /calendarComponentStates/.test(ff.body || "");
+    const hasRows = /calendar__row|calendar__cell/.test(ff.body || "");
+    const cf = /cf-browser-verification|Just a moment|cloudflare|Attention Required/i.test(ff.body || "");
+    console.log(`FF web (${wk}): status=${ff.status} len=${ff.len||0} embeddedJSON=${hasJSON} rows=${hasRows} cloudflareBlock=${cf}`);
   }
 
-  // dedupe podle title|country|date, preferuj záznam s actual
-  const map = new Map();
-  for (const e of all) {
-    const k = (e.title || "") + "|" + (e.country || "") + "|" + (e.date || "");
-    const p = map.get(k);
-    const hasA = e.actual != null && String(e.actual).trim() !== "";
-    const pHasA = p && p.actual != null && String(p.actual).trim() !== "";
-    if (!p || (!pHasA && hasA)) map.set(k, e);
-  }
-  const events = [...map.values()];
-  const withActual = events.filter(
-    (e) => e.actual != null && String(e.actual).trim() !== ""
-  ).length;
+  // ── 3) Trading Economics guest API (má actual; test) ──
+  const te = await tryFetch("TE-guest", "https://api.tradingeconomics.com/calendar?c=guest:guest&f=json&d1=2026-06-19&d2=2026-07-03");
+  let teCount = 0, teActual = 0;
+  try { const a = JSON.parse(te.body); if (Array.isArray(a)) { teCount = a.length; teActual = a.filter(x => x.Actual != null && String(x.Actual).trim() !== "").length; console.log("TE sample:", JSON.stringify(a[0] || {}).slice(0, 300)); } }
+  catch (e) {}
+  console.log(`TradingEconomics guest: status=${te.status} len=${te.len||0} events=${teCount} withActual=${teActual}`);
 
-  console.log("=== DIAGNOSTIKA ===");
-  console.log("Událostí celkem:", events.length, "· s actual:", withActual);
-  console.log("Pole vzorku   :", Object.keys(events[0] || {}).join(", "));
-  console.log("Vzorek budoucí:", JSON.stringify(events.find((e) => !(e.actual && String(e.actual).trim())) || {}));
-  console.log("Vzorek actual :", JSON.stringify(events.find((e) => e.actual && String(e.actual).trim()) || {}));
-
+  // zatím ukládáme aspoň faireconomy thisweek, ať appka má fallback data
+  const withActual = (Array.isArray(events) ? events : []).filter(e => e.actual != null && String(e.actual).trim() !== "").length;
   fs.mkdirSync("data", { recursive: true });
-  fs.writeFileSync(
-    "data/calendar.json",
-    JSON.stringify({
-      updated: new Date().toISOString(),
-      source: "faireconomy",
-      count: events.length,
-      withActual,
-      events,
-    })
-  );
-  console.log("Zapsáno data/calendar.json");
-})().catch((e) => {
-  console.error("FATAL", e);
-  process.exit(1);
-});
+  fs.writeFileSync("data/calendar.json", JSON.stringify({
+    updated: new Date().toISOString(), source: "faireconomy-thisweek",
+    count: Array.isArray(events) ? events.length : 0, withActual, events: Array.isArray(events) ? events : [],
+  }));
+  console.log("Zapsáno data/calendar.json (zatím faireconomy thisweek)");
+})().catch((e) => { console.error("FATAL", e); process.exit(1); });
