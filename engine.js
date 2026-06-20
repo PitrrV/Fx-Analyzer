@@ -2044,3 +2044,29 @@ async function fetchActionCalendar(){
 }
 
 function loadJournal(){try{return JSON.parse(localStorage.getItem("journal")||"[]");}catch(e){return[];}}
+
+// ── SEASONALITY z reálných měsíčních cen (Alpha Vantage FX_MONTHLY) ──
+async function fetchSeasonality(pair,avKey){
+  const from=String(pair).slice(0,3), to=String(pair).slice(3,6);
+  const ck="seas_"+from+to;
+  try{const c=JSON.parse(localStorage.getItem(ck)||"null"); if(c&&c.at&&(Date.now()-c.at)<30*86400000&&c.data) return c.data;}catch(e){}
+  if(!avKey) throw new Error("Chybí Alpha Vantage klíč (Nastavení) — bez něj se reálná sezónnost nestáhne.");
+  const url="https://www.alphavantage.co/query?function=FX_MONTHLY&from_symbol="+from+"&to_symbol="+to+"&apikey="+avKey+"&outputsize=full";
+  const r=await fetch(url,{cache:"no-store"}); const j=await r.json();
+  const ts=j["Time Series FX (Monthly)"];
+  if(!ts){ throw new Error(j.Note||j.Information||j["Error Message"]||"Alpha Vantage nevrátilo měsíční data (limit 25/den?)"); }
+  const rows=Object.keys(ts).sort().map(d=>({d,close:parseFloat(ts[d]["4. close"])})).filter(x=>Number.isFinite(x.close));
+  const ret={}; // ret[year][month0-11] = % změna během měsíce
+  for(let i=1;i<rows.length;i++){ const dt=new Date(rows[i].d+"T00:00:00"); const y=dt.getFullYear(),m=dt.getMonth(); if(rows[i-1].close>0){ (ret[y]=ret[y]||{})[m]=+(((rows[i].close/rows[i-1].close)-1)*100).toFixed(2); } }
+  const years=Object.keys(ret).map(Number).sort();
+  const avg=[]; for(let m=0;m<12;m++){ const vals=years.map(y=>ret[y][m]).filter(v=>Number.isFinite(v)); avg[m]=vals.length?+(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2):null; }
+  const data={from,to,ret,years,avg,asOf:new Date().toISOString()};
+  try{localStorage.setItem(ck,JSON.stringify({at:Date.now(),data}));}catch(e){}
+  return data;
+}
+// COT % long/short z posledního snapshotu (syrové počty kontraktů velkých hráčů)
+function getCOTLongShort(currency){
+  try{ const m=loadCOTMeta(); const r=m&&m.raw&&m.raw[currency]; if(!r) return null;
+    const L=(r.levLong||0)+(r.assetLong||0), S=(r.levShort||0)+(r.assetShort||0); const tot=L+S;
+    if(tot<=0) return null; return {long:Math.round(L/tot*100), short:Math.round(S/tot*100), L,S}; }catch(e){ return null; }
+}
