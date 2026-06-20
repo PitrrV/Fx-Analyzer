@@ -2042,3 +2042,5 @@ async function fetchActionCalendar(){
   if(!j||!Array.isArray(j.events)||j.events.length<10) throw new Error("calendar.json prázdné");
   return j.events.map(mapFFEvent);
 }
+
+function loadJournal(){try{return JSON.parse(localStorage.getItem("journal")||"[]");}catch(e){return[];}}
