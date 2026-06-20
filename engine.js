@@ -255,7 +255,7 @@ function saveRetailSnapshot(sentData){
     const key=new Date().toISOString().split("T")[0];
     const hist=loadRetailHistory();
     hist[key]={...sentData,_ts:Date.now()};
-    const keys=Object.keys(hist).sort().slice(-60);
+    const keys=Object.keys(hist).sort().slice(-320);
     const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
     localStorage.setItem("retail_hist",JSON.stringify(trimmed));
   }catch(e){}
@@ -597,7 +597,7 @@ function saveCOTSnapshot(scores,meta){
   try{
     const key=(meta?.asOf||new Date().toISOString().split("T")[0]).replace(/\s+/g," ");
     const hist=loadCOTHistory();hist[key]={scores,raw:meta?.raw||{},updatedAt:new Date().toISOString()};
-    const keys=Object.keys(hist).sort().slice(-60);const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
+    const keys=Object.keys(hist).sort().slice(-320);const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
     localStorage.setItem("cot_hist",JSON.stringify(trimmed));
   }catch(e){}
 }
