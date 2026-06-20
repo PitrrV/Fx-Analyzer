@@ -11,50 +11,53 @@
 <script src="engine.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sync.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0d1117;color:#e6edf3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px}
 input,select{outline:none}button{font-family:inherit}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#161b22}::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
-a{color:#58a6ff}
-input[type=range]{accent-color:#58a6ff}
+a{color:#7d95ff}
+input[type=range]{accent-color:#7d95ff}
 
 /* ── V4.3 PRO VISUAL SKIN ───────────────────────────── */
 .pro-shell{min-height:100vh;background:radial-gradient(circle at 35% -10%,#162033 0,#0b111a 34%,#070b11 100%);}
 .pro-card{background:linear-gradient(180deg,rgba(22,31,45,.92),rgba(10,15,23,.96));border:1px solid #263242;border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.03)}
 .pro-header{background:rgba(8,13,20,.92);backdrop-filter:blur(12px);border-bottom:1px solid #263242;position:sticky;top:0;z-index:20}
 .pro-tab{padding:13px 16px;background:none;border:0;border-bottom:2px solid transparent;color:#8b949e;font-weight:600;font-size:12px;letter-spacing:.02em;cursor:pointer;white-space:nowrap}
-.pro-tab.active{color:#2f9bff;border-bottom-color:#2f9bff}
+.pro-tab.active{color:#5e7cfb;border-bottom-color:#5e7cfb}
 .pro-btn{border:1px solid #2b3a4d;background:#111a26;color:#dce6f2;border-radius:8px;padding:8px 12px;font-weight:700;font-size:12px;cursor:pointer}
 .pro-pill{border-radius:8px;padding:6px 12px;font-weight:900;letter-spacing:.03em}
 .pro-grid{display:grid;grid-template-columns:300px minmax(620px,1fr) 420px;gap:14px;align-items:start}
 .pro-pair-list{max-height:calc(100vh - 190px);overflow:auto;padding-right:4px}
 .pro-pair-row{background:linear-gradient(180deg,#111923,#0d141e);border:1px solid #273341;border-radius:10px;margin-bottom:8px;padding:12px;cursor:pointer;transition:.15s}
-.pro-pair-row:hover{border-color:#2f9bff44;transform:translateY(-1px)}
-.pro-pair-row.selected{border-color:#2f9bff;background:linear-gradient(180deg,#102443,#0d1728);box-shadow:0 0 0 1px #2f9bff22,0 0 22px #2f9bff18}
+.pro-pair-row:hover{border-color:#5e7cfb44;transform:translateY(-1px)}
+.pro-pair-row.selected{border-color:#5e7cfb;background:linear-gradient(180deg,#102443,#0d1728);box-shadow:0 0 0 1px #5e7cfb22,0 0 22px #5e7cfb18}
 .pro-panel-title{font-size:13px;font-weight:900;letter-spacing:.02em;color:#e6edf3;margin-bottom:12px;text-transform:uppercase}
-.pro-muted{color:#8b949e}.blue{color:#2f9bff}.purple{color:#bf4cff}.green{color:#3fb950}.red{color:#ff4d4d}.orange{color:#d29922}
+.pro-muted{color:#8b949e}.blue{color:#5e7cfb}.purple{color:#bf4cff}.green{color:#2ed3a0}.red{color:#ff4d4d}.orange{color:#d29922}
 .pro-stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:0;border-top:1px solid #243142;border-bottom:1px solid #243142}
 .pro-stat{padding:12px 16px;border-left:1px solid #243142;text-align:center}.pro-stat:first-child{border-left:0}
 .pro-chart-wrap{padding:18px 20px}
 .pro-chart-toolbar{display:flex;gap:7px}.pro-chart-toolbar span{background:#172233;border:1px solid #26384d;border-radius:7px;padding:6px 10px;font-size:11px;color:#c9d1d9}.pro-chart-toolbar span.active{background:#1f6feb;color:white}
 
 /* ── V4.4 COMMAND CENTER ONLINE SKIN ───────────────────── */
-:root{--cmd-green:#78f236;--cmd-green2:#36c94b;--cmd-red:#ff3f5f;--cmd-blue:#2f9bff;--cmd-purple:#bf4cff;--cmd-panel:#090f17;--cmd-border:#1d2a36;}
+:root{--cmd-green:#2ed3a0;--cmd-green2:#27c08a;--cmd-red:#ff3f5f;--cmd-blue:#5e7cfb;--cmd-purple:#bf4cff;--cmd-panel:#090f17;--cmd-border:#1d2a36;}
 body{background:#05080d;color:#f3f7fb;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
-.pro-shell{padding-left:226px;background:radial-gradient(circle at 80% -10%,rgba(63,185,80,.12),transparent 28%),radial-gradient(circle at 10% 20%,rgba(47,155,255,.08),transparent 24%),#05080d;}
+.pro-shell{padding-left:226px;background:radial-gradient(circle at 80% -10%,rgba(46,211,160,.12),transparent 28%),radial-gradient(circle at 10% 20%,rgba(94,124,251,.08),transparent 24%),#05080d;}
 .command-sidebar{position:fixed;left:0;top:0;bottom:0;width:226px;background:linear-gradient(180deg,#080d13,#05080d);border-right:1px solid #182330;z-index:50;padding:18px 14px;display:flex;flex-direction:column;gap:18px;box-shadow:18px 0 40px rgba(0,0,0,.28)}
 .command-logo{display:flex;align-items:center;gap:12px;padding:4px 8px 18px;border-bottom:1px solid #182330}
-.command-logo-mark{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,var(--cmd-green),#0a290d);display:flex;align-items:center;justify-content:center;color:#041007;font-weight:1000;font-size:20px;letter-spacing:-.06em;box-shadow:0 0 28px rgba(120,242,54,.28);position:relative}.command-logo-mark:after{content:"";position:absolute;right:6px;bottom:7px;width:22px;height:9px;border-bottom:3px solid #041007;border-right:3px solid #041007;border-radius:0 0 12px 0;transform:skewX(-20deg)}
+.command-logo-mark{width:48px;height:48px;border-radius:14px;background:linear-gradient(135deg,var(--cmd-green),#0a290d);display:flex;align-items:center;justify-content:center;color:#041007;font-weight:1000;font-size:20px;letter-spacing:-.06em;box-shadow:0 0 28px rgba(46,211,160,.28);position:relative}.command-logo-mark:after{content:"";position:absolute;right:6px;bottom:7px;width:22px;height:9px;border-bottom:3px solid #041007;border-right:3px solid #041007;border-radius:0 0 12px 0;transform:skewX(-20deg)}
 .command-logo-title{font-weight:1000;letter-spacing:.03em;font-size:17px;line-height:1}.command-logo-sub{font-size:10px;color:#8ea0b3;letter-spacing:.26em;margin-top:5px}
-.command-nav{display:flex;flex-direction:column;gap:6px}.command-nav button{display:flex;align-items:center;gap:12px;border:0;background:transparent;color:#b7c3d1;border-radius:10px;padding:12px 14px;text-align:left;font-weight:700;cursor:pointer;font-size:14px}.command-nav button.active,.command-nav button:hover{background:linear-gradient(90deg,rgba(120,242,54,.16),rgba(120,242,54,.03));color:var(--cmd-green);box-shadow:inset 3px 0 0 var(--cmd-green)}
+.command-nav{display:flex;flex-direction:column;gap:6px}.command-nav button{display:flex;align-items:center;gap:12px;border:0;background:transparent;color:#b7c3d1;border-radius:10px;padding:12px 14px;text-align:left;font-weight:700;cursor:pointer;font-size:14px}.command-nav button.active,.command-nav button:hover{background:linear-gradient(90deg,rgba(46,211,160,.16),rgba(46,211,160,.03));color:var(--cmd-green);box-shadow:inset 3px 0 0 var(--cmd-green)}
 .command-bias-card{margin-top:auto;background:linear-gradient(180deg,rgba(14,22,31,.95),rgba(8,13,20,.95));border:1px solid #1b2a35;border-radius:14px;padding:16px}.command-bias-card .label{font-size:11px;color:#8ea0b3;text-transform:uppercase}.command-bias-card .value{font-size:22px;font-weight:1000;margin:8px 0}.command-progress{height:8px;background:#1b232d;border-radius:999px;overflow:hidden}.command-progress div{height:100%;background:linear-gradient(90deg,var(--cmd-green2),var(--cmd-green));border-radius:999px}
 .pro-header{background:rgba(5,8,13,.86);border-bottom:1px solid #182330;box-shadow:0 12px 40px rgba(0,0,0,.22)}
 .pro-card{background:linear-gradient(180deg,rgba(12,18,27,.94),rgba(7,11,17,.98));border-color:#1b2a35;border-radius:14px;box-shadow:0 20px 55px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.035)}
-.pro-pair-row{background:linear-gradient(180deg,#0c131c,#080e15);border-color:#1a2633;border-radius:12px}.pro-pair-row.selected{border-color:var(--cmd-green);background:linear-gradient(180deg,rgba(18,45,25,.8),#0a1218);box-shadow:0 0 0 1px rgba(120,242,54,.22),0 0 26px rgba(120,242,54,.12)}
+.pro-pair-row{background:linear-gradient(180deg,#0c131c,#080e15);border-color:#1a2633;border-radius:12px}.pro-pair-row.selected{border-color:var(--cmd-green);background:linear-gradient(180deg,rgba(18,45,25,.8),#0a1218);box-shadow:0 0 0 1px rgba(46,211,160,.22),0 0 26px rgba(46,211,160,.12)}
 .pro-tab.active{color:var(--cmd-green);border-bottom-color:var(--cmd-green)}
 .pro-btn{background:#0b141d;border-color:#223242;color:#eaf2f8}.green{color:var(--cmd-green)}.red{color:var(--cmd-red)}
-.command-time{display:flex;align-items:center;gap:12px;color:#cbd6e2;font-weight:800}.command-live{font-size:11px;color:var(--cmd-green);background:rgba(120,242,54,.12);border:1px solid rgba(120,242,54,.25);border-radius:999px;padding:4px 8px}.command-pro{border:1px solid rgba(120,242,54,.45)!important;color:var(--cmd-green)!important;background:rgba(120,242,54,.06)!important;border-radius:10px!important;padding:9px 16px!important;font-weight:1000!important}
+.command-time{display:flex;align-items:center;gap:12px;color:#cbd6e2;font-weight:800}.command-live{font-size:11px;color:var(--cmd-green);background:rgba(46,211,160,.12);border:1px solid rgba(46,211,160,.25);border-radius:999px;padding:4px 8px}.command-pro{border:1px solid rgba(46,211,160,.45)!important;color:var(--cmd-green)!important;background:rgba(46,211,160,.06)!important;border-radius:10px!important;padding:9px 16px!important;font-weight:1000!important}
 @media(max-width:1200px){.pro-shell{padding-left:0}.command-sidebar{display:none}}
 
 @media(max-width:1200px){.pro-grid{grid-template-columns:1fr}.pro-pair-list{max-height:none}.pro-stat-grid{grid-template-columns:repeat(2,1fr)}}
@@ -64,9 +67,33 @@ body{background:#05080d;color:#f3f7fb;font-family:Inter,-apple-system,BlinkMacSy
 .coach-compact textarea{min-height:42px!important}
 .fx-status-bar{margin:12px 16px 0;background:linear-gradient(180deg,rgba(12,18,27,.96),rgba(7,11,17,.98));border:1px solid #1b2a35;border-radius:14px;display:grid;grid-template-columns:1.4fr 1fr 80px;gap:0;overflow:hidden;box-shadow:0 12px 30px rgba(0,0,0,.28)}
 .fx-status-section{display:flex;align-items:center;gap:18px;padding:10px 14px;border-right:1px solid #1b2a35;min-height:48px}
-.fx-session{display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd6e2;white-space:nowrap}.fx-session b{font-size:11px;border-radius:5px;padding:2px 6px}.fx-session.open b{background:rgba(120,242,54,.14);color:var(--cmd-green)}.fx-session.closed b{background:rgba(120,120,120,.12);color:#7f8b98}.fx-ticker{font-size:12px;color:#cbd6e2;white-space:nowrap}.fx-ticker b{color:#eaf2f8}.fx-live{display:flex;align-items:center;justify-content:center;color:var(--cmd-green);font-weight:900;font-size:12px}
+.fx-session{display:flex;align-items:center;gap:6px;font-size:12px;color:#cbd6e2;white-space:nowrap}.fx-session b{font-size:11px;border-radius:5px;padding:2px 6px}.fx-session.open b{background:rgba(46,211,160,.14);color:var(--cmd-green)}.fx-session.closed b{background:rgba(120,120,120,.12);color:#7f8b98}.fx-ticker{font-size:12px;color:#cbd6e2;white-space:nowrap}.fx-ticker b{color:#eaf2f8}.fx-live{display:flex;align-items:center;justify-content:center;color:var(--cmd-green);font-weight:900;font-size:12px}
 @media(max-width:1200px){.fx-status-bar{grid-template-columns:1fr}.fx-status-section{border-right:0;border-bottom:1px solid #1b2a35;flex-wrap:wrap}.coach-compact,.coach-compact>div{height:auto!important}}
 
+/* ── INDIGO COMMAND THEME (mockup) — přebarvení, nemění strukturu ───────── */
+:root{--cmd-green:#2ed3a0;--cmd-green2:#27c08a;--cmd-accent:#5e7cfb;--cmd-red:#ff5470;--cmd-border:#1b2130;}
+body{font-family:'Manrope',system-ui,-apple-system,sans-serif;background:#07080c;color:#eaedf3}
+.pro-shell{padding-left:248px;background:radial-gradient(1100px 620px at 80% -10%,rgba(94,124,251,.10),transparent 58%),radial-gradient(900px 520px at 4% 2%,rgba(46,211,160,.06),transparent 54%),#07080c}
+.command-sidebar{width:248px;background:linear-gradient(180deg,rgba(11,13,19,.7),rgba(7,8,12,.92));backdrop-filter:blur(8px);border-right:1px solid #1b2130}
+.command-logo-mark{background:linear-gradient(150deg,#10131c,#0a0c12)!important;border:1px solid #232b3d;color:#eaedf3!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 8px 20px rgba(0,0,0,.4)!important;font-family:'JetBrains Mono',monospace;border-radius:13px}
+.command-logo-mark:after{display:none}
+.command-logo-sub{font-family:'JetBrains Mono',monospace;color:#5a6273}
+.command-nav button{font-weight:600;font-size:13px;color:#b7c0d0}
+.command-nav button.active,.command-nav button:hover{background:rgba(94,124,251,.10)!important;color:#cfd6ff!important;box-shadow:inset 3px 0 0 var(--cmd-accent)!important}
+.command-bias-card{border:1px solid #1b2130;border-radius:16px}
+.command-bias-card .value{font-family:'JetBrains Mono',monospace}
+.command-progress div{background:linear-gradient(90deg,var(--cmd-accent),#8aa0ff)}
+.pro-header{background:rgba(7,8,12,.72);backdrop-filter:blur(14px);border-bottom:1px solid #161b27;box-shadow:0 1px 0 #161b27,0 14px 30px rgba(0,0,0,.18)}
+.pro-card{background:linear-gradient(180deg,#0f121a,#0b0d13);border:1px solid #1b2130;border-radius:18px;box-shadow:0 18px 40px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04)}
+.pro-pair-row{background:linear-gradient(180deg,#0f121a,#0b0d13);border:1px solid #1b2130;border-radius:13px}
+.pro-pair-row:hover{border-color:#2f3a50}
+.pro-pair-row.selected{border-color:var(--cmd-accent)!important;background:linear-gradient(180deg,rgba(94,124,251,.10),#0b0d13)!important;box-shadow:0 0 0 1px rgba(94,124,251,.3),0 0 26px rgba(94,124,251,.14)!important}
+.pro-tab.active{color:#cfd6ff;border-bottom-color:var(--cmd-accent)}
+.command-pro{border:1px solid #232b3d!important;background:linear-gradient(180deg,#12151d,#0d0f16)!important;color:#cfd6e2!important}
+.command-live{color:#2ed3a0;background:rgba(46,211,160,.1);border:1px solid rgba(46,211,160,.22)}
+.command-time{font-family:'JetBrains Mono',monospace;font-weight:600}
+.pro-pill{font-family:'JetBrains Mono',monospace}
+input[type=range]{accent-color:var(--cmd-accent)}
 </style>
 </head>
 <body>
@@ -97,7 +124,7 @@ function Setup({onSave}){
         <div style={{fontSize:28,marginBottom:8}}>📊</div>
         <h1 style={{fontSize:22,marginBottom:6}}>FX Fundamental Analyzer</h1>
         <p style={{color:"#8b949e",fontSize:13,marginBottom:8}}>Fundamenty · COT · Sentiment · Seasonalita · Tržní struktura</p>
-        <p style={{color:"#3fb950",fontSize:12,marginBottom:18}}>✓ Jede zdarma na ForexFactory + nahrané historii. Všechny klíče níže jsou volitelné.</p>
+        <p style={{color:"#2ed3a0",fontSize:12,marginBottom:18}}>✓ Jede zdarma na ForexFactory + nahrané historii. Všechny klíče níže jsou volitelné.</p>
         <label style={{color:"#8b949e",fontSize:12,display:"block",marginBottom:5}}>
           Finnhub API klíč <span style={{color:"#6e7681"}}>(volitelné)</span> — <a href="https://finnhub.io/register" target="_blank">finnhub.io</a>
         </label>
@@ -168,7 +195,7 @@ function SyncSection(){
         <button disabled={busy} onClick={()=>doSync(true)} style={btn}>🔄 Synchronizovat teď</button>
         <button onClick={logout} style={sec}>Odhlásit</button>
       </>}
-      {msg&&<div style={{fontSize:11,marginTop:8,color:msg[0]==="⚠"?"#f85149":"#3fb950",lineHeight:1.5}}>{msg}</div>}
+      {msg&&<div style={{fontSize:11,marginTop:8,color:msg[0]==="⚠"?"#f85149":"#2ed3a0",lineHeight:1.5}}>{msg}</div>}
     </div>
   );
 }
@@ -245,7 +272,7 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
         <SyncSection/>
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Finnhub API klíč</label>
         <input value={fh} onChange={e=>setFh(e.target.value)} style={inp}/>
-        <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>FMP klíč <span style={{color:"#3fb950"}}>(kalendář, 15 měs zdarma)</span></label>
+        <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>FMP klíč <span style={{color:"#2ed3a0"}}>(kalendář, 15 měs zdarma)</span></label>
         <input value={fmp} onChange={e=>setFmp(e.target.value)} placeholder="FMP API key" style={inp}/>
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Alpha Vantage klíč</label>
         <input value={av} onChange={e=>setAv(e.target.value)} style={{...inp,marginBottom:14}}/>
@@ -258,11 +285,11 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
             Nahraj CSV/JSON (např. ForexFactory dataset z Kaggle/HuggingFace) — appka pak jede na dlouhé historii a dál si data dopisuje sama.
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
-            <label style={{flex:"1 1 46%",padding:"8px",background:"#0d1117",border:"1px dashed #30363d",borderRadius:6,color:"#58a6ff",fontSize:12,textAlign:"center",cursor:"pointer"}}>
+            <label style={{flex:"1 1 46%",padding:"8px",background:"#0d1117",border:"1px dashed #30363d",borderRadius:6,color:"#7d95ff",fontSize:12,textAlign:"center",cursor:"pointer"}}>
               ⬆ Import CSV
               <input type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={e=>{doImportFile(e.target.files[0]);e.target.value="";}}/>
             </label>
-            <label style={{flex:"1 1 46%",padding:"8px",background:"#0d1117",border:"1px dashed #30363d",borderRadius:6,color:"#58a6ff",fontSize:12,textAlign:"center",cursor:"pointer"}}>
+            <label style={{flex:"1 1 46%",padding:"8px",background:"#0d1117",border:"1px dashed #30363d",borderRadius:6,color:"#7d95ff",fontSize:12,textAlign:"center",cursor:"pointer"}}>
               ⬆ Import JSON
               <input type="file" accept=".json,application/json" style={{display:"none"}} onChange={e=>{doImportFile(e.target.files[0]);e.target.value="";}}/>
             </label>
@@ -271,11 +298,11 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
             <button onClick={()=>doExport("csv")} style={{flex:"1 1 46%",padding:"7px",background:"#21262d",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:12,cursor:"pointer"}}>⬇ Export CSV</button>
             <button onClick={()=>doExport("json")} style={{flex:"1 1 46%",padding:"7px",background:"#21262d",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:12,cursor:"pointer"}}>⬇ Export JSON (záloha)</button>
           </div>
-          <button onClick={doBackfill} disabled={busy} style={{width:"100%",padding:"9px",background:busy?"#1c2733":"#1f3a2a",border:"1px solid #2ea043",borderRadius:6,color:busy?"#8b949e":"#3fb950",fontSize:12,fontWeight:600,cursor:busy?"default":"pointer"}}>
+          <button onClick={doBackfill} disabled={busy} style={{width:"100%",padding:"9px",background:busy?"#1c2733":"#1f3a2a",border:"1px solid #2ea043",borderRadius:6,color:busy?"#8b949e":"#2ed3a0",fontSize:12,fontWeight:600,cursor:busy?"default":"pointer"}}>
             {busy?"⏳ Backfill běží…":"⟳ Doplnit posledních ~70 týdnů z ForexFactory (2025–dnes)"}
           </button>
           <div style={{fontSize:10,color:"#6e7681",marginTop:4}}>Best-effort: stahuje týdny přes proxy přímo z FF. Když FF blokuje, vrátí málo/nic — pak zkus Python scraper.</div>
-          {impMsg&&<div style={{fontSize:11,color:impMsg[0]==="⚠"?"#f85149":"#3fb950",marginTop:8}}>{impMsg}</div>}
+          {impMsg&&<div style={{fontSize:11,color:impMsg[0]==="⚠"?"#f85149":"#2ed3a0",marginTop:8}}>{impMsg}</div>}
         </div>
 
         {/* OANDA Retail Sentiment */}
@@ -285,7 +312,7 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
             <span style={{marginLeft:8,fontSize:10,fontWeight:400,color:"#d29922"}}>volitelné — mimo EU</span>
           </div>
           <div style={{fontSize:10,color:"#8b949e",marginBottom:8,lineHeight:1.6}}>
-            <span style={{color:"#3fb950"}}>✓ Primární zdroj retailu je teď <b>CFTC Non-reportable</b> (reální malí spekulanti), funguje bez účtu i v EU — stačí kliknout 🔄 Retail Sentiment.</span><br/>
+            <span style={{color:"#2ed3a0"}}>✓ Primární zdroj retailu je teď <b>CFTC Non-reportable</b> (reální malí spekulanti), funguje bez účtu i v EU — stačí kliknout 🔄 Retail Sentiment.</span><br/>
             <span style={{color:"#d29922"}}>⚠ OANDA API je v EU nedostupné a prohlížeč ho navíc blokuje přes CORS — vyplň jen pokud máš ne-EU účet a token reálně funguje.</span><br/>
             <b style={{color:"#e6edf3"}}>Jak získat API token (mimo EU):</b> oanda.com → demo účet → Account → Manage API Access → Generate.
           </div>
@@ -298,27 +325,27 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
             style={{...inp,marginBottom:8}}
           />
           <div style={{display:"flex",gap:16,marginBottom:10}}>
-            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:oandaEnv==="practice"?"#3fb950":"#8b949e"}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:oandaEnv==="practice"?"#2ed3a0":"#8b949e"}}>
               <input type="radio" name="oandaEnv" value="practice"
                 checked={oandaEnv==="practice"} onChange={()=>setOandaEnv("practice")}/>
               🧪 Practice (demo)
             </label>
-            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:oandaEnv==="live"?"#3fb950":"#8b949e"}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,color:oandaEnv==="live"?"#2ed3a0":"#8b949e"}}>
               <input type="radio" name="oandaEnv" value="live"
                 checked={oandaEnv==="live"} onChange={()=>setOandaEnv("live")}/>
               💰 Live účet
             </label>
           </div>
-          {oandaToken&&<div style={{fontSize:10,color:"#3fb950",marginBottom:4}}>
+          {oandaToken&&<div style={{fontSize:10,color:"#2ed3a0",marginBottom:4}}>
             ✅ Token nastaven — při kliknutí na 🔄 Retail Sentiment se použije OANDA data
           </div>}
         </div>
 
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>
-          🤖 OpenRouter API klíč <span style={{color:"#3fb950",fontWeight:700}}>✓ ZDARMA</span>
+          🤖 OpenRouter API klíč <span style={{color:"#2ed3a0",fontWeight:700}}>✓ ZDARMA</span>
         </label>
         <div style={{fontSize:10,color:"#8b949e",marginBottom:6}}>
-          1. Jdi na <a href="https://openrouter.ai" target="_blank" style={{color:"#58a6ff"}}>openrouter.ai</a> → Sign up (Google účet) → <b style={{color:"#e6edf3"}}>Keys</b> → <b style={{color:"#e6edf3"}}>Create Key</b><br/>
+          1. Jdi na <a href="https://openrouter.ai" target="_blank" style={{color:"#7d95ff"}}>openrouter.ai</a> → Sign up (Google účet) → <b style={{color:"#e6edf3"}}>Keys</b> → <b style={{color:"#e6edf3"}}>Create Key</b><br/>
           2. Zkopíruj klíč sem (začíná <b style={{color:"#e6edf3"}}>sk-or-v1-...</b>)
         </div>
         <input value={orKey} onChange={e=>setOrKey(e.target.value)} placeholder="sk-or-v1-..." style={{...inp,marginBottom:10}}/>
@@ -326,7 +353,7 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
           Model pro AI analýzu <span style={{color:"#8b949e"}}>(nechej prázdné = auto fallback)</span>
         </label>
         <div style={{fontSize:10,color:"#8b949e",marginBottom:5}}>
-          Dostupné free modely: <a href="https://openrouter.ai/models?q=%3Afree" target="_blank" style={{color:"#58a6ff"}}>openrouter.ai/models?q=:free</a>
+          Dostupné free modely: <a href="https://openrouter.ai/models?q=%3Afree" target="_blank" style={{color:"#7d95ff"}}>openrouter.ai/models?q=:free</a>
         </div>
         <select value={orModel} onChange={e=>setOrModel(e.target.value)} style={{...inp,cursor:"pointer",marginBottom:6}}>
           <option value="">🔄 Auto — stáhne aktuální live seznam z OpenRouter</option>
@@ -337,7 +364,7 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
           <option value="meta-llama/llama-4-scout:free">llama-4-scout (zkus pokud auto selže)</option>
         </select>
         <div style={{fontSize:10,color:"#8b949e",marginBottom:14}}>
-          Aktuální free modely: <a href="https://openrouter.ai/models?q=%3Afree&supported_parameters=vision" target="_blank" style={{color:"#58a6ff"}}>openrouter.ai/models (filtr: free + vision)</a>
+          Aktuální free modely: <a href="https://openrouter.ai/models?q=%3Afree&supported_parameters=vision" target="_blank" style={{color:"#7d95ff"}}>openrouter.ai/models (filtr: free + vision)</a>
         </div>
         <div style={{borderTop:"1px solid #21262d",paddingTop:12,marginBottom:12}}>
           <div style={{fontSize:12,fontWeight:700,color:"#e6edf3",marginBottom:4}}>⚡ V5 Sazby centrálních bank (%)</div>
@@ -357,7 +384,7 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
             {Object.entries(CB_POLICY_DATA).map(([cur,pol])=>(
               <div key={cur} style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"4px 6px",textAlign:"center"}}>
                 <div style={{fontSize:9,color:"#8b949e"}}>{FLAGS[cur]} {cur}</div>
-                <div style={{fontSize:12,fontWeight:700,color:pol.score>0?"#3fb950":pol.score<0?"#f85149":"#8b949e"}}>{pol.score>0?"+":""}{pol.score}</div>
+                <div style={{fontSize:12,fontWeight:700,color:pol.score>0?"#2ed3a0":pol.score<0?"#f85149":"#8b949e"}}>{pol.score>0?"+":""}{pol.score}</div>
               </div>
             ))}
           </div>
@@ -385,8 +412,8 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
 // ── STRENGTH BAR ─────────────────────────────────────────
 function StrengthBar({currency,score,change7d}){
   const pct=((score+10)/20)*100;
-  const color=score>2?"#3fb950":score<-2?"#f85149":"#d29922";
-  const changeColor=change7d>0?"#3fb950":change7d<0?"#f85149":"#8b949e";
+  const color=score>2?"#2ed3a0":score<-2?"#f85149":"#d29922";
+  const changeColor=change7d>0?"#2ed3a0":change7d<0?"#f85149":"#8b949e";
   const changeArrow=change7d>0?"↑":change7d<0?"↓":"→";
   return(
     <div style={{marginBottom:12}}>
@@ -427,9 +454,9 @@ function CopyBtn({text}){
   }
   return(
     <span onClick={doCopy} title={"Kopírovat: "+text} style={{cursor:"pointer",fontSize:9,padding:"1px 5px",borderRadius:3,marginLeft:4,userSelect:"none",flexShrink:0,
-      color:copied?"#3fb950":"#4a6a88",
-      background:copied?"rgba(63,185,80,.12)":"rgba(255,255,255,.04)",
-      border:`1px solid ${copied?"#3fb95033":"#1d2a3688"}`,
+      color:copied?"#2ed3a0":"#4a6a88",
+      background:copied?"rgba(46,211,160,.12)":"rgba(255,255,255,.04)",
+      border:`1px solid ${copied?"#2ed3a033":"#1d2a3688"}`,
       transition:"all .2s",display:"inline-block"}}>
       {copied?"✓":"⧉"}
     </span>
@@ -437,16 +464,16 @@ function CopyBtn({text}){
 }
 
 function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note}){
-  const buy=p.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
+  const buy=p.dir==="BUY",ac=buy?"#2ed3a0":"#ff4d4d";
   const conf=Math.min(100,(p.diff/15)*100);
   const f=forecast||{};
-  const probColor=f.prob>=65?"#3fb950":f.prob<=35?"#ff4d4d":"#d29922";
+  const probColor=f.prob>=65?"#2ed3a0":f.prob<=35?"#ff4d4d":"#d29922";
   // Pre-compute oil badge (no IIFE in JSX)
   const isCAD=p.base==="CAD"||p.quote==="CAD";
   const oilSt=isCAD?getOilStatus():null;
   const oilBadge=isCAD?(
     oilSt
-      ?<span style={{background:oilSt.mom4w>2?"rgba(63,185,80,.1)":oilSt.mom4w<-2?"rgba(248,81,73,.1)":"rgba(100,100,100,.1)",border:"1px solid "+oilSt.color+"55",color:oilSt.color,borderRadius:3,padding:"0 4px",fontSize:9}}>
+      ?<span style={{background:oilSt.mom4w>2?"rgba(46,211,160,.1)":oilSt.mom4w<-2?"rgba(248,81,73,.1)":"rgba(100,100,100,.1)",border:"1px solid "+oilSt.color+"55",color:oilSt.color,borderRadius:3,padding:"0 4px",fontSize:9}}>
           {"🛢 "+(oilSt.mom4w>0?"+":"")+oilSt.mom4w+"%"}
         </span>
       :<span style={{background:"rgba(100,100,100,.1)",border:"1px solid rgba(100,100,100,.2)",color:"#8b949e",borderRadius:3,padding:"0 4px",fontSize:9}}>{"🛢 —"}</span>
@@ -459,10 +486,10 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note}){
     const as2=ah<1?"<1h":ah<24?ah+"h":Math.round(ah/24)+"d";
     return(
       <span style={{display:"inline-flex",gap:4,alignItems:"center",
-        background:cf?"rgba(63,185,80,.08)":"rgba(248,81,73,.08)",
-        border:"1px solid "+(cf?"rgba(63,185,80,.25)":"rgba(248,81,73,.25)"),
+        background:cf?"rgba(46,211,160,.08)":"rgba(248,81,73,.08)",
+        border:"1px solid "+(cf?"rgba(46,211,160,.25)":"rgba(248,81,73,.25)"),
         borderRadius:5,padding:"1px 7px"}}>
-        <span style={{fontSize:9,color:cf?"#3fb950":"#f85149",fontWeight:700}}>{cf?"🟢 CONF":"⚠ DIV"}</span>
+        <span style={{fontSize:9,color:cf?"#2ed3a0":"#f85149",fontWeight:700}}>{cf?"🟢 CONF":"⚠ DIV"}</span>
         <span style={{fontSize:9,color:"#8b949e"}}>{"AI "+aiData.tf}</span>
         <span style={{fontSize:9,color:"#4a6a88"}}>{as2}</span>
       </span>
@@ -474,22 +501,22 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note}){
         <div>
           <div style={{fontWeight:900,fontSize:14,display:"flex",alignItems:"center",gap:6}}>{FLAGS[p.base]}{FLAGS[p.quote]} {p.pair}{dailyState&&dailyState.dot&&<span title="Daily brief — dnešní fundamenty" style={{fontSize:11}}>{dailyState.dot}</span>}{isPairFlipped(p.pair)&&<span title="14d výhled se otočil" style={{fontSize:11}}>🔄</span>}{p.conviction>=3&&<span style={{color:"#f0b429",fontSize:11,letterSpacing:1}}>{"★".repeat(p.conviction)}</span>}<span className="pro-muted" style={{fontSize:10}}>{"#"+rank}</span></div>
           <div style={{fontSize:11,marginTop:5}}>
-            <span className="pro-muted">{"score "}</span><b style={{color:p.diff>=0?"#3fb950":"#ff4d4d"}}>{p.dir==="BUY"?"+":"-"}{p.diff.toFixed(1)}</b>
+            <span className="pro-muted">{"score "}</span><b style={{color:p.diff>=0?"#2ed3a0":"#ff4d4d"}}>{p.dir==="BUY"?"+":"-"}{p.diff.toFixed(1)}</b>
             <span className="pro-muted">{" · 14d "}</span>{f.prob&&<b style={{color:probColor}}>{f.prob+"% "+f.dir+(f.newsDiscount&&f.newsDiscount<0?" ⚡":"")}</b>}
           </div>
         </div>
         <span className="pro-pill" style={{background:buy?"#113b20":"#431819",color:ac,border:"1px solid "+ac+"33"}}>{p.dir}</span>
       </div>
       <div style={{display:"flex",gap:8,marginTop:8,fontSize:10,color:"#8b949e",flexWrap:"wrap",alignItems:"center"}}>
-        <span>{p.base+" "}<b style={{color:p.s1>=0?"#3fb950":"#ff4d4d"}}>{(p.s1>0?"+":"")+p.s1.toFixed(1)}</b></span>
-        <span>{p.quote+" "}<b style={{color:p.s2>=0?"#3fb950":"#ff4d4d"}}>{(p.s2>0?"+":"")+p.s2.toFixed(1)}</b></span>
+        <span>{p.base+" "}<b style={{color:p.s1>=0?"#2ed3a0":"#ff4d4d"}}>{(p.s1>0?"+":"")+p.s1.toFixed(1)}</b></span>
+        <span>{p.quote+" "}<b style={{color:p.s2>=0?"#2ed3a0":"#ff4d4d"}}>{(p.s2>0?"+":"")+p.s2.toFixed(1)}</b></span>
         {p.cotCrowded&&<span style={{background:"rgba(240,180,41,.10)",border:"1px solid rgba(240,180,41,.28)",color:"#d29922",borderRadius:3,padding:"0 4px"}}>{"🚨 CROWDED"}</span>}
         {p.corrDuplicate&&<span style={{background:"rgba(248,81,73,.08)",border:"1px solid rgba(248,81,73,.22)",color:"#f85149",borderRadius:3,padding:"0 4px"}}>{"≈ KOREL."}</span>}
-        {p.yieldLabel&&<span style={{background:"rgba(47,155,255,.08)",border:"1px solid rgba(47,155,255,.22)",color:"#58a6ff",borderRadius:3,padding:"0 4px"}}>{"💰 "+p.yieldLabel}</span>}
+        {p.yieldLabel&&<span style={{background:"rgba(94,124,251,.08)",border:"1px solid rgba(94,124,251,.22)",color:"#7d95ff",borderRadius:3,padding:"0 4px"}}>{"💰 "+p.yieldLabel}</span>}
         {p.pair==="USDCHF"&&<span style={{background:"rgba(248,81,73,.07)",border:"1px solid rgba(248,81,73,.2)",color:"#f85149",borderRadius:3,padding:"0 4px",fontSize:9}}>{"⚠ SNB"}</span>}
         {oilBadge}
         {p.diff<2.0&&<span style={{background:"rgba(100,100,100,.1)",border:"1px solid rgba(100,100,100,.2)",color:"#6e7681",borderRadius:3,padding:"0 4px",fontSize:9}}>{"SLABÝ"}</span>}
-        {p.cotPctBase!=null&&<span style={{color:"#8b949e"}}>{"COT: "}<b style={{color:p.cotPctBase>=88||p.cotPctBase<=12?"#d29922":p.cotPctBase>=70?"#3fb950":"#8b949e"}}>{p.cotPctBase+"p"}</b></span>}
+        {p.cotPctBase!=null&&<span style={{color:"#8b949e"}}>{"COT: "}<b style={{color:p.cotPctBase>=88||p.cotPctBase<=12?"#d29922":p.cotPctBase>=70?"#2ed3a0":"#8b949e"}}>{p.cotPctBase+"p"}</b></span>}
         {aiBadge}
       </div>
       <div style={{height:4,background:"#1a2432",borderRadius:4,marginTop:9,overflow:"hidden"}}>
@@ -518,7 +545,7 @@ function ScoreBreakdown({currency,scores}){
       ?[{label:`WTI Ropa ${oilSt?oilSt.price.toFixed(1)+"$/bbl":""}`,value:s.oil_adj,max:2}]:[]),
   ];
   const total=s.score;
-  const tc=total>2?"#3fb950":total<-2?"#f85149":"#d29922";
+  const tc=total>2?"#2ed3a0":total<-2?"#f85149":"#d29922";
   return(
     <div style={{background:"#0d1117",borderRadius:6,padding:"10px 12px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -526,7 +553,7 @@ function ScoreBreakdown({currency,scores}){
         <span style={{fontSize:16,fontWeight:700,color:tc}}>{total>0?"+":""}{total.toFixed(1)}</span>
       </div>
       {items.map(({label,value,max})=>{
-        const c=value>0?"#3fb950":value<0?"#f85149":"#8b949e";
+        const c=value>0?"#2ed3a0":value<0?"#f85149":"#8b949e";
         const pct=((value+max)/(max*2))*100;
         return(
           <div key={label} style={{marginBottom:6}}>
@@ -544,7 +571,7 @@ function ScoreBreakdown({currency,scores}){
         <div style={{marginTop:8,paddingTop:7,borderTop:"1px solid #21262d",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:10,color:"#8b949e"}}>COT Percentil (3+ roky)</span>
           <div style={{display:"flex",alignItems:"center",gap:5}}>
-            <div style={{width:50,height:4,background:"#21262d",borderRadius:2,overflow:"hidden"}}><div style={{width:`${s.cot_pct}%`,height:"100%",background:s.cot_pct>=85||s.cot_pct<=15?"#d29922":"#58a6ff",borderRadius:2}}/></div>
+            <div style={{width:50,height:4,background:"#21262d",borderRadius:2,overflow:"hidden"}}><div style={{width:`${s.cot_pct}%`,height:"100%",background:s.cot_pct>=85||s.cot_pct<=15?"#d29922":"#7d95ff",borderRadius:2}}/></div>
             <span style={{fontSize:11,fontWeight:700,color:s.cot_pct>=88||s.cot_pct<=12?"#d29922":"#8b949e"}}>{s.cot_pct}p{s.cot_pct>=88?" 🚨":s.cot_pct<=12?" 🚨":""}</span>
           </div>
         </div>
@@ -552,10 +579,10 @@ function ScoreBreakdown({currency,scores}){
       {s.weights_used&&(
         <div style={{marginTop:5,fontSize:9,color:"#8b949e",display:"flex",gap:6,flexWrap:"wrap"}}>
           <span>Dyn. váhy:</span>
-          <span>fund <b style={{color:"#58a6ff"}}>{(s.weights_used.fund*100).toFixed(0)}%</b></span>
-          <span>COT <b style={{color:"#58a6ff"}}>{(s.weights_used.cot*100).toFixed(0)}%</b></span>
-          <span>sent <b style={{color:"#58a6ff"}}>{(s.weights_used.sent*100).toFixed(0)}%</b></span>
-          <span>sea <b style={{color:"#58a6ff"}}>{(s.weights_used.sea*100).toFixed(0)}%</b></span>
+          <span>fund <b style={{color:"#7d95ff"}}>{(s.weights_used.fund*100).toFixed(0)}%</b></span>
+          <span>COT <b style={{color:"#7d95ff"}}>{(s.weights_used.cot*100).toFixed(0)}%</b></span>
+          <span>sent <b style={{color:"#7d95ff"}}>{(s.weights_used.sent*100).toFixed(0)}%</b></span>
+          <span>sea <b style={{color:"#7d95ff"}}>{(s.weights_used.sea*100).toFixed(0)}%</b></span>
         </div>
       )}
     </div>
@@ -576,7 +603,7 @@ function MiniLineChart({values=[],height=120,color="#d29922"}){
     {values.map((v,i)=> i===values.length-1 ? <circle key={i} cx={pad+(values.length===1?0:i*(w-2*pad)/(values.length-1))} cy={h-pad-((v-min)/span)*(h-2*pad)} r="4" fill={color}/> : null)}
   </svg>;
 }
-function DualLineChart({a=[],b=[],height=260,colorA="#2f9bff",colorB="#bf4cff",labelA="BASE",labelB="QUOTE",unit="score",independentScale=false,autoFit=false,dates=null}){
+function DualLineChart({a=[],b=[],height=260,colorA="#5e7cfb",colorB="#bf4cff",labelA="BASE",labelB="QUOTE",unit="score",independentScale=false,autoFit=false,dates=null}){
   const w=760,h=height,padL=46,padR=22,padT=22,padB=32;
   const aVals=a.filter(function(v){return Number.isFinite(v);});
   const bVals=b.filter(function(v){return Number.isFinite(v);});
@@ -676,22 +703,22 @@ function OilPanel({pair}){
           <div style={{fontSize:10,color:"#8b949e"}}>WTI bbl · {oilSt.date}</div>
         </div>
       </div>
-      {oilSeries.length>4&&<div style={{marginBottom:10}}><MiniLineChart values={oilSeries} height={60} color={oilSt.mom4w>0?"#3fb950":"#f85149"}/></div>}
+      {oilSeries.length>4&&<div style={{marginBottom:10}}><MiniLineChart values={oilSeries} height={60} color={oilSt.mom4w>0?"#2ed3a0":"#f85149"}/></div>}
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
         <div style={{background:"#0b111a",border:"1px solid #1b2a35",borderRadius:8,padding:10}}>
           <div style={{fontSize:10,color:"#8b949e"}}>4t momentum</div>
-          <div style={{fontSize:16,fontWeight:900,color:oilSt.mom4w>2?"#3fb950":oilSt.mom4w<-2?"#f85149":"#d29922"}}>{oilSt.mom4w>0?"+":""}{oilSt.mom4w}%</div>
+          <div style={{fontSize:16,fontWeight:900,color:oilSt.mom4w>2?"#2ed3a0":oilSt.mom4w<-2?"#f85149":"#d29922"}}>{oilSt.mom4w>0?"+":""}{oilSt.mom4w}%</div>
         </div>
         <div style={{background:"#0b111a",border:"1px solid #1b2a35",borderRadius:8,padding:10}}>
           <div style={{fontSize:10,color:"#8b949e"}}>13t trend</div>
-          <div style={{fontSize:16,fontWeight:900,color:oilSt.trend13>4?"#3fb950":oilSt.trend13<-4?"#f85149":"#d29922"}}>{oilSt.trend13>0?"+":""}{oilSt.trend13}%</div>
+          <div style={{fontSize:16,fontWeight:900,color:oilSt.trend13>4?"#2ed3a0":oilSt.trend13<-4?"#f85149":"#d29922"}}>{oilSt.trend13>0?"+":""}{oilSt.trend13}%</div>
         </div>
-        <div style={{background:cadAdj>0.5?"rgba(63,185,80,.08)":cadAdj<-0.5?"rgba(248,81,73,.08)":"rgba(100,100,100,.08)",border:`1px solid ${cadAdj>0.5?"rgba(63,185,80,.25)":cadAdj<-0.5?"rgba(248,81,73,.25)":"rgba(100,100,100,.2)"}`,borderRadius:8,padding:10}}>
+        <div style={{background:cadAdj>0.5?"rgba(46,211,160,.08)":cadAdj<-0.5?"rgba(248,81,73,.08)":"rgba(100,100,100,.08)",border:`1px solid ${cadAdj>0.5?"rgba(46,211,160,.25)":cadAdj<-0.5?"rgba(248,81,73,.25)":"rgba(100,100,100,.2)"}`,borderRadius:8,padding:10}}>
           <div style={{fontSize:10,color:"#8b949e"}}>CAD korekce</div>
-          <div style={{fontSize:16,fontWeight:900,color:cadAdj>0.5?"#3fb950":cadAdj<-0.5?"#f85149":"#d29922"}}>{cadAdj>0?"+":""}{cadAdj.toFixed(2)}</div>
+          <div style={{fontSize:16,fontWeight:900,color:cadAdj>0.5?"#2ed3a0":cadAdj<-0.5?"#f85149":"#d29922"}}>{cadAdj>0?"+":""}{cadAdj.toFixed(2)}</div>
         </div>
       </div>
-      <div style={{marginTop:8,background:"rgba(120,242,54,.04)",border:"1px solid rgba(120,242,54,.12)",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#8b949e"}}>
+      <div style={{marginTop:8,background:"rgba(46,211,160,.04)",border:"1px solid rgba(46,211,160,.12)",borderRadius:6,padding:"6px 10px",fontSize:11,color:"#8b949e"}}>
         <b style={{color:oilSt.color}}>{oilSt.direction}</b> · {impactLabel}
       </div>
     </div>
@@ -712,7 +739,7 @@ function PairScoreHistoryPanel({pair}){
       <div>
         <div className="pro-panel-title" style={{marginBottom:4}}>Vývoj skóre — {pair.base} vs {pair.quote}</div>
         <div style={{display:"flex",gap:18,fontSize:12}}>
-          <span><b style={{color:"#2f9bff"}}>■ {pair.base}</b> {NAMES[pair.base]}</span>
+          <span><b style={{color:"#5e7cfb"}}>■ {pair.base}</b> {NAMES[pair.base]}</span>
           <span><b style={{color:"#bf4cff"}}>■ {pair.quote}</b> {NAMES[pair.quote]}</span>
         </div>
       </div>
@@ -725,7 +752,7 @@ function PairScoreHistoryPanel({pair}){
       : <div style={{fontSize:12,color:"#8b949e",padding:18,lineHeight:1.6}}>Zatím málo dat ({n} {n===1?"bod":"body"}). Historie skóre se plní automaticky každý den, co necháš appku načíst — za pár dní bude graf čitelný. Rychlý start: naimportuj COT historii v záložce <b>COT &amp; Sentiment</b>.</div>
     }
     <div style={{fontSize:11,color:"#8b949e",marginTop:6,lineHeight:1.6}}>
-      {diff!==null&&<span>Aktuální rozdíl skóre: <b style={{color:diff>=0?"#3fb950":"#ff4d4d"}}>{diff>0?"+":""}{diff.toFixed(1)}</b> ({Math.abs(diff)<0.1?"vyrovnané":(diff>=0?pair.base:pair.quote)+" silnější"}) · </span>}
+      {diff!==null&&<span>Aktuální rozdíl skóre: <b style={{color:diff>=0?"#2ed3a0":"#ff4d4d"}}>{diff>0?"+":""}{diff.toFixed(1)}</b> ({Math.abs(diff)<0.1?"vyrovnané":(diff>=0?pair.base:pair.quote)+" silnější"}) · </span>}
       Větší rozestup čar = silnější bias páru. Když se čáry protnou, bias se otáčí. Osa se přizpůsobí datům v okně ({n} {n===1?"bod":"bodů"}).
     </div>
   </div>;
@@ -738,18 +765,18 @@ function COTNetPairPanel({pair,cotMeta,cotData}){
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:12}}>
       <div>
         <div className="pro-panel-title" style={{marginBottom:4}}>COT Net positioning — Leveraged Funds</div>
-        <div style={{display:"flex",gap:18,fontSize:12}}><span><b style={{color:"#2f9bff"}}>■ {pair.base}</b> net pozice</span><span><b style={{color:"#bf4cff"}}>■ {pair.quote}</b> net pozice</span></div>
+        <div style={{display:"flex",gap:18,fontSize:12}}><span><b style={{color:"#5e7cfb"}}>■ {pair.base}</b> net pozice</span><span><b style={{color:"#bf4cff"}}>■ {pair.quote}</b> net pozice</span></div>
       </div>
       <div className="pro-chart-toolbar"><span>3M</span><span>6M</span><span className="active">1Y</span><span>2Y</span><span>ALL</span></div>
     </div>
     {(b.values.length>1||q.values.length>1)?<DualLineChart a={b.values} b={q.values} unit="net"/>:<div style={{fontSize:12,color:"#8b949e",padding:18}}>COT graf se zobrazí po importu historických fut_fin_txt_YYYY.zip souborů.</div>}
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
-      {[{c:pair.base,s:bScore,r:bRaw,col:"#2f9bff"},{c:pair.quote,s:qScore,r:qRaw,col:"#bf4cff"}].map(x=>{
+      {[{c:pair.base,s:bScore,r:bRaw,col:"#5e7cfb"},{c:pair.quote,s:qScore,r:qRaw,col:"#bf4cff"}].map(x=>{
         const f=x.r.flow||0;const ex=x.r.extreme||cotExtremeFromRatio((x.s||0)/6);
         return <div key={x.c} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
-          <div style={{fontSize:20,fontWeight:900,color:x.col}}>{x.c} <span style={{fontSize:15,color:x.s>=0?"#3fb950":"#ff4d4d"}}>{x.s>0?"+":""}{x.s.toFixed(1)}</span></div>
+          <div style={{fontSize:20,fontWeight:900,color:x.col}}>{x.c} <span style={{fontSize:15,color:x.s>=0?"#2ed3a0":"#ff4d4d"}}>{x.s>0?"+":""}{x.s.toFixed(1)}</span></div>
           <div style={{fontSize:11,color:"#8b949e",marginTop:6}}>Net LF: <b style={{color:"#e6edf3"}}>{x.r.levNet?Math.round(x.r.levNet).toLocaleString("cs"):"—"}</b></div>
-          <div style={{fontSize:11,color:"#8b949e"}}>Flow: <b style={{color:f>=0?"#3fb950":"#ff4d4d"}}>{f>0?"+":""}{f?Math.round(f).toLocaleString("cs"):"—"}</b></div>
+          <div style={{fontSize:11,color:"#8b949e"}}>Flow: <b style={{color:f>=0?"#2ed3a0":"#ff4d4d"}}>{f>0?"+":""}{f?Math.round(f).toLocaleString("cs"):"—"}</b></div>
           <div style={{fontSize:11,color:"#8b949e"}}>Extreme: <b style={{color:ex.color}}>{ex.label}</b></div>
         </div>
       })}
@@ -775,14 +802,14 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
   const instSide=instDir>0?"LONG":instDir<0?"SHORT":"NEUTRAL";
   const smartAligned=(instSide==="LONG"&&retail.crowdBias==="SHORT")||(instSide==="SHORT"&&retail.crowdBias==="LONG");
   const alignLabel=smartAligned?"HIGH":(retail.crowdBias==="NEUTRAL"||instSide==="NEUTRAL"?"NEUTRAL":"CONFLICT");
-  const alignColor=alignLabel==="HIGH"?"#78f236":alignLabel==="CONFLICT"?"#ff4d4d":"#d29922";
+  const alignColor=alignLabel==="HIGH"?"#2ed3a0":alignLabel==="CONFLICT"?"#ff4d4d":"#d29922";
   const hasRealHistory=hasRetailMovement;
   return <div className="pro-card pro-chart-wrap" style={{marginBottom:14}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
       <div>
         <div className="pro-panel-title" style={{marginBottom:4}}>COT & Retail Positioning ({pair.pair})</div>
         <div style={{display:"flex",gap:18,fontSize:12,flexWrap:"wrap"}}>
-          <span><b style={{color:"#2f9bff"}}>■ Instituce (COT diff)</b></span>
+          <span><b style={{color:"#5e7cfb"}}>■ Instituce (COT diff)</b></span>
           <span><b style={{color:"#bf4cff"}}>■ Retail (contrarian)</b>{!hasRealHistory&&<span style={{fontSize:10,color:"#4a6a88"}}> — aktuální snapshot</span>}</span>
         </div>
         {!hasRealHistory&&<div style={{fontSize:10,color:"#4a6a88",marginTop:3}}>Historie retail se buduje postupně. Klikni na "🔄 Retail Sentiment" v záložce COT pro načtení dat.</div>}
@@ -791,7 +818,7 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
         <div style={{fontSize:10,color:"#8b949e",letterSpacing:".08em"}}>SMART MONEY ALIGNMENT</div>
         <div style={{fontSize:20,fontWeight:1000,color:alignColor,marginTop:3}}>{alignLabel}</div>
         <div style={{height:1,background:"#243142",margin:"8px 0"}}/>
-        <div style={{fontSize:11,color:"#8b949e"}}>Instituce <b style={{color:instSide==="LONG"?"#2f9bff":instSide==="SHORT"?"#ff4d4d":"#8b949e"}}>{instSide}</b></div>
+        <div style={{fontSize:11,color:"#8b949e"}}>Instituce <b style={{color:instSide==="LONG"?"#5e7cfb":instSide==="SHORT"?"#ff4d4d":"#8b949e"}}>{instSide}</b></div>
         <div style={{fontSize:11,color:"#8b949e"}}>Retail <b style={{color:retail.crowdBias==="LONG"?"#bf4cff":retail.crowdBias==="SHORT"?"#ff4d4d":"#8b949e"}}>{retail.crowdBias}</b></div>
       </div>
     </div>
@@ -799,7 +826,7 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
       ? <DualLineChart a={cotDiff.length>1?cotDiff:cot.values} b={retailSeries} unit="net" height={250} independentScale={true} colorB="#bf4cff" labelA="COT diff" labelB="Retail % long"/>
       : <div style={{background:"#070d14",border:"1px solid #1b2a35",borderRadius:12,padding:14}}>
           <div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>COT trend + aktuální retail snapshot</div>
-          {cotDiff.length>1?<MiniLineChart values={cotDiff} height={118} color="#2f9bff"/>:<div style={{fontSize:12,color:"#4a6a88",padding:12}}>COT graf se zobrazí po importu historických COT dat.</div>}
+          {cotDiff.length>1?<MiniLineChart values={cotDiff} height={118} color="#5e7cfb"/>:<div style={{fontSize:12,color:"#4a6a88",padding:12}}>COT graf se zobrazí po importu historických COT dat.</div>}
           <div style={{marginTop:14,display:"grid",gridTemplateColumns:"1fr 90px",gap:12,alignItems:"center"}}>
             <div>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#cbd6e2",marginBottom:5}}><b>Retail LONG</b><b>{retail.retailLong}%</b></div>
@@ -813,17 +840,17 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
     <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:10}}>
       <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
         <div style={{fontSize:10,color:"#8b949e"}}>COT diff</div>
-        <div style={{fontSize:20,fontWeight:900,color:instDir>=0?"#3fb950":"#ff4d4d"}}>{instDir>0?"+":""}{instDir.toFixed(1)}</div>
+        <div style={{fontSize:20,fontWeight:900,color:instDir>=0?"#2ed3a0":"#ff4d4d"}}>{instDir>0?"+":""}{instDir.toFixed(1)}</div>
         <div style={{fontSize:11,color:"#8b949e"}}>{pair.base} vs {pair.quote}</div>
       </div>
       <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
         <div style={{fontSize:10,color:"#8b949e"}}>Retail positioning</div>
         <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
-          <b style={{color:"#3fb950"}}>{retail.retailLong}% LONG</b>
+          <b style={{color:"#2ed3a0"}}>{retail.retailLong}% LONG</b>
           <b style={{color:"#ff4d4d"}}>{retail.retailShort}% SHORT</b>
         </div>
         <div style={{height:6,background:"#1a2432",borderRadius:6,overflow:"hidden",marginTop:8}}>
-          <div style={{height:"100%",width:retail.retailLong+"%",background:"#3fb950",float:"left"}}/>
+          <div style={{height:"100%",width:retail.retailLong+"%",background:"#2ed3a0",float:"left"}}/>
           <div style={{height:"100%",width:retail.retailShort+"%",background:"#ff4d4d",float:"left"}}/>
         </div>
         <div style={{fontSize:9,color:retail.crowded?"#d29922":"#4a6a88",marginTop:5}}>
@@ -842,8 +869,8 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
 function AIAnalysisStatusPanel({pair,aiAnalyses}){
   const ai=aiAnalyses?.[pair.pair];
   if(!ai) return <div className="pro-card" style={{padding:22,minHeight:270,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center"}}><div className="pro-panel-title" style={{alignSelf:"stretch",textAlign:"left"}}>AI Analysis</div><div style={{width:76,height:76,borderRadius:"50%",border:"1px solid rgba(191,76,255,.45)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:36,boxShadow:"0 0 35px rgba(191,76,255,.16)",marginBottom:20}}>🧠</div><div style={{fontSize:20,fontWeight:900,marginBottom:8}}>Čekám na AI analýzu...</div><div style={{fontSize:13,color:"#8b949e",lineHeight:1.55,maxWidth:270}}>Nahraj screenshot v záložce AI Analýza. Jakmile bude hotová, tady se objeví bias, supporty, rezistence a entry scénář.</div><div style={{display:"flex",gap:8,marginTop:22}}>{[0,1,2,3].map(i=><span key={i} style={{width:9,height:9,borderRadius:"50%",background:i===1?"#bf4cff":"#263242"}}/> )}</div></div>;
-  const bc=ai.bias==="BULLISH"?"#3fb950":ai.bias==="BEARISH"?"#ff4d4d":"#d29922";
-  return <div className="pro-card" style={{padding:16,minHeight:270}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div className="pro-panel-title" style={{margin:0}}>AI Analysis</div><span style={{fontSize:10,color:"#8b949e"}}>{ai.tf||"TF"}</span></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div style={{background:bc+"14",border:`1px solid ${bc}44`,borderRadius:8,padding:10}}><div style={{fontSize:10,color:"#8b949e"}}>Bias</div><b style={{fontSize:18,color:bc}}>{ai.bias}</b></div><div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:8,padding:10}}><div style={{fontSize:10,color:"#8b949e"}}>Confidence</div><b style={{fontSize:18,color:ai.confidence>=70?"#3fb950":"#d29922"}}>{ai.confidence}%</b></div></div>{ai.key_levels?.length>0&&<div style={{marginBottom:10}}><div style={{fontSize:10,color:"#8b949e",marginBottom:5}}>Klíčové zóny</div>{ai.key_levels.slice(0,4).map((l,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:"1px solid #152031"}}><span style={{color:l.type==="SUPPORT"?"#3fb950":"#ff4d4d"}}>{l.type}</span><b>{l.zone}</b></div>)}</div>}{ai.entry_setup&&<div style={{fontSize:12,lineHeight:1.55,color:"#c9d1d9"}}><b style={{color:"#58a6ff"}}>Entry:</b> {ai.entry_setup.entry_zone||"—"}<br/><b style={{color:"#ff4d4d"}}>Invalidace:</b> {ai.entry_setup.invalidation||ai.entry_setup.stop_loss||"—"}</div>}</div>;
+  const bc=ai.bias==="BULLISH"?"#2ed3a0":ai.bias==="BEARISH"?"#ff4d4d":"#d29922";
+  return <div className="pro-card" style={{padding:16,minHeight:270}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><div className="pro-panel-title" style={{margin:0}}>AI Analysis</div><span style={{fontSize:10,color:"#8b949e"}}>{ai.tf||"TF"}</span></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}><div style={{background:bc+"14",border:`1px solid ${bc}44`,borderRadius:8,padding:10}}><div style={{fontSize:10,color:"#8b949e"}}>Bias</div><b style={{fontSize:18,color:bc}}>{ai.bias}</b></div><div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:8,padding:10}}><div style={{fontSize:10,color:"#8b949e"}}>Confidence</div><b style={{fontSize:18,color:ai.confidence>=70?"#2ed3a0":"#d29922"}}>{ai.confidence}%</b></div></div>{ai.key_levels?.length>0&&<div style={{marginBottom:10}}><div style={{fontSize:10,color:"#8b949e",marginBottom:5}}>Klíčové zóny</div>{ai.key_levels.slice(0,4).map((l,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"4px 0",borderBottom:"1px solid #152031"}}><span style={{color:l.type==="SUPPORT"?"#2ed3a0":"#ff4d4d"}}>{l.type}</span><b>{l.zone}</b></div>)}</div>}{ai.entry_setup&&<div style={{fontSize:12,lineHeight:1.55,color:"#c9d1d9"}}><b style={{color:"#7d95ff"}}>Entry:</b> {ai.entry_setup.entry_zone||"—"}<br/><b style={{color:"#ff4d4d"}}>Invalidace:</b> {ai.entry_setup.invalidation||ai.entry_setup.stop_loss||"—"}</div>}</div>;
 }
 function fmtCalValue(v){
   if(v===undefined||v===null||v==="") return "—";
@@ -858,7 +885,7 @@ function getImpactInfo(ev){
   const w=getWeight(ev.event||"");
   if(raw.includes("high")||raw==="3"||w>=2.5) return {label:"HIGH",color:"#ff4d4d",bg:"rgba(255,77,77,.12)"};
   if(raw.includes("medium")||raw==="2"||w>=1.5) return {label:"MED",color:"#d29922",bg:"rgba(210,153,34,.12)"};
-  return {label:"LOW",color:"#3fb950",bg:"rgba(63,185,80,.10)"};
+  return {label:"LOW",color:"#2ed3a0",bg:"rgba(46,211,160,.10)"};
 }
 function getSurpriseInfo(ev){
   const actual=ev.actual;
@@ -867,9 +894,9 @@ function getSurpriseInfo(ev){
   const hasActual=actual!==undefined&&actual!==null&&actual!=="";
   const hasForecast=forecast!==undefined&&forecast!==null&&forecast!=="";
   if(!hasActual) return {label:"PENDING",color:"#8b949e",bg:"rgba(139,148,158,.10)",bias:"Čeká se na výsledek"};
-  if(!hasForecast) return {label:"ACTUAL",color:"#58a6ff",bg:"rgba(88,166,255,.10)",bias:"Výsledek bez forecastu"};
+  if(!hasForecast) return {label:"ACTUAL",color:"#7d95ff",bg:"rgba(88,166,255,.10)",bias:"Výsledek bez forecastu"};
   const dir=eventDirection({...ev,estimate:forecast,prev:previous});
-  if(dir>0) return {label:"BEAT",color:"#3fb950",bg:"rgba(63,185,80,.12)",bias:"bullish pro měnu"};
+  if(dir>0) return {label:"BEAT",color:"#2ed3a0",bg:"rgba(46,211,160,.12)",bias:"bullish pro měnu"};
   if(dir<0) return {label:"MISS",color:"#ff4d4d",bg:"rgba(255,77,77,.12)",bias:"bearish pro měnu"};
   return {label:"INLINE",color:"#d29922",bg:"rgba(210,153,34,.12)",bias:"v souladu s odhadem"};
 }
@@ -903,7 +930,7 @@ function DashboardCalendarPanel({events,pair}){
         <div className="pro-panel-title" style={{margin:0}}>{title}</div>
         <div style={{fontSize:11,color:"#8b949e",marginTop:3}}>{subtitle} · Actual / Forecast / Previous / Surprise</div>
       </div>
-      <span style={{fontSize:10,color:"#78f236",background:"rgba(120,242,54,.10)",border:"1px solid rgba(120,242,54,.25)",borderRadius:999,padding:"5px 8px",fontWeight:900}}>EVENT WATCH</span>
+      <span style={{fontSize:10,color:"#2ed3a0",background:"rgba(46,211,160,.10)",border:"1px solid rgba(46,211,160,.25)",borderRadius:999,padding:"5px 8px",fontWeight:900}}>EVENT WATCH</span>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"54px 50px minmax(150px,1fr) 58px 64px 64px 64px 74px",gap:8,padding:"7px 0",borderTop:"1px solid #1b2a35",borderBottom:"1px solid #1b2a35",fontSize:10,color:"#8b949e",fontWeight:900,letterSpacing:".04em"}}>
       <span>TIME</span><span>CCY</span><span>EVENT</span><span>IMPACT</span><span style={{textAlign:"right"}}>ACTUAL</span><span style={{textAlign:"right"}}>FORECAST</span><span style={{textAlign:"right"}}>PREV</span><span style={{textAlign:"right"}}>SURPRISE</span>
@@ -974,7 +1001,7 @@ function MarketStatusBar(){
     return()=>{alive=false;};
   },[]);
   const statusLabel=tdata.status==="OK"?"LIVE":tdata.status==="NO_KEY"?"NO API":tdata.status==="LIMIT"?"LIMIT":tdata.status==="PARTIAL"?"PARTIAL":tdata.status==="LOADING"?"LOAD":"ERR";
-  const statusColor=tdata.status==="OK"?"#78f236":tdata.status==="LOADING"?"#d29922":"#ff4d4d";
+  const statusColor=tdata.status==="OK"?"#2ed3a0":tdata.status==="LOADING"?"#d29922":"#ff4d4d";
   const tickers=[
     {k:"USD proxy",v:tdata.dxy,h:"UUP ETF proxy pro DXY"},
     {k:"VIX proxy",v:tdata.vix,h:"VIXY ETF proxy"},
@@ -999,8 +1026,8 @@ function COTFlowCards({cotMeta,cotData}){
   return <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(210px,1fr))",gap:8,marginBottom:14}}>
     {CURRENCIES.map(c=>{
       const r=raw[c]||{};const v=cotData[c]||0;const flow=r.flow||0;const ex=r.extreme||cotExtremeFromRatio((v||0)/6);
-      const col=v>0?"#3fb950":v<0?"#f85149":"#8b949e";
-      const fcol=flow>0?"#3fb950":flow<0?"#f85149":"#8b949e";
+      const col=v>0?"#2ed3a0":v<0?"#f85149":"#8b949e";
+      const fcol=flow>0?"#2ed3a0":flow<0?"#f85149":"#8b949e";
       return <div key={c} style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:8,padding:"9px 10px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
           <b>{FLAGS[c]} {c}</b><span style={{color:col,fontWeight:800}}>{v>0?"+":""}{v.toFixed(1)}</span>
@@ -1040,7 +1067,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           {cotMeta?.asOf&&<span style={{fontSize:11,color:"#8b949e"}}>COT: {cotMeta.asOf}</span>}
-          {saved&&<span style={{fontSize:12,color:"#3fb950"}}>✓ Uloženo</span>}
+          {saved&&<span style={{fontSize:12,color:"#2ed3a0"}}>✓ Uloženo</span>}
           <button onClick={onAutoCOT} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#1f6feb",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{cotLoading?"⏳ Tahám COT":"⚡ Aktuální COT"}</button>
           <button onClick={onLoadCOTHistory} disabled={cotLoading||historyLoading} style={{padding:"6px 14px",background:"#8957e5",border:"none",borderRadius:6,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer"}}>{historyLoading?"⏳ Tahám historii":"📈 COT historie 5 let"}</button>
           <input ref={localCotInput} type="file" multiple accept=".zip,.txt,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files?.length) onLoadLocalCOT(e.target.files); e.target.value="";}}/>
@@ -1056,16 +1083,16 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
       {cotMeta?.raw&&<COTFlowCards cotMeta={cotMeta} cotData={cotData}/>}
 
       <div style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:8,padding:"9px 12px",marginBottom:12,fontSize:11,color:"#8b949e",lineHeight:1.5}}>
-        <b style={{color:"#58a6ff"}}>Lokální COT import:</b> stáhni CFTC historické soubory <b>fut_fin_txt_YYYY.zip</b>, nech je klidně zabalené a nahraj je přes <b>📂 Import COT z PC</b>. Tím se obejde CORS a grafy se doplní hned.
+        <b style={{color:"#7d95ff"}}>Lokální COT import:</b> stáhni CFTC historické soubory <b>fut_fin_txt_YYYY.zip</b>, nech je klidně zabalené a nahraj je přes <b>📂 Import COT z PC</b>. Tím se obejde CORS a grafy se doplní hned.
         {" "}<b style={{color:"#0d9c6e"}}>Retail Sentiment:</b> 🔄 tlačítko stáhne reálná data z CFTC Non-reportable (malí spekulanti), s fallbackem na MyFxBook a COT-derivaci. Snapshot se ukládá do history pro graf.
       </div>
 
       {/* Seasonalita info */}
       <div style={{background:"#161b22",border:"1px solid #30363d",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12}}>
-        <span style={{color:"#58a6ff",fontWeight:500}}>🌊 Aktuální seasonalita ({month}):</span>{" "}
+        <span style={{color:"#7d95ff",fontWeight:500}}>🌊 Aktuální seasonalita ({month}):</span>{" "}
         {CURRENCIES.map(c=>{
           const s=getSeasonalScore(c);
-          const col=s>0?"#3fb950":s<0?"#f85149":"#8b949e";
+          const col=s>0?"#2ed3a0":s<0?"#f85149":"#8b949e";
           return <span key={c} style={{marginRight:12}}>{FLAGS[c]}<span style={{color:col,fontWeight:600}}>{c} {s>0?"+":""}{s}</span></span>;
         })}
         <div style={{color:"#8b949e",marginTop:4}}>Automaticky dle měsíce · <b style={{color:"#d29922"}}>Váha snížena na 2%</b> — backtest prokázal negativní přínos při vyšší váze</div>
@@ -1078,7 +1105,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
           <div style={{...sm,marginBottom:12}}>-3 = silně short · 0 = neutrální · +3 = silně long<br/>Zdroj: CFTC Traders in Financial Futures — Leveraged Funds 70 % + Asset Managers 30 %</div>
           {CURRENCIES.map(c=>{
             const v=cotData[c]||0;
-            const col=v>0?"#3fb950":v<0?"#f85149":"#8b949e";
+            const col=v>0?"#2ed3a0":v<0?"#f85149":"#8b949e";
             return(
               <div key={c} style={{marginBottom:10}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
@@ -1102,7 +1129,7 @@ function COTPanel({cotData,setCotData,sentData,setSentData,cotMeta,onAutoCOT,onL
           {CURRENCIES.map(c=>{
             const v=sentData[c]||50;
             const sentScore=getSentimentScore(c,sentData);
-            const col=sentScore>0?"#3fb950":sentScore<0?"#f85149":"#8b949e";
+            const col=sentScore>0?"#2ed3a0":sentScore<0?"#f85149":"#8b949e";
             const signal=sentScore>=1?"BULL ↑":sentScore>0?"bull ↑":sentScore<=-1?"BEAR ↓":sentScore<0?"bear ↓":"neutr";
             return(
               <div key={c} style={{marginBottom:10}}>
@@ -1164,7 +1191,7 @@ function AutoUpdateStatus(){
     </div>
   );
   const stale=st.ago>120; // >2h = upozornění
-  const col=stale?"#d29922":"#3fb950";
+  const col=stale?"#d29922":"#2ed3a0";
   return(
     <div style={{marginTop:10,padding:"6px 8px",background:col+"08",borderRadius:6,border:"1px solid "+col+"25"}}>
       <div style={{fontSize:9,color:col,fontWeight:700,marginBottom:3}}>
@@ -1199,8 +1226,8 @@ function ConvictionSummary({pair,scores,aiAnalyses}){
   ];
   const okCount=factors.filter(function(f){return f.ok;}).length;
   const conflict=aiDir&&aiDir!==fundDir;
-  const boxColor=conflict?"#f85149":okCount>=4?"#3fb950":okCount>=3?"#d29922":"#8b949e";
-  const boxBg=conflict?"rgba(248,81,73,.07)":okCount>=4?"rgba(63,185,80,.07)":okCount>=3?"rgba(210,153,34,.07)":"rgba(100,100,100,.05)";
+  const boxColor=conflict?"#f85149":okCount>=4?"#2ed3a0":okCount>=3?"#d29922":"#8b949e";
+  const boxBg=conflict?"rgba(248,81,73,.07)":okCount>=4?"rgba(46,211,160,.07)":okCount>=3?"rgba(210,153,34,.07)":"rgba(100,100,100,.05)";
   const icon=conflict?"KONFLIKT":okCount>=4?"SOUHLASI":"CASTECNE";
   const emoji=conflict?"⚠️":okCount>=4?"✅":"➡️";
   const mainMsg=conflict
@@ -1221,9 +1248,9 @@ function ConvictionSummary({pair,scores,aiAnalyses}){
         {factors.map(function(f){
           return <span key={f.label} title={f.detail} style={{
             fontSize:10,padding:"3px 8px",borderRadius:4,
-            background:f.ok?"rgba(63,185,80,.12)":"rgba(100,100,100,.1)",
-            border:"1px solid "+(f.ok?"rgba(63,185,80,.3)":"rgba(100,100,100,.2)"),
-            color:f.ok?"#3fb950":"#8b949e",
+            background:f.ok?"rgba(46,211,160,.12)":"rgba(100,100,100,.1)",
+            border:"1px solid "+(f.ok?"rgba(46,211,160,.3)":"rgba(100,100,100,.2)"),
+            color:f.ok?"#2ed3a0":"#8b949e",
           }}>{f.ok?"✓":"○"} {f.label}</span>;
         })}
       </div>
@@ -1279,7 +1306,7 @@ function DailyBriefPanel({pair,scores,calData,upcoming,positions,onPosition}){
   const tm=e=>evDate(e).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
   const evList=arr=>arr.slice(0,4).map(e=>`${COUNTRY_FLAGS[(e.country||"").toUpperCase()]||""}${tm(e)} ${e.event}${(e.actual!=null&&e.actual!=="")?` = ${e.actual}`:((e.estimate??e.forecast)!=null&&(e.estimate??e.forecast)!=="")?` (odh. ${e.estimate??e.forecast})`:""}`).join("  ·  ");
   // PRIMÁRNÍ stav = DNEŠEK (překvapení > dnes přijde > dnes proběhlo > nic). Zítřek = podtext.
-  const col=conflict?"#ff4d4d":confirm?"#3fb950":hasTodayUp?"#d29922":hasPast?"#58a6ff":"#3fb950";
+  const col=conflict?"#ff4d4d":confirm?"#2ed3a0":hasTodayUp?"#d29922":hasPast?"#7d95ff":"#2ed3a0";
   const head=conflict?`⚠️ DAILY BRIEF — ${pair.pair}: 14d ${ltDir}, dnes krátkodobě PROTI`
     :confirm?`✅ DAILY BRIEF — ${pair.pair}: dnešní data potvrzují ${ltDir}`
     :hasTodayUp?`⏳ DAILY BRIEF — ${pair.pair}: dnes ještě přijdou důležité fundamenty`
@@ -1300,7 +1327,7 @@ function DailyBriefPanel({pair,scores,calData,upcoming,positions,onPosition}){
       posTxt=`Držíš ${pos} a dnes ještě přijdou data → vyšší volatilita oběma směry. Zvaž zajištění části / SL na BE / sniž expozici.`;
     }
   }
-  const lc=s=>s>0.5?"#3fb950":s<-0.5?"#ff4d4d":"#8b949e";
+  const lc=s=>s>0.5?"#2ed3a0":s<-0.5?"#ff4d4d":"#8b949e";
   const mk=(cur,st)=>st&&st.items.length?`${FLAGS[cur]} ${cur}: `+st.items.map(i=>i.event+" "+(i.beat?"BEAT":"MISS")).join(", "):null;
   return(
     <div style={{background:col+"12",border:"1px solid "+col+"44",borderLeft:"4px solid "+col,borderRadius:10,padding:"12px 16px",marginBottom:14}}>
@@ -1331,7 +1358,7 @@ function NotesCard({pair,note,onSave}){
     <div className="pro-card" style={{padding:14,marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
         <div className="pro-panel-title" style={{margin:0}}>📝 Moje poznámka — {pair.pair}</div>
-        {dirty?<span style={{fontSize:10,color:"#d29922"}}>● neuloženo</span>:(note?<span style={{fontSize:10,color:"#3fb950"}}>✓ uloženo</span>:null)}
+        {dirty?<span style={{fontSize:10,color:"#d29922"}}>● neuloženo</span>:(note?<span style={{fontSize:10,color:"#2ed3a0"}}>✓ uloženo</span>:null)}
       </div>
       <textarea value={txt} onChange={function(e){setTxt(e.target.value);}} onBlur={function(){onSave(pair.pair,txt);}}
         placeholder="Např. čekám na retest 1.0850, pak long · SL pod 1.0790 · po NFP přehodnotit..."
@@ -1342,13 +1369,13 @@ function NotesCard({pair,note,onSave}){
 }
 
 function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},calData=[],upcoming=[],positions={},onPosition=()=>{},notes={},onNote=()=>{}}){
-  const buy=pair.dir==="BUY",ac=buy?"#3fb950":"#ff4d4d";
+  const buy=pair.dir==="BUY",ac=buy?"#2ed3a0":"#ff4d4d";
   const fProb=forecast?.prob||50;
-  const probC=fProb>=65?"#3fb950":fProb<=35?"#ff4d4d":"#d29922";
+  const probC=fProb>=65?"#2ed3a0":fProb<=35?"#ff4d4d":"#d29922";
   const oilSt=getOilStatus();
   const isCADpair=pair.base==="CAD"||pair.quote==="CAD";
   return <div>
-    <div className="pro-card" style={{padding:0,overflow:"hidden",marginBottom:14}}><div style={{display:"grid",gridTemplateColumns:"1fr 460px",gap:0,alignItems:"stretch"}}><div style={{padding:"18px 22px"}}><div style={{display:"flex",alignItems:"center",gap:14}}><div style={{fontSize:30}}>{FLAGS[pair.base]}{FLAGS[pair.quote]}</div><div><div style={{display:"flex",alignItems:"center",gap:10}}><h2 style={{fontSize:24,margin:0}}>{pair.pair}</h2><span className="pro-pill" style={{background:buy?"#113b20":"#431819",color:ac,border:`1px solid ${ac}55`}}>{pair.dir}</span></div><div style={{color:"#8b949e",fontSize:13,marginTop:4}}>{NAMES[pair.base]} / {NAMES[pair.quote]}</div></div></div></div><div className="pro-stat-grid"><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Score</div><b style={{fontSize:19,color:ac}}>{pair.dir==="BUY"?"+":"-"}{pair.diff.toFixed(1)}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Směr</div><b style={{fontSize:19,color:ac}}>{pair.dir} ↗</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Síla signálu</div><b style={{fontSize:17,color:pair.conviction>=3?"#3fb950":"#d29922"}}>{"●".repeat(Math.min(5,pair.conviction||0))}{"○".repeat(Math.max(0,5-(pair.conviction||0)))}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>14d výhled</div><b style={{fontSize:15,color:probC}}>{fProb}% {forecast?.dir}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Bias</div><b style={{fontSize:15,color:ac}}>{pairBiasScore(pair)}/100</b></div></div></div></div>
+    <div className="pro-card" style={{padding:0,overflow:"hidden",marginBottom:14}}><div style={{display:"grid",gridTemplateColumns:"1fr 460px",gap:0,alignItems:"stretch"}}><div style={{padding:"18px 22px"}}><div style={{display:"flex",alignItems:"center",gap:14}}><div style={{fontSize:30}}>{FLAGS[pair.base]}{FLAGS[pair.quote]}</div><div><div style={{display:"flex",alignItems:"center",gap:10}}><h2 style={{fontSize:24,margin:0}}>{pair.pair}</h2><span className="pro-pill" style={{background:buy?"#113b20":"#431819",color:ac,border:`1px solid ${ac}55`}}>{pair.dir}</span></div><div style={{color:"#8b949e",fontSize:13,marginTop:4}}>{NAMES[pair.base]} / {NAMES[pair.quote]}</div></div></div></div><div className="pro-stat-grid"><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Score</div><b style={{fontSize:19,color:ac}}>{pair.dir==="BUY"?"+":"-"}{pair.diff.toFixed(1)}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Směr</div><b style={{fontSize:19,color:ac}}>{pair.dir} ↗</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Síla signálu</div><b style={{fontSize:17,color:pair.conviction>=3?"#2ed3a0":"#d29922"}}>{"●".repeat(Math.min(5,pair.conviction||0))}{"○".repeat(Math.max(0,5-(pair.conviction||0)))}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>14d výhled</div><b style={{fontSize:15,color:probC}}>{fProb}% {forecast?.dir}</b></div><div className="pro-stat"><div className="pro-muted" style={{fontSize:11}}>Bias</div><b style={{fontSize:15,color:ac}}>{pairBiasScore(pair)}/100</b></div></div></div></div>
     <PairScoreHistoryPanel pair={pair}/>
     <ConvictionSummary pair={pair} scores={scores} aiAnalyses={aiAnalyses}/>
     <BiasFlipNotice pair={pair} calData={calData} upcoming={upcoming}/>
@@ -1356,7 +1383,7 @@ function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},cal
     <NotesCard pair={pair} note={notes[pair.pair]} onSave={onNote}/>
     {isCADpair&&<OilPanel pair={pair}/>}
     <COTRetailPairPanel pair={pair} cotMeta={cotMeta||{}} cotData={cotData||{}} sentData={sentData||{}}/>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 330px",gap:14}}><div className="pro-card" style={{padding:16}}><div className="pro-panel-title">Score komponenty</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>{[{label:"Fundamenty",value:((scores[pair.base]?.fund_score||0)-(scores[pair.quote]?.fund_score||0)),max:10},{label:"CB Policy",value:((scores[pair.base]?.policy_adj||0)-(scores[pair.quote]?.policy_adj||0)),max:3},{label:"Real Yield",value:((scores[pair.base]?.yield_adj||0)-(scores[pair.quote]?.yield_adj||0)),max:3},{label:"COT",value:((scores[pair.base]?.cot_score||0)-(scores[pair.quote]?.cot_score||0)),max:6},{label:"Sentiment",value:((scores[pair.base]?.sent_score||0)-(scores[pair.quote]?.sent_score||0)),max:4},{label:"Sezónnost",value:((scores[pair.base]?.season_score||0)-(scores[pair.quote]?.season_score||0)),max:4}].map(x=>{const col=x.value>0?"#3fb950":x.value<0?"#ff4d4d":"#d29922";return <div key={x.label} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:"#cbd6e2",marginBottom:8}}>{x.label}</div><div style={{fontSize:24,fontWeight:1000,color:col}}>{x.value>0?"+":""}{x.value.toFixed(1)}</div><div style={{fontSize:11,color:col,marginTop:5}}>{x.value>1?"Bullish":x.value<-1?"Bearish":"Neutral"}</div><div style={{height:4,background:"#1b232d",borderRadius:4,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,Math.abs(x.value)/x.max*100)+"%",background:col,borderRadius:4}}/></div></div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginTop:14,borderTop:"1px solid #1b2a35",paddingTop:14,fontSize:12,color:"#8b949e",textAlign:"center"}}><div>Spread<br/><b style={{color:"#e6edf3"}}>0.7</b></div><div>Volatilita (D)<br/><b style={{color:"#e6edf3"}}>0.42%</b></div><div>ATR (14)<br/><b style={{color:"#e6edf3"}}>0.0065</b></div><div>Liquidity<br/><b className="green">HIGH</b></div><div>Trend<br/><b style={{color:ac}}>{pair.dir==="BUY"?"Bullish":"Bearish"}</b></div><div>Risk<br/><b className="orange">Medium</b></div></div></div><AIAnalysisStatusPanel pair={pair} aiAnalyses={aiAnalyses}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 330px",gap:14}}><div className="pro-card" style={{padding:16}}><div className="pro-panel-title">Score komponenty</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>{[{label:"Fundamenty",value:((scores[pair.base]?.fund_score||0)-(scores[pair.quote]?.fund_score||0)),max:10},{label:"CB Policy",value:((scores[pair.base]?.policy_adj||0)-(scores[pair.quote]?.policy_adj||0)),max:3},{label:"Real Yield",value:((scores[pair.base]?.yield_adj||0)-(scores[pair.quote]?.yield_adj||0)),max:3},{label:"COT",value:((scores[pair.base]?.cot_score||0)-(scores[pair.quote]?.cot_score||0)),max:6},{label:"Sentiment",value:((scores[pair.base]?.sent_score||0)-(scores[pair.quote]?.sent_score||0)),max:4},{label:"Sezónnost",value:((scores[pair.base]?.season_score||0)-(scores[pair.quote]?.season_score||0)),max:4}].map(x=>{const col=x.value>0?"#2ed3a0":x.value<0?"#ff4d4d":"#d29922";return <div key={x.label} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:"#cbd6e2",marginBottom:8}}>{x.label}</div><div style={{fontSize:24,fontWeight:1000,color:col}}>{x.value>0?"+":""}{x.value.toFixed(1)}</div><div style={{fontSize:11,color:col,marginTop:5}}>{x.value>1?"Bullish":x.value<-1?"Bearish":"Neutral"}</div><div style={{height:4,background:"#1b232d",borderRadius:4,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,Math.abs(x.value)/x.max*100)+"%",background:col,borderRadius:4}}/></div></div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginTop:14,borderTop:"1px solid #1b2a35",paddingTop:14,fontSize:12,color:"#8b949e",textAlign:"center"}}><div>Spread<br/><b style={{color:"#e6edf3"}}>0.7</b></div><div>Volatilita (D)<br/><b style={{color:"#e6edf3"}}>0.42%</b></div><div>ATR (14)<br/><b style={{color:"#e6edf3"}}>0.0065</b></div><div>Liquidity<br/><b className="green">HIGH</b></div><div>Trend<br/><b style={{color:ac}}>{pair.dir==="BUY"?"Bullish":"Bearish"}</b></div><div>Risk<br/><b className="orange">Medium</b></div></div></div><AIAnalysisStatusPanel pair={pair} aiAnalyses={aiAnalyses}/></div>
   </div>;
 }
 // ── CALENDAR ─────────────────────────────────────────────
@@ -1367,7 +1394,7 @@ function CalendarPanel({events}){
   return <div className="pro-card" style={{padding:18}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:12}}>
       <div><div className="pro-panel-title" style={{margin:0}}>Fundamentální kalendář</div><div style={{fontSize:11,color:"#8b949e",marginTop:3}}>Actual · Forecast · Previous · Surprise · bias impact</div></div>
-      <div style={{display:"flex",gap:8,fontSize:11}}><span style={{background:"rgba(255,77,77,.12)",border:"1px solid rgba(255,77,77,.3)",color:"#ff4d4d",borderRadius:999,padding:"5px 9px",fontWeight:900}}>HIGH {highCount}</span><span style={{background:"rgba(88,166,255,.10)",border:"1px solid rgba(88,166,255,.25)",color:"#58a6ff",borderRadius:999,padding:"5px 9px",fontWeight:900}}>EVENTS {all.length}</span></div>
+      <div style={{display:"flex",gap:8,fontSize:11}}><span style={{background:"rgba(255,77,77,.12)",border:"1px solid rgba(255,77,77,.3)",color:"#ff4d4d",borderRadius:999,padding:"5px 9px",fontWeight:900}}>HIGH {highCount}</span><span style={{background:"rgba(88,166,255,.10)",border:"1px solid rgba(88,166,255,.25)",color:"#7d95ff",borderRadius:999,padding:"5px 9px",fontWeight:900}}>EVENTS {all.length}</span></div>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"88px 58px minmax(230px,1fr) 70px 82px 82px 82px 90px",gap:8,padding:"8px 0",borderTop:"1px solid #1b2a35",borderBottom:"1px solid #1b2a35",fontSize:10,color:"#8b949e",fontWeight:900,letterSpacing:".04em"}}>
       <span>TIME</span><span>CCY</span><span>EVENT</span><span>IMPACT</span><span style={{textAlign:"right"}}>ACTUAL</span><span style={{textAlign:"right"}}>FORECAST</span><span style={{textAlign:"right"}}>PREVIOUS</span><span style={{textAlign:"right"}}>SURPRISE</span>
@@ -1482,7 +1509,7 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
           <div className="pro-panel-title" style={{marginBottom:9}}>📊 Screenshot grafu</div>
           <div onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)} onDrop={onAIDrop}
             onClick={()=>aiFileRef.current?.click()}
-            style={{border:`2px dashed ${drag?"var(--cmd-green)":imgSrc?"rgba(120,242,54,.4)":"#263242"}`,borderRadius:9,minHeight:imgSrc?0:110,padding:imgSrc?0:"18px 12px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"border-color .2s",background:drag?"rgba(120,242,54,.04)":"transparent",overflow:"hidden"}}>
+            style={{border:`2px dashed ${drag?"var(--cmd-green)":imgSrc?"rgba(46,211,160,.4)":"#263242"}`,borderRadius:9,minHeight:imgSrc?0:110,padding:imgSrc?0:"18px 12px",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"border-color .2s",background:drag?"rgba(46,211,160,.04)":"transparent",overflow:"hidden"}}>
             {imgSrc?<img src={imgSrc} alt="chart" style={{width:"100%",borderRadius:7,display:"block"}}/>
               :<><div style={{fontSize:24,marginBottom:5}}>📈</div><div style={{fontSize:11,color:"#8b949e",textAlign:"center"}}>Přetáhni screenshot<br/>nebo klikni pro výběr</div></>}
           </div>
@@ -1531,7 +1558,7 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
         </div>
 
         <button onClick={runAIAnalysis} disabled={loading||!imgFile}
-          style={{padding:"11px",borderRadius:9,border:"none",cursor:loading||!imgFile?"not-allowed":"pointer",background:!loading&&imgFile?"linear-gradient(135deg,var(--cmd-green),#36c94b)":"#111a26",color:!loading&&imgFile?"#041007":"#4a6a88",fontSize:13,fontWeight:900,letterSpacing:".03em",boxShadow:!loading&&imgFile?"0 0 22px rgba(120,242,54,.28)":"none",transition:"all .2s"}}>
+          style={{padding:"11px",borderRadius:9,border:"none",cursor:loading||!imgFile?"not-allowed":"pointer",background:!loading&&imgFile?"linear-gradient(135deg,var(--cmd-green),#27c08a)":"#111a26",color:!loading&&imgFile?"#041007":"#4a6a88",fontSize:13,fontWeight:900,letterSpacing:".03em",boxShadow:!loading&&imgFile?"0 0 22px rgba(46,211,160,.28)":"none",transition:"all .2s"}}>
           {loading?"⟳ Analyzuji...":"⚡ SPUSTIT AI ANALÝZU"}
         </button>
         {aiAnalyses[selPair]&&<AIStatusBar ai={aiAnalyses[selPair]}/>}
@@ -1547,7 +1574,7 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
           <div style={{fontSize:11,color:"#263242",maxWidth:320,lineHeight:1.7,marginBottom:16}}>AI (Claude Vision) identifikuje tržní strukturu, order bloky, FVG, liquidity pools a navrhne entry setup s SL a TP.</div>
           <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"center"}}>
             {["Market Structure","Order Blocks","FVG","Liquidity","S/R Zones","BOS/CHoCH","Entry Setup","RR Ratio"].map(t=>(
-              <span key={t} style={{background:"rgba(120,242,54,.06)",border:"1px solid rgba(120,242,54,.14)",color:"rgba(120,242,54,.45)",borderRadius:5,padding:"2px 7px",fontSize:9}}>✓ {t}</span>
+              <span key={t} style={{background:"rgba(46,211,160,.06)",border:"1px solid rgba(46,211,160,.14)",color:"rgba(46,211,160,.45)",borderRadius:5,padding:"2px 7px",fontSize:9}}>✓ {t}</span>
             ))}
           </div>
         </div>}
@@ -1566,7 +1593,7 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
           {/* Bias + Confidence + Summary */}
           <div className="pro-card" style={{padding:15}}>
             <div style={{display:"flex",gap:11,alignItems:"flex-start",flexWrap:"wrap",marginBottom:11}}>
-              <div style={{background:result.bias==="BULLISH"?"rgba(120,242,54,.11)":result.bias==="BEARISH"?"rgba(255,63,95,.11)":"rgba(240,180,41,.11)",border:`1px solid ${biasColor}44`,borderRadius:9,padding:"9px 15px",textAlign:"center",minWidth:85,flexShrink:0}}>
+              <div style={{background:result.bias==="BULLISH"?"rgba(46,211,160,.11)":result.bias==="BEARISH"?"rgba(255,63,95,.11)":"rgba(240,180,41,.11)",border:`1px solid ${biasColor}44`,borderRadius:9,padding:"9px 15px",textAlign:"center",minWidth:85,flexShrink:0}}>
                 <div style={{fontSize:9,color:"#8b949e",letterSpacing:".06em"}}>AI BIAS</div>
                 <div style={{fontSize:17,fontWeight:900,color:biasColor,marginTop:2}}>{result.bias==="BULLISH"?"▲ BULL":result.bias==="BEARISH"?"▼ BEAR":"◆ SIDE"}</div>
               </div>
@@ -1577,9 +1604,9 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
               </div>
               <div style={{flex:1,minWidth:160}}>
                 <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:6}}>
-                  <span style={{background:"rgba(47,155,255,.1)",border:"1px solid rgba(47,155,255,.28)",color:"#2f9bff",borderRadius:4,padding:"1px 7px",fontSize:9,fontWeight:700}}>{selPair}</span>
-                  <span style={{background:"rgba(47,155,255,.1)",border:"1px solid rgba(47,155,255,.28)",color:"#2f9bff",borderRadius:4,padding:"1px 7px",fontSize:9,fontWeight:700}}>{tf}</span>
-                  {pairData&&<span style={{background:pairData.dir==="BUY"?"rgba(120,242,54,.09)":"rgba(255,63,95,.09)",border:`1px solid ${pairData.dir==="BUY"?"rgba(120,242,54,.25)":"rgba(255,63,95,.25)"}`,color:pairData.dir==="BUY"?"var(--cmd-green)":"var(--cmd-red)",borderRadius:4,padding:"1px 7px",fontSize:9,fontWeight:700}}>Fund: {pairData.dir}</span>}
+                  <span style={{background:"rgba(94,124,251,.1)",border:"1px solid rgba(94,124,251,.28)",color:"#5e7cfb",borderRadius:4,padding:"1px 7px",fontSize:9,fontWeight:700}}>{selPair}</span>
+                  <span style={{background:"rgba(94,124,251,.1)",border:"1px solid rgba(94,124,251,.28)",color:"#5e7cfb",borderRadius:4,padding:"1px 7px",fontSize:9,fontWeight:700}}>{tf}</span>
+                  {pairData&&<span style={{background:pairData.dir==="BUY"?"rgba(46,211,160,.09)":"rgba(255,63,95,.09)",border:`1px solid ${pairData.dir==="BUY"?"rgba(46,211,160,.25)":"rgba(255,63,95,.25)"}`,color:pairData.dir==="BUY"?"var(--cmd-green)":"var(--cmd-red)",borderRadius:4,padding:"1px 7px",fontSize:9,fontWeight:700}}>Fund: {pairData.dir}</span>}
                 </div>
                 <div style={{fontSize:11,color:"#8b949e",lineHeight:1.65}}>{result.summary}</div>
               </div>
@@ -1595,15 +1622,15 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
             <div className="pro-card" style={{padding:14}}>
               <div className="pro-panel-title" style={{marginBottom:9}}>🏗 Market Structure</div>
               {result.market_structure?.trend&&<div style={{marginBottom:7}}>
-                <span style={{background:result.market_structure.trend==="UPTREND"?"rgba(120,242,54,.11)":result.market_structure.trend==="DOWNTREND"?"rgba(255,63,95,.11)":"rgba(240,180,41,.11)",border:`1px solid ${result.market_structure.trend==="UPTREND"?"rgba(120,242,54,.28)":result.market_structure.trend==="DOWNTREND"?"rgba(255,63,95,.28)":"rgba(240,180,41,.28)"}`,color:result.market_structure.trend==="UPTREND"?"var(--cmd-green)":result.market_structure.trend==="DOWNTREND"?"var(--cmd-red)":"#d29922",borderRadius:5,padding:"3px 9px",fontSize:11,fontWeight:700}}>
+                <span style={{background:result.market_structure.trend==="UPTREND"?"rgba(46,211,160,.11)":result.market_structure.trend==="DOWNTREND"?"rgba(255,63,95,.11)":"rgba(240,180,41,.11)",border:`1px solid ${result.market_structure.trend==="UPTREND"?"rgba(46,211,160,.28)":result.market_structure.trend==="DOWNTREND"?"rgba(255,63,95,.28)":"rgba(240,180,41,.28)"}`,color:result.market_structure.trend==="UPTREND"?"var(--cmd-green)":result.market_structure.trend==="DOWNTREND"?"var(--cmd-red)":"#d29922",borderRadius:5,padding:"3px 9px",fontSize:11,fontWeight:700}}>
                   {result.market_structure.trend}
                 </span>
               </div>}
               <div style={{fontSize:11,color:"#8b949e",lineHeight:1.6,marginBottom:7}}>{result.market_structure?.description}</div>
               {result.market_structure?.bos_choch&&result.market_structure.bos_choch!=="None visible"&&
-                <div style={{background:"rgba(47,155,255,.06)",border:"1px solid rgba(47,155,255,.18)",borderRadius:6,padding:"6px 9px",fontSize:10,color:"#58a6ff",marginBottom:7}}>🔷 {result.market_structure.bos_choch}</div>}
+                <div style={{background:"rgba(94,124,251,.06)",border:"1px solid rgba(94,124,251,.18)",borderRadius:6,padding:"6px 9px",fontSize:10,color:"#7d95ff",marginBottom:7}}>🔷 {result.market_structure.bos_choch}</div>}
               {result.market_structure?.swing_points&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:5}}>
-                {[{l:"HH",v:result.market_structure.swing_points.hh,c:"#3fb950"},{l:"HL",v:result.market_structure.swing_points.hl,c:"#3fb95088"},{l:"LH",v:result.market_structure.swing_points.lh,c:"#f8514988"},{l:"LL",v:result.market_structure.swing_points.ll,c:"#f85149"}].map(({l,v,c})=>(
+                {[{l:"HH",v:result.market_structure.swing_points.hh,c:"#2ed3a0"},{l:"HL",v:result.market_structure.swing_points.hl,c:"#2ed3a088"},{l:"LH",v:result.market_structure.swing_points.lh,c:"#f8514988"},{l:"LL",v:result.market_structure.swing_points.ll,c:"#f85149"}].map(({l,v,c})=>(
                   <div key={l} style={{background:"#080d14",border:`1px solid ${c}30`,borderRadius:6,padding:"5px 0",textAlign:"center"}}>
                     <div style={{fontSize:9,color:c,fontWeight:700}}>{l}</div>
                     <div style={{fontSize:15,fontWeight:900,color:c}}>{v??"—"}</div>
@@ -1635,10 +1662,10 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
                     {l.notes&&<div style={{fontSize:9,color:"#8b949e",marginTop:1}}>{l.notes}</div>}
                   </div>
                 ))}</div>
-              <div><div style={{fontSize:9,color:"#3fb95066",letterSpacing:".06em",marginBottom:5}}>SUPPORT</div>
+              <div><div style={{fontSize:9,color:"#2ed3a066",letterSpacing:".06em",marginBottom:5}}>SUPPORT</div>
                 {result.key_levels.filter(l=>l.type==="SUPPORT").map((l,i)=>(
-                  <div key={i} style={{background:"rgba(63,185,80,.04)",border:"1px solid rgba(63,185,80,.18)",borderLeft:"3px solid rgba(63,185,80,.6)",borderRadius:"0 6px 6px 0",padding:"5px 9px",marginBottom:5}}>
-                    <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:9,fontWeight:700,color:"#3fb950"}}>SUP</span><span style={{fontSize:9,color:"#3fb95055"}}>{l.strength==="STRONG"?"●●●":l.strength==="MEDIUM"?"●●○":"●○○"}</span></div>
+                  <div key={i} style={{background:"rgba(46,211,160,.04)",border:"1px solid rgba(46,211,160,.18)",borderLeft:"3px solid rgba(46,211,160,.6)",borderRadius:"0 6px 6px 0",padding:"5px 9px",marginBottom:5}}>
+                    <div style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:9,fontWeight:700,color:"#2ed3a0"}}>SUP</span><span style={{fontSize:9,color:"#2ed3a055"}}>{l.strength==="STRONG"?"●●●":l.strength==="MEDIUM"?"●●○":"●○○"}</span></div>
                     <div style={{fontSize:11,color:"#c0d0e0",marginTop:2}}>{l.zone}</div>
                     {l.notes&&<div style={{fontSize:9,color:"#8b949e",marginTop:1}}>{l.notes}</div>}
                   </div>
@@ -1651,8 +1678,8 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
             <div className="pro-card" style={{padding:14}}>
               <div className="pro-panel-title" style={{marginBottom:9}}>🟦 Order Blocks</div>
               {result.ict_smc?.order_blocks?.length?result.ict_smc.order_blocks.map((ob,i)=>{
-                const bull=ob.type==="BULLISH",c=bull?"#3fb950":"#f85149";
-                const sc=ob.significance==="HIGH"?"#d29922":ob.significance==="MEDIUM"?"#58a6ff":"#8b949e";
+                const bull=ob.type==="BULLISH",c=bull?"#2ed3a0":"#f85149";
+                const sc=ob.significance==="HIGH"?"#d29922":ob.significance==="MEDIUM"?"#7d95ff":"#8b949e";
                 return <div key={i} style={{background:"#080d14",border:`1px solid ${c}20`,borderRadius:7,padding:"6px 8px",marginBottom:5}}>
                   <div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:3}}>
                     <span style={{background:`${c}14`,border:`1px solid ${c}30`,color:c,borderRadius:3,padding:"0 5px",fontSize:9,fontWeight:700}}>{bull?"🟢 BULL OB":"🔴 BEAR OB"}</span>
@@ -1662,16 +1689,16 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
                   <div style={{fontSize:10,color:"#8b949e"}}>{ob.location}</div>
                 </div>;
               }):<div style={{fontSize:11,color:"#263242"}}>Žádné OB identifikovány</div>}
-              {result.ict_smc?.premium_discount&&<div style={{background:"rgba(47,155,255,.05)",border:"1px solid rgba(47,155,255,.15)",borderRadius:6,padding:"5px 8px",marginTop:7}}>
-                <div style={{fontSize:8,color:"#58a6ff77",fontWeight:700,letterSpacing:".06em"}}>PREMIUM/DISCOUNT</div>
-                <div style={{fontSize:10,color:"#58a6ff",marginTop:1}}>{result.ict_smc.premium_discount}</div>
+              {result.ict_smc?.premium_discount&&<div style={{background:"rgba(94,124,251,.05)",border:"1px solid rgba(94,124,251,.15)",borderRadius:6,padding:"5px 8px",marginTop:7}}>
+                <div style={{fontSize:8,color:"#7d95ff77",fontWeight:700,letterSpacing:".06em"}}>PREMIUM/DISCOUNT</div>
+                <div style={{fontSize:10,color:"#7d95ff",marginTop:1}}>{result.ict_smc.premium_discount}</div>
               </div>}
             </div>
             <div className="pro-card" style={{padding:14}}>
               <div className="pro-panel-title" style={{marginBottom:9}}>⬜ Fair Value Gaps</div>
               {result.ict_smc?.fvg?.length?result.ict_smc.fvg.map((fvg,i)=>{
-                const bull=fvg.type==="BULLISH",c=bull?"#3fb950":"#f85149";
-                const sc=fvg.status==="OPEN"?"#d29922":fvg.status==="PARTIALLY_FILLED"?"#58a6ff":"#8b949e";
+                const bull=fvg.type==="BULLISH",c=bull?"#2ed3a0":"#f85149";
+                const sc=fvg.status==="OPEN"?"#d29922":fvg.status==="PARTIALLY_FILLED"?"#7d95ff":"#8b949e";
                 return <div key={i} style={{background:"#080d14",border:`1px solid ${c}18`,borderRadius:7,padding:"6px 8px",marginBottom:5}}>
                   <div style={{display:"flex",gap:3,marginBottom:3}}>
                     <span style={{background:`${c}14`,border:`1px solid ${c}28`,color:c,borderRadius:3,padding:"0 5px",fontSize:9,fontWeight:700}}>{bull?"FVG ▲":"FVG ▼"}</span>
@@ -1684,7 +1711,7 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
             <div className="pro-card" style={{padding:14}}>
               <div className="pro-panel-title" style={{marginBottom:9}}>💧 Liquidity Pools</div>
               {result.ict_smc?.liquidity?.length?result.ict_smc.liquidity.map((liq,i)=>{
-                const isBSL=liq.type==="BSL",c=isBSL?"#58a6ff":"#bf4cff";
+                const isBSL=liq.type==="BSL",c=isBSL?"#7d95ff":"#bf4cff";
                 return <div key={i} style={{background:"#080d14",border:`1px solid ${c}20`,borderRadius:7,padding:"6px 8px",marginBottom:5}}>
                   <span style={{background:`${c}14`,border:`1px solid ${c}28`,color:c,borderRadius:3,padding:"0 6px",fontSize:9,fontWeight:700}}>{isBSL?"💧 BSL":"💧 SSL"}</span>
                   <div style={{fontSize:10,color:"#8b949e",marginTop:3}}>{liq.location}</div>
@@ -1698,7 +1725,7 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
           {result.entry_setup&&<div className="pro-card" style={{padding:15}}>
             <div className="pro-panel-title" style={{marginBottom:11}}>🎯 Entry Setup</div>
             <div style={{display:"flex",gap:12,alignItems:"flex-start",marginBottom:13}}>
-              <div style={{background:result.entry_setup.direction==="BUY"?"rgba(120,242,54,.09)":result.entry_setup.direction==="SELL"?"rgba(255,63,95,.09)":"rgba(240,180,41,.09)",border:`2px solid ${result.entry_setup.direction==="BUY"?"rgba(120,242,54,.36)":result.entry_setup.direction==="SELL"?"rgba(255,63,95,.36)":"rgba(240,180,41,.36)"}`,borderRadius:9,padding:"9px 16px",textAlign:"center",flexShrink:0,minWidth:76}}>
+              <div style={{background:result.entry_setup.direction==="BUY"?"rgba(46,211,160,.09)":result.entry_setup.direction==="SELL"?"rgba(255,63,95,.09)":"rgba(240,180,41,.09)",border:`2px solid ${result.entry_setup.direction==="BUY"?"rgba(46,211,160,.36)":result.entry_setup.direction==="SELL"?"rgba(255,63,95,.36)":"rgba(240,180,41,.36)"}`,borderRadius:9,padding:"9px 16px",textAlign:"center",flexShrink:0,minWidth:76}}>
                 <div style={{fontSize:9,color:"#8b949e"}}>DIR</div>
                 <div style={{fontSize:18,fontWeight:900,color:result.entry_setup.direction==="BUY"?"var(--cmd-green)":result.entry_setup.direction==="SELL"?"var(--cmd-red)":"#d29922",marginTop:2}}>{result.entry_setup.direction}</div>
                 <div style={{fontSize:10,color:"#8b949e",marginTop:2}}>RR {result.entry_setup.rr_estimate||"—"}</div>
@@ -1707,7 +1734,7 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
                 <div style={{fontSize:9,color:"#8b949e",marginBottom:2}}>ENTRY TRIGGER</div>
                 <div style={{fontSize:11,color:"#e6edf3",marginBottom:9,lineHeight:1.5}}>{result.entry_setup.entry_trigger||"—"}</div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                  {[{l:"ENTRY ZONE",v:result.entry_setup.entry_zone,c:"#58a6ff"},{l:"STOP LOSS",v:result.entry_setup.stop_loss,c:"#f85149"},{l:"TP1",v:result.entry_setup.tp1,c:"#3fb950"},{l:"TP2",v:result.entry_setup.tp2,c:"#3fb95066"}].map(({l,v,c})=>(
+                  {[{l:"ENTRY ZONE",v:result.entry_setup.entry_zone,c:"#7d95ff"},{l:"STOP LOSS",v:result.entry_setup.stop_loss,c:"#f85149"},{l:"TP1",v:result.entry_setup.tp1,c:"#2ed3a0"},{l:"TP2",v:result.entry_setup.tp2,c:"#2ed3a066"}].map(({l,v,c})=>(
                     <div key={l} style={{background:"#080d14",border:`1px solid ${c}22`,borderRadius:6,padding:"5px 8px"}}>
                       <div style={{fontSize:8,color:c,fontWeight:700,letterSpacing:".06em"}}>{l}</div>
                       <div style={{fontSize:10,color:"#a0b8d0",marginTop:2,lineHeight:1.4}}>{v||"—"}</div>
@@ -1720,7 +1747,7 @@ function AIAnalyzerTab({scores,selected,pairs,onSave,aiAnalyses={}}){
               <div style={{fontSize:9,color:"#8b949e",marginBottom:4,letterSpacing:".06em"}}>CONFLUENCE FAKTORY</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
                 {result.entry_setup.confluence_factors.map((f,i)=>(
-                  <span key={i} style={{background:"rgba(120,242,54,.05)",border:"1px solid rgba(120,242,54,.15)",color:"rgba(120,242,54,.75)",borderRadius:4,padding:"1px 6px",fontSize:9}}>✓ {f}</span>
+                  <span key={i} style={{background:"rgba(46,211,160,.05)",border:"1px solid rgba(46,211,160,.15)",color:"rgba(46,211,160,.75)",borderRadius:4,padding:"1px 6px",fontSize:9}}>✓ {f}</span>
                 ))}
               </div>
             </div>}
@@ -1744,7 +1771,7 @@ function AIStatusBar({ai}){
   if(!ai) return null;
   const ah=Math.round((Date.now()-ai.savedAt)/3600000);
   return(
-    <div style={{background:"rgba(63,185,80,.07)",border:"1px solid rgba(63,185,80,.2)",borderRadius:7,padding:"6px 9px",fontSize:10,color:"#3fb950",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+    <div style={{background:"rgba(46,211,160,.07)",border:"1px solid rgba(46,211,160,.2)",borderRadius:7,padding:"6px 9px",fontSize:10,color:"#2ed3a0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
       <span>{"✓ Uložena: "+ai.tf+" · "+(ah<1?"<1h":ah+"h zpět")}</span>
       <span style={{color:"#4a6a88"}}>{ai.bias+" "+ai.confidence+"%"}</span>
     </div>
@@ -1758,10 +1785,10 @@ function CoachContextBar({activePair,pairs,aiAnalyses,forecasts}){
   return(
     <div style={{background:"#0d1117",border:"1px solid #21262d",borderRadius:8,padding:"8px 12px",display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
       <span style={{fontWeight:700,color:"#e6edf3",fontSize:12}}>{p.pair}</span>
-      <span style={{color:p.dir==="BUY"?"#3fb950":"#f85149",fontWeight:700,fontSize:11}}>{p.dir+" diff:"+p.diff}</span>
+      <span style={{color:p.dir==="BUY"?"#2ed3a0":"#f85149",fontWeight:700,fontSize:11}}>{p.dir+" diff:"+p.diff}</span>
       <span style={{color:"#f0b429",fontSize:11}}>{"★".repeat(p.conviction||0)+"☆".repeat(5-(p.conviction||0))+" "+(p.conviction||0)+"/5"}</span>
       {f&&<span style={{fontSize:11,color:"#8b949e"}}>{"Forecast "+f.prob+"%"}</span>}
-      {ai?<span style={{fontSize:11,color:"#3fb950"}}>{"AI "+ai.tf+": "+ai.bias+" "+ai.confidence+"%"}</span>
+      {ai?<span style={{fontSize:11,color:"#2ed3a0"}}>{"AI "+ai.tf+": "+ai.bias+" "+ai.confidence+"%"}</span>
          :<span style={{fontSize:11,color:"#4a6a88"}}>{"⚠ Bez AI analyzy"}</span>}
       <span style={{fontSize:10,color:"#4a6a88",marginLeft:"auto"}}>{"Coach vidi vsechna data"}</span>
     </div>
@@ -2026,7 +2053,7 @@ STYL:
             ))}
           </select>
           {activePair&&aiAnalyses?.[activePair]&&(
-            <span style={{fontSize:9,background:"rgba(63,185,80,.1)",border:"1px solid rgba(63,185,80,.25)",color:"#3fb950",borderRadius:4,padding:"2px 7px"}}>
+            <span style={{fontSize:9,background:"rgba(46,211,160,.1)",border:"1px solid rgba(46,211,160,.25)",color:"#2ed3a0",borderRadius:4,padding:"2px 7px"}}>
               AI analýza {aiAnalyses[activePair].tf} načtena ✓
             </span>
           )}
@@ -2044,14 +2071,14 @@ STYL:
             <div style={{
               width:32,height:32,borderRadius:"50%",flexShrink:0,display:"flex",
               alignItems:"center",justifyContent:"center",fontSize:14,
-              background:m.role==="user"?"rgba(47,155,255,.2)":"rgba(120,242,54,.15)",
-              border:`1px solid ${m.role==="user"?"rgba(47,155,255,.3)":"rgba(120,242,54,.3)"}`
+              background:m.role==="user"?"rgba(94,124,251,.2)":"rgba(46,211,160,.15)",
+              border:`1px solid ${m.role==="user"?"rgba(94,124,251,.3)":"rgba(46,211,160,.3)"}`
             }}>
               {m.role==="user"?"👤":"🧠"}
             </div>
             <div style={{
-              maxWidth:"80%",background:m.role==="user"?"rgba(47,155,255,.08)":"rgba(13,20,30,.95)",
-              border:`1px solid ${m.role==="user"?"rgba(47,155,255,.2)":"#21262d"}`,
+              maxWidth:"80%",background:m.role==="user"?"rgba(94,124,251,.08)":"rgba(13,20,30,.95)",
+              border:`1px solid ${m.role==="user"?"rgba(94,124,251,.2)":"#21262d"}`,
               borderRadius:m.role==="user"?"12px 4px 12px 12px":"4px 12px 12px 12px",
               padding:"10px 14px",fontSize:13,color:"#c9d1d9",lineHeight:1.65
             }}>
@@ -2064,7 +2091,7 @@ STYL:
         ))}
         {loading&&(
           <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-            <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(120,242,54,.15)",border:"1px solid rgba(120,242,54,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🧠</div>
+            <div style={{width:32,height:32,borderRadius:"50%",background:"rgba(46,211,160,.15)",border:"1px solid rgba(46,211,160,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>🧠</div>
             <div style={{background:"rgba(13,20,30,.95)",border:"1px solid #21262d",borderRadius:"4px 12px 12px 12px",padding:"10px 14px",display:"flex",gap:5,alignItems:"center"}}>
               <span style={{animation:"coach-pulse 1.2s ease-in-out infinite",display:"inline-block",width:7,height:7,borderRadius:"50%",background:"var(--cmd-green)"}}></span>
               <span style={{animation:"coach-pulse 1.2s ease-in-out .3s infinite",display:"inline-block",width:7,height:7,borderRadius:"50%",background:"var(--cmd-green)"}}></span>
@@ -2082,7 +2109,7 @@ STYL:
             style={{background:"rgba(255,255,255,.04)",border:"1px solid #21262d",borderRadius:6,
               color:"#8b949e",fontSize:11,padding:"5px 10px",cursor:loading?"not-allowed":"pointer",
               display:"flex",gap:4,alignItems:"center",transition:"all .15s"}}
-            onMouseEnter={e=>{if(!loading){e.target.style.borderColor="#58a6ff";e.target.style.color="#58a6ff";}}}
+            onMouseEnter={e=>{if(!loading){e.target.style.borderColor="#7d95ff";e.target.style.color="#7d95ff";}}}
             onMouseLeave={e=>{e.target.style.borderColor="#21262d";e.target.style.color="#8b949e";}}>
             {q.icon} {q.label}
           </button>
@@ -2102,7 +2129,7 @@ STYL:
         <button onClick={()=>sendMessage()} disabled={loading||!input.trim()}
           style={{padding:"10px 18px",borderRadius:8,border:"none",
             cursor:loading||!input.trim()?"not-allowed":"pointer",
-            background:!loading&&input.trim()?"linear-gradient(135deg,var(--cmd-green),#36c94b)":"#21262d",
+            background:!loading&&input.trim()?"linear-gradient(135deg,var(--cmd-green),#27c08a)":"#21262d",
             color:!loading&&input.trim()?"#041007":"#4a6a88",fontWeight:900,fontSize:13,
             transition:"all .2s",flexShrink:0}}>
           {loading?"...":"▶"}
@@ -2135,7 +2162,7 @@ function DailyBriefBar({pairs,scores,calData,upcoming,inline,positions}){
   const tm=e=>evDate(e).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
   const now=new Date().toLocaleString("cs-CZ",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"});
   if(nothing) return(
-    <div style={{...(inline?{}:{gridColumn:"1 / -1"}),background:"rgba(63,185,80,.05)",border:"1px solid rgba(63,185,80,.18)",borderRadius:10,padding:"10px 14px",marginBottom:4,fontSize:12,color:"#8b949e"}}>
+    <div style={{...(inline?{}:{gridColumn:"1 / -1"}),background:"rgba(46,211,160,.05)",border:"1px solid rgba(46,211,160,.18)",borderRadius:10,padding:"10px 14px",marginBottom:4,fontSize:12,color:"#8b949e"}}>
       🌅 <b style={{color:"#e6edf3"}}>Dnešní přehled</b> · {now} — žádné velké fundamenty na sledovaných párech. Můžeš jet podle 14d biasu.
     </div>
   );
@@ -2153,7 +2180,7 @@ function DailyBriefBar({pairs,scores,calData,upcoming,inline,positions}){
       {Object.keys(rel).length>0&&<div style={{marginBottom:8}}>
         <div style={{fontSize:10,color:"#8b949e",letterSpacing:".06em",marginBottom:4}}>UŽ VYŠLO (24h)</div>
         {Object.entries(rel).map(([c,st])=>{
-          const col=st.score>0.5?"#3fb950":st.score<-0.5?"#ff4d4d":"#8b949e";
+          const col=st.score>0.5?"#2ed3a0":st.score<-0.5?"#ff4d4d":"#8b949e";
           const dot=st.score>0.5?"🟢":st.score<-0.5?"🔴":"⚪";
           return <div key={c} style={{fontSize:12,color:"#c9d1d9",marginBottom:2}}>{dot} <b>{FLAGS[c]} {c}</b> — {st.items.map(i=>i.event+" "+(i.beat?"BEAT":"MISS")).slice(0,3).join(", ")} <b style={{color:col}}>({st.score>0?"+":""}{st.score})</b></div>;
         })}
@@ -2236,7 +2263,7 @@ function jStat(list){
 }
 function SliceBar({label,s}){
   const wr=s.wr;
-  const col=wr==null?"#4a6a88":(wr>=60?"#3fb950":(wr>=50?"#d29922":"#ff4d4d"));
+  const col=wr==null?"#4a6a88":(wr>=60?"#2ed3a0":(wr>=50?"#d29922":"#ff4d4d"));
   return(
     <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6,fontSize:12}}>
       <div style={{width:130,color:"#b7c3d1"}}>{label}</div>
@@ -2370,15 +2397,15 @@ function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,o
           ? <div style={{fontSize:12,color:"#8b949e",padding:14}}>Zatím žádný obchod. Zapiš první nahoře — uloží se k němu i to, co appka v tu chvíli říkala.</div>
           : shown.map(function(t){
               var c=t.ctx||{};
-              var oc=t.outcome==="win"?{t:"WIN",col:"#3fb950"}:t.outcome==="loss"?{t:"LOSS",col:"#ff4d4d"}:t.outcome==="be"?{t:"BE",col:"#8b949e"}:{t:"OTEVŘENÝ",col:"#d29922"};
+              var oc=t.outcome==="win"?{t:"WIN",col:"#2ed3a0"}:t.outcome==="loss"?{t:"LOSS",col:"#ff4d4d"}:t.outcome==="be"?{t:"BE",col:"#8b949e"}:{t:"OTEVŘENÝ",col:"#d29922"};
               var dt=t.openedAt?new Date(t.openedAt):null;
               return(
                 <div key={t.id} style={{borderTop:"1px solid #16202c",padding:"10px 0"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                     <b style={{fontSize:14}}>{t.pair}</b>
-                    <span style={{color:t.dir==="LONG"?"#3fb950":"#ff4d4d",fontWeight:800,fontSize:12}}>{t.dir}</span>
+                    <span style={{color:t.dir==="LONG"?"#2ed3a0":"#ff4d4d",fontWeight:800,fontSize:12}}>{t.dir}</span>
                     <span style={{fontSize:11,color:oc.col,fontWeight:700,border:"1px solid "+oc.col+"55",borderRadius:4,padding:"1px 7px"}}>{oc.t}</span>
-                    {typeof t.rMultiple==="number"&&<span style={{fontSize:12,fontWeight:700,color:t.rMultiple>=0?"#3fb950":"#ff4d4d"}}>{t.rMultiple>0?"+":""}{t.rMultiple}R</span>}
+                    {typeof t.rMultiple==="number"&&<span style={{fontSize:12,fontWeight:700,color:t.rMultiple>=0?"#2ed3a0":"#ff4d4d"}}>{t.rMultiple>0?"+":""}{t.rMultiple}R</span>}
                     <span style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
                       <select value={t.outcome} onChange={function(e){onUpdate(t.id,{outcome:e.target.value,closedAt:e.target.value!=="open"?(t.closedAt||new Date().toISOString()):null});}} style={{background:"#0d1117",border:"1px solid #1d2a36",borderRadius:6,color:"#b7c3d1",fontSize:11,padding:"3px 6px"}}>
                         <option value="open">Otevřený</option><option value="win">Win</option><option value="loss">Loss</option><option value="be">BE</option>
@@ -2391,7 +2418,7 @@ function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,o
                     {c.conviction!=null&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:"#f0b429"}}>★{c.conviction}</span>}
                     {c.dailyLevel&&c.dailyLevel!=="none"&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px"}}>{dotMap[c.dailyLevel]} {c.dailyLevel}</span>}
                     {c.flip&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:"#bf4cff"}}>🔄 flip</span>}
-                    {c.listType&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:c.listType==="white"?"#3fb950":c.listType==="black"?"#ff4d4d":"#d29922"}}>{c.listType}</span>}
+                    {c.listType&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:c.listType==="white"?"#2ed3a0":c.listType==="black"?"#ff4d4d":"#d29922"}}>{c.listType}</span>}
                     {c.cbdi!=null&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:"#8b949e"}}>CBDI {Math.round(c.cbdi)}</span>}
                     {c.aiBias&&<span style={{background:"#0d1117",borderRadius:4,padding:"1px 6px",color:"#8b949e"}}>AI {c.aiBias}</span>}
                     {dt&&<span style={{color:"#4a6a88"}}>{dt.getDate()+"."+(dt.getMonth()+1)+"."+dt.getFullYear()}</span>}
@@ -2542,7 +2569,7 @@ function btFmtPF(pf){return pf==null?"—":(pf===Infinity||pf>=999?"∞":pf.toFi
 function btFmtPct(x){return x==null?"—":Math.round(x)+"%";}
 function btCellColor(wr,pf,n){
   if(n<BT_MIN_TRADES) return "#4a6a88";
-  if(pf!=null&&pf>=1.5&&wr>=55) return "#3fb950";
+  if(pf!=null&&pf>=1.5&&wr>=55) return "#2ed3a0";
   if(pf!=null&&pf>=1.1&&wr>=50) return "#d29922";
   return "#ff4d4d";
 }
@@ -2623,7 +2650,7 @@ function BacktestTab({avKey,cotData}){
     setLoading(false);
   }
 
-  const inpBtn={padding:"9px 16px",background:"linear-gradient(135deg,var(--cmd-green),#36c94b)",border:"none",borderRadius:8,color:"#041007",fontSize:13,fontWeight:900,cursor:loading?"not-allowed":"pointer"};
+  const inpBtn={padding:"9px 16px",background:"linear-gradient(135deg,var(--cmd-green),#27c08a)",border:"none",borderRadius:8,color:"#041007",fontSize:13,fontWeight:900,cursor:loading?"not-allowed":"pointer"};
   return(
     <div style={{maxWidth:1080}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:14,flexWrap:"wrap"}}>
@@ -2640,9 +2667,9 @@ function BacktestTab({avKey,cotData}){
       </div>
 
       <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
-        <span style={{fontSize:11,color:histWeeks>=52?"#3fb950":"#d29922",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>COT historie: <b>{histWeeks}</b> týdnů</span>
-        <span style={{fontSize:11,color:avKey?"#3fb950":"#ff4d4d",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>Alpha Vantage: <b>{avKey?"klíč OK":"chybí"}</b></span>
-        <span style={{fontSize:11,color:engineDays>=20?"#3fb950":"#8b949e",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>Engine forward-log: <b>{engineDays}</b> dní</span>
+        <span style={{fontSize:11,color:histWeeks>=52?"#2ed3a0":"#d29922",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>COT historie: <b>{histWeeks}</b> týdnů</span>
+        <span style={{fontSize:11,color:avKey?"#2ed3a0":"#ff4d4d",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>Alpha Vantage: <b>{avKey?"klíč OK":"chybí"}</b></span>
+        <span style={{fontSize:11,color:engineDays>=20?"#2ed3a0":"#8b949e",background:"#0d1117",border:"1px solid #21262d",borderRadius:6,padding:"6px 10px"}}>Engine forward-log: <b>{engineDays}</b> dní</span>
       </div>
 
       {loading&&progress.length>0&&<div style={{fontSize:11,color:"#8b949e",marginBottom:12}}>
@@ -2652,12 +2679,12 @@ function BacktestTab({avKey,cotData}){
 
       {result&&<>
         {/* Doporučení */}
-        {result.best&&<div style={{background:"rgba(120,242,54,.06)",border:"1px solid rgba(120,242,54,.22)",borderLeft:"4px solid var(--cmd-green)",borderRadius:10,padding:"14px 16px",marginBottom:14}}>
+        {result.best&&<div style={{background:"rgba(46,211,160,.06)",border:"1px solid rgba(46,211,160,.22)",borderLeft:"4px solid var(--cmd-green)",borderRadius:10,padding:"14px 16px",marginBottom:14}}>
           <div style={{fontSize:13,fontWeight:900,color:"var(--cmd-green)",marginBottom:6}}>📌 Nejlepší nastavení (dle Profit Factoru, min. {BT_MIN_TRADES} obchodů)</div>
           <div style={{fontSize:13,color:"#e6edf3",lineHeight:1.7}}>
             Práh <b>|diff| ≥ {result.best.diff}</b> · horizont <b>{result.best.horizon} {result.best.horizon===1?"týden":result.best.horizon<5?"týdny":"týdnů"}</b> →{" "}
-            <b style={{color:"#3fb950"}}>WR {btFmtPct(result.best.wr)}</b> · <b style={{color:"#58a6ff"}}>PF {btFmtPF(result.best.pf)}</b> ·{" "}
-            průměr <b style={{color:result.best.avg>=0?"#3fb950":"#ff4d4d"}}>{result.best.avg>0?"+":""}{result.best.avg?.toFixed(2)}%</b> / obchod · n={result.best.n}
+            <b style={{color:"#2ed3a0"}}>WR {btFmtPct(result.best.wr)}</b> · <b style={{color:"#7d95ff"}}>PF {btFmtPF(result.best.pf)}</b> ·{" "}
+            průměr <b style={{color:result.best.avg>=0?"#2ed3a0":"#ff4d4d"}}>{result.best.avg>0?"+":""}{result.best.avg?.toFixed(2)}%</b> / obchod · n={result.best.n}
           </div>
           <div style={{fontSize:11,color:"#8b949e",marginTop:6}}>
             Engine teď rankuje páry podle <code>diff</code> a „SLABÝ" značí <code>diff&lt;2</code>. Porovnej s řádkem diff=2 v tabulce níž — uvidíš, jestli je práh dobře nastavený.
@@ -2672,8 +2699,8 @@ function BacktestTab({avKey,cotData}){
               <div key={i} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:8,padding:12}}>
                 <div style={{fontSize:11,color:"#8b949e",marginBottom:6}}>{x.l}</div>
                 <div style={{display:"flex",gap:14,fontSize:13}}>
-                  <span>WR <b style={{color:"#3fb950"}}>{btFmtPct(x.s.wr)}</b></span>
-                  <span>PF <b style={{color:"#58a6ff"}}>{btFmtPF(x.s.pf)}</b></span>
+                  <span>WR <b style={{color:"#2ed3a0"}}>{btFmtPct(x.s.wr)}</b></span>
+                  <span>PF <b style={{color:"#7d95ff"}}>{btFmtPF(x.s.pf)}</b></span>
                   <span>n <b>{x.s.n}</b></span>
                 </div>
               </div>
@@ -2700,7 +2727,7 @@ function BacktestTab({avKey,cotData}){
                       const g=result.grid.find(x=>x.diff===df&&x.horizon===h)||{};
                       const col=btCellColor(g.wr,g.pf,g.n||0);
                       const isBest=result.best&&result.best.diff===df&&result.best.horizon===h;
-                      return <td key={h} style={{padding:"6px 10px",textAlign:"center",borderTop:"1px solid #1b2a35",background:isBest?"rgba(120,242,54,.10)":"transparent",outline:isBest?"1px solid rgba(120,242,54,.4)":"none"}}>
+                      return <td key={h} style={{padding:"6px 10px",textAlign:"center",borderTop:"1px solid #1b2a35",background:isBest?"rgba(46,211,160,.10)":"transparent",outline:isBest?"1px solid rgba(46,211,160,.4)":"none"}}>
                         <div style={{color:col,fontWeight:800}}>{btFmtPct(g.wr)}</div>
                         <div style={{fontSize:10,color:"#8b949e"}}>PF {btFmtPF(g.pf)}</div>
                         <div style={{fontSize:9,color:"#4a6a88"}}>n {g.n||0}</div>
@@ -2718,7 +2745,7 @@ function BacktestTab({avKey,cotData}){
           <div className="pro-panel-title" style={{marginBottom:10}}>Edge podle páru (diff≥{result.best.diff}, {result.best.horizon}t)</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:8}}>
             {Object.entries(result.best.byPair).map(([pair,trs])=>{
-              const a=btAggregate(trs);const col=a.pf!=null&&a.pf>=1.3?"#3fb950":a.pf!=null&&a.pf>=1?"#d29922":"#ff4d4d";
+              const a=btAggregate(trs);const col=a.pf!=null&&a.pf>=1.3?"#2ed3a0":a.pf!=null&&a.pf>=1?"#d29922":"#ff4d4d";
               return <div key={pair} style={{background:"#0b111a",border:"1px solid "+col+"33",borderRadius:8,padding:"8px 10px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><b style={{fontSize:12}}>{pair}</b><span style={{fontSize:11,color:col,fontWeight:800}}>PF {btFmtPF(a.pf)}</span></div>
                 <div style={{fontSize:10,color:"#8b949e",marginTop:3}}>WR {btFmtPct(a.wr)} · n {a.n} · {a.avg>0?"+":""}{a.avg?.toFixed(2)}%</div>
@@ -2738,19 +2765,19 @@ function BacktestTab({avKey,cotData}){
           </div>
           {result.engine.matured>=BT_MIN_TRADES
             ? <>
-                <div style={{background:"rgba(47,155,255,.06)",border:"1px solid rgba(47,155,255,.2)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                <div style={{background:"rgba(94,124,251,.06)",border:"1px solid rgba(94,124,251,.2)",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
                   <div style={{fontSize:12,color:"#8b949e",marginBottom:4}}>Celkové skóre enginu jako signál</div>
                   <div style={{display:"flex",gap:16,fontSize:14,flexWrap:"wrap"}}>
-                    <span>WR <b style={{color:"#3fb950"}}>{btFmtPct(result.engine.total.wr)}</b></span>
-                    <span>PF <b style={{color:"#58a6ff"}}>{btFmtPF(result.engine.total.pf)}</b></span>
-                    <span>průměr <b style={{color:result.engine.total.avg>=0?"#3fb950":"#ff4d4d"}}>{result.engine.total.avg>0?"+":""}{result.engine.total.avg?.toFixed(2)}%</b></span>
+                    <span>WR <b style={{color:"#2ed3a0"}}>{btFmtPct(result.engine.total.wr)}</b></span>
+                    <span>PF <b style={{color:"#7d95ff"}}>{btFmtPF(result.engine.total.pf)}</b></span>
+                    <span>průměr <b style={{color:result.engine.total.avg>=0?"#2ed3a0":"#ff4d4d"}}>{result.engine.total.avg>0?"+":""}{result.engine.total.avg?.toFixed(2)}%</b></span>
                     <span style={{color:"#8b949e"}}>n {result.engine.total.n}</span>
                   </div>
                 </div>
                 <div className="pro-panel-title" style={{marginBottom:8,fontSize:12}}>Edge jednotlivých komponent — který faktor reálně trefuje směr</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(170px,1fr))",gap:8}}>
                   {Object.entries(result.engine.components).sort((a,b)=>(b[1].pf||0)-(a[1].pf||0)).map(([f,a])=>{
-                    const col=a.pf!=null&&a.pf>=1.2?"#3fb950":a.pf!=null&&a.pf>=1?"#d29922":"#ff4d4d";
+                    const col=a.pf!=null&&a.pf>=1.2?"#2ed3a0":a.pf!=null&&a.pf>=1?"#d29922":"#ff4d4d";
                     return <div key={f} style={{background:"#0b111a",border:"1px solid "+col+"33",borderRadius:8,padding:"8px 10px"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><b style={{fontSize:12}}>{ENGINE_COMP_LABELS[f]||f}</b><span style={{fontSize:11,color:col,fontWeight:800}}>PF {btFmtPF(a.pf)}</span></div>
                       <div style={{fontSize:10,color:"#8b949e",marginTop:3}}>WR {btFmtPct(a.wr)} · n {a.n}</div>
@@ -3036,11 +3063,11 @@ function App(){
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
           {calMeta&&(()=>{const SRC={action:"FF auto",fmp:"FMP",finnhub:"Finnhub",forexfactory:"ForexFactory",none:"—"};const ok=calMeta.conf>=100;return(
             <span title={`Zdroj: ${SRC[calMeta.source]||calMeta.source} · historie ~${calMeta.months.toFixed(1)} měs · ${calMeta.count} událostí · výhled ${calMeta.fwdDays} dní · váha fundamentů ${calMeta.conf}%`}
-              style={{fontSize:11,color:ok?"#3fb950":"#d29922",border:"1px solid "+(ok?"#1f5c34":"#5c4a1f"),borderRadius:5,padding:"3px 7px",whiteSpace:"nowrap"}}>
+              style={{fontSize:11,color:ok?"#2ed3a0":"#d29922",border:"1px solid "+(ok?"#1f5c34":"#5c4a1f"),borderRadius:5,padding:"3px 7px",whiteSpace:"nowrap"}}>
               📅 {SRC[calMeta.source]||calMeta.source} · {calMeta.months.toFixed(0)}m · {calMeta.fwdDays}d → · {calMeta.conf}%
             </span>);})()}
-          {loading&&<span style={{fontSize:11,color:"#58a6ff"}}>⟳ Načítám...</span>}
-          {error&&<span style={{fontSize:11,color:error[0]==="ℹ"?"#8b949e":error[0]==="✅"?"#3fb950":"#f85149",maxWidth:260}}>{error}</span>}
+          {loading&&<span style={{fontSize:11,color:"#7d95ff"}}>⟳ Načítám...</span>}
+          {error&&<span style={{fontSize:11,color:error[0]==="ℹ"?"#8b949e":error[0]==="✅"?"#2ed3a0":"#f85149",maxWidth:260}}>{error}</span>}
           <button onClick={()=>loadData(fhKey||"",cotData,sentData,true)} disabled={loading}
             style={{padding:"5px 11px",background:"#21262d",border:"1px solid #30363d",borderRadius:5,color:"#e6edf3",fontSize:12,cursor:"pointer"}}>↻ Refresh</button>
           <button onClick={()=>setTab("coach")} className="command-pro" style={{display:"flex",alignItems:"center",gap:8}}>💬 AI Coach</button>
@@ -3052,8 +3079,8 @@ function App(){
       {topPair&&(
         <div style={{background:topPair.dir==="BUY"?"#0d2a1a":"#2a0d0d",padding:"8px 16px",borderBottom:"1px solid #30363d",display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"#8b949e"}}>TOP DOPORUČENÍ:</span>
-          <span style={{fontWeight:700,fontSize:14,color:topPair.dir==="BUY"?"#3fb950":"#f85149"}}>{FLAGS[topPair.base]}{FLAGS[topPair.quote]} {topPair.pair} {topPair.dir}</span>
-          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=65?"#3fb950":forecasts[topPair.pair].prob<=35?"#f85149":"#d29922"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}
+          <span style={{fontWeight:700,fontSize:14,color:topPair.dir==="BUY"?"#2ed3a0":"#f85149"}}>{FLAGS[topPair.base]}{FLAGS[topPair.quote]} {topPair.pair} {topPair.dir}</span>
+          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=65?"#2ed3a0":forecasts[topPair.pair].prob<=35?"#f85149":"#d29922"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}
           {top[1]&&<span style={{fontSize:11,color:"#8b949e"}}>| #2: {FLAGS[top[1].base]}{FLAGS[top[1].quote]} {top[1].pair} {top[1].dir}{forecasts[top[1].pair]?` ${forecasts[top[1].pair].prob}%`:""}</span>}
           {top[2]&&<span style={{fontSize:11,color:"#8b949e"}}>| #3: {FLAGS[top[2].base]}{FLAGS[top[2].quote]} {top[2].pair} {top[2].dir}{forecasts[top[2].pair]?` ${forecasts[top[2].pair].prob}%`:""}</span>}
         </div>
@@ -3069,8 +3096,8 @@ function App(){
       <div style={{display:"flex",borderBottom:"1px solid #30363d",padding:"0 16px",background:"#0d1117",overflowX:"auto"}}>
         {[["pairs","🎯 Všechny páry"],["cot","📊 COT & Sentiment"],["strength","💪 Síla měn"],["calendar","📅 Kalendář"],["ai","🤖 AI Analýza"],["coach","💬 AI Coach"]].map(([id,lbl])=>(
           <button key={id} onClick={()=>setTab(id)}
-            style={{padding:"10px 14px",background:"none",border:"none",borderBottom:tab===id?"2px solid #58a6ff":"2px solid transparent",
-              color:tab===id?"#58a6ff":"#8b949e",fontSize:13,cursor:"pointer",fontWeight:tab===id?500:400,whiteSpace:"nowrap"}}>
+            style={{padding:"10px 14px",background:"none",border:"none",borderBottom:tab===id?"2px solid #7d95ff":"2px solid transparent",
+              color:tab===id?"#7d95ff":"#8b949e",fontSize:13,cursor:"pointer",fontWeight:tab===id?500:400,whiteSpace:"nowrap"}}>
             {lbl}
           </button>
         ))}
@@ -3084,7 +3111,7 @@ function App(){
             {/* ── RISK SENTIMENT TOGGLE ── */}
             <div style={{gridColumn:"1 / -1",display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
               <span style={{fontSize:10,color:"#8b949e",letterSpacing:".06em"}}>RISK SENTIMENT:</span>
-              {[{v:-1,l:"⛔ RISK-OFF",col:"#f85149"},{v:0,l:"○ NEUTRAL",col:"#8b949e"},{v:1,l:"🟢 RISK-ON",col:"#3fb950"}].map(function(item){
+              {[{v:-1,l:"⛔ RISK-OFF",col:"#f85149"},{v:0,l:"○ NEUTRAL",col:"#8b949e"},{v:1,l:"🟢 RISK-ON",col:"#2ed3a0"}].map(function(item){
                 var active=riskSentimentUI===item.v;
                 return(
                   <button key={item.v} onClick={function(){setRiskSent(item.v);}} style={{padding:"3px 10px",fontSize:10,borderRadius:5,border:"1px solid "+(active?item.col:"#1d2a36"),background:active?"rgba(120,120,120,.12)":"transparent",color:active?item.col:"#4a6a88",cursor:"pointer",fontWeight:active?700:400}}>
@@ -3103,7 +3130,7 @@ function App(){
                 {top.filter(p=>p.conviction>=3).slice(0,3).map(p=>(
                   <div key={p.pair} onClick={()=>setSelected({...p,rankLabel:p.pair})} style={{display:"flex",alignItems:"center",gap:10,padding:"6px 0",borderBottom:"1px solid rgba(240,180,41,.1)",cursor:"pointer"}}>
                     <span style={{fontWeight:900,fontSize:13}}>{FLAGS[p.base]}{FLAGS[p.quote]} {p.pair}</span>
-                    <span style={{color:p.dir==="BUY"?"#3fb950":"#f85149",fontWeight:700,fontSize:11}}>{p.dir}</span>
+                    <span style={{color:p.dir==="BUY"?"#2ed3a0":"#f85149",fontWeight:700,fontSize:11}}>{p.dir}</span>
                     <span style={{color:"#f0b429",fontSize:11}}>{"★".repeat(p.conviction||0)}{"☆".repeat(5-(p.conviction||0))}</span>
                     <span style={{fontSize:9,color:"#8b949e",flex:1}}>{(p.convictionReasons||[]).slice(0,2).join(" · ")}</span>
                     {forecasts[p.pair]&&<span style={{fontSize:10,color:"#8b949e"}}>{forecasts[p.pair].prob}%</span>}
