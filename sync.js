@@ -12,7 +12,7 @@
   catch(e){ console.warn("Supabase init selhal:",e); }
 
   // localStorage klíče k synchronizaci
-  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","oanda_token","oanda_env","v5_risk_sent","v5_regime","cot_data","cot_meta","sent_data"];
+  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","oanda_token","oanda_env","v5_risk_sent","v5_regime","cot_data","cot_meta","sent_data","positions_ts"];
   const KEYS_ARR=["v5_ff_hist","journal"];                                              // pole → sloučit
   const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","positions","bias_state"]; // objekty → sloučit
   const TRANSIENT=["v5_ff_cache","fmp_cal_block","fh_cal_block"];                        // NIKDY nesynchronizovat
@@ -44,7 +44,12 @@
     const out={_scalar:{},_arr:{},_obj:{}};
     out._scalar={...(cloud._scalar||{}),...(local._scalar||{})}; // lokál vyhrává, cloud doplní chybějící
     new Set([...Object.keys(local._arr||{}),...Object.keys(cloud._arr||{})]).forEach(k=>{ out._arr[k]=mergeArr(k,(local._arr||{})[k],(cloud._arr||{})[k]); });
-    new Set([...Object.keys(local._obj||{}),...Object.keys(cloud._obj||{})]).forEach(k=>{ out._obj[k]=mergeObj(k,(local._obj||{})[k],(cloud._obj||{})[k]); });
+    // positions: NEslévat (zavření = smazání musí propagovat) → celá novější verze dle positions_ts vyhrává
+    const lpt=+((local._scalar||{}).positions_ts||0), cpt=+((cloud._scalar||{}).positions_ts||0);
+    new Set([...Object.keys(local._obj||{}),...Object.keys(cloud._obj||{})]).forEach(k=>{
+      if(k==="positions"){ out._obj[k]= lpt>=cpt ? ((local._obj||{})[k]||{}) : ((cloud._obj||{})[k]||{}); }
+      else out._obj[k]=mergeObj(k,(local._obj||{})[k],(cloud._obj||{})[k]);
+    });
     return out;
   }
   function applyLocal(d){

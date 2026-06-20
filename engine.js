@@ -1901,7 +1901,7 @@ function getPairDailyState(pair,scores,calData,upcoming){
   return{level:"none",dot:"",color:null};
 }
 function getPosition(pair){try{return (JSON.parse(localStorage.getItem("positions")||"{}"))[pair]||"none";}catch(e){return"none";}}
-function setPosition(pair,side){try{const p=JSON.parse(localStorage.getItem("positions")||"{}");side==="none"?delete p[pair]:p[pair]=side;localStorage.setItem("positions",JSON.stringify(p));}catch(e){}}
+function setPosition(pair,side){try{const p=JSON.parse(localStorage.getItem("positions")||"{}");side==="none"?delete p[pair]:p[pair]=side;localStorage.setItem("positions",JSON.stringify(p));localStorage.setItem("positions_ts",String(Date.now()));}catch(e){}}
 function getAllPositions(){try{return JSON.parse(localStorage.getItem("positions")||"{}");}catch(e){return{};}}
 function loadNotes(){try{return JSON.parse(localStorage.getItem("pair_notes")||"{}");}catch(e){return{};}}
 
