@@ -592,13 +592,29 @@ const REPORTS = {
 };
 
 /* ---------- AI (OpenRouter) ---------- */
-async function callAI(messages, settings){
-  if(!settings.apiKey) throw new Error('NO_KEY');
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions',{
+const FREE_MODELS = ['meta-llama/llama-3.3-70b-instruct:free','deepseek/deepseek-r1:free','google/gemini-2.0-flash-exp:free'];
+function orFetch(model, messages, settings){
+  return fetch('https://openrouter.ai/api/v1/chat/completions',{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+settings.apiKey,'HTTP-Referer':location.origin,'X-Title':'AI Market Radar'},
-    body:JSON.stringify({model:settings.model||'openai/gpt-4o-mini',messages,temperature:0.3})
+    body:JSON.stringify({model:model,messages:messages,temperature:0.3})
   });
+}
+async function callAI(messages, settings){
+  if(!settings.apiKey) throw new Error('NO_KEY');
+  let model = settings.model||'openai/gpt-4o-mini';
+  let res = await orFetch(model, messages, settings);
+  // Účet bez kreditu (402) na placeném modelu → automaticky zkus bezplatný :free model
+  if(res.status===402 && !/:free\b/.test(model)){
+    for(const fm of FREE_MODELS){
+      res = await orFetch(fm, messages, settings);
+      if(res.ok){
+        try{ if(typeof state!=='undefined' && state.settings){ state.settings.model=fm; LS.set('settings',state.settings); state.autoFreeNote='AI nemá kredit (402) → automaticky přepnuto na bezplatný model „'+fm+'". Změníš v ⚙️ Nastavení.'; } }catch(e){}
+        break;
+      }
+      if(res.status!==402 && res.status!==404 && res.status!==400) break; // jiná chyba → dál nezkoušej
+    }
+  }
   if(!res.ok) throw new Error('API '+res.status);
   const d = await res.json();
   return (d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content) || '';
@@ -952,7 +968,8 @@ function srcDiagHTML(){
 }
 function errBannerHTML(){
   if(!state.lastError) return '';
-  return '<div class="notice err" style="margin-bottom:12px">⚠️ '+esc(state.lastError)+'</div>';
+  const isErr=/selhala|nedostupn|chyba|nepodařilo|\b40[0-9]\b|\b429\b|CORS/i.test(state.lastError);
+  return '<div class="notice'+(isErr?' err':'')+'" style="margin-bottom:12px">'+(isErr?'⚠️ ':'✦ ')+esc(state.lastError)+'</div>';
 }
 function feedHTML(){
   const meta = state.loading? '<span class="spin"></span> načítám…' : (filterList().length+' z '+state.news.length+' zpráv · řazeno dle důležitosti');
@@ -1165,6 +1182,7 @@ async function refresh(){
     const r=await runRefresh(state.settings);
     state.news=r.news||[]; state.conns=r.conns||[]; if(r.desk) state.desk=r.desk; state.status=r.status||'mock';
     state.lastError = r.error || '';
+    if(state.autoFreeNote){ state.lastError = state.autoFreeNote + (state.lastError? ' · '+state.lastError : ''); state.autoFreeNote=''; }
     const h=heatFromHistory(getHistory()); if(Object.keys(h).some(k=>h[k]!==0)) state.heat=h;
     if(r.error) console.warn('[AI Market Radar]', r.error);
   }catch(e){ state.status='error'; state.lastError='Neočekávaná chyba: '+(e&&e.message||e); console.error(e); }
