@@ -36,14 +36,14 @@ class FXApp extends React.Component{
   constructor(p){
     super(p);
     const h=React.createElement; this.h=h;
-    this.state={ tab:'dashboard', sel:null, filter:'all', aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', seasPair:'', seasData:null, seasBusy:false, seasErr:'' };
+    this.state={ tab:'dashboard', sel:null, filter:'all', aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, seasPair:'', seasData:null, seasBusy:false, seasErr:'' };
     this.CUR=(typeof CURRENCIES!=='undefined')?CURRENCIES:['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
     this.NAMES=(typeof NAMES!=='undefined')?NAMES:{};
     this.D={}; this.PAIRS=[]; this.series={}; this.dates=[]; this.daily=[]; this.cbdi=50; this.PRICES={};
     this.journal={wr:0,pf:0,trades:0,avgR:0,bestR:0,buckets:[],rows:[]}; this.equity=[0];
     this.CUR.forEach(c=>{this.D[c]={score:0,fund:0,policy:0,yield:0,cot:0,sent:0,season:0,cotPct:50,chg7:0,cb:'—',inst:0,retail:50};this.series[c]=[0,0];});
     this.smooth=(pts)=>{ if(pts.length<2) return pts.length?`M ${pts[0][0]} ${pts[0][1]}`:''; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=0;i<pts.length-1;i++){ const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2; const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6,c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6; d+=` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2[0]} ${p2[1]}`; } return d; };
-    this.buildLineChart(); this.buildGauge();
+    this.buildLineChart(); this.buildGauge(); this.buildCotModal();
   }
   componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000);
     if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s) window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(s&&event==='SIGNED_IN') this.doSync(true); }); } }
@@ -201,6 +201,70 @@ class FXApp extends React.Component{
   async loadSeasonality(pair){ const p=pair||this.state.seasPair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD'; this.setState({seasPair:p,seasBusy:true,seasErr:'',seasData:null});
     try{ const av=(localStorage.getItem('av')||'').trim(); const data=await fetchSeasonality(p,av); this.setState({seasData:data,seasBusy:false}); }
     catch(e){ this.setState({seasErr:String(e&&e.message||e),seasBusy:false}); } }
+  buildCotModal(){ const self=this,h=this.h;
+    this.CotModal=({c,range})=>{
+      const T=self.tok;
+      const lim=({'6M':26,'1Y':52,'2Y':104,'ALL':520})[range]||52;
+      let ser={dates:[],values:[]}; try{ser=getCOTNetSeries(c,lim);}catch(e){}
+      const vals=ser.values||[], dates=ser.dates||[], n=vals.length;
+      const [hi,setHi]=React.useState(null);
+      const close=()=>self.setState({cotModal:null});
+      React.useEffect(()=>{ const k=e=>{ if(e.key==='Escape') self.setState({cotModal:null}); }; window.addEventListener('keydown',k); return ()=>window.removeEventListener('keydown',k); },[]);
+      const fmt=v=>(v>=0?'+':'−')+(Math.abs(v)>=100?Math.round(Math.abs(v)):Math.abs(v).toFixed(1));
+      const MON=['led','úno','bře','dub','kvě','čvn','čvc','srp','zář','říj','lis','pro'];
+      const dfmt=iso=>{ const d=new Date(iso); return isNaN(d)?String(iso):(d.getDate()+'. '+(d.getMonth()+1)+'. '+d.getFullYear()); };
+      const dshort=iso=>{ const d=new Date(iso); return isNaN(d)?'':(MON[d.getMonth()]+' '+String(d.getFullYear()).slice(2)); };
+      const lastV=n?vals[n-1]:0;
+      const W=1000,H=430,PL=16,PR=66,PT=24,PB=40;
+      let body;
+      if(n<2){
+        body=h('div',{style:{padding:'70px 20px',textAlign:'center',color:T.faint,fontSize:13}},'Málo COT historie pro tuto měnu — nasbírá se týdně (nebo importuj v klasické verzi).');
+      } else {
+        const mn=Math.min(...vals),mx=Math.max(...vals),rng=(mx-mn)||1,pad=rng*0.12,lo=mn-pad,hgh=mx+pad,span=(hgh-lo)||1;
+        const X=i=>PL+(W-PL-PR)*(i/(n-1)), Y=v=>PT+(H-PT-PB)*(1-(v-lo)/span);
+        const col=lastV>=0?T.green:T.red;
+        const path=self.smooth(vals.map((v,i)=>[X(i),Y(v)]));
+        const area=path+' L '+X(n-1)+' '+(H-PB)+' L '+X(0)+' '+(H-PB)+' Z';
+        const ticks=[0,1,2,3,4].map(k=>lo+span*k/4);
+        const move=e=>{ const r=e.currentTarget.getBoundingClientRect(); const px=(e.clientX-r.left)/r.width*W; let i=Math.round((px-PL)/((W-PL-PR)/(n-1))); i=Math.max(0,Math.min(n-1,i)); setHi(i); };
+        const idx=hi==null?n-1:Math.min(hi,n-1); const hx=X(idx),hy=Y(vals[idx]); const ttLeft=hx>W*0.62;
+        const steps=Math.min(6,n-1), xl=[]; for(let k=0;k<=steps;k++) xl.push(Math.round(k/steps*(n-1)));
+        body=h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',overflow:'visible',cursor:'crosshair'},onMouseMove:move,onMouseLeave:()=>setHi(null)},
+          h('defs',null,h('linearGradient',{id:'cm'+c,x1:0,y1:0,x2:0,y2:1},h('stop',{offset:'0%',stopColor:col,stopOpacity:.26}),h('stop',{offset:'100%',stopColor:col,stopOpacity:0}))),
+          ticks.map((t,k)=>{ const zero=Math.abs(t)<span*0.004; return h('g',{key:'t'+k},
+            h('line',{x1:PL,x2:W-PR,y1:Y(t),y2:Y(t),stroke:zero?'#2a3242':'#161b27',strokeWidth:zero?1.3:1,strokeDasharray:zero?'none':'3 6'}),
+            h('text',{x:W-PR+8,y:Y(t)+4,fontSize:11,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},fmt(t))); }),
+          (lo<0&&hgh>0)&&h('line',{x1:PL,x2:W-PR,y1:Y(0),y2:Y(0),stroke:'#2a3242',strokeWidth:1.3}),
+          xl.map((i,k)=>h('text',{key:'x'+k,x:X(i),y:H-PB+22,fontSize:10.5,fill:T.faint,textAnchor:'middle'},dates[i]?dshort(dates[i]):'')),
+          h('path',{d:area,fill:'url(#cm'+c+')'}),
+          h('path',{d:path,fill:'none',stroke:col,strokeWidth:2.4,strokeLinejoin:'round'}),
+          h('line',{x1:hx,x2:hx,y1:PT,y2:H-PB,stroke:T.accent,strokeWidth:1.1,strokeDasharray:'4 4',opacity:.85}),
+          h('circle',{cx:hx,cy:hy,r:5.5,fill:col,stroke:'#0a0b0e',strokeWidth:2.5}),
+          h('g',{transform:'translate('+(ttLeft?hx-194:hx+14)+','+Math.max(PT,hy-66)+')'},
+            h('rect',{width:180,height:56,rx:9,fill:'#11151d',stroke:'#2a3242'}),
+            h('text',{x:14,y:23,fontSize:11.5,fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},dates[idx]?dfmt(dates[idx]):''),
+            h('text',{x:14,y:43,fontSize:15,fontWeight:800,fill:col,fontFamily:"'JetBrains Mono',monospace"},'net '+fmt(vals[idx]))));
+      }
+      let stats=null;
+      if(n>=2){ const mx=Math.max(...vals),mn=Math.min(...vals),pr=Math.round(vals.filter(v=>v<=lastV).length/n*100);
+        stats=[['Aktuální','net '+fmt(lastV),lastV>=0?T.green:T.red],['Maximum','net '+fmt(mx),T.dim],['Minimum','net '+fmt(mn),T.dim],['Pozice v rozsahu',pr+' %',T.accent]]; }
+      return h('div',{onClick:close,style:{position:'fixed',inset:0,background:'rgba(7,8,12,.82)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:120,padding:'24px',animation:'fxfade .2s ease'}},
+        h('div',{onClick:e=>e.stopPropagation(),style:{width:'min(1100px,96vw)',maxHeight:'92vh',overflow:'auto',background:'#0f1218',border:'1px solid #27304a',borderRadius:16,padding:'22px 26px',boxShadow:'0 30px 80px rgba(0,0,0,.55)'}},
+          h('div',{style:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:14,flexWrap:'wrap'}},
+            h('div',null,
+              h('div',{style:{display:'flex',alignItems:'center',gap:12}},
+                h('span',{style:self.mono({fontSize:24,fontWeight:800})},c),
+                h('span',{style:self.mono({fontSize:13,fontWeight:800,color:lastV>=0?T.green:T.red,background:lastV>=0?'rgba(46,211,160,.12)':'rgba(242,96,110,.12)',border:'1px solid '+(lastV>=0?'rgba(46,211,160,.3)':'rgba(242,96,110,.3)'),borderRadius:8,padding:'4px 10px'})},'net '+fmt(lastV)+' '+(lastV>=0?'▲':'▼'))),
+              h('div',{style:{fontSize:12.5,color:T.dim,marginTop:6}},'Vývoj čisté pozice velkých hráčů (net) · klikni mimo okno nebo Esc pro zavření')),
+            h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+              h('div',{style:{display:'flex',gap:6}},[['6M'],['1Y'],['2Y'],['ALL']].map(([l])=>{const on=range===l;return h('button',{key:l,type:'button',onClick:()=>self.setState({cotRange:l}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:8,padding:'6px 12px',fontSize:11,fontWeight:700,cursor:'pointer'})},l);})),
+              h('button',{type:'button',onClick:close,style:{width:34,height:34,borderRadius:9,border:'1px solid #2a3242',background:'#161b27',color:T.dim,fontSize:18,cursor:'pointer',lineHeight:1}},'×'))),
+          h('div',{style:{height:1,background:'#161b27',margin:'16px 0 6px'}}),
+          h('div',{style:{padding:'6px 0'}},body),
+          stats&&h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginTop:10,background:'#0c0f16',border:'1px solid #161b27',borderRadius:11,padding:'12px 16px'}},
+            stats.map(([l,v,col],k)=>h('div',{key:'s'+k},h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:4}},l),h('div',{style:self.mono({fontSize:14,fontWeight:800,color:col})},v))))));
+    };
+  }
   CotHistChart(c,limit){ const self=this,h=this.h,T=this.tok; let s={dates:[],values:[]}; try{s=getCOTNetSeries(c,limit);}catch(e){}
     const vals=s.values||[]; if(vals.length<2) return h('div',{style:{fontSize:11,color:T.faint,padding:'18px 6px',textAlign:'center'}},'Málo COT historie — nasbírá se týdně, nebo importuj v klasické verzi.');
     const W=300,H=84,PL=4,PR=4,PT=8,PB=8; const mn=Math.min(...vals),mx=Math.max(...vals),rng=(mx-mn)||1; const n=vals.length;
@@ -362,7 +426,7 @@ class FXApp extends React.Component{
       h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('COT pozice velkých hráčů — LONG / SHORT','Skutečný podíl kontraktů (asset mgrs + lev funds) · per měna'),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:12}},this.CUR.map(c=>{const d=this.D[c];const L=d.cotLong;if(L==null)return h('div',{key:c,style:{display:'flex',alignItems:'center',gap:10,padding:'8px 0'}},h('span',{style:self.mono({fontSize:12.5,fontWeight:700,width:42})},c),h('span',{style:{fontSize:11,color:T.faint}},'bez syrových dat'));const S=100-L;return h('div',{key:c,style:{padding:'7px 0'}},h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:5}},h('span',{style:self.mono({fontSize:12.5,fontWeight:700})},c),h('span',{style:self.mono({fontSize:10.5,color:T.dim})},'L '+L+'% · S '+S+'%')),h('div',{style:{height:18,borderRadius:6,overflow:'hidden',display:'flex',border:'1px solid #161b27',background:'#0a0d13'}},h('div',{style:{width:L+'%',background:'linear-gradient(90deg,'+T.green+'cc,'+T.green+'88)'}}),h('div',{style:{width:S+'%',background:'linear-gradient(90deg,'+T.red+'88,'+T.red+'cc)'}})));}))),
       h('div',{style:self.card({padding:'18px 20px'})},h('div',{style:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:6}},self.ptitle('Vývoj COT v čase','Jak se postupně pozicovali velcí hráči (net) · per měna'),h('div',{style:{display:'flex',gap:6}},[['6M',26],['1Y',52],['2Y',104],['ALL',520]].map(([l,n])=>{const on=st.cotRange===l;return h('button',{key:l,type:'button',onClick:()=>self.setState({cotRange:l}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:8,padding:'5px 11px',fontSize:10.5,fontWeight:700,cursor:'pointer'})},l);}))),
-        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:12}},this.CUR.map(c=>{const lim=({'6M':26,'1Y':52,'2Y':104,'ALL':520})[st.cotRange]||52;const d=this.D[c];return h('div',{key:c,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'10px 12px'}},h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},h('span',{style:self.mono({fontSize:12.5,fontWeight:700})},c),h('span',{style:self.mono({fontSize:11,fontWeight:700,color:d.inst>=0?T.green:T.red})},(d.inst>0?'net +':'net ')+d.inst)),this.CotHistChart(c,lim));}))));
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:12}},this.CUR.map(c=>{const lim=({'6M':26,'1Y':52,'2Y':104,'ALL':520})[st.cotRange]||52;const d=this.D[c];return h('div',{key:c,onClick:()=>self.setState({cotModal:c}),title:'Klikni pro zvětšení',style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'10px 12px',cursor:'pointer'}},h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},h('span',{style:{display:'flex',alignItems:'center',gap:6}},h('span',{style:self.mono({fontSize:12.5,fontWeight:700})},c),h('span',{style:{fontSize:11,color:T.faint}},'⤢')),h('span',{style:self.mono({fontSize:11,fontWeight:700,color:d.inst>=0?T.green:T.red})},(d.inst>0?'net +':'net ')+d.inst)),this.CotHistChart(c,lim));}))));
   }
   renderJournal(){ const self=this,h=this.h,T=this.tok, j=this.journal,st=this.state,f=st.jForm; const kpi=(l,v,col)=>h('div',{style:self.card({padding:'16px 18px',flex:1})},h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:8}},l),h('div',{style:self.mono({fontSize:24,fontWeight:700,color:col||T.text})},v));
     const inp={background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 11px',fontSize:12.5,fontFamily:"'Manrope',sans-serif",outline:'none',width:'100%'};
@@ -526,6 +590,7 @@ class FXApp extends React.Component{
         :h('div',{style:{padding:'18px 22px 48px',animation:'fxfade .3s ease'}},st.tab==='strength'?this.renderStrength():st.tab==='cot'?this.renderCOT():st.tab==='season'?this.renderSeasonality():st.tab==='calendar'?this.renderCalendar():st.tab==='ai'?this.renderAIAnalysis():st.tab==='coach'?this.renderAICoach():st.tab==='journal'?this.renderJournal():st.tab==='settings'?this.renderSettings():null));
     return h('div',{style:{minHeight:'100vh',display:'flex',background:'radial-gradient(1100px 620px at 80% -10%, rgba(94,124,251,.10), transparent 58%), radial-gradient(900px 520px at 4% 2%, rgba(46,211,160,.055), transparent 54%), #07080c'}},
       aside,main,
+      st.cotModal&&h(self.CotModal,{key:st.cotModal,c:st.cotModal,range:st.cotRange}),
       !st.loaded&&h('div',{style:{position:'fixed',inset:0,background:'rgba(7,8,12,.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:99,fontSize:14,color:T.dim}},'⏳ Načítám živá data…'));
   }
 }
