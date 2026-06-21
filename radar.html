@@ -744,16 +744,22 @@ async function runRefresh(settings){
 
   raw = raw.slice(0, settings.maxItems||14);
 
-  // Bez OpenRouter klíče → režim „živé titulky": reálné zprávy s odkazy a datem, bez AI interpretace
-  if(!settings.apiKey){
+  // Bez OpenRouter klíče (nebo dočasná pauza po vyčerpání free limitu) → režim „živé titulky"
+  const coolLeft = settings.apiKey ? Math.max(0, (LS.get('ai_cooldown',0))-Date.now()) : 0;
+  if(!settings.apiKey || coolLeft>0){
+    const mins=Math.ceil(coolLeft/60000);
+    const aiMsg = coolLeft>0
+      ? 'AI pozastavena — vyčerpaný free limit OpenRouteru. Sama to zkusí znovu cca za '+mins+' min.'
+      : 'AI komentář je vypnutý. Vlož OpenRouter klíč v Nastavení a získáš interpretaci dopadu, skóre, souvislosti i šéfredaktora.';
     const items = raw.map(it=>{ const qc=quickCat(it.headline); return Object.assign({},it,{
       hid:hashStr(normHeadline(it.headline)), cat:qc[0], cb:qc[1],
-      ai:'AI komentář je vypnutý. Vlož OpenRouter klíč v Nastavení a získáš interpretaci dopadu, skóre, souvislosti i šéfredaktora.',
+      ai:aiMsg,
       story:'', affects:quickAffects(it.headline), score:clampScore(scoreFloor(it.headline)||3)
     }); });
     items.sort((a,b)=> b.score-a.score || new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
     mergeHistory(items);
-    return { status:'headlines', news:items, conns:buildConnectionsFromNews(items), desk:buildDeskFromNews(items) };
+    const err = coolLeft>0 ? 'Free AI limit OpenRouteru je vyčerpaný (429). Běží živé titulky; AI se sama zkusí obnovit za '+mins+' min. Pro AI bez omezení dobij jednorázově $10 na openrouter.ai/credits (→ 1000 zpráv/den).' : '';
+    return { status:'headlines', error:err, news:items, conns:buildConnectionsFromNews(items), desk:buildDeskFromNews(items) };
   }
 
   // S klíčem → plná AI analýza (cache + dávka)
@@ -784,6 +790,7 @@ async function runRefresh(settings){
       setCache(cache);
     }catch(e){
       // AI selhala → nezahazuj zprávy: degraduj na „živé titulky" + ukaž konkrétní důvod
+      if((e.message||'').indexOf('429')>=0) LS.set('ai_cooldown', Date.now()+15*60*1000); // vyčerpaný limit → pauza, ať to neplýtvá ani nenervuje
       const items = raw.map(it=>{ const key=hashStr(normHeadline(it.headline));
         if(cache[key]) return Object.assign({},it,{hid:key},cache[key]);
         const qc=quickCat(it.headline);
