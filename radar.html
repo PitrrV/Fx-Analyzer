@@ -803,10 +803,18 @@ async function runRefresh(settings){
   }
   analyzed.sort((a,b)=> b.score-a.score || new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
   mergeHistory(analyzed);
-  let conns=[], desk=null;
-  try{ conns = await generateConnections(analyzed, settings); }catch(e){ conns=[]; }
-  try{ desk  = await generateDesk(analyzed, settings); }catch(e){ desk=null; }
-  return { status:'live', news:analyzed, conns:conns.length?conns:buildConnectionsFromNews(analyzed), desk:desk||buildDeskFromNews(analyzed) };
+  // Souvislosti + šéfredaktor stojí AI volání. Generuj je JEN když přibyly nové zprávy
+  // nebo je uložená verze starší než 30 min — jinak šetři free limit a použij uloženou.
+  const lastDesk=LS.get('last_desk',null), lastConns=LS.get('last_conns',null);
+  const deskAge = (lastDesk&&lastDesk.updatedAt) ? Date.now()-new Date(lastDesk.updatedAt).getTime() : Infinity;
+  let conns, desk;
+  if(toAnalyze.length>0 || !lastDesk || deskAge>30*60*1000){
+    try{ conns = await generateConnections(analyzed, settings); }catch(e){ conns=lastConns||[]; }
+    try{ desk  = await generateDesk(analyzed, settings); }catch(e){ desk=lastDesk||null; }
+    if(conns&&conns.length) LS.set('last_conns',conns);
+    if(desk) LS.set('last_desk',desk);
+  } else { conns=lastConns||[]; desk=lastDesk; }
+  return { status:'live', news:analyzed, conns:(conns&&conns.length)?conns:buildConnectionsFromNews(analyzed), desk:desk||buildDeskFromNews(analyzed) };
 }
 
 /* ============================================================
