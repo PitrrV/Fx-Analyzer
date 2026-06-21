@@ -84,6 +84,7 @@ class FXApp extends React.Component{
       const ranked=rankPairs(sc,{});
       const up=deriveUpcomingFromEvents(cal);
       this._cal=cal; this._scores=sc; this._up=up;
+      try{ this.updateMacroLatest(cal); }catch(e){}
       // D
       this.CUR.forEach(c=>{ const s=sc[c]||{}; this.D[c]={
         score:+(s.score||0), fund:+(s.fund_score||0), policy:+(s.policy_adj||0), yield:+(s.yield_adj||0),
@@ -111,6 +112,47 @@ class FXApp extends React.Component{
       this.PRICES={USDJPY:157.2,EURUSD:1.084,GBPUSD:1.271,AUDUSD:0.664,NZDUSD:0.612,USDCAD:1.372,USDCHF:0.888,CHFJPY:177,GBPJPY:199.8,EURJPY:170.4,GBPAUD:1.914,EURAUD:1.632};
       this.setState({loaded:Date.now()});
     }catch(e){ console.error('refreshData',e); this.setState({loaded:Date.now(),err:String(e&&e.message||e)}); }
+  }
+  updateMacroLatest(cal){
+    try{
+      const store=JSON.parse(localStorage.getItem('macro_latest')||'{}')||{};
+      const isCPI=t=>/cpi|consumer price|inflation rate|core inflation|hicp|pce/i.test(t)&&!/ppi|producer/i.test(t);
+      const isGDP=t=>/\bgdp\b|gross domestic product/i.test(t);
+      const num=x=>{const n=parseFloat(String(x).replace(/[^0-9.\-]/g,''));return isNaN(n)?null:n;};
+      const dirOf=e=>{const a=num(e.actual),f=num(e.estimate);if(a==null||f==null)return null;return a>f?'up':a<f?'down':'flat';};
+      const pick=(cur,pred,prefer)=>{
+        const ev=(cal||[]).filter(e=>String(e.country||'').toUpperCase()===cur&&e.actual!=null&&String(e.actual).trim()!==''&&pred(String(e.event||'')));
+        if(!ev.length) return null;
+        ev.sort((a,b)=>{const pa=prefer.test(a.event||'')?1:0,pb=prefer.test(b.event||'')?1:0;return (pb-pa)||(new Date(b.time||0)-new Date(a.time||0));});
+        const e=ev[0]; return {val:String(e.actual).trim(),date:String(e.time||'').slice(0,10),dir:dirOf(e),title:String(e.event||'')};
+      };
+      this.CUR.forEach(cur=>{
+        const cur0=store[cur]||{};
+        const cpi=pick(cur,isCPI,/y\/?y/i), gdp=pick(cur,isGDP,/q\/?q/i);
+        if(cpi&&(!cur0.cpi||cpi.date>=cur0.cpi.date)) cur0.cpi=cpi;
+        if(gdp&&(!cur0.gdp||gdp.date>=cur0.gdp.date)) cur0.gdp=gdp;
+        if(cur0.cpi||cur0.gdp) store[cur]=cur0;
+      });
+      localStorage.setItem('macro_latest',JSON.stringify(store));
+    }catch(e){}
+  }
+  renderMacroSnapshot(){ const self=this,h=this.h,T=this.tok;
+    let store={}; try{store=JSON.parse(localStorage.getItem('macro_latest')||'{}')||{};}catch(e){}
+    const any=Object.keys(store).some(k=>store[k]&&(store[k].cpi||store[k].gdp));
+    const arr=d=>d==='up'?'▲':d==='down'?'▼':d==='flat'?'■':'';
+    const acol=d=>d==='up'?T.green:d==='down'?T.red:T.faint;
+    const fmtDate=iso=>{const dt=new Date(iso);return isNaN(dt)?'':(dt.getDate()+'.'+(dt.getMonth()+1)+'.');};
+    const withPct=v=>v+(/%/.test(v)?'':' %');
+    const card=cur=>{ const m=store[cur]||{}; const cpi=m.cpi,gdp=m.gdp;
+      return h('div',{key:cur,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'12px 14px'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:9}},h('span',{style:self.mono({fontSize:15,fontWeight:800})},cur),h('span',{style:self.mono({fontSize:9,color:T.faint})},'y/y')),
+        h('div',{style:{marginBottom:10}},h('div',{style:{fontSize:10.5,color:T.dim,marginBottom:3}},'Inflace (CPI)'),h('div',{style:{display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:6}},h('span',{style:self.mono({fontSize:19,fontWeight:800,color:cpi?T.text:T.faint})},cpi?withPct(cpi.val):'—'),cpi&&cpi.dir&&h('span',{style:{fontSize:13,fontWeight:800,color:acol(cpi.dir)}},arr(cpi.dir))),cpi&&h('div',{style:{fontSize:9.5,color:T.faint,marginTop:2}},fmtDate(cpi.date))),
+        h('div',null,h('div',{style:{fontSize:10.5,color:T.dim,marginBottom:3}},'HDP (q/q)'),h('div',{style:{display:'flex',alignItems:'baseline',justifyContent:'space-between',gap:6}},h('span',{style:self.mono({fontSize:16,fontWeight:800,color:gdp?T.text:T.faint})},gdp?withPct(gdp.val):'—'),gdp&&gdp.dir&&h('span',{style:{fontSize:12,fontWeight:800,color:acol(gdp.dir)}},arr(gdp.dir))),gdp&&h('div',{style:{fontSize:9.5,color:T.faint,marginTop:2}},fmtDate(gdp.date))));
+    };
+    return h('div',{style:self.card({padding:'18px 20px',marginBottom:16})},
+      h('div',{style:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:12}},self.ptitle('Makro snímek','Poslední inflace (CPI) a HDP podle měny · z kalendáře'),h('span',{style:{fontSize:10.5,color:T.faint}},'▲ nad · ▼ pod · v souladu s očekáváním')),
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(176px,1fr))',gap:12}},this.CUR.map(card)),
+      !any&&h('div',{style:{fontSize:11.5,color:T.faint,marginTop:10}},'Hodnoty se doplní, jakmile vyjdou CPI/HDP reporty (sbírá se postupně z kalendáře).'));
   }
   buildToday(cal,up){
     const ev=(typeof buildEventWatch==='function')?buildEventWatch(cal,up):(up||[]);
@@ -469,7 +511,7 @@ class FXApp extends React.Component{
     const ic=i=>i==='HIGH'?T.red:T.amber; const cols='84px 48px minmax(180px,1fr) 64px 78px 78px 78px 86px'; let lastDay=null;
     const surprise=e=>{const a=parseFloat(e.actual),f=parseFloat(e.estimate??e.forecast);if(isNaN(a)||isNaN(f))return null;return a>f?'beat':a<f?'miss':'inline';};
     const sc=s=>s==='beat'?T.green:s==='miss'?T.red:T.faint;
-    return h('div',{style:{maxWidth:1080}},h('div',{style:self.card({padding:'20px 22px'})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:14,flexWrap:'wrap'}},self.ptitle('Fundamentální kalendář','Příštích 14 dní · Actual / Forecast / Previous / Surprise'),h('div',{style:{display:'flex',gap:8}},h('span',{style:{fontSize:11,fontWeight:800,color:T.red,background:'rgba(242,96,110,.12)',border:'1px solid rgba(242,96,110,.3)',borderRadius:999,padding:'5px 11px'}},'HIGH '+list.filter(e=>impUp(e.impact)==='HIGH').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.accent,background:'rgba(94,124,251,.1)',border:'1px solid rgba(94,124,251,.28)',borderRadius:999,padding:'5px 11px'}},'EVENTS '+list.length))),
+    return h('div',{style:{maxWidth:1080}},this.renderMacroSnapshot(),h('div',{style:self.card({padding:'20px 22px'})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:14,flexWrap:'wrap'}},self.ptitle('Fundamentální kalendář','Příštích 14 dní · Actual / Forecast / Previous / Surprise'),h('div',{style:{display:'flex',gap:8}},h('span',{style:{fontSize:11,fontWeight:800,color:T.red,background:'rgba(242,96,110,.12)',border:'1px solid rgba(242,96,110,.3)',borderRadius:999,padding:'5px 11px'}},'HIGH '+list.filter(e=>impUp(e.impact)==='HIGH').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.accent,background:'rgba(94,124,251,.1)',border:'1px solid rgba(94,124,251,.28)',borderRadius:999,padding:'5px 11px'}},'EVENTS '+list.length))),
       h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,padding:'9px 0',borderTop:'1px solid #1b2130',borderBottom:'1px solid #1b2130',fontSize:9.5,fontWeight:700,letterSpacing:'.05em',color:T.faint}},['ČAS','MĚNA','UDÁLOST','IMPACT','ACTUAL','FORECAST','PREVIOUS','SURPRISE'].map((x,i)=>h('span',{key:x,style:i>=4?{textAlign:'right'}:null},x))),
       list.map((e,i)=>{const dt=new Date(parseEventTime(e.time));const dlabel=dt.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric',weekday:'long'});const dayHdr=dlabel!==lastDay;lastDay=dlabel;const s=surprise(e);
         return h('div',{key:i},dayHdr&&h('div',{style:self.mono({fontSize:10.5,fontWeight:700,color:T.dim,letterSpacing:'.04em',padding:'13px 0 7px',marginTop:i?4:0})},dlabel),h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,alignItems:'center',padding:'10px 0',boxShadow:'0 1px 0 #14182333'}},h('span',{style:self.mono({fontSize:11.5,color:T.dim})},dt.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})),h('span',{style:self.mono({fontSize:12,fontWeight:700})},ev2ccy(e)),h('span',{style:{fontSize:12.5,color:T.text}},e.event),h('span',{style:{fontSize:9,fontWeight:700,color:ic(impUp(e.impact)),background:ic(impUp(e.impact))+'1c',border:'1px solid '+ic(impUp(e.impact))+'40',borderRadius:5,padding:'3px 7px',justifySelf:'start'}},impUp(e.impact)),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:e.actual?T.text:T.faint,textAlign:'right'})},e.actual||'—'),h('span',{style:self.mono({fontSize:12,color:T.dim,textAlign:'right'})},(e.estimate||e.forecast)||'—'),h('span',{style:self.mono({fontSize:12,color:T.faint,textAlign:'right'})},(e.prev||e.previous)||'—'),h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:sc(s),textAlign:'right'})},s?(s==='beat'?'BEAT ▲':s==='miss'?'MISS ▼':'INLINE'):'PENDING')));})));
