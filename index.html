@@ -46,7 +46,7 @@ class FXApp extends React.Component{
     this.buildLineChart(); this.buildGauge(); this.buildCotModal();
   }
   componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000);
-    if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s) window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(s&&event==='SIGNED_IN') this.doSync(true); }); } }
+    if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s){ this._didInitSync=true; window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); } }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(!s){ this._didInitSync=false; return; } if(event==='SIGNED_IN'&&!this._didInitSync){ this._didInitSync=true; this.doSync(false); } }); } }
   componentWillUnmount(){ clearInterval(this._t); clearInterval(this._clk); }
   async doSync(reload){ this.setState({syncBusy:true,syncMsg:'⏳ Synchronizuji…'});
     try{ const st=await window.Sync.syncNow(); this.setState({syncMsg:`✅ Sloučeno: ${st.events} událostí · ${st.cotWeeks} COT týdnů · ${st.trades} obchodů · ${st.keys} klíčů`+(reload?' — obnovuji…':'')}); if(reload){ setTimeout(()=>location.reload(),1000); } else { this.refreshData(); } }
