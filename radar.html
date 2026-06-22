@@ -591,7 +591,7 @@ const REPORTS = {
   evening:{t:'Večerní report',stamp:'22:00 SEČ · Uzávěrka US',body:['Den uzavřel ve znamení <b>silnějšího USD</b> navzdory slabšímu PMI — jestřábí Powell přebil makro slabost.','EURUSD pod tlakem divergence sazeb, zlato korigovalo na vyšších výnosech.','Zítra: <b>jobless claims</b> a další ECB projevy. Hlavní vyprávění pokračuje.']}
 };
 
-/* ---------- AI (OpenRouter) ---------- */
+/* ---------- AI (Gemini přímo, nebo OpenRouter) ---------- */
 const FREE_MODELS = ['meta-llama/llama-3.3-70b-instruct:free','deepseek/deepseek-r1:free','google/gemini-2.0-flash-exp:free'];
 function orFetch(model, messages, settings){
   return fetch('https://openrouter.ai/api/v1/chat/completions',{
@@ -600,7 +600,23 @@ function orFetch(model, messages, settings){
     body:JSON.stringify({model:model,messages:messages,temperature:0.3})
   });
 }
+// Google Gemini API přímo — free tier ~1500/den, bez karty (mnohem štědřejší než OpenRouter free)
+async function callGemini(messages, settings){
+  const sys = (messages.find(m=>m.role==='system')||{}).content||'';
+  const usr = messages.filter(m=>m.role!=='system').map(m=>m.content).join('\n\n');
+  const model = settings.geminiModel || 'gemini-2.5-flash';
+  const body = { contents:[{role:'user',parts:[{text:usr}]}], generationConfig:{temperature:0.3} };
+  if(sys) body.system_instruction = {parts:[{text:sys}]};
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(settings.geminiKey),{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+  });
+  if(!r.ok) throw new Error('API '+r.status);
+  const d = await r.json();
+  const parts = d && d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts;
+  return (parts ? parts.map(p=>p.text||'').join('') : '');
+}
 async function callAI(messages, settings){
+  if(settings.geminiKey) return callGemini(messages, settings); // Gemini má přednost (větší free tier)
   if(!settings.apiKey) throw new Error('NO_KEY');
   let model = settings.model||'openai/gpt-4o-mini';
   let res = await orFetch(model, messages, settings);
@@ -744,9 +760,10 @@ async function runRefresh(settings){
 
   raw = raw.slice(0, settings.maxItems||14);
 
-  // Bez OpenRouter klíče (nebo dočasná pauza po vyčerpání free limitu) → režim „živé titulky"
-  const coolLeft = settings.apiKey ? Math.max(0, (LS.get('ai_cooldown',0))-Date.now()) : 0;
-  if(!settings.apiKey || coolLeft>0){
+  // Bez AI klíče (nebo dočasná pauza po vyčerpání free limitu) → režim „živé titulky"
+  const hasAI = !!(settings.apiKey || settings.geminiKey);
+  const coolLeft = hasAI ? Math.max(0, (LS.get('ai_cooldown',0))-Date.now()) : 0;
+  if(!hasAI || coolLeft>0){
     const mins=Math.ceil(coolLeft/60000);
     const aiMsg = coolLeft>0
       ? 'AI pozastavena — vyčerpaný free limit OpenRouteru. Sama to zkusí znovu cca za '+mins+' min.'
@@ -758,7 +775,7 @@ async function runRefresh(settings){
     }); });
     items.sort((a,b)=> b.score-a.score || new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
     mergeHistory(items);
-    const err = coolLeft>0 ? 'Free AI limit OpenRouteru je vyčerpaný (429). Běží živé titulky; AI se sama zkusí obnovit za '+mins+' min. Pro AI bez omezení dobij jednorázově $10 na openrouter.ai/credits (→ 1000 zpráv/den).' : '';
+    const err = coolLeft>0 ? 'Free AI limit OpenRouteru je vyčerpaný (429). Běží živé titulky; AI se sama zkusí obnovit za '+mins+' min. NEJLEPŠÍ řešení: vlož v ⚙️ Nastavení Google Gemini klíč (free ~1500/den, bez karty) — limit zmizí. Případně dobij $10 na openrouter.ai/credits.' : '';
     return { status:'headlines', error:err, news:items, conns:buildConnectionsFromNews(items), desk:buildDeskFromNews(items) };
   }
 
@@ -801,7 +818,7 @@ async function runRefresh(settings){
       const m=e.message||'';
       const tip = m.indexOf('402')>=0 ? 'OpenRouter účet nemá KREDIT (402). Model gpt-4o-mini je placený. Řešení: buď dobij pár dolarů na openrouter.ai/credits, NEBO v ⚙️ Nastavení → „AI model" přepni na free model (končící na :free) — viz nápověda u modelu.'
         : m.indexOf('401')>=0 ? 'Neplatný OpenRouter klíč (401) — zkontroluj/přegeneruj na openrouter.ai/keys.'
-        : m.indexOf('429')>=0 ? 'Překročen limit OpenRouteru (429) — chvíli počkej (free modely mají ~20/min, ~50/den).'
+        : m.indexOf('429')>=0 ? 'Překročen limit (429). TIP: vlož v ⚙️ Nastavení Google Gemini klíč (free ~1500/den, bez karty) — appka ho použije místo OpenRouteru a tenhle limit zmizí.'
         : m.indexOf('403')>=0 ? 'Přístup odepřen (403) — klíč nebo zvolený model není dostupný.'
         : /network|cors|failed to fetch|load failed/i.test(m) ? 'Požadavek blokuje síť nebo rozšíření v prohlížeči (CORS) — zkus jiný prohlížeč / vypni blokátor.'
         : 'Zkontroluj OpenRouter klíč a zvolený model v Nastavení.';
@@ -829,7 +846,7 @@ async function runRefresh(settings){
    ============================================================ */
 const state = {
   tab:'feed',
-  settings: LS.get('settings',{apiKey:'',finnhubKey:'',rssFeeds:'',backendUrl:'',model:'openai/gpt-4o-mini',interval:5,maxItems:14,sources:{},squawk:false,squawkMin:8}),
+  settings: LS.get('settings',{apiKey:'',geminiKey:'',finnhubKey:'',rssFeeds:'',backendUrl:'',model:'openai/gpt-4o-mini',interval:5,maxItems:14,sources:{},squawk:false,squawkMin:8}),
   news: MOCK_NEWS.slice().sort((a,b)=>b.score-a.score),
   conns: MOCK_CONNECTIONS,
   desk: MOCK_DESK,
@@ -1062,6 +1079,7 @@ function setHTML(){
       '<optgroup label="ZDARMA (bez kreditu)">'+modelOpt('meta-llama/llama-3.3-70b-instruct:free','Llama 3.3 70B — ZDARMA')+modelOpt('deepseek/deepseek-r1:free','DeepSeek R1 — ZDARMA')+modelOpt('google/gemini-2.0-flash-exp:free','Gemini 2.0 Flash — ZDARMA')+'</optgroup>'+
       '<optgroup label="Placené (vyžadují kredit)">'+modelOpt('openai/gpt-4o-mini','openai/gpt-4o-mini (levný)')+modelOpt('openai/gpt-4o','openai/gpt-4o')+modelOpt('anthropic/claude-3.5-sonnet','anthropic/claude-3.5-sonnet')+modelOpt('google/gemini-1.5-flash','google/gemini-1.5-flash')+'</optgroup>'+
       '</select><div class="hint"><b>Chyba 402 = účet nemá kredit.</b> Placené modely (gpt-4o…) potřebují dobitý kredit na openrouter.ai/credits. <b>Zdarma</b> jeď s modelem končícím na <code>:free</code> (nahoře) — limit ~20/min a ~50/den. Aktuální free modely: openrouter.ai/models?max_price=0 → ID vlož níže.</div><input type="text" id="set-modelCustom" style="margin-top:7px" value="" placeholder="vlastní model ID, např. ...:free (volitelné)"></div>'+
+    '<div class="field"><label>Google Gemini API klíč — AI ZDARMA ~1500/den '+(s.geminiKey?'<span style="color:var(--green)">● vyplněn → Gemini aktivní (má přednost)</span>':'<span style="color:var(--amber)">● doporučeno (obejde limit OpenRouteru)</span>')+'</label><input type="password" id="set-geminiKey" value="'+esc(s.geminiKey||'')+'" placeholder="AIza… (zdarma, bez karty)"><div class="hint"><b>Nejštědřejší free AI:</b> ~1500 zpráv/den (vs OpenRouter 50/den), bez platební karty. Když je vyplněný, appka ho použije <b>místo OpenRouteru</b>. Klíč zdarma: <b>aistudio.google.com/apikey</b> → „Create API key". Model: gemini-2.5-flash (Flash je ve free tieru).</div></div>'+
     '<div class="field"><label>Finnhub API klíč — hlavní zdroj zpráv '+(s.finnhubKey?'<span style="color:var(--green)">● vyplněn → Finnhub aktivní</span>':'<span style="color:var(--amber)">● doporučeno vyplnit</span>')+'</label><input type="password" id="set-finnhubKey" value="'+esc(s.finnhubKey||'')+'" placeholder="d1abcd… (zdarma na finnhub.io)"><div class="hint"><b>News endpoint je ZDARMA</b> (free tier, 60 volání/min) — narozdíl od ekonomického kalendáře, který je placený. Vrací <b>skutečná média</b> u každého článku (Reuters, Bloomberg…), takže funguje tiering i slučování („Ověřeno · N zdrojů"). <b>Můžeš použít stejný klíč jako v analyzeru.</b> Načítá kategorie general + forex + crypto.</div></div>'+
     '<div class="field"><label>RSS feedy (zdroj zpráv)</label><textarea id="set-rssFeeds" placeholder="jeden URL na řádek (necháš-li prázdné, použijí se výchozí: ForexLive, FXStreet, Investing, MarketWatch + světové: Al Jazeera, BBC World)">'+esc(s.rssFeeds||'')+'</textarea><div class="hint">Když necháš prázdné, načítají se výchozí feedy: 4 finanční + 2 světové (Al Jazeera, BBC World) pro geopolitiku/breaking. Vlastní URL (jeden na řádek) je nahradí. Načítá se přes rss2json (CORS), max 6 feedů.</div></div>'+
     '<div class="field"><label>Max. zpráv k analýze / refresh</label><select id="set-maxItems">'+maxOpt(8,'8 (nejlevnější)')+maxOpt(14,'14 (doporučeno)')+maxOpt(20,'20')+'</select><div class="hint">Analyzuje se dávkově v jednom AI volání. Známé titulky se berou z cache.</div></div>'+
@@ -1137,6 +1155,7 @@ function readSettingsForm(){
     backendUrl:g('set-backendUrl').trim(),
     apiKey:g('set-apiKey').trim(),
     model: custom || g('set-model'),
+    geminiKey:g('set-geminiKey').trim(),
     finnhubKey:g('set-finnhubKey').trim(),
     rssFeeds:g('set-rssFeeds'),
     maxItems:Number(g('set-maxItems'))||14,
@@ -1165,8 +1184,8 @@ function bindView(){
   }
   if(state.tab==='set'){
     $$('[data-src]').forEach(t=> t.onclick=()=>{ const name=t.getAttribute('data-src'); state.settings.sources=state.settings.sources||{}; state.settings.sources[name]=!(state.settings.sources[name]!==false); t.classList.toggle('on'); });
-    const save=$('#set-save'); if(save) save.onclick=()=>{ state.settings=readSettingsForm(); LS.set('settings',state.settings); const sv=$('#set-saved'); if(sv) sv.style.display='inline'; setupAutoRefresh(); refresh(); };
-    const rf=$('#set-refresh'); if(rf) rf.onclick=()=>{ state.settings=readSettingsForm(); LS.set('settings',state.settings); refresh(); };
+    const save=$('#set-save'); if(save) save.onclick=()=>{ state.settings=readSettingsForm(); LS.set('settings',state.settings); LS.set('ai_cooldown',0); const sv=$('#set-saved'); if(sv) sv.style.display='inline'; setupAutoRefresh(); refresh(); };
+    const rf=$('#set-refresh'); if(rf) rf.onclick=()=>{ state.settings=readSettingsForm(); LS.set('settings',state.settings); LS.set('ai_cooldown',0); refresh(); };
     const cl=$('#set-clear'); if(cl) cl.onclick=()=>{ LS.set('history',[]); LS.set('analysis_cache',{}); state.heat={USD:0,EUR:0,GBP:0,JPY:0,AUD:0,CAD:0,CHF:0,NZD:0}; alert('Historie a cache vymazány.'); };
     const sqt=$('#set-squawkTest'); if(sqt) sqt.onclick=()=>{ const min=Number(($('#set-squawkMin')||{}).value)||state.settings.squawkMin||8; ttsSpeak('Toto je ukázka hlasu audio squawku. Budu číst zprávy se skóre '+min+' a výš.'); };
   }
