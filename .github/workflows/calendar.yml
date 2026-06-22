@@ -2,7 +2,7 @@ name: Economic Calendar
 
 on:
   schedule:
-    - cron: "11 * * * *"   # každou hodinu (~1h zpoždění je OK)
+    - cron: "*/15 * * * *"  # každých 15 min (GitHub část přeskočí; commit jen při změně)
   workflow_dispatch:        # ruční/API spuštění
 
 permissions:
