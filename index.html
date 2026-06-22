@@ -99,6 +99,7 @@ class FXApp extends React.Component{
       this.PAIRS=ranked.map(p=>{ let status='confirmed',prob=50; try{const ds=getPairDailyState(p,sc,cal,up);status=ds.level==='conflict'?'conflict':ds.level==='upcoming'?'upcoming':'confirmed';}catch(e){} try{const fc=buildForecastV5(p,sc,cal,up)||{};prob=fc.prob||50;}catch(e){}
         return {pair:p.pair,base:p.base,quote:p.quote,dir:p.dir,diff:+p.diff,conv:Math.min(5,p.conviction||0),prob,status}; });
       if(!this.state.sel&&this.PAIRS[0]) this.state.sel=this.PAIRS[0].pair;
+      try{ updateBiasFlips(this.PAIRS); this._flips=getRecentFlips(this.PAIRS,cal,up,36)||[]; }catch(e){ this._flips=this._flips||[]; }
       // series + dates (dle zvoleného rozsahu)
       this.rebuildSeries();
       // daily events (dnes, HIGH/MED)
@@ -465,6 +466,25 @@ class FXApp extends React.Component{
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}},h('span',{style:self.mono({fontSize:12.5,fontWeight:800})},a.pair),h('span',{style:self.mono({fontSize:11.5,fontWeight:800,color:trig?T.amber:col})},(a.dir==='above'?'≥ ':'≤ ')+a.price)),
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:3}},h('span',{style:self.mono({fontSize:10,color:T.faint})},trig?('✓ spuštěno'+(a.hitPrice!=null?(' @ '+a.hitPrice):'')):(cur!=null?('nyní '+cur):'čeká na cenu')),h('button',{type:'button',onClick:()=>self.removeAlert(a.id),style:{border:0,background:'transparent',color:T.faint,fontSize:15,cursor:'pointer',lineHeight:1,padding:'0 2px'}},'×')),
           a.note&&h('div',{style:{fontSize:11,color:T.dim,fontStyle:'italic',marginTop:4}},'„'+a.note+'"')); })):h('div',{style:{fontSize:11.5,color:T.faint}},'Zatím žádné alerty. Přidej je u páru v jeho detailu.')); }
+  agoTxt(ts){ if(!ts) return ''; const m=Math.round((Date.now()-ts)/60000); if(m<60) return 'před '+m+' min'; const hh=Math.floor(m/60); return hh<24?('před '+hh+' h'):('před '+Math.floor(hh/24)+' dny'); }
+  flipInfo(pairId){ return (this._flips||[]).find(f=>f.pair===pairId)||null; }
+  flipBanner(p){ const self=this,h=this.h,T=this.tok; const f=this.flipInfo(p.pair); if(!f) return null;
+    const toBuy=f.to==='BUY'; const col=toBuy?T.green:T.red; const drv=f.driverItems&&f.driverItems[0];
+    const strength=Math.abs(p.diff); const strTxt=strength>=3?'silný':strength>=2?'střední':'zatím slabý';
+    return h('div',{style:self.card({padding:'14px 18px',background:'rgba(232,171,63,.07)',borderColor:T.amber+'44',borderLeft:'3px solid '+T.amber})},
+      h('div',{style:{display:'flex',alignItems:'center',gap:9,flexWrap:'wrap'}},
+        h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:T.amber,background:T.amber+'1c',border:'1px solid '+T.amber+'44',borderRadius:7,padding:'4px 10px'}},'⚡ OTOČENÍ BIASU'),
+        h('span',{style:self.mono({fontSize:13,fontWeight:800})},f.from+' →'),h('span',{style:self.mono({fontSize:13,fontWeight:800,color:col})},f.to),
+        h('span',{style:{fontSize:11,color:T.dim}},self.agoTxt(f.flippedAt)+' · nový bias '+strTxt+' ('+self.sgn(toBuy?p.diff:-p.diff)+')')),
+      h('div',{style:{fontSize:12,color:T.dim,marginTop:8,lineHeight:1.5}},'Fundamentální teze se otočila — '+(f.driver?('pravděpodobný driver: '+f.driver):'změna ve skóre')+(drv?(' · „'+drv.event+'" '+(drv.beat?'beat':'miss')+(drv.actual?(' '+drv.actual+(drv.estimate?(' vs '+drv.estimate):'')):'')):'')+'. Ber jako podnět k re-evaluaci teze, ne jako automatický vstup.')); }
+  renderFlipsPanel(){ const self=this,h=this.h,T=this.tok; const flips=this._flips||[]; if(!flips.length) return null;
+    return h('div',{style:self.card({padding:'16px 18px',borderColor:T.amber+'33',borderLeft:'3px solid '+T.amber})},
+      self.ptitle('⚡ Otočení biasu','Páry, kde se teze otočila (36 h)'),
+      h('div',{style:{display:'flex',flexDirection:'column',gap:8,marginTop:4}},flips.slice(0,6).map(f=>{ const toBuy=f.to==='BUY'; const col=toBuy?T.green:T.red; const drv=f.driverItems&&f.driverItems[0];
+        return h('div',{key:f.pair,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:10,padding:'9px 11px',cursor:'pointer'},onClick:()=>self.setState({sel:f.pair})},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},h('span',{style:self.mono({fontSize:12.5,fontWeight:800})},f.pair),h('span',{style:self.mono({fontSize:11,fontWeight:800,color:col})},f.from+' → '+f.to)),
+          h('div',{style:{fontSize:10.5,color:T.faint,marginTop:3}},self.agoTxt(f.flippedAt)+(f.driver?(' · driver: '+f.driver):'')),
+          drv&&h('div',{style:{fontSize:11,color:T.dim,marginTop:3,fontStyle:'italic'}},'„'+drv.event+'"')); }))); }
   pairObj(id){ return this.PAIRS.find(p=>p.pair===id)||this.PAIRS[0]; }
   statusColor(s){ const T=this.tok; return s==='conflict'?T.red:s==='upcoming'?T.amber:T.green; }
   statusLabel(s){ return s==='conflict'?'Konflikt':s==='upcoming'?'Přijde dnes':'Potvrzeno'; }
@@ -491,6 +511,7 @@ class FXApp extends React.Component{
     const verdict=okN>=3?{t:'SOUHLASÍ',c:T.green,bg:'rgba(46,211,160,.06)',msg:'Většina faktorů shodně '+p.dir+' — silná confluence'}:okN>=2?{t:'ČÁSTEČNĚ',c:T.amber,bg:'rgba(232,171,63,.06)',msg:'Částečná shoda '+p.dir}:{t:'SLABÉ',c:T.faint,bg:'rgba(120,130,150,.05)',msg:'Faktory nesouhlasí — slabý signál'};
     const hasHigh=dailyForPair.some(d=>d.imp==='HIGH'); const briefMsg=dailyForPair.length?(hasHigh?'Klíčová data dnes mohou pohnout biasem — drž plán.':'Dnešní data zatím potvrzují směr '+p.dir+'.'):'Dnes bez zásadních fundamentů pro tento pár.';
     return h('div',{style:{display:'flex',flexDirection:'column',gap:16,animation:'fxfade .25s ease'},key:p.pair},
+      this.flipBanner(p),
       h('div',{style:self.card({overflow:'hidden'})},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,padding:'18px 20px'}},
           h('div',{style:{display:'flex',alignItems:'center',gap:14}},h('div',{style:self.mono({fontSize:22,fontWeight:700,letterSpacing:'-.02em',color:'#eef1f6',background:'#0b0e15',border:'1px solid #232b3d',borderRadius:12,padding:'8px 14px'})},p.pair),
@@ -538,6 +559,7 @@ class FXApp extends React.Component{
   }
   renderRight(){ const self=this,h=this.h,T=this.tok; const imp=i=>i==='HIGH'?T.red:T.amber; const rows=this.CUR.map(c=>Object.assign({c},this.D[c])).sort((a,b)=>b.score-a.score);
     return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
+      this.renderFlipsPanel(),
       h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Dnešní přehled','Fundamenty s dopadem na bias · '+this.today()),this.daily.length?h('div',{style:{display:'flex',flexDirection:'column',gap:2}},this.daily.map((d,i)=>h('div',{key:i,style:{display:'flex',alignItems:'center',gap:11,padding:'10px 0',boxShadow:i<this.daily.length-1?'0 1px 0 #14182333':'none'}},h('span',{style:self.mono({fontSize:11,color:T.dim,width:42})},d.t),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:T.text,width:34})},d.ccy),h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontSize:12,fontWeight:600,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},d.ev),d.note&&h('div',{style:{fontSize:10,color:T.faint}},d.note)),h('span',{style:{fontSize:9,fontWeight:700,letterSpacing:'.06em',color:imp(d.imp),background:imp(d.imp)+'1c',border:'1px solid '+imp(d.imp)+'40',borderRadius:5,padding:'3px 7px'}},d.imp)))):h('div',{style:{fontSize:12,color:T.faint}},'Dnes žádné velké události.')),
       h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Síla měn','Ranking −10 … +10'),h('div',{style:{display:'flex',flexDirection:'column',gap:6}},rows.map(r=>{const pos=r.score>=0,col=pos?T.green:T.red,w=Math.abs(r.score)/10*100;return h('div',{key:r.c,style:{display:'grid',gridTemplateColumns:'40px 1fr 42px',alignItems:'center',gap:9}},h('span',{style:self.mono({fontSize:11.5,fontWeight:700})},r.c),h('div',{style:{height:8,background:'#0a0d13',border:'1px solid #161b27',borderRadius:5,overflow:'hidden'}},h('div',{style:{height:'100%',width:w+'%',background:col,opacity:.9,borderRadius:5}})),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:col,textAlign:'right'})},self.sgn(r.score)));}))),this.renderAlertsPanel());
   }
