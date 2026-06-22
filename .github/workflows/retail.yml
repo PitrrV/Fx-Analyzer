@@ -1,0 +1,35 @@
+name: Retail Sentiment
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"  # každých 30 min (GitHub část přeskočí; commit jen při změně)
+  workflow_dispatch:        # ruční/API spuštění
+
+permissions:
+  contents: write
+
+concurrency:
+  group: retail
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Stáhnout retail sentiment
+        run: node scripts/fetch-retail.js
+      - name: Commit při změně
+        run: |
+          git config user.name "retail-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/retail_hist.json)" ]; then
+            git add data/retail_hist.json
+            git commit -m "chore: update retail sentiment [skip ci]"
+            git push
+          else
+            echo "Beze změny."
+          fi
