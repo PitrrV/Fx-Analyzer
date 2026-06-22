@@ -235,10 +235,18 @@ class FXApp extends React.Component{
       const FALLBACK=['google/gemini-2.0-flash-exp:free','meta-llama/llama-3.2-90b-vision-instruct:free','qwen/qwen2.5-vl-72b-instruct:free','qwen/qwen-2-vl-7b-instruct:free','meta-llama/llama-3.2-11b-vision-instruct:free'];
       const models=[manual].concat(vis,FALLBACK).filter((v,i,a)=>v&&a.indexOf(v)===i);
       const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading FX Analyzer'};
-      let raw='',err='';
-      for(const m of models){ try{ const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:JSON.stringify({model:m,messages:[{role:'system',content:AI_SYSTEM_PROMPT},{role:'user',content:[{type:'image_url',image_url:{url:'data:'+mt+';base64,'+b64}},{type:'text',text:ctx}]}],max_tokens:2048})}); const d=await r.json(); if(d.error){err=d.error.message||'';continue;} const cnd=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content; if(cnd){raw=cnd;break;} }catch(e){err=String(e&&e.message||e);} }
-      if(!raw) throw new Error('Žádný free vision model momentálně nedostupný. Zkus za chvíli. '+err);
-      const clean=raw.replace(/```json|```/g,'').trim(); const si=clean.indexOf('{'),ei=clean.lastIndexOf('}'); const parsed=JSON.parse(si>=0&&ei>si?clean.slice(si,ei+1):clean);
+      let parsed=null,err='';
+      for(const m of models){ try{
+        const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:JSON.stringify({model:m,messages:[{role:'system',content:AI_SYSTEM_PROMPT},{role:'user',content:[{type:'image_url',image_url:{url:'data:'+mt+';base64,'+b64}},{type:'text',text:ctx}]}],max_tokens:2048})});
+        const d=await r.json(); if(d.error){err=(d.error.message||'chyba')+' ('+m+')';continue;}
+        const cnd=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content; if(!cnd){err='prázdná odpověď ('+m+')';continue;}
+        const clean=String(cnd).replace(/```json|```/g,'').trim(); const si=clean.indexOf('{'),ei=clean.lastIndexOf('}');
+        if(si<0||ei<=si){ err=m+' nevrátil JSON: '+clean.slice(0,48); continue; }
+        let p2=null; try{ p2=JSON.parse(clean.slice(si,ei+1)); }catch(e){ err=m+': neplatný JSON'; continue; }
+        if(p2&&typeof p2==='object'&&(p2.bias||p2.market_structure||p2.key_levels||p2.entry_setup)){ parsed=p2; break; }
+        err=m+': odpověď bez analýzy';
+      }catch(e){ err=String(e&&e.message||e); } }
+      if(!parsed) throw new Error('Vision modely teď nevrátily použitelnou analýzu (model vrátil bezpečnostní/nevalidní odpověď). Zkus to znovu za chvíli, nebo nastav v ⚙ silnější vision model. Detail: '+err);
       try{ const pr=this.pairObj(this.state.sel); if(pr&&pr.pair){ let store={}; try{store=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){} store[pr.pair]={bias:parsed.bias,confidence:parsed.confidence,tf:parsed.tf||this.state.aiTf2,key_levels:parsed.key_levels,entry_setup:parsed.entry_setup,savedAt:Date.now()}; localStorage.setItem('ai_analyses_v1',JSON.stringify(store)); } }catch(e){}
       this.setState({aiResult:parsed,aiBusy:false});
     }catch(e){ this.setState({aiErr:'Analýza selhala: '+(e&&e.message||e),aiBusy:false}); } }
