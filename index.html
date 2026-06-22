@@ -81,6 +81,7 @@ class FXApp extends React.Component{
       try{ const m0=loadCOTMeta(); const age=m0&&m0.asOf?((Date.now()-new Date(m0.asOf).getTime())/86400000):NaN; if(!(age<=4)){ await fetchCOTAuto(); } }catch(e){}
       const cot=loadCOT(), sent=loadSentiment();
       const sc={}; this.CUR.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
+      try{ if(typeof saveScoreHistory==='function') saveScoreHistory(sc); }catch(e){}
       const ranked=rankPairs(sc,{});
       const up=deriveUpcomingFromEvents(cal);
       this._cal=cal; this._scores=sc; this._up=up;
@@ -477,10 +478,11 @@ class FXApp extends React.Component{
         h('span',{style:self.mono({fontSize:13,fontWeight:800})},f.from+' →'),h('span',{style:self.mono({fontSize:13,fontWeight:800,color:col})},f.to),
         h('span',{style:{fontSize:11,color:T.dim}},self.agoTxt(f.flippedAt)+' · nový bias '+strTxt+' ('+self.sgn(toBuy?p.diff:-p.diff)+')')),
       h('div',{style:{fontSize:12,color:T.dim,marginTop:8,lineHeight:1.5}},'Fundamentální teze se otočila — '+(f.driver?('pravděpodobný driver: '+f.driver):'změna ve skóre')+(drv?(' · „'+drv.event+'" '+(drv.beat?'beat':'miss')+(drv.actual?(' '+drv.actual+(drv.estimate?(' vs '+drv.estimate):'')):'')):'')+'. Ber jako podnět k re-evaluaci teze, ne jako automatický vstup.')); }
-  renderFlipsPanel(){ const self=this,h=this.h,T=this.tok; const flips=this._flips||[]; if(!flips.length) return null;
-    return h('div',{style:self.card({padding:'16px 18px',borderColor:T.amber+'33',borderLeft:'3px solid '+T.amber})},
+  renderFlipsPanel(){ const self=this,h=this.h,T=this.tok; const flips=this._flips||[]; const has=flips.length>0;
+    return h('div',{style:self.card({padding:'16px 18px',borderColor:(has?T.amber:'#1b2130')+'33',borderLeft:'3px solid '+(has?T.amber:'#232b3d')})},
       self.ptitle('⚡ Otočení biasu','Páry, kde se teze otočila (36 h)'),
-      h('div',{style:{display:'flex',flexDirection:'column',gap:8,marginTop:4}},flips.slice(0,6).map(f=>{ const toBuy=f.to==='BUY'; const col=toBuy?T.green:T.red; const drv=f.driverItems&&f.driverItems[0];
+      !has&&h('div',{style:{fontSize:11.5,color:T.faint,marginTop:4,lineHeight:1.55}},'Sleduji živě — za posledních 36 h se žádný pár neotočil. Jakmile fundament překlopí bias (BUY↔SELL), objeví se tu pár, čas a pravděpodobný driver (+ banner v detailu páru a ⚡ v seznamu).'),
+      has&&h('div',{style:{display:'flex',flexDirection:'column',gap:8,marginTop:4}},flips.slice(0,6).map(f=>{ const toBuy=f.to==='BUY'; const col=toBuy?T.green:T.red; const drv=f.driverItems&&f.driverItems[0];
         return h('div',{key:f.pair,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:10,padding:'9px 11px',cursor:'pointer'},onClick:()=>self.setState({sel:f.pair})},
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},h('span',{style:self.mono({fontSize:12.5,fontWeight:800})},f.pair),h('span',{style:self.mono({fontSize:11,fontWeight:800,color:col})},f.from+' → '+f.to)),
           h('div',{style:{fontSize:10.5,color:T.faint,marginTop:3}},self.agoTxt(f.flippedAt)+(f.driver?(' · driver: '+f.driver):'')),
