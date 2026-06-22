@@ -45,7 +45,7 @@ class FXApp extends React.Component{
     this.smooth=(pts)=>{ if(pts.length<2) return pts.length?`M ${pts[0][0]} ${pts[0][1]}`:''; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=0;i<pts.length-1;i++){ const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2; const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6,c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6; d+=` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2[0]} ${p2[1]}`; } return d; };
     this.buildLineChart(); this.buildGauge(); this.buildCotModal();
   }
-  componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000); this._pxT=setInterval(()=>this.fetchAlertPrices(),45000); setTimeout(()=>this.fetchAlertPrices(),2500);
+  componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000); this._pxT=setInterval(()=>this.fetchAlertPrices(),60000); setTimeout(()=>this.fetchAlertPrices(),2500); try{document.addEventListener('visibilitychange',()=>{ if(!document.hidden) this.fetchAlertPrices(); });}catch(e){}
     if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s){ this._didInitSync=true; window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); } }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(!s){ this._didInitSync=false; return; } if(event==='SIGNED_IN'&&!this._didInitSync){ this._didInitSync=true; this.doSync(false); } }); } }
   componentWillUnmount(){ clearInterval(this._t); clearInterval(this._clk); clearInterval(this._pxT); }
   async doSync(reload){ this.setState({syncBusy:true,syncMsg:'⏳ Synchronizuji…'});
@@ -434,6 +434,7 @@ class FXApp extends React.Component{
       if(hit){ changed=true; this.fireAlert(a,cur); return Object.assign({},a,{status:'triggered',triggeredAt:Date.now(),hitPrice:cur}); } return a; });
     if(changed){ this.setState({alerts:arr}); this.saveAlerts(arr); } }
   async fetchAlertPrices(){ const active=(this.state.alerts||[]).filter(a=>a.status==='active'); if(!active.length) return;
+    if(typeof document!=='undefined'&&document.hidden) return;
     const pairs=[...new Set(active.map(a=>a.pair))]; const key=(localStorage.getItem('td_key')||'').trim();
     if(!key){ if(this.state.alertMsg!=='nokey'){ /* keep silent flag */ } this._noKey=true; this.forceUpdate(); return; } this._noKey=false;
     const sym=pairs.map(p=>p.slice(0,3)+'/'+p.slice(3,6)).join(',');
