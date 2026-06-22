@@ -1060,11 +1060,11 @@ function repHTML(){
     } else if(saved && saved.summary){
       aiBlock='<div class="ai-block" style="margin-bottom:14px"><div class="ai-label"><span>✦</span> AI report seance (česky)</div><div class="ai-text" style="font-style:normal;color:var(--txt)">'+esc(saved.summary)+'</div>'+
         '<div style="margin-top:8px"><button class="btn ghost" data-genrep="'+esc(cur[0])+'" style="padding:6px 12px;font-size:11px">↻ Přegenerovat</button> <span style="font-size:10px;color:var(--txt-faint)">vytvořeno '+ageText(saved.generatedAt)+'</span></div></div>';
-    } else if(state.settings.apiKey){
+    } else if(state.settings.apiKey || state.settings.geminiKey){
       aiBlock='<div class="ai-block" style="margin-bottom:14px"><div class="ai-label"><span>✦</span> AI report seance (česky)</div><div class="ai-text">Klikni a AI napíše souvislý český report této seance z '+inRange.length+' zpráv.</div>'+
         '<div style="margin-top:9px"><button class="btn" data-genrep="'+esc(cur[0])+'" style="padding:8px 15px;font-size:12px">✨ Generovat český report</button></div></div>';
     } else {
-      aiBlock='<div class="notice" style="margin-bottom:14px">Souvislý <b>český report</b> seance vytvoří AI — vlož OpenRouter klíč v ⚙️ Nastavení. Bez klíče se zobrazí jen seznam titulků.</div>';
+      aiBlock='<div class="notice" style="margin-bottom:14px">Souvislý <b>český report</b> seance vytvoří AI — vlož OpenRouter nebo Gemini klíč v ⚙️ Nastavení. Bez klíče se zobrazí jen seznam titulků.</div>';
     }
   }
   return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>Reporty po seancích</h2><span class="meta">sestaveno z reálných dnešních zpráv · '+new Date().toLocaleDateString('cs-CZ')+'</span></div>'+
@@ -1200,7 +1200,7 @@ function bindView(){
 
 async function genSessionReport(sessionId){
   const cur=SESSIONS.find(x=>x[0]===sessionId); if(!cur) return;
-  if(!state.settings.apiKey){ alert('Pro AI report vlož OpenRouter klíč v Nastavení.'); return; }
+  if(!(state.settings.apiKey || state.settings.geminiKey)){ alert('Pro AI report vlož OpenRouter nebo Gemini klíč v Nastavení.'); return; }
   const today=state.news.filter(n=>isTodayIso(n.publishedAt));
   const inRange=today.filter(n=>{ const h=new Date(n.publishedAt).getHours(); return h>=cur[3]&&h<cur[4]; }).sort((a,b)=> new Date(a.publishedAt||0)-new Date(b.publishedAt||0));
   if(!inRange.length){ alert('Tato seance zatím nemá dnešní zprávy.'); return; }
