@@ -434,7 +434,6 @@ class FXApp extends React.Component{
       if(hit){ changed=true; this.fireAlert(a,cur); return Object.assign({},a,{status:'triggered',triggeredAt:Date.now(),hitPrice:cur}); } return a; });
     if(changed){ this.setState({alerts:arr}); this.saveAlerts(arr); } }
   async fetchAlertPrices(){ const active=(this.state.alerts||[]).filter(a=>a.status==='active'); if(!active.length) return;
-    if(typeof document!=='undefined'&&document.hidden) return;
     const pairs=[...new Set(active.map(a=>a.pair))]; const key=(localStorage.getItem('td_key')||'').trim();
     if(!key){ if(this.state.alertMsg!=='nokey'){ /* keep silent flag */ } this._noKey=true; this.forceUpdate(); return; } this._noKey=false;
     const sym=pairs.map(p=>p.slice(0,3)+'/'+p.slice(3,6)).join(',');
