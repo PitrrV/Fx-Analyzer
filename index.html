@@ -36,14 +36,14 @@ class FXApp extends React.Component{
   constructor(p){
     super(p);
     const h=React.createElement; this.h=h;
-    this.state={ tab:'dashboard', sel:null, filter:'all', aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, alerts:(()=>{try{return JSON.parse(localStorage.getItem('alerts_v1')||'[]')||[];}catch(e){return [];}})(), alertForm:{dir:'above',price:'',note:''}, alertMsg:'', seasPair:'', seasData:null, seasBusy:false, seasErr:'' };
+    this.state={ tab:'dashboard', sel:null, filter:'all', aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, gridRange:'1M', alerts:(()=>{try{return JSON.parse(localStorage.getItem('alerts_v1')||'[]')||[];}catch(e){return [];}})(), alertForm:{dir:'above',price:'',note:''}, alertMsg:'', seasPair:'', seasData:null, seasBusy:false, seasErr:'' };
     this.CUR=(typeof CURRENCIES!=='undefined')?CURRENCIES:['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
     this.NAMES=(typeof NAMES!=='undefined')?NAMES:{};
     this.D={}; this.PAIRS=[]; this.series={}; this.dates=[]; this.daily=[]; this.cbdi=50; this.PRICES={};
     this.journal={wr:0,pf:0,trades:0,avgR:0,bestR:0,buckets:[],rows:[]}; this.equity=[0];
     this.CUR.forEach(c=>{this.D[c]={score:0,fund:0,policy:0,yield:0,cot:0,sent:0,season:0,cotPct:50,chg7:0,cb:'—',inst:0,retail:50};this.series[c]=[0,0];});
     this.smooth=(pts)=>{ if(pts.length<2) return pts.length?`M ${pts[0][0]} ${pts[0][1]}`:''; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=0;i<pts.length-1;i++){ const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2; const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6,c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6; d+=` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2[0]} ${p2[1]}`; } return d; };
-    this.buildLineChart(); this.buildGauge(); this.buildCotModal();
+    this.buildLineChart(); this.buildGauge(); this.buildCotModal(); this.buildHoverChart();
   }
   componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000); this._pxT=setInterval(()=>this.fetchAlertPrices(),60000); setTimeout(()=>this.fetchAlertPrices(),2500); try{document.addEventListener('visibilitychange',()=>{ if(!document.hidden) this.fetchAlertPrices(); });}catch(e){}
     if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s){ this._didInitSync=true; window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); } }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(!s){ this._didInitSync=false; return; } if(event==='SIGNED_IN'&&!this._didInitSync){ this._didInitSync=true; this.doSync(false); } }); } }
@@ -262,6 +262,37 @@ class FXApp extends React.Component{
   async loadSeasonality(pair){ const p=pair||this.state.seasPair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD'; this.setState({seasPair:p,seasBusy:true,seasErr:'',seasData:null});
     try{ const av=(localStorage.getItem('av')||'').trim(); const data=await fetchSeasonality(p,av); this.setState({seasData:data,seasBusy:false}); }
     catch(e){ this.setState({seasErr:String(e&&e.message||e),seasBusy:false}); } }
+  buildHoverChart(){ const self=this,h=this.h;
+    this.HoverChart=({dates,series,height,yMin,yMax,fmt,area,mid})=>{
+      const T=self.tok; const f=fmt||(v=>Math.round(v));
+      const n=Math.max((series[0]&&series[0].vals.length)||0,2);
+      const W=720,H=height||130,PL=8,PR=46,PT=12,PB=22;
+      let mn=yMin,mx=yMax;
+      if(mn==null||mx==null){ const all=series.flatMap(s=>s.vals); mn=Math.min.apply(null,all); mx=Math.max.apply(null,all); const pad=((mx-mn)||1)*0.14; mn-=pad; mx+=pad; }
+      const span=(mx-mn)||1;
+      const X=i=>PL+(W-PL-PR)*(n<2?0.5:(i/(n-1))), Y=v=>PT+(H-PT-PB)*(1-(v-mn)/span);
+      const [hi,setHi]=React.useState(null);
+      const move=e=>{ const r=e.currentTarget.getBoundingClientRect(); const px=(e.clientX-r.left)/r.width*W; let i=Math.round((px-PL)/((W-PL-PR)/Math.max(1,n-1))); i=Math.max(0,Math.min(n-1,i)); setHi(i); };
+      const idx=hi==null?n-1:Math.min(hi,n-1); const hx=X(idx);
+      const dfmt=d=>{ const dt=new Date(d); return isNaN(dt)?'':(dt.getDate()+'.'+(dt.getMonth()+1)+'.'); };
+      const yt=[0,0.5,1].map(t=>mn+span*t);
+      const steps=Math.min(4,n-1), xl=[]; for(let k=0;k<=steps;k++) xl.push(Math.round(k/Math.max(1,steps)*(n-1)));
+      const tl=hx>W*0.62, tw=132, th=16+series.length*15;
+      return h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',overflow:'visible',cursor:'crosshair'},onMouseMove:move,onMouseLeave:()=>setHi(null)},
+        yt.map((t,k)=>h('g',{key:'y'+k},h('line',{x1:PL,x2:W-PR,y1:Y(t),y2:Y(t),stroke:'#161b27',strokeWidth:1,strokeDasharray:'3 5'}),h('text',{x:W-PR+6,y:Y(t)+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},f(t)))),
+        mid!=null&&h('line',{x1:PL,x2:W-PR,y1:Y(mid),y2:Y(mid),stroke:'#2a3242',strokeWidth:1}),
+        xl.map((i,k)=>h('text',{key:'x'+k,x:X(i),y:H-PB+15,fontSize:8.5,fill:T.faint,textAnchor:'middle'},dates[i]?dfmt(dates[i]):'')),
+        series.map((sr,si)=>{ const d=self.smooth(sr.vals.map((v,i)=>[X(i),Y(v)])); return h('g',{key:'s'+si},
+          area&&h('path',{d:d+' L '+X(n-1)+' '+(H-PB)+' L '+X(0)+' '+(H-PB)+' Z',fill:sr.col,fillOpacity:.13}),
+          h('path',{d:d,fill:'none',stroke:sr.col,strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'})); }),
+        h('line',{x1:hx,x2:hx,y1:PT,y2:H-PB,stroke:T.accent,strokeWidth:1,strokeDasharray:'4 4',opacity:.7}),
+        series.map((sr,si)=>h('circle',{key:'c'+si,cx:hx,cy:Y(sr.vals[idx]),r:3,fill:sr.col,stroke:'#0b0d13',strokeWidth:1.5})),
+        h('g',{transform:'translate('+(tl?hx-tw-8:hx+8)+','+PT+')'},
+          h('rect',{width:tw,height:th,rx:7,fill:'#11151d',stroke:'#2a3242'}),
+          h('text',{x:9,y:13,fontSize:9.5,fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},dates[idx]?dfmt(dates[idx]):''),
+          series.map((sr,si)=>h('text',{key:'l'+si,x:9,y:29+si*15,fontSize:10.5,fontWeight:700,fill:sr.col,fontFamily:"'JetBrains Mono',monospace"},sr.name+'  '+f(sr.vals[idx])))));
+    };
+  }
   buildCotModal(){ const self=this,h=this.h;
     this.CotModal=({c,range})=>{
       const T=self.tok;
@@ -489,17 +520,35 @@ class FXApp extends React.Component{
           h('div',{style:{fontSize:10.5,color:T.faint,marginTop:3}},self.agoTxt(f.flippedAt)+(f.driver?(' · driver: '+f.driver):'')),
           drv&&h('div',{style:{fontSize:11,color:T.dim,marginTop:3,fontStyle:'italic'}},'„'+drv.event+'"')); }))); }
   renderPairCharts(p){ const self=this,h=this.h,T=this.tok; const sb=this.D[p.base],sq=this.D[p.quote];
-    const lim=({'6M':26,'1Y':52,'2Y':104,'ALL':520})[this.state.cotRange]||52;
-    const cell=(title,sub,subCol,body)=>h('div',{style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 12px',minWidth:0}},
-      title&&h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null),
-      body);
+    const gr=this.state.gridRange||'1M'; const days=({'14D':14,'1M':30,'3M':90,'6M':180,'ALL':4000})[gr]||30; const cut=Date.now()-days*86400000;
+    const inWin=d=>{ const t=new Date(d).getTime(); return !isNaN(t)&&t>=cut; };
+    // SCORE z historie skóre
+    let sh={}; try{sh=loadScoreHistory()||{};}catch(e){}
+    const sdates=Object.keys(sh).sort().filter(inWin);
+    const scoreSeries=[{name:p.base,col:T.accent,vals:sdates.map(d=>+(sh[d][p.base]||0))},{name:p.quote,col:T.violet,vals:sdates.map(d=>+(sh[d][p.quote]||0))}];
+    // RETAIL z retail_hist
+    const rpts=(this._retailHist||[]).filter(pt=>inWin(pt.t));
+    const rdates=rpts.map(pt=>pt.t);
+    const rlong=rpts.map(pt=>{ const d=pt.pairs&&pt.pairs[p.pair]; if(d&&isFinite(d.l)) return d.l; const b=pt.ccy&&pt.ccy[p.base],q=pt.ccy&&pt.ccy[p.quote]; return (b!=null&&q!=null)?Math.round((b+(100-q))/2):50; });
+    const retailSeries=[{name:'Long',col:T.green,vals:rlong},{name:'Short',col:T.red,vals:rlong.map(v=>100-v)}];
+    // COT Long/Short z cot_hist (levLong/levShort)
+    let ch={}; try{ch=loadCOTHistory()||{};}catch(e){}
+    const cdates=Object.keys(ch).sort().filter(inWin);
+    const cotLS=cur=>{ const lng=[],sht=[]; cdates.forEach(d=>{ const r=ch[d]&&ch[d].raw&&ch[d].raw[cur]; const l=(r&&+r.levLong)||0,s=(r&&+r.levShort)||0,tot=l+s; lng.push(tot?Math.round(l/tot*100):50); sht.push(tot?Math.round(s/tot*100):50); }); return [{name:'Long',col:T.green,vals:lng},{name:'Short',col:T.red,vals:sht}]; };
+    const pctFmt=v=>Math.round(v)+'%';
+    const cell=(title,sub,subCol,enough,body)=>h('div',{style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null),
+      enough?body:h('div',{style:{fontSize:10.5,color:T.faint,padding:'24px 4px',textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
+    const rng=['14D','1M','3M','6M','ALL'];
     return h('div',{style:Object.assign(self.card({padding:'14px 16px'}),{order:-2})},
-      self.ptitle(p.pair+' — grafy','Skóre · Retail · COT '+p.base+' & '+p.quote),
+      h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:4}},
+        self.ptitle(p.pair+' — grafy','Skóre · Retail · COT '+p.base+' & '+p.quote),
+        h('div',{style:{display:'flex',gap:5}},rng.map(r=>{const on=gr===r;return h('button',{key:r,type:'button',onClick:()=>self.setState({gridRange:r}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:7,padding:'4px 9px',fontSize:10,fontWeight:700,cursor:'pointer'})},r);}))),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginTop:8}},
-        cell('Vývoj skóre',self.sgn(sb.score)+' / '+self.sgn(sq.score),T.dim,h(self.LineChart,{cur1:p.base,cur2:p.quote,col1:T.accent,col2:T.violet,height:96})),
-        cell(null,null,null,self.renderRetailCurve(p)),
-        cell('COT '+p.base,(sb.inst>0?'net +':'net ')+sb.inst,sb.inst>=0?T.green:T.red,this.CotHistChart(p.base,lim)),
-        cell('COT '+p.quote,(sq.inst>0?'net +':'net ')+sq.inst,sq.inst>=0?T.green:T.red,this.CotHistChart(p.quote,lim)))); }
+        cell('Vývoj skóre',self.sgn(sb.score)+' / '+self.sgn(sq.score),T.dim,sdates.length>=2,h(self.HoverChart,{key:'sc'+p.pair+gr,dates:sdates,series:scoreSeries,height:128,yMin:-10,yMax:10,fmt:v=>(v>0?'+':'')+Math.round(v),mid:0})),
+        cell('Retail L/S',rlong.length?('L '+rlong[rlong.length-1]+'% · S '+(100-rlong[rlong.length-1])+'%'):null,T.green,rpts.length>=2,h(self.HoverChart,{key:'rt'+p.pair+gr,dates:rdates,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50})),
+        cell('COT '+p.base+' L/S',(sb.inst>0?'net +':'net ')+sb.inst,sb.inst>=0?T.green:T.red,cdates.length>=2,h(self.HoverChart,{key:'cb'+p.pair+gr,dates:cdates,series:cotLS(p.base),height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50})),
+        cell('COT '+p.quote+' L/S',(sq.inst>0?'net +':'net ')+sq.inst,sq.inst>=0?T.green:T.red,cdates.length>=2,h(self.HoverChart,{key:'cq'+p.pair+gr,dates:cdates,series:cotLS(p.quote),height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50})))); }
   renderRetailCurve(p){ const self=this,h=this.h,T=this.tok; const pts=this._retailHist||[];
     const ser=pts.map(pt=>{ const d=pt.pairs&&pt.pairs[p.pair]; let lng; if(d&&isFinite(d.l)) lng=d.l; else { const b=pt.ccy&&pt.ccy[p.base], q=pt.ccy&&pt.ccy[p.quote]; lng=(b!=null&&q!=null)?Math.round((b+(100-q))/2):null; } return lng==null?null:Math.max(0,Math.min(100,lng)); }).filter(v=>v!=null);
     if(ser.length<2) return h('div',{style:{fontSize:10.5,color:T.faint,margin:'2px 0 12px',lineHeight:1.5}},'📈 Retail Long/Short v čase — sbírá se každých 30 min (zatím '+ser.length+' bod, křivka naskočí během dne).');
