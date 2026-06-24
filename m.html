@@ -10,6 +10,9 @@
 <link rel="apple-touch-icon" href="icon-180.png"/>
 <link rel="icon" type="image/png" href="icon-192.png"/>
 <link rel="manifest" href="manifest.json"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
 <title>AT Trading FX — Mobil</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -21,36 +24,52 @@
 <script src="engine.js"></script>
 <script src="sync.js"></script>
 <style>
+  /* Paleta sjednocená s PC verzí (index.html tok) */
+  :root{
+    --bg:#07080c; --text:#eaedf3; --dim:#8b93a3; --faint:#5a6273;
+    --green:#2ed3a0; --red:#f2606e; --amber:#e8ab3f; --accent:#5e7cfb; --violet:#9d7bff;
+    --line:#1b2130; --line2:#262d3d; --inp:#0a0d13;
+  }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;padding:0;background:#0d1117;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Manrope',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px}
+  .mono{font-family:'JetBrains Mono',monospace}
   #root{min-height:100vh}
-  .topbar{position:sticky;top:0;z-index:20;background:#0d1117ee;backdrop-filter:blur(8px);border-bottom:1px solid #1c2533;padding:10px 14px;display:flex;align-items:center;gap:10px;padding-top:max(10px,env(safe-area-inset-top))}
+  .topbar{position:sticky;top:0;z-index:20;background:rgba(7,8,12,.93);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:10px 14px;display:flex;align-items:center;gap:10px;padding-top:max(10px,env(safe-area-inset-top))}
   .topbar h1{font-size:15px;font-weight:800;margin:0;flex:1;letter-spacing:.02em}
-  .topbar .accent{color:#3fb950}
+  .topbar .accent{color:var(--accent)}
   .content{padding:12px 12px 88px}
-  .card{background:#161b22;border:1px solid #21262d;border-radius:12px;padding:12px;margin-bottom:10px}
-  .pill{font-size:12px;font-weight:800;border-radius:6px;padding:3px 9px;white-space:nowrap}
-  .buy{background:#113b20;color:#3fb950;border:1px solid #3fb95033}
-  .sell{background:#431819;color:#ff6a5e;border:1px solid #f8514933}
-  .muted{color:#8b949e}
+  .card{background:linear-gradient(180deg,#0f121a,#0b0d13);border:1px solid var(--line);border-radius:16px;padding:13px;margin-bottom:10px;box-shadow:0 14px 32px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.03)}
+  .pill{font-size:12px;font-weight:800;border-radius:7px;padding:3px 10px;white-space:nowrap;font-family:'JetBrains Mono',monospace}
+  .buy{background:rgba(46,211,160,.12);color:var(--green);border:1px solid rgba(46,211,160,.3)}
+  .sell{background:rgba(242,96,110,.12);color:var(--red);border:1px solid rgba(242,96,110,.3)}
+  .muted{color:var(--dim)}
   .row{display:flex;align-items:center;gap:8px}
   .between{display:flex;align-items:center;justify-content:space-between;gap:8px}
-  .bignum{font-size:22px;font-weight:900}
-  .bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#0d1117f5;backdrop-filter:blur(10px);border-top:1px solid #1c2533;padding-bottom:env(safe-area-inset-bottom)}
-  .bottomnav button{flex:1;background:none;border:none;color:#6e7681;font-size:10px;font-weight:700;padding:9px 2px 7px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+  .bignum{font-size:22px;font-weight:900;font-family:'JetBrains Mono',monospace}
+  .bottomnav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:rgba(7,8,12,.96);backdrop-filter:blur(10px);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  .bottomnav button{flex:1;background:none;border:none;color:var(--faint);font-size:10px;font-weight:700;padding:9px 2px 7px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
   .bottomnav button .ic{font-size:19px;line-height:1}
-  .bottomnav button.active{color:#3fb950}
-  .btn{background:#1f6feb;border:none;border-radius:9px;color:#fff;font-size:14px;font-weight:700;padding:11px 14px;cursor:pointer;width:100%}
-  .btn.sec{background:#21262d;border:1px solid #30363d;color:#e6edf3}
+  .bottomnav button.active{color:var(--accent)}
+  .btn{background:linear-gradient(180deg,#5e7cfb,#4c63d9);border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;padding:11px 14px;cursor:pointer;width:100%;font-family:inherit}
+  .btn.sec{background:#0c0f16;border:1px solid var(--line2);color:var(--text)}
   .btn:disabled{opacity:.55}
-  input.fld{width:100%;padding:11px 12px;background:#0d1117;border:1px solid #30363d;border-radius:9px;color:#e6edf3;font-size:14px;margin-bottom:10px}
-  .chip{font-size:10px;border:1px solid #30363d;border-radius:5px;padding:2px 6px;color:#8b949e;white-space:nowrap}
+  input.fld,select.fld,textarea.fld{width:100%;padding:11px 12px;background:var(--inp);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:14px;margin-bottom:10px;font-family:inherit;outline:none}
+  .chip{font-size:10px;border:1px solid var(--line);border-radius:6px;padding:2px 7px;color:var(--dim);white-space:nowrap;font-family:'JetBrains Mono',monospace}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-  .ovl{position:fixed;inset:0;z-index:40;background:#0d1117;overflow-y:auto;padding:0 12px 88px;animation:sl .18s ease}
+  .ovl{position:fixed;inset:0;z-index:40;background:var(--bg);overflow-y:auto;padding:0 12px 88px;animation:sl .18s ease}
   @keyframes sl{from{transform:translateY(14px);opacity:.4}to{transform:none;opacity:1}}
-  .barwrap{height:6px;background:#1a2432;border-radius:4px;overflow:hidden;margin-top:8px}
-  .seg{display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid #1c2533}
+  .barwrap{height:6px;background:var(--inp);border:1px solid #161b27;border-radius:4px;overflow:hidden;margin-top:8px}
+  .seg{display:flex;justify-content:space-between;font-size:12px;padding:6px 0;border-bottom:1px solid var(--line)}
   .seg:last-child{border-bottom:none}
+  .verdict{display:flex;align-items:center;gap:9px;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.5}
+  .vtag{font-size:10.5px;font-weight:800;letter-spacing:.04em;border-radius:7px;padding:4px 9px;white-space:nowrap;font-family:'JetBrains Mono',monospace}
+  .posbtn{flex:1;border-radius:9px;padding:9px 0;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;background:#0c0f16}
+  /* AI Coach chat */
+  .chatwrap{display:flex;flex-direction:column;height:calc(100vh - 150px);min-height:440px;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:linear-gradient(180deg,#0f121a,#0b0d13)}
+  .chatlog{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+  .bub{max-width:84%;font-size:13px;line-height:1.55;padding:10px 13px;border-radius:14px;white-space:pre-wrap}
+  .bub.me{align-self:flex-end;color:#eaf0ff;background:linear-gradient(180deg,rgba(94,124,251,.22),rgba(94,124,251,.12));border:1px solid rgba(94,124,251,.32);border-bottom-right-radius:4px}
+  .bub.ai{align-self:flex-start;color:var(--text);background:linear-gradient(180deg,#0f131c,#0b0e14);border:1px solid var(--line);border-bottom-left-radius:4px}
 </style>
 </head>
 <body>
@@ -59,10 +78,12 @@
 const {useState,useEffect,useRef,useCallback}=React;
 
 // ── BARVY / FORMÁTOVAČE ─────────────────────────────────────
-const cScore=v=>v>2?"#3fb950":v<-2?"#ff6a5e":v>0?"#7fc99a":v<0?"#e0857d":"#8b949e";
-const cComp=v=>v>0.3?"#3fb950":v<-0.3?"#ff6a5e":"#8b949e";
+const cScore=v=>v>2?"#2ed3a0":v<-2?"#f2606e":v>0?"#7fd9b8":v<0?"#e8909a":"#8b93a3";
+const cComp=v=>v>0.3?"#2ed3a0":v<-0.3?"#f2606e":"#8b93a3";
 const fmtNum=v=>(v>0?"+":"")+(Math.round(v*10)/10);
-function impactColor(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"#f85149";if(i.includes("medium")||i==="2")return"#d29922";return"#6e7681";}
+// Skóre-barvy pro 14d/probabilitu (PC palette)
+const cProb=v=>v>=65?"#2ed3a0":v<=35?"#f2606e":"#e8ab3f";
+function impactColor(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"#f2606e";if(i.includes("medium")||i==="2")return"#e8ab3f";return"#5a6273";}
 function impactLabel(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"HIGH";if(i.includes("medium")||i==="2")return"MED";if(i.includes("low")||i==="1")return"LOW";return"—";}
 function evFlag(ev){const c=String(ev.country||ev.currency||"").toUpperCase();return COUNTRY_FLAGS[c]||"🏳️";}
 function fmtDT(t){const d=new Date(parseEventTime(t));if(isNaN(d))return"";return d.toLocaleString("cs-CZ",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});}
@@ -98,13 +119,24 @@ async function loadDataMobile(){
   if(av){ try{ await fetchOilPrice(av); }catch(e){} }
   const cot=loadCOT(), sent=loadSentiment();
   const sc={}; CURRENCIES.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
+  // D = odvozená per-měna data (shodné s PC this.D) pro COT/Sentiment/Dashboard bloky
+  const D={};
+  CURRENCIES.forEach(c=>{ const s=sc[c]||{}; D[c]={
+    score:+(s.score||0), fund:+(s.fund_score||0), policy:+(s.policy_adj||0), yield:+(s.yield_adj||0),
+    cot:+(s.cot_score||0), sent:+(s.sent_score||0), season:+(s.season_score||0),
+    cotPct:(()=>{try{return getCOTPercentile(c);}catch(e){return 50;}})()||50,
+    chg7:(()=>{try{return getScoreChange(c,7);}catch(e){return 0;}})()||0,
+    cb:(typeof CB_POLICY_DATA!=="undefined"&&CB_POLICY_DATA[c]&&CB_POLICY_DATA[c].label)||"—",
+    inst:Math.round(Math.max(-100,Math.min(100,(cot[c]||0)*12))),
+    cotLong:(()=>{try{const ls=getCOTLongShort(c);return ls?ls.long:null;}catch(e){return null;}})(),
+    retail:Math.round(sent[c]!=null?sent[c]:50) }; });
   const ranked=rankPairs(sc,{});
   let up;
   if(calSource==="finnhub"){ try{ up=await fetchUpcoming14(key); }catch(e){ up=deriveUpcomingFromEvents(cal); } }
   else up=deriveUpcomingFromEvents(cal);
   const months=(calSource==="fmp"||calSource==="finnhub")?15:ffHistorySpanMonths(cal);
   const fc={}; ranked.forEach(p=>{ try{ fc[p.pair]=buildForecastV5(p,sc,cal,up); }catch(e){} });
-  return { scores:sc, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(),
+  return { scores:sc, D, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(),
     calMeta:{source:calSource||"none",months,count:cal.length,conf:Math.round((g_fundConfidence||0)*100)} };
 }
 
@@ -118,14 +150,14 @@ function PairCard({p,f,daily,onTap}){
           <span style={{fontSize:18,fontWeight:900}}>{FLAGS[p.base]}{FLAGS[p.quote]}</span>
           <span style={{fontWeight:900,fontSize:16}}>{p.pair}</span>
           {daily&&daily.dot&&<span style={{fontSize:13}}>{daily.dot}</span>}
-          {p.conviction>=3&&<span style={{color:"#f0b429",fontSize:12}}>{"★".repeat(Math.min(5,p.conviction))}</span>}
+          {p.conviction>=3&&<span style={{color:"#e8ab3f",fontSize:12}}>{"★".repeat(Math.min(5,p.conviction))}</span>}
         </div>
         <span className={"pill "+(buy?"buy":"sell")}>{p.dir}</span>
       </div>
       <div className="between" style={{marginTop:8}}>
         <div className="row" style={{gap:12}}>
           <span style={{fontSize:13}}><span className="muted">skóre </span><b style={{color:cScore(buy?p.diff:-p.diff)}}>{(buy?"+":"-")+p.diff.toFixed(1)}</b></span>
-          {f&&f.prob!=null&&<span style={{fontSize:13}}><span className="muted">14d </span><b style={{color:f.prob>=65?"#3fb950":f.prob<=35?"#ff6a5e":"#d29922"}}>{f.prob+"% "+f.dir}</b></span>}
+          {f&&f.prob!=null&&<span style={{fontSize:13}}><span className="muted">14d </span><b style={{color:f.prob>=65?"#2ed3a0":f.prob<=35?"#f2606e":"#e8ab3f"}}>{f.prob+"% "+f.dir}</b></span>}
         </div>
         <div className="row" style={{gap:6}}>
           <span className="chip">{p.base} {fmtNum(p.s1)}</span>
@@ -137,7 +169,7 @@ function PairCard({p,f,daily,onTap}){
 }
 
 // ── MINI GRAF (SVG) ─────────────────────────────────────────
-function MiniChart({values,color="#58a6ff",height=54}){
+function MiniChart({values,color="#5e7cfb",height=54}){
   const vals=(values||[]).filter(v=>typeof v==="number"&&!isNaN(v));
   if(vals.length<2) return <div className="muted" style={{fontSize:11,padding:"6px 0"}}>Zatím málo historie (roste časem / po importu).</div>;
   const min=Math.min(...vals),max=Math.max(...vals),range=(max-min)||1,w=300;
@@ -145,7 +177,7 @@ function MiniChart({values,color="#58a6ff",height=54}){
   const zeroY=(min<0&&max>0)?(height-((0-min)/range)*(height-8)-4):null;
   return (
     <svg viewBox={"0 0 "+w+" "+height} preserveAspectRatio="none" style={{width:"100%",height,display:"block"}}>
-      {zeroY!=null&&<line x1="0" y1={zeroY} x2={w} y2={zeroY} stroke="#30363d" strokeWidth="1" strokeDasharray="3 3"/>}
+      {zeroY!=null&&<line x1="0" y1={zeroY} x2={w} y2={zeroY} stroke="#262d3d" strokeWidth="1" strokeDasharray="3 3"/>}
       <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
     </svg>
   );
@@ -173,22 +205,46 @@ function DailyBriefM({pair,scores,calData,upcoming}){
   const hasPast=fd.todayPast.length>0, hasTodayUp=fd.todayUpcoming.length>0, hasTomorrow=fd.tomorrow.length>0;
   const tm=e=>evDate(e).toLocaleTimeString("cs-CZ",{hour:"2-digit",minute:"2-digit"});
   const evL=arr=>arr.slice(0,4).map(e=>`${COUNTRY_FLAGS[(e.country||"").toUpperCase()]||""}${tm(e)} ${e.event}${(e.actual!=null&&e.actual!=="")?` = ${e.actual}`:((e.estimate??e.forecast)!=null&&(e.estimate??e.forecast)!=="")?` (odh. ${e.estimate??e.forecast})`:""}`).join("  ·  ");
-  const col=conflict?"#ff6a5e":confirm?"#3fb950":hasTodayUp?"#d29922":hasPast?"#58a6ff":"#3fb950";
+  const col=conflict?"#f2606e":confirm?"#2ed3a0":hasTodayUp?"#e8ab3f":hasPast?"#5e7cfb":"#2ed3a0";
   const head=conflict?`⚠️ 14d ${ltDir}, dnes krátkodobě PROTI`:confirm?`✅ Dnešní data potvrzují ${ltDir}`:hasTodayUp?`⏳ Dnes ještě přijdou důležité fundamenty`:hasPast?`🔵 Dnes proběhly velké zprávy`:`🟢 Dnes žádné velké fundamenty`;
   return (
     <div className="card" style={{borderColor:col+"55"}}>
       <div style={{fontWeight:800,color:col,marginBottom:6,fontSize:13}}>📋 Daily Brief — {head}</div>
       {c.hasData&&<div style={{fontSize:12,color:"#c9d1d9",lineHeight:1.5,marginBottom:6}}>{conflict?`14d výhled zůstává ${ltDir}, ale dnešní data tlačí krátkodobě opačně — počkej na uklidnění a potvrzení.`:confirm?`Dnešní data potvrzují směr ${ltDir} i krátkodobě — můžeš jet ve směru biasu.`:`Dnešní data jsou smíšená, bez jasného krátkodobého směru.`}</div>}
-      {!c.hasData&&!hasPast&&!hasTodayUp&&<div style={{fontSize:12,color:"#8b949e",marginBottom:6}}>Můžeš ve směru 14d biasu ({ltDir}).</div>}
+      {!c.hasData&&!hasPast&&!hasTodayUp&&<div style={{fontSize:12,color:"#8b93a3",marginBottom:6}}>Můžeš ve směru 14d biasu ({ltDir}).</div>}
       {hasPast&&!c.hasData&&<div style={{fontSize:12,color:"#8fb8e0",lineHeight:1.5,marginBottom:6}}>🔵 Dnes proběhlo: {evL(fd.todayPast)} — zatím bez výrazného překvapení; sleduj reakci.</div>}
       {hasTodayUp&&<div style={{fontSize:12,color:"#d6c089",lineHeight:1.5,marginBottom:6}}>⏳ Dnes ještě přijde: {evL(fd.todayUpcoming)}. Trh bývá před zprávou opatrný.</div>}
       {hasTomorrow&&<div style={{fontSize:11,color:"#6e8aa0",lineHeight:1.5,borderTop:"1px solid rgba(255,255,255,.06)",paddingTop:6}}>📅 Zítra: {evL(fd.tomorrow)}</div>}
     </div>
   );
 }
-function PairDetail({p,scores,f,cotData,daily,calData,upcoming,onClose}){
+function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,onClose}){
   const b=scores[p.base]||{}, q=scores[p.quote]||{};
   const buy=p.dir==="BUY";
+  const Dd=D||{}, sb=Dd[p.base]||{}, sq=Dd[p.quote]||{};
+  const [pos,setPos]=useState(()=>{try{return getPosition(p.pair);}catch(e){return"none";}});
+  const [note,setNote]=useState(()=>{try{return (loadNotes()||{})[p.pair]||"";}catch(e){return"";}});
+  function changePos(s){const ns=pos===s?"none":s;setPos(ns);try{setPosition(p.pair,ns);}catch(e){}}
+  function changeNote(v){setNote(v);try{const n=loadNotes()||{};if(v.trim())n[p.pair]=v;else delete n[p.pair];localStorage.setItem("pair_notes",JSON.stringify(n));}catch(e){}}
+  // Confluence verdikt (shoda nezávislých faktorů)
+  const fac=[
+    {l:"Fundamenty",ok:Math.abs(p.diff)>=2},
+    {l:"CB Policy",ok:Math.abs((b.policy_adj||0)-(q.policy_adj||0))>0.05},
+    {l:"COT",ok:Math.abs((b.cot_score||0)-(q.cot_score||0))>0.3},
+    {l:"Real Yield",ok:Math.abs((b.yield_adj||0)-(q.yield_adj||0))>0.2},
+  ];
+  const okN=fac.filter(x=>x.ok).length;
+  const verdict=okN>=3?{t:"SOUHLASÍ",c:"#2ed3a0",msg:"Většina faktorů shodně "+p.dir+" — silná confluence"}:okN>=2?{t:"ČÁSTEČNĚ",c:"#e8ab3f",msg:"Částečná shoda "+p.dir}:{t:"SLABÉ",c:"#5a6273",msg:"Faktory nesouhlasí — slabý signál"};
+  // COT vs Retail
+  const rLong=Math.max(0,Math.min(100,Math.round(((sb.retail!=null?sb.retail:50)+(100-(sq.retail!=null?sq.retail:50)))/2))), rShort=100-rLong;
+  const iDiff=Math.round((sb.inst||0)-(sq.inst||0)), iSide=iDiff>2?"LONG":iDiff<-2?"SHORT":"NEUTRÁL";
+  const rSide=rLong>=55?"LONG":rShort>=55?"SHORT":"NEUTRÁL";
+  const opp=(iSide==="LONG"&&rSide==="SHORT")||(iSide==="SHORT"&&rSide==="LONG");
+  const cv=opp?{t:"CONTRARIAN ✓",c:"#2ed3a0",m:"Instituce ("+iSide+") jdou PROTI davu ("+rSide+") → silnější signál ve směru instituce."}:(iSide!=="NEUTRÁL"&&iSide===rSide)?{t:"SHODA",c:"#e8ab3f",m:"Instituce i dav drží stejně ("+iSide+") — žádná contrarian výhoda, opatrně."}:{t:"NEUTRÁL",c:"#5a6273",m:"Pozicování bez extrému — slabý signál."};
+  // AI analýza z fotky (konfluence)
+  const ai=(()=>{try{return (JSON.parse(localStorage.getItem("ai_analyses_v1")||"{}")||{})[p.pair];}catch(e){return null;}})();
+  const aiDir=ai?(ai.bias==="BULLISH"?"BUY":ai.bias==="BEARISH"?"SELL":((ai.entry_setup&&ai.entry_setup.direction)||null)):null;
+  const aiAgree=ai?(aiDir?(aiDir===p.dir?{c:"#2ed3a0",m:"AI ("+ai.bias+") potvrzuje fundamentální "+p.dir+" — silnější konfluence."}:{c:"#f2606e",m:"AI vidí "+ai.bias+", ale bias je "+p.dir+" → konflikt, opatrně."}):{c:"#e8ab3f",m:"AI vidí "+(ai.bias||"SIDEWAYS")+" — bez jasné shody."}):null;
   return (
     <div className="ovl">
       <div className="topbar" style={{margin:"0 -12px"}}>
@@ -200,13 +256,13 @@ function PairDetail({p,scores,f,cotData,daily,calData,upcoming,onClose}){
         <div className="card">
           <div className="between">
             <div><div className="muted" style={{fontSize:12}}>Skóre páru</div><div className="bignum" style={{color:cScore(buy?p.diff:-p.diff)}}>{(buy?"+":"-")+p.diff.toFixed(1)}</div></div>
-            {f&&f.prob!=null&&<div style={{textAlign:"right"}}><div className="muted" style={{fontSize:12}}>14d výhled</div><div className="bignum" style={{color:f.prob>=65?"#3fb950":f.prob<=35?"#ff6a5e":"#d29922"}}>{f.prob}%</div><div className="muted" style={{fontSize:11}}>{f.dir}</div></div>}
+            {f&&f.prob!=null&&<div style={{textAlign:"right"}}><div className="muted" style={{fontSize:12}}>14d výhled</div><div className="bignum" style={{color:f.prob>=65?"#2ed3a0":f.prob<=35?"#f2606e":"#e8ab3f"}}>{f.prob}%</div><div className="muted" style={{fontSize:11}}>{f.dir}</div></div>}
           </div>
           {daily&&daily.dot&&<div style={{marginTop:8,fontSize:13}}>{daily.dot} <span className="muted">{daily.level==="conflict"?"Dnešní data jdou PROTI biasu":daily.level==="confirm"?"Dnešní data potvrzují bias":daily.level==="upcoming"?"Dnes přijde důležitá zpráva":daily.level==="done"?"Dnes proběhly velké zprávy (beze změny)":""}</span></div>}
         </div>
         <DailyBriefM pair={p} scores={scores} calData={calData} upcoming={upcoming}/>
         <div className="card">
-          <div className="seg" style={{fontWeight:800,color:"#8b949e",fontSize:11}}>
+          <div className="seg" style={{fontWeight:800,color:"#8b93a3",fontSize:11}}>
             <span>KOMPONENTA</span><span className="row" style={{gap:10}}><span style={{minWidth:42,textAlign:"right"}}>{p.base}</span><span style={{minWidth:42,textAlign:"right"}}>{p.quote}</span><span style={{minWidth:46,textAlign:"right"}}>DIFF</span></span>
           </div>
           {compRow("Fundamenty",b.fund_score,q.fund_score)}
@@ -217,6 +273,62 @@ function PairDetail({p,scores,f,cotData,daily,calData,upcoming,onClose}){
           {compRow("Sezónnost",b.season_score,q.season_score)}
           {compRow("CELKEM",b.score,q.score)}
         </div>
+
+        {/* Confluence verdikt */}
+        <div className="card" style={{borderColor:verdict.c+"44",borderLeft:"3px solid "+verdict.c}}>
+          <div className="between" style={{marginBottom:9}}>
+            <span className="row" style={{gap:9}}><span className="vtag" style={{color:verdict.c,background:verdict.c+"1c",border:"1px solid "+verdict.c+"44"}}>{verdict.t}</span><span style={{fontSize:12.5,fontWeight:600}}>{verdict.msg}</span></span>
+            <span className="mono" style={{fontSize:12,fontWeight:700,color:verdict.c}}>{okN}/{fac.length}</span>
+          </div>
+          <div className="row" style={{gap:6,flexWrap:"wrap"}}>{fac.map(x=>(
+            <span key={x.l} style={{fontSize:10.5,fontWeight:600,padding:"4px 9px",borderRadius:6,background:x.ok?"rgba(46,211,160,.1)":"rgba(120,130,150,.08)",border:"1px solid "+(x.ok?"rgba(46,211,160,.28)":"#222a39"),color:x.ok?"var(--green)":"var(--faint)"}}>{x.ok?"✓":"○"} {x.l}</span>
+          ))}</div>
+        </div>
+
+        {/* COT vs Retail */}
+        <div className="card">
+          <div className="between" style={{marginBottom:11}}>
+            <div><div style={{fontWeight:800,fontSize:13}}>COT vs Retail</div><div className="muted" style={{fontSize:11}}>Kdo je na které straně</div></div>
+            <span className="vtag" style={{color:cv.c,background:cv.c+"1c",border:"1px solid "+cv.c+"44"}}>{cv.t}</span>
+          </div>
+          <div style={{marginBottom:10}}>
+            <div className="between" style={{marginBottom:5}}><span style={{fontSize:11.5,fontWeight:700}}>🧍 Retail dav</span><span className="muted" style={{fontSize:10.5}}>contrarian</span></div>
+            <div style={{height:22,borderRadius:8,overflow:"hidden",display:"flex",border:"1px solid #161b27",background:"var(--inp)"}}>
+              <div style={{width:rLong+"%",background:"linear-gradient(90deg,#2ed3a0dd,#2ed3a099)",display:"flex",alignItems:"center",paddingLeft:8}}>{rLong>=18&&<span className="mono" style={{fontSize:10.5,fontWeight:700,color:"#04140e"}}>LONG {rLong}%</span>}</div>
+              <div style={{width:rShort+"%",background:"linear-gradient(90deg,#f2606e99,#f2606edd)",display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8}}>{rShort>=18&&<span className="mono" style={{fontSize:10.5,fontWeight:700,color:"#1c0609"}}>{rShort}% SHORT</span>}</div>
+            </div>
+          </div>
+          <div style={{marginBottom:11}}>
+            <div className="between" style={{marginBottom:5}}><span style={{fontSize:11.5,fontWeight:700}}>🏛 Instituce (COT)</span><span className="mono" style={{fontSize:11,fontWeight:700,color:iSide==="LONG"?"var(--green)":iSide==="SHORT"?"var(--red)":"var(--faint)"}}>{iSide+(iSide!=="NEUTRÁL"?(" "+(iDiff>0?"+":"")+iDiff):"")}</span></div>
+            <div style={{position:"relative",height:22,borderRadius:8,background:"var(--inp)",border:"1px solid #161b27",overflow:"hidden"}}>
+              <div style={{position:"absolute",left:"50%",top:0,bottom:0,width:1,background:"#2a3242"}}/>
+              <div style={{position:"absolute",top:0,bottom:0,left:iDiff>=0?"50%":(50-Math.min(50,Math.abs(iDiff)/2))+"%",width:Math.min(50,Math.abs(iDiff)/2)+"%",background:iDiff>=0?"var(--green)":"var(--red)",opacity:.85}}/>
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px"}} className="mono"><span style={{fontSize:9,color:"var(--faint)"}}>◀ SHORT</span><span style={{fontSize:9,color:"var(--faint)"}}>LONG ▶</span></div>
+            </div>
+          </div>
+          <div className="verdict" style={{background:cv.c+"12",border:"1px solid "+cv.c+"33"}}><span style={{fontSize:15}}>{opp?"🎯":(iSide===rSide&&iSide!=="NEUTRÁL")?"⚠️":"•"}</span><span>{cv.m}</span></div>
+        </div>
+
+        {/* AI konfluence z fotky */}
+        {ai&&aiAgree&&<div className="card" style={{borderColor:aiAgree.c+"44",borderLeft:"3px solid "+aiAgree.c}}>
+          <div className="between" style={{marginBottom:8}}>
+            <div style={{fontWeight:800,fontSize:13}}>🤖 AI analýza grafu</div>
+            <span className="row" style={{gap:7}}>{ai.bias&&<span className="vtag" style={{color:aiAgree.c,background:aiAgree.c+"1c",border:"1px solid "+aiAgree.c+"44"}}>{ai.bias}</span>}{ai.confidence!=null&&<b className="mono" style={{fontSize:12,color:aiAgree.c}}>{ai.confidence}%</b>}</span>
+          </div>
+          <div className="verdict" style={{background:aiAgree.c+"12",border:"1px solid "+aiAgree.c+"33"}}><span style={{fontSize:15}}>{aiAgree.c==="#2ed3a0"?"🎯":aiAgree.c==="#f2606e"?"⚠️":"•"}</span><span>{aiAgree.m}</span></div>
+        </div>}
+
+        {/* Moje pozice + poznámka */}
+        <div className="card">
+          <div className="between" style={{marginBottom:9}}>
+            <div style={{fontWeight:800,fontSize:13}}>📌 Moje pozice</div>
+            <div className="row" style={{gap:6}}>{["LONG","SHORT","none"].map(s=>{const on=pos===s;const col=s==="LONG"?"#2ed3a0":s==="SHORT"?"#f2606e":"#5a6273";return (
+              <button key={s} className="posbtn" onClick={()=>changePos(s)} style={{border:"1px solid "+(on?col:"#232b3d"),color:on?col:"var(--dim)",background:on?col+"1f":"#0c0f16",flex:"none",padding:"7px 12px"}}>{s==="none"?"Zavřít":s}</button>
+            );})}</div>
+          </div>
+          <textarea className="fld" style={{minHeight:60,resize:"vertical",marginBottom:0}} value={note} onChange={e=>changeNote(e.target.value)} placeholder="Tvoje teze, klíčové úrovně, plán vstupu…"/>
+        </div>
+
         <div className="card">
           <div className="muted" style={{fontSize:12,marginBottom:6,fontWeight:700}}>COT pozice</div>
           <div className="grid2">
@@ -226,11 +338,11 @@ function PairDetail({p,scores,f,cotData,daily,calData,upcoming,onClose}){
           {p.cotPctBase!=null&&<div className="muted" style={{fontSize:11,marginTop:8}}>COT percentil {p.base}: {p.cotPctBase}p {p.cotCrowded?"· 🚨 crowded":""}</div>}
         </div>
         {(()=>{const bd=buildDailySeries(p.base,60).values,qd=buildDailySeries(p.quote,60).values;const diff=bd.map((v,i)=>v-(qd[i]||0));const up=diff.length&&diff[diff.length-1]>=0;return (
-          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>📈 Historie skóre ({p.pair}, 60 dní)</div><div className="muted" style={{fontSize:10,marginBottom:4}}>skóre {p.base} − {p.quote} (roste = býčí pro pár)</div><MiniChart values={diff} color={up?"#3fb950":"#ff6a5e"}/></div>);})()}
+          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>📈 Historie skóre ({p.pair}, 60 dní)</div><div className="muted" style={{fontSize:10,marginBottom:4}}>skóre {p.base} − {p.quote} (roste = býčí pro pár)</div><MiniChart values={diff} color={up?"#2ed3a0":"#f2606e"}/></div>);})()}
         {(()=>{const cb=getCOTNetSeries(p.base,52).values,cq=getCOTNetSeries(p.quote,52).values;const diff=cb.map((v,i)=>v-(cq[i]||0));return (
-          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>📊 COT net trend ({p.pair})</div><div className="muted" style={{fontSize:10,marginBottom:4}}>net pozice {p.base} − {p.quote} (smart money)</div><MiniChart values={diff} color="#bf8cff"/></div>);})()}
+          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>📊 COT net trend ({p.pair})</div><div className="muted" style={{fontSize:10,marginBottom:4}}>net pozice {p.base} − {p.quote} (smart money)</div><MiniChart values={diff} color="#9d7bff"/></div>);})()}
         {(()=>{const rs=getRetailSeries(p,52);return (
-          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>👥 Retail long % ({p.pair})</div><div className="muted" style={{fontSize:10,marginBottom:4}}>retail dav (70%+ = kontrariánsky bearish)</div><MiniChart values={rs} color="#d29922"/></div>);})()}
+          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>👥 Retail long % ({p.pair})</div><div className="muted" style={{fontSize:10,marginBottom:4}}>retail dav (70%+ = kontrariánsky bearish)</div><MiniChart values={rs} color="#e8ab3f"/></div>);})()}
       </div>
     </div>
   );
@@ -248,23 +360,87 @@ function SignalsTab({data,onTap}){
   );
 }
 
-// ── ZÁLOŽKA: COT ────────────────────────────────────────────
-function CotTab({data,onRefreshCot,cotLoading}){
+// ── ZÁLOŽKA: COT & SENTIMENT ────────────────────────────────
+function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg}){
   const cot=loadCOT(), meta=loadCOTMeta();
+  const D=(data&&data.D)||{};
+  let histN=0; try{histN=Object.keys(loadCOTHistory()||{}).length;}catch(e){}
+  const cotAge=meta&&meta.asOf?Math.round((Date.now()-new Date(meta.asOf).getTime())/86400000):null;
+  const [range,setRange]=useState("1Y");
+  const RN={"6M":26,"1Y":52,"2Y":104,"ALL":520};
+  // Contrarian extrémy (instituce silně proti přeplněnému davu) — stejná logika jako PC
+  const flat=CURRENCIES.every(c=>(D[c]&&D[c].retail)===50);
+  const sigs=CURRENCIES.map(c=>{const d=D[c]||{};const crowded=(d.inst>30&&d.retail<42)||(d.inst<-30&&d.retail>58);if(!crowded)return null;return {c,side:d.inst>0?"LONG":"SHORT",retail:d.retail};}).filter(Boolean);
   return (
     <div>
       <div className="card">
-        <div className="between">
-          <div><div style={{fontWeight:800}}>COT pozice</div>{meta&&meta.asOf&&<div className="muted" style={{fontSize:12}}>k datu {String(meta.asOf).slice(0,10)}</div>}</div>
-          <button className="btn" style={{width:"auto",padding:"9px 14px"}} disabled={cotLoading} onClick={onRefreshCot}>{cotLoading?"⏳":"⚡ Aktuální"}</button>
+        <div className="between" style={{flexWrap:"wrap",gap:8}}>
+          <div><div style={{fontWeight:800}}>Data COT & Retail</div><div className="muted mono" style={{fontSize:11,marginTop:3}}>COT {(meta.source||"—")}{cotAge!=null?(" · "+cotAge+" d"):""} · {histN} týdnů</div></div>
         </div>
+        <div className="grid2" style={{marginTop:10}}>
+          <button className="btn" disabled={cotLoading} onClick={onRefreshCot}>{cotLoading?"⏳ COT…":"🔄 Stáhnout COT"}</button>
+          <button className="btn" style={{background:"linear-gradient(180deg,#9d7bff,#7d5be0)"}} disabled={retailLoading} onClick={onRefreshRetail}>{retailLoading?"⏳ Retail…":"🔄 Retail"}</button>
+        </div>
+        {msg&&<div style={{fontSize:12,marginTop:9,color:msg[0]==="⚠"?"var(--red)":"var(--green)",lineHeight:1.5}}>{msg}</div>}
       </div>
-      <div className="grid2">
-        {CURRENCIES.map(c=>(
-          <div className="card" key={c} style={{marginBottom:0}}>
-            <div className="between"><span className="row" style={{gap:6}}>{FLAGS[c]} <b>{c}</b></span><b style={{color:cScore(cot[c]||0),fontSize:18}}>{fmtNum(cot[c]||0)}</b></div>
+
+      {/* Contrarian signály */}
+      <div className="card">
+        <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>🎯 Contrarian signály</div>
+        <div className="muted" style={{fontSize:11,marginBottom:8}}>Instituce silně proti přeplněnému davu</div>
+        {sigs.length?sigs.map(s=>(
+          <div className="between" key={s.c} style={{padding:"8px 0",borderBottom:"1px solid var(--line)"}}>
+            <span className="row" style={{gap:8}}><span style={{width:7,height:7,borderRadius:50,background:"var(--amber)",boxShadow:"0 0 8px var(--amber)"}}/><b className="mono">{FLAGS[s.c]} {s.c}</b></span>
+            <span className="muted" style={{fontSize:11,flex:1,textAlign:"center"}}>retail {s.retail}% long</span>
+            <b style={{fontSize:11,color:s.side==="LONG"?"var(--green)":"var(--red)"}}>Smart {s.side}</b>
           </div>
-        ))}
+        )):<div className="muted" style={{fontSize:12,lineHeight:1.6}}>{flat?"⚠ Není načtený retail sentiment → klikni nahoře na 🔄 Retail.":"Teď žádné contrarian extrémy — dav ani instituce nejsou vyhraněně proti sobě."}</div>}
+      </div>
+
+      {/* COT skóre + percentil */}
+      <div className="card">
+        <div style={{fontWeight:800,fontSize:13,marginBottom:8}}>📊 COT skóre & percentil <span className="muted" style={{fontWeight:400,fontSize:11}}>(3+ roky)</span></div>
+        {CURRENCIES.map(c=>{const d=D[c]||{};const ext=d.cotPct>=85||d.cotPct<=15;const col=ext?"var(--amber)":"var(--dim)";return (
+          <div key={c} style={{display:"grid",gridTemplateColumns:"54px 1fr 52px 44px",alignItems:"center",gap:8,padding:"6px 0"}}>
+            <span className="mono" style={{fontSize:12,fontWeight:700}}>{FLAGS[c]} {c}</span>
+            <div style={{height:7,background:"var(--inp)",border:"1px solid #161b27",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:(d.cotPct||50)+"%",background:col,opacity:.85,borderRadius:4}}/></div>
+            <span className="mono" style={{fontSize:11,fontWeight:700,color:col,textAlign:"right"}}>{(d.cotPct||50)}p{ext?" ⚑":""}</span>
+            <b className="mono" style={{fontSize:13,color:cScore(cot[c]||0),textAlign:"right"}}>{fmtNum(cot[c]||0)}</b>
+          </div>
+        );})}
+      </div>
+
+      {/* COT LONG/SHORT per měna */}
+      <div className="card">
+        <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>🏛 COT pozice velkých hráčů</div>
+        <div className="muted" style={{fontSize:11,marginBottom:8}}>Skutečný podíl kontraktů (L/S) · per měna</div>
+        {CURRENCIES.map(c=>{const d=D[c]||{};const L=d.cotLong;if(L==null)return <div key={c} className="muted" style={{fontSize:11,padding:"5px 0"}}><b className="mono" style={{color:"var(--text)"}}>{c}</b> — bez syrových dat</div>;const S=100-L;return (
+          <div key={c} style={{padding:"6px 0"}}>
+            <div className="between" style={{marginBottom:4}}><b className="mono" style={{fontSize:12}}>{FLAGS[c]} {c}</b><span className="mono muted" style={{fontSize:10.5}}>L {L}% · S {S}%</span></div>
+            <div style={{height:16,borderRadius:6,overflow:"hidden",display:"flex",border:"1px solid #161b27",background:"var(--inp)"}}>
+              <div style={{width:L+"%",background:"linear-gradient(90deg,#2ed3a0cc,#2ed3a088)"}}/>
+              <div style={{width:S+"%",background:"linear-gradient(90deg,#f2606e88,#f2606ecc)"}}/>
+            </div>
+          </div>
+        );})}
+      </div>
+
+      {/* COT net vývoj v čase */}
+      <div className="card">
+        <div className="between" style={{marginBottom:8}}>
+          <div style={{fontWeight:800,fontSize:13}}>📈 Vývoj COT (net)</div>
+          <div className="row" style={{gap:5}}>{["6M","1Y","2Y","ALL"].map(l=>(
+            <button key={l} onClick={()=>setRange(l)} className="mono" style={{border:"1px solid "+(range===l?"#5e7cfb88":"var(--line)"),background:range===l?"rgba(94,124,251,.1)":"#0c0f16",color:range===l?"#cdd6ff":"var(--dim)",borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:700,cursor:"pointer"}}>{l}</button>
+          ))}</div>
+        </div>
+        <div className="grid2">
+          {CURRENCIES.map(c=>{const d=D[c]||{};const series=getCOTNetSeries(c,RN[range]||52).values;return (
+            <div key={c} style={{background:"var(--inp)",border:"1px solid #161b27",borderRadius:12,padding:"8px 10px"}}>
+              <div className="between" style={{marginBottom:2}}><b className="mono" style={{fontSize:12}}>{c}</b><span className="mono" style={{fontSize:10.5,fontWeight:700,color:(d.inst>=0?"var(--green)":"var(--red)")}}>{(d.inst>0?"net +":"net ")+d.inst}</span></div>
+              <MiniChart values={series} color={d.inst>=0?"#2ed3a0":"#f2606e"} height={42}/>
+            </div>
+          );})}
+        </div>
       </div>
     </div>
   );
@@ -282,7 +458,7 @@ function CalendarTab({data}){
       {evs.map((e,i)=>{
         const isToday=fmtDT(e.time).startsWith(todayStr);
         return (
-        <div className="card" key={i} style={{padding:"10px 12px",borderColor:isToday?"#2a3a4a":"#21262d"}}>
+        <div className="card" key={i} style={{padding:"10px 12px",borderColor:isToday?"#2a3a4a":"#1b2130"}}>
           <div className="between">
             <span className="row" style={{gap:7}}><span style={{fontSize:16}}>{evFlag(e)}</span><b style={{fontSize:13}}>{e.event}</b></span>
             <span className="chip" style={{color:impactColor(e.impact),borderColor:impactColor(e.impact)+"55"}}>{impactLabel(e.impact)}</span>
@@ -365,7 +541,7 @@ function SyncCard({onSynced}){
         <button className="btn" disabled={busy} onClick={()=>doSync(true)}>🔄 Synchronizovat teď</button>
         <button className="btn sec" style={{marginTop:8}} onClick={logout}>Odhlásit</button>
       </>}
-      {msg&&<div style={{fontSize:12,marginTop:8,color:msg[0]==="⚠"?"#ff6a5e":"#3fb950",lineHeight:1.5}}>{msg}</div>}
+      {msg&&<div style={{fontSize:12,marginTop:8,color:msg[0]==="⚠"?"#f2606e":"#2ed3a0",lineHeight:1.5}}>{msg}</div>}
     </div>
   );
 }
@@ -397,11 +573,10 @@ function SettingsTab({onSaved}){
         <label className="muted" style={{fontSize:12}}>OpenRouter (AI analýza)</label>
         <input className="fld" value={or} onChange={e=>setOr(e.target.value)} placeholder="OpenRouter key" autoCapitalize="off" autoCorrect="off"/>
         <button className="btn" onClick={save}>💾 Uložit a načíst</button>
-        {msg&&<div style={{color:"#3fb950",fontSize:12,marginTop:8}}>{msg}</div>}
+        {msg&&<div style={{color:"#2ed3a0",fontSize:12,marginTop:8}}>{msg}</div>}
       </div>
       <div className="card muted" style={{fontSize:12,lineHeight:1.5}}>
-        ℹ Tohle je <b>mobilní verze</b> (Fáze 1) — Signály, COT, Kalendář.<br/>
-        Brzy přibude: AI analýza grafu z fotky, Deník, Backtest a <b>auto cloud sync</b> s PC.
+        ℹ <b>Mobilní verze</b> sjednocená s PC — Signály, COT & Sentiment, Kalendář, AI analýza, <b>AI Coach</b>, Síla měn, Deník + cloud sync.
       </div>
     </div>
   );
@@ -456,7 +631,7 @@ function AITab(){
     catch(e){ setErr(String(e&&e.message||e)); }
     setBusy(false);setProg("");
   }
-  const bc=res&&res.bias==="BULLISH"?"#3fb950":res&&res.bias==="BEARISH"?"#ff6a5e":"#d29922";
+  const bc=res&&res.bias==="BULLISH"?"#2ed3a0":res&&res.bias==="BEARISH"?"#f2606e":"#e8ab3f";
   const es=(res&&res.entry_setup)||{}, ms=(res&&res.market_structure)||{};
   return (
     <div>
@@ -465,9 +640,9 @@ function AITab(){
         <label className="btn sec" style={{display:"block",textAlign:"center",cursor:"pointer"}}>📷 Vyfotit / nahrát graf
           <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>pick(e.target.files[0])}/>
         </label>
-        {img&&<img src={img} alt="graf" style={{width:"100%",borderRadius:8,marginTop:10,border:"1px solid #21262d"}}/>}
+        {img&&<img src={img} alt="graf" style={{width:"100%",borderRadius:8,marginTop:10,border:"1px solid #1b2130"}}/>}
         {img&&<button className="btn" style={{marginTop:10}} disabled={busy} onClick={run}>{busy?"⏳ "+(prog||"Analyzuji…"):"🔍 Analyzovat"}</button>}
-        {err&&<div style={{color:"#ff6a5e",fontSize:12,marginTop:8,lineHeight:1.5}}>⚠ {err}</div>}
+        {err&&<div style={{color:"#f2606e",fontSize:12,marginTop:8,lineHeight:1.5}}>⚠ {err}</div>}
         <div className="muted" style={{fontSize:10,marginTop:8}}>Potřebuje OpenRouter klíč (Nastavení) — zdarma na openrouter.ai.</div>
       </div>
       {res&&<>
@@ -479,25 +654,25 @@ function AITab(){
           {res.summary&&<div style={{fontSize:13,marginTop:8,lineHeight:1.5}}>{res.summary}</div>}
         </div>
         {es.direction&&<div className="card">
-          <div style={{fontWeight:800,marginBottom:6}}>🎯 Vstup: <span style={{color:es.direction==="BUY"?"#3fb950":es.direction==="SELL"?"#ff6a5e":"#d29922"}}>{es.direction}</span>{es.rr_estimate?(" · RR "+es.rr_estimate):""}</div>
+          <div style={{fontWeight:800,marginBottom:6}}>🎯 Vstup: <span style={{color:es.direction==="BUY"?"#2ed3a0":es.direction==="SELL"?"#f2606e":"#e8ab3f"}}>{es.direction}</span>{es.rr_estimate?(" · RR "+es.rr_estimate):""}</div>
           {es.entry_zone&&<div className="seg"><span className="muted">Vstup</span><span>{es.entry_zone}</span></div>}
           {es.entry_trigger&&<div className="seg"><span className="muted">Trigger</span><span>{es.entry_trigger}</span></div>}
-          {es.stop_loss&&<div className="seg"><span className="muted">Stop loss</span><span style={{color:"#ff6a5e"}}>{es.stop_loss}</span></div>}
-          {es.tp1&&<div className="seg"><span className="muted">TP1</span><span style={{color:"#3fb950"}}>{es.tp1}</span></div>}
-          {es.tp2&&<div className="seg"><span className="muted">TP2</span><span style={{color:"#3fb950"}}>{es.tp2}</span></div>}
+          {es.stop_loss&&<div className="seg"><span className="muted">Stop loss</span><span style={{color:"#f2606e"}}>{es.stop_loss}</span></div>}
+          {es.tp1&&<div className="seg"><span className="muted">TP1</span><span style={{color:"#2ed3a0"}}>{es.tp1}</span></div>}
+          {es.tp2&&<div className="seg"><span className="muted">TP2</span><span style={{color:"#2ed3a0"}}>{es.tp2}</span></div>}
           {es.invalidation&&<div className="seg"><span className="muted">Invalidace</span><span>{es.invalidation}</span></div>}
         </div>}
         {ms.trend&&<div className="card">
           <div style={{fontWeight:800,marginBottom:6}}>📐 Struktura: {ms.trend}</div>
           {ms.description&&<div style={{fontSize:12,color:"#c9d1d9",lineHeight:1.5}}>{ms.description}</div>}
-          {ms.bos_choch&&<div style={{fontSize:11,color:"#8b949e",marginTop:4}}>{ms.bos_choch}</div>}
+          {ms.bos_choch&&<div style={{fontSize:11,color:"#8b93a3",marginTop:4}}>{ms.bos_choch}</div>}
         </div>}
         {res.key_levels&&res.key_levels.length>0&&<div className="card">
           <div style={{fontWeight:800,marginBottom:6}}>📊 Klíčové úrovně</div>
-          {res.key_levels.slice(0,6).map((l,i)=><div className="seg" key={i}><span style={{color:l.type==="RESISTANCE"?"#ff6a5e":"#3fb950"}}>{l.type==="RESISTANCE"?"⬆ R":"⬇ S"} {l.zone}</span><span className="muted" style={{fontSize:11}}>{l.strength}</span></div>)}
+          {res.key_levels.slice(0,6).map((l,i)=><div className="seg" key={i}><span style={{color:l.type==="RESISTANCE"?"#f2606e":"#2ed3a0"}}>{l.type==="RESISTANCE"?"⬆ R":"⬇ S"} {l.zone}</span><span className="muted" style={{fontSize:11}}>{l.strength}</span></div>)}
         </div>}
         {res.risk_warnings&&res.risk_warnings.length>0&&<div className="card" style={{borderColor:"#5c4a1f"}}>
-          <div style={{fontWeight:800,marginBottom:6,color:"#d29922"}}>⚠️ Rizika</div>
+          <div style={{fontWeight:800,marginBottom:6,color:"#e8ab3f"}}>⚠️ Rizika</div>
           {res.risk_warnings.map((w,i)=><div key={i} style={{fontSize:12,color:"#d6c089",marginBottom:3,lineHeight:1.4}}>• {w}</div>)}
         </div>}
       </>}
@@ -519,7 +694,7 @@ function StrengthTab({data}){
           <div className="between">
             <span className="row" style={{gap:8}}><b className="muted" style={{width:16}}>{i+1}</b><span style={{fontSize:17}}>{FLAGS[r.c]}</span> <b>{r.c}</b></span>
             <span className="row" style={{gap:10}}>
-              {r.chg!=null&&Math.abs(r.chg)>=0.1&&<span style={{fontSize:11,color:r.chg>0?"#3fb950":"#ff6a5e"}}>{r.chg>0?"▲":"▼"}{Math.abs(r.chg).toFixed(1)}</span>}
+              {r.chg!=null&&Math.abs(r.chg)>=0.1&&<span style={{fontSize:11,color:r.chg>0?"#2ed3a0":"#f2606e"}}>{r.chg>0?"▲":"▼"}{Math.abs(r.chg).toFixed(1)}</span>}
               <b style={{color:col,fontSize:16,minWidth:46,textAlign:"right"}}>{fmtNum(r.score)}</b>
             </span>
           </div>
@@ -545,7 +720,7 @@ function JournalTab(){
     setF({...f,entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
   }
   function del(id){ persist(list.filter(t=>t.id!==id)); }
-  const oc={open:"#58a6ff",win:"#3fb950",loss:"#ff6a5e",be:"#d29922"};
+  const oc={open:"#5e7cfb",win:"#2ed3a0",loss:"#f2606e",be:"#e8ab3f"};
   const closed=list.filter(t=>t.outcome&&t.outcome!=="open"), wins=closed.filter(t=>t.outcome==="win").length;
   const wr=closed.length?Math.round(wins/closed.length*100):0, totR=closed.reduce((s,t)=>s+(t.rMultiple||0),0);
   return (
@@ -571,12 +746,12 @@ function JournalTab(){
         <input className="fld" value={f.notes} onChange={e=>upd("notes",e.target.value)} placeholder="Poznámka"/>
         <button className="btn" onClick={add}>＋ Přidat obchod</button>
       </div>
-      <div className="card"><div className="between"><span className="muted">Obchodů: <b style={{color:"#e6edf3"}}>{list.length}</b></span><span className="muted">WR <b style={{color:"#3fb950"}}>{wr}%</b> · Σ <b style={{color:totR>=0?"#3fb950":"#ff6a5e"}}>{totR>0?"+":""}{totR.toFixed(1)}R</b></span></div></div>
+      <div className="card"><div className="between"><span className="muted">Obchodů: <b style={{color:"#e6edf3"}}>{list.length}</b></span><span className="muted">WR <b style={{color:"#2ed3a0"}}>{wr}%</b> · Σ <b style={{color:totR>=0?"#2ed3a0":"#f2606e"}}>{totR>0?"+":""}{totR.toFixed(1)}R</b></span></div></div>
       {list.map(t=>(
         <div className="card" key={t.id} style={{padding:"10px 12px"}}>
           <div className="between">
-            <span className="row" style={{gap:8,flexWrap:"wrap"}}><b>{t.pair}</b><span style={{color:t.dir==="LONG"?"#3fb950":"#ff6a5e",fontSize:12,fontWeight:700}}>{t.dir}</span><span className="chip" style={{color:oc[t.outcome]||"#8b949e",borderColor:(oc[t.outcome]||"#8b949e")+"55"}}>{t.outcome}{t.rMultiple!=null?(" "+(t.rMultiple>0?"+":"")+t.rMultiple+"R"):""}</span></span>
-            <span onClick={()=>del(t.id)} style={{color:"#6e7681",cursor:"pointer",padding:"0 6px"}}>✕</span>
+            <span className="row" style={{gap:8,flexWrap:"wrap"}}><b>{t.pair}</b><span style={{color:t.dir==="LONG"?"#2ed3a0":"#f2606e",fontSize:12,fontWeight:700}}>{t.dir}</span><span className="chip" style={{color:oc[t.outcome]||"#8b93a3",borderColor:(oc[t.outcome]||"#8b93a3")+"55"}}>{t.outcome}{t.rMultiple!=null?(" "+(t.rMultiple>0?"+":"")+t.rMultiple+"R"):""}</span></span>
+            <span onClick={()=>del(t.id)} style={{color:"#5a6273",cursor:"pointer",padding:"0 6px"}}>✕</span>
           </div>
           {(t.entry||t.sl||t.tp)&&<div className="muted" style={{fontSize:11,marginTop:4}}>{t.entry?("E "+t.entry):""} {t.sl?("· SL "+t.sl):""} {t.tp?("· TP "+t.tp):""}</div>}
           {t.notes&&<div style={{fontSize:12,marginTop:4,color:"#c9d1d9"}}>{t.notes}</div>}
@@ -587,6 +762,81 @@ function JournalTab(){
     </div>
   );
 }
+// ── AI COACH (chat napojený na živá data) ───────────────────
+function buildCoachContextM(data,activePair){
+  const D=(data&&data.D)||{}, sc={};
+  CURRENCIES.forEach(c=>{const d=D[c]||{};sc[c]={score:+(+d.score||0).toFixed(2),fund:+(+d.fund||0).toFixed(2),cot:+(+d.cot||0).toFixed(2),cotPct:d.cotPct,policy:+(+d.policy||0).toFixed(2),cb:d.cb,inst:d.inst,retail:d.retail};});
+  let pos={}; try{pos=JSON.parse(localStorage.getItem("positions")||"{}");}catch(e){}
+  const top=((data&&data.pairs)||[]).slice(0,8).map(p=>{const f=((data&&data.forecasts)||{})[p.pair]||{};return {pair:p.pair,dir:p.dir,diff:+(+p.diff).toFixed(2),conviction:p.conviction,prob:f.prob,position:(pos[p.pair]||"none")};});
+  const cb={}; CURRENCIES.forEach(c=>{const r=(typeof CENTRAL_BANK_RATES!=="undefined"?CENTRAL_BANK_RATES[c]:null);const pl=(typeof CB_POLICY_DATA!=="undefined"?CB_POLICY_DATA[c]:null);cb[c]={rate:r,policy:pl&&pl.label};});
+  let cbdi=null; try{cbdi=calcCBDI();}catch(e){}
+  let today=[];
+  try{ const ev=buildEventWatch((data&&data.cal)||[],(data&&data.upcoming)||[])||[]; const ts=new Date().toDateString();
+    today=ev.filter(e=>{const d=new Date(parseEventTime(e.time));return !isNaN(d)&&d.toDateString()===ts;}).slice(0,12).map(e=>({t:fmtDT(e.time),ccy:(e.country||e.currency||""),ev:e.event,imp:impactLabel(e.impact)})); }catch(e){}
+  return {timestamp:new Date().toISOString(),cbdi,activePair:activePair||"none",centralBanks:cb,currencyScores:sc,topPairs:top,todayEvents:today};
+}
+async function coachReply(ctx,history){
+  const orKey=(localStorage.getItem("or_key")||"").trim();
+  if(!orKey) throw new Error("Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).");
+  const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce; vždy zmiň invalidaci; jsi mentor ne signální služba.';
+  const apiMsgs=history.slice(-10).map(m=>({role:m.role==="user"?"user":"assistant",content:m.text}));
+  const head={"Content-Type":"application/json","Authorization":"Bearer "+orKey,"HTTP-Referer":"https://pitrrv.github.io","X-Title":"AT Trading AI Coach"};
+  const body=m=>JSON.stringify({model:m,messages:[{role:"system",content:sys}].concat(apiMsgs),max_tokens:600,temperature:0.4});
+  const models=[(localStorage.getItem("or_coach_model")||"").trim()||"openrouter/free","deepseek/deepseek-chat-v3-0324:free","qwen/qwen3-8b:free","google/gemma-3-12b-it:free","meta-llama/llama-4-scout:free"].filter((v,i,a)=>v&&a.indexOf(v)===i);
+  for(const m of models){ try{ const r=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:head,body:body(m)}); const d=await r.json(); if(!d.error&&d.choices&&d.choices[0]&&d.choices[0].message){return d.choices[0].message.content;} }catch(e){} }
+  throw new Error("Žádný free model momentálně neodpověděl. Zkus to za chvíli.");
+}
+function CoachTab({data}){
+  const INIT=[{role:"coach",text:"Ahoj, jsem tvůj AI Coach. Vidím tvoje živá skóre, COT i pozice — ptej se na setup, riziko nebo konflikty."}];
+  const [msgs,setMsgs]=useState(()=>{try{const s=JSON.parse(localStorage.getItem("fx_coach_chat")||"null");return Array.isArray(s)&&s.length?s:INIT;}catch(e){return INIT;}});
+  const [input,setInput]=useState("");
+  const [pair,setPair]=useState("");
+  const [busy,setBusy]=useState(false);
+  const logRef=useRef(null);
+  const chips=["Které páry dnes neobchodovat?","Top setupy dnes?","Co s mými pozicemi?","Kde je konflikt?"];
+  const pairOpts=((data&&data.pairs)||[]).map(p=>p.pair);
+  const persist=arr=>{try{localStorage.setItem("fx_coach_chat",JSON.stringify(arr.slice(-50)));}catch(e){}};
+  useEffect(()=>{if(logRef.current)logRef.current.scrollTop=logRef.current.scrollHeight;},[msgs,busy]);
+  async function send(text){
+    const t=(text==null?input:text).trim(); if(!t||busy)return;
+    const hist=msgs.concat([{role:"user",text:t}]); setInput("");setMsgs(hist);persist(hist);setBusy(true);
+    try{ const ctx=buildCoachContextM(data,pair); const reply=await coachReply(ctx,hist); const m=hist.concat([{role:"coach",text:reply}]);setMsgs(m);persist(m); }
+    catch(e){ const m=hist.concat([{role:"coach",text:"⚠ "+(e&&e.message||e)}]);setMsgs(m);persist(m); }
+    setBusy(false);
+  }
+  function clear(){ setMsgs(INIT);persist(INIT); }
+  return (
+    <div className="chatwrap">
+      <div className="between" style={{padding:"12px 14px",borderBottom:"1px solid var(--line)"}}>
+        <div className="row" style={{gap:10}}>
+          <div className="mono" style={{width:34,height:34,borderRadius:10,background:"linear-gradient(150deg,#10131c,#0a0c12)",border:"1px solid var(--line2)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12}}>AT</div>
+          <div><div style={{fontWeight:800,fontSize:14}}>AI Coach</div><div style={{fontSize:10.5,color:"var(--green)"}}>● vidí živá skóre, COT a pozice</div></div>
+        </div>
+        <button className="btn sec" style={{width:"auto",padding:"7px 11px",fontSize:12}} onClick={clear}>↺</button>
+      </div>
+      <div style={{padding:"8px 12px 0"}}>
+        <select className="fld mono" style={{marginBottom:8,fontSize:12,padding:"8px 10px"}} value={pair} onChange={e=>setPair(e.target.value)}>
+          <option value="">🎯 Všechny páry</option>
+          {pairOpts.map(p=><option key={p} value={p}>{p}</option>)}
+        </select>
+      </div>
+      <div className="chatlog" ref={logRef}>
+        {msgs.map((m,i)=><div key={i} className={"bub "+(m.role==="user"?"me":"ai")}>{m.text}</div>)}
+        {busy&&<div className="bub ai muted" style={{fontSize:12}}>⏳ Coach přemýšlí…</div>}
+      </div>
+      <div style={{padding:"10px 12px",borderTop:"1px solid var(--line)"}}>
+        <div className="row" style={{gap:6,flexWrap:"wrap",marginBottom:9}}>{chips.map(c=>(
+          <button key={c} onClick={()=>send(c)} style={{fontSize:11,color:"var(--dim)",background:"#0c0f16",border:"1px solid var(--line)",borderRadius:999,padding:"5px 10px",cursor:"pointer",fontFamily:"inherit"}}>{c}</button>
+        ))}</div>
+        <div className="row" style={{gap:8}}>
+          <input className="fld" style={{marginBottom:0}} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")send(null);}} placeholder="Zeptej se na setup, riziko…"/>
+          <button className="btn" style={{width:"auto",padding:"0 18px",background:"linear-gradient(180deg,#4be0a8,#2ed3a0)",color:"#06140f"}} disabled={busy} onClick={()=>send(null)}>➤</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── ROOT ────────────────────────────────────────────────────
 function MApp(){
   const [tab,setTab]=useState("signals");
@@ -594,6 +844,8 @@ function MApp(){
   const [data,setData]=useState(null);
   const [loading,setLoading]=useState(true);
   const [cotLoading,setCotLoading]=useState(false);
+  const [retailLoading,setRetailLoading]=useState(false);
+  const [dataMsg,setDataMsg]=useState("");
   const [error,setError]=useState("");
   const [sel,setSel]=useState(null);
 
@@ -605,10 +857,17 @@ function MApp(){
   },[]);
 
   const refreshCot=useCallback(async()=>{
-    setCotLoading(true);
-    try{ await fetchCOTAuto(); await load(); }
-    catch(e){ setError("COT: "+String(e&&e.message||e)); }
+    setCotLoading(true);setDataMsg("⏳ Stahuji COT z CFTC…");
+    try{ const {meta}=await fetchCOTAuto(); await load(); setDataMsg("✅ COT aktualizováno"+(meta&&meta.asOf?(" na "+String(meta.asOf).slice(0,10)):"")); }
+    catch(e){ setDataMsg("⚠ COT stažení selhalo: "+String(e&&e.message||e)); }
     setCotLoading(false);
+  },[load]);
+
+  const refreshRetail=useCallback(async()=>{
+    setRetailLoading(true);setDataMsg("⏳ Stahuji retail sentiment…");
+    try{ const res=await fetchRetailSentiment(); const rs=res&&res.sentData||res; saveSentiment(rs); try{saveRetailSnapshot(rs);}catch(e){} await load(); setDataMsg("✅ Retail aktualizován · "+((res&&res.method)||"CFTC")); }
+    catch(e){ try{const d=deriveRetailFromCOTData();saveSentiment(d);try{saveRetailSnapshot(d);}catch(e3){}await load();setDataMsg("⚠ Retail auto selhal — použita záloha z COT.");}catch(e2){setDataMsg("⚠ Retail selhal: "+String(e&&e.message||e));} }
+    setRetailLoading(false);
   },[load]);
 
   useEffect(()=>{
@@ -631,16 +890,17 @@ function MApp(){
     <div>
       <div className="topbar">
         <h1><span className="accent">AT</span> Trading FX</h1>
-        {cm&&<span className="chip" style={{color:cm.conf>=100?"#3fb950":"#d29922",borderColor:(cm.conf>=100?"#3fb950":"#d29922")+"55"}}>📅 {cm.conf}%</span>}
+        {cm&&<span className="chip" style={{color:cm.conf>=100?"#2ed3a0":"#e8ab3f",borderColor:(cm.conf>=100?"#2ed3a0":"#e8ab3f")+"55"}}>📅 {cm.conf}%</span>}
         <button className="btn sec" style={{width:"auto",padding:"7px 11px"}} disabled={loading} onClick={load}>{loading?"⏳":"↻"}</button>
       </div>
       <div className="content">
-        {error&&<div className="card" style={{borderColor:"#5c2626",color:"#ff6a5e",fontSize:12}}>⚠ {error}</div>}
+        {error&&<div className="card" style={{borderColor:"#5c2626",color:"#f2606e",fontSize:12}}>⚠ {error}</div>}
         {loading&&!data&&<div className="card muted">⏳ Načítám data…</div>}
         {tab==="signals"&&<SignalsTab data={data} onTap={setSel}/>}
-        {tab==="cot"&&<CotTab data={data} onRefreshCot={refreshCot} cotLoading={cotLoading}/>}
+        {tab==="cot"&&<CotTab data={data} onRefreshCot={refreshCot} onRefreshRetail={refreshRetail} cotLoading={cotLoading} retailLoading={retailLoading} msg={dataMsg}/>}
         {tab==="cal"&&<CalendarTab data={data}/>}
         {tab==="ai"&&<AITab/>}
+        {tab==="coach"&&<CoachTab data={data}/>}
         {tab==="strength"&&<StrengthTab data={data}/>}
         {tab==="journal"&&<JournalTab/>}
         {tab==="set"&&<SettingsTab onSaved={load}/>}
@@ -649,24 +909,24 @@ function MApp(){
         {[["signals","🎯","Signály"],["cot","📊","COT"],["cal","📅","Kalendář"],["ai","🤖","AI"]].map(([id,ic,lbl])=>(
           <button key={id} className={tab===id?"active":""} onClick={()=>setTab(id)}><span className="ic">{ic}</span>{lbl}</button>
         ))}
-        <button className={["strength","journal","set"].indexOf(tab)>=0?"active":""} onClick={()=>setMoreOpen(true)}><span className="ic">☰</span>Víc</button>
+        <button className={["coach","strength","journal","set"].indexOf(tab)>=0?"active":""} onClick={()=>setMoreOpen(true)}><span className="ic">☰</span>Víc</button>
       </div>
       {moreOpen&&<div style={{position:"fixed",inset:0,zIndex:50,background:"#000a"}} onClick={()=>setMoreOpen(false)}>
-        <div style={{position:"absolute",left:0,right:0,bottom:0,background:"#161b22",borderTop:"1px solid #21262d",borderTopLeftRadius:16,borderTopRightRadius:16,padding:"16px 14px",paddingBottom:"calc(20px + env(safe-area-inset-bottom))"}} onClick={e=>e.stopPropagation()}>
+        <div style={{position:"absolute",left:0,right:0,bottom:0,background:"#0f121a",borderTop:"1px solid #1b2130",borderTopLeftRadius:16,borderTopRightRadius:16,padding:"16px 14px",paddingBottom:"calc(20px + env(safe-area-inset-bottom))"}} onClick={e=>e.stopPropagation()}>
           <div style={{fontWeight:800,marginBottom:12}}>Víc</div>
-          {[["strength","💪","Síla měn"],["journal","📓","Deník"],["set","⚙️","Nastavení"]].map(([id,ic,lbl])=>(
+          {[["coach","💬","AI Coach"],["strength","💪","Síla měn"],["journal","📓","Deník"],["set","⚙️","Nastavení"]].map(([id,ic,lbl])=>(
             <button key={id} className="btn sec" style={{textAlign:"left",marginBottom:8,fontSize:15}} onClick={()=>{setTab(id);setMoreOpen(false);}}><span style={{marginRight:8}}>{ic}</span>{lbl}</button>
           ))}
         </div>
       </div>}
-      {sel&&data&&<PairDetail p={sel} scores={data.scores} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} calData={data.cal} upcoming={data.upcoming} onClose={()=>setSel(null)}/>}
+      {sel&&data&&<PairDetail p={sel} scores={data.scores} D={data.D} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} calData={data.cal} upcoming={data.upcoming} onClose={()=>setSel(null)}/>}
     </div>
   );
 }
 
 window.addEventListener("error",function(ev){
   var el=document.getElementById("root");
-  if(el&&!el.children.length) el.innerHTML='<div style="padding:20px;color:#f85149;font-family:monospace;white-space:pre-wrap;font-size:12px">CHYBA: '+(ev.message||ev)+'</div>';
+  if(el&&!el.children.length) el.innerHTML='<div style="padding:20px;color:#f2606e;font-family:monospace;white-space:pre-wrap;font-size:12px">CHYBA: '+(ev.message||ev)+'</div>';
 });
 ReactDOM.createRoot(document.getElementById("root")).render(<MApp/>);
 </script>
