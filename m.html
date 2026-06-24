@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
-<meta name="theme-color" content="#0d1117"/>
+<meta name="theme-color" content="#07080c"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="AT FX"/>
@@ -260,7 +260,60 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,onClose}){
           </div>
           {daily&&daily.dot&&<div style={{marginTop:8,fontSize:13}}>{daily.dot} <span className="muted">{daily.level==="conflict"?"Dnešní data jdou PROTI biasu":daily.level==="confirm"?"Dnešní data potvrzují bias":daily.level==="upcoming"?"Dnes přijde důležitá zpráva":daily.level==="done"?"Dnes proběhly velké zprávy (beze změny)":""}</span></div>}
         </div>
+
+        {/* Moje pozice */}
+        <div className="card">
+          <div className="between" style={{marginBottom:8}}><span style={{fontWeight:800,fontSize:13}}>📌 Moje pozice</span>{p.conviction>=1&&<span style={{color:"#e8ab3f",fontSize:12}}>{"★".repeat(Math.min(5,p.conviction))}<span style={{color:"#5a6273"}}>{"☆".repeat(5-Math.min(5,p.conviction))}</span></span>}</div>
+          <div className="row" style={{gap:8}}>
+            {["LONG","SHORT","none"].map(s=>{const on=pos===s;const col=s==="LONG"?"#2ed3a0":s==="SHORT"?"#f2606e":"#5a6273";return (
+              <button key={s} className="posbtn" onClick={()=>changePos(s)} style={{border:"1px solid "+(on?col:"var(--line2)"),background:on?col+"1f":"#0c0f16",color:on?col:"var(--dim)"}}>{s==="none"?"Zavřít":s}</button>
+            );})}
+          </div>
+        </div>
+
+        {/* Confluence verdikt */}
+        <div className="card" style={{borderColor:verdict.c+"44",borderLeft:"3px solid "+verdict.c}}>
+          <div className="between" style={{marginBottom:9,flexWrap:"wrap",gap:8}}>
+            <span className="row" style={{gap:9}}><span className="vtag" style={{color:verdict.c,background:verdict.c+"1c",border:"1px solid "+verdict.c+"44"}}>{verdict.t}</span><span style={{fontSize:12.5,fontWeight:600}}>{verdict.msg}</span></span>
+            <span className="mono" style={{fontSize:12,fontWeight:700,color:verdict.c}}>{okN}/{fac.length}</span>
+          </div>
+          <div className="row" style={{gap:6,flexWrap:"wrap"}}>{fac.map(x=>(
+            <span key={x.l} style={{fontSize:10.5,fontWeight:600,padding:"4px 9px",borderRadius:6,background:x.ok?"rgba(46,211,160,.1)":"rgba(120,130,150,.08)",border:"1px solid "+(x.ok?"rgba(46,211,160,.28)":"var(--line2)"),color:x.ok?"#2ed3a0":"#5a6273"}}>{x.ok?"✓ ":"○ "}{x.l}</span>
+          ))}</div>
+        </div>
+
+        {/* COT vs Retail */}
+        <div className="card">
+          <div className="between" style={{marginBottom:11}}><span style={{fontWeight:800,fontSize:13}}>COT vs Retail</span><span className="vtag" style={{color:cv.c,background:cv.c+"1c",border:"1px solid "+cv.c+"44"}}>{cv.t}</span></div>
+          <div style={{marginBottom:11}}>
+            <div className="between" style={{marginBottom:5}}><span style={{fontSize:11.5,fontWeight:700}}>🧍 Retail dav</span><span className="muted" style={{fontSize:10.5}}>contrarian</span></div>
+            <div style={{height:22,borderRadius:7,overflow:"hidden",display:"flex",border:"1px solid #161b27",background:"var(--inp)"}}>
+              <div style={{width:rLong+"%",background:"linear-gradient(90deg,#2ed3a0dd,#2ed3a099)",display:"flex",alignItems:"center",paddingLeft:8}}>{rLong>=18&&<span className="mono" style={{fontSize:10.5,fontWeight:700,color:"#04140e"}}>L {rLong}%</span>}</div>
+              <div style={{width:rShort+"%",background:"linear-gradient(90deg,#f2606e99,#f2606edd)",display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8}}>{rShort>=18&&<span className="mono" style={{fontSize:10.5,fontWeight:700,color:"#1c0609"}}>{rShort}% S</span>}</div>
+            </div>
+          </div>
+          <div style={{marginBottom:11}}>
+            <div className="between" style={{marginBottom:5}}><span style={{fontSize:11.5,fontWeight:700}}>🏛 Instituce (COT)</span><span className="mono" style={{fontSize:11,fontWeight:700,color:iSide==="LONG"?"#2ed3a0":iSide==="SHORT"?"#f2606e":"#5a6273"}}>{iSide+(iSide!=="NEUTRÁL"?(" "+(iDiff>0?"+":"")+iDiff):"")}</span></div>
+            <div style={{position:"relative",height:22,borderRadius:7,background:"var(--inp)",border:"1px solid #161b27",overflow:"hidden"}}>
+              <div style={{position:"absolute",left:"50%",top:0,bottom:0,width:1,background:"#2a3242"}}/>
+              <div style={{position:"absolute",top:0,bottom:0,left:iDiff>=0?"50%":(50-Math.min(50,Math.abs(iDiff)/2))+"%",width:Math.min(50,Math.abs(iDiff)/2)+"%",background:iDiff>=0?"#2ed3a0":"#f2606e",opacity:.85}}/>
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",fontSize:9.5,color:"#5a6273"}} className="mono"><span>◀ SHORT</span><span>LONG ▶</span></div>
+            </div>
+          </div>
+          <div className="verdict" style={{background:cv.c+"12",border:"1px solid "+cv.c+"33"}}><span style={{fontSize:15}}>{opp?"🎯":(iSide===rSide&&iSide!=="NEUTRÁL")?"⚠️":"•"}</span><span>{cv.m}</span></div>
+        </div>
+
+        {/* AI konfluence (z fotky grafu) */}
+        {aiAgree&&<div className="card" style={{borderColor:aiAgree.c+"44",borderLeft:"3px solid "+aiAgree.c}}>
+          <div className="between" style={{marginBottom:8}}><span style={{fontWeight:800,fontSize:13}}>🤖 AI analýza — {p.pair}</span><span style={{fontSize:12,fontWeight:800,color:ai.bias==="BULLISH"?"#2ed3a0":ai.bias==="BEARISH"?"#f2606e":"#e8ab3f"}}>{ai.bias||"—"}{ai.confidence!=null?(" "+ai.confidence+"%"):""}</span></div>
+          <div className="verdict" style={{background:aiAgree.c+"12",border:"1px solid "+aiAgree.c+"33"}}><span style={{fontSize:15}}>{aiAgree.c==="#2ed3a0"?"🎯":aiAgree.c==="#f2606e"?"⚠️":"•"}</span><span>{aiAgree.m}</span></div>
+          {ai.entry_setup&&(ai.entry_setup.entry_zone||ai.entry_setup.invalidation||ai.entry_setup.stop_loss)&&<div className="muted" style={{fontSize:11.5,marginTop:8,lineHeight:1.5}}>{ai.entry_setup.entry_zone&&<span><b style={{color:"#5e7cfb"}}>Entry:</b> {ai.entry_setup.entry_zone} </span>}{(ai.entry_setup.invalidation||ai.entry_setup.stop_loss)&&<span><b style={{color:"#f2606e"}}>· Invalidace:</b> {ai.entry_setup.invalidation||ai.entry_setup.stop_loss}</span>}</div>}
+        </div>}
         <DailyBriefM pair={p} scores={scores} calData={calData} upcoming={upcoming}/>
+        <div className="card">
+          <div style={{fontWeight:800,fontSize:13,marginBottom:8}}>📝 Moje poznámka — {p.pair}</div>
+          <textarea className="fld" style={{minHeight:64,resize:"vertical",marginBottom:0}} value={note} onChange={e=>changeNote(e.target.value)} placeholder="Tvoje teze, klíčové úrovně, plán vstupu…"/>
+        </div>
         <div className="card">
           <div className="seg" style={{fontWeight:800,color:"#8b93a3",fontSize:11}}>
             <span>KOMPONENTA</span><span className="row" style={{gap:10}}><span style={{minWidth:42,textAlign:"right"}}>{p.base}</span><span style={{minWidth:42,textAlign:"right"}}>{p.quote}</span><span style={{minWidth:46,textAlign:"right"}}>DIFF</span></span>
