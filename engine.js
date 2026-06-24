@@ -190,7 +190,7 @@ function backfillScoreHistoryFromCOTHistory(cotHist){
   try{
     const existing=loadScoreHistory();
     const hist={...existing};
-    const dates=Object.keys(cotHist||{}).sort();
+    const dates=Object.keys(cotHist||{}).sort((a,b)=>new Date(a)-new Date(b));
     const maxAbsFlow={};
     for(const d of dates){
       for(const c of CURRENCIES){
@@ -593,14 +593,40 @@ function parseCOTFinancialText(txt){
   return{scores:{...COT_DEFAULT,...out},raw};
 }
 function loadCOTHistory(){try{return JSON.parse(localStorage.getItem("cot_hist")||"{}");}catch(e){return{};}}
+// Normalizuj jakékoli datum (ISO i textové "June 17, 2026" z CFTC .htm) na klíč YYYY-MM-DD.
+// Bez toho se mixují formáty a Object.keys().sort() řadí abecedně → měsíce prohozené v grafu.
+function cotDateKey(s){
+  if(!s) return new Date().toISOString().slice(0,10);
+  s=String(s).trim();
+  const iso=s.match(/\d{4}-\d{2}-\d{2}/); if(iso) return iso[0];
+  const d=new Date(s); if(!isNaN(d)) return d.toISOString().slice(0,10);
+  return s; // nešlo rozparsovat — nech být (lepší než ztratit záznam)
+}
+// Jednorázová migrace: přepiš staré textové klíče (z proxy fallbacku) na ISO a slij duplicity.
+function migrateCOTHistoryKeys(){
+  try{
+    const hist=loadCOTHistory(); const out={}; let changed=false;
+    for(const k of Object.keys(hist)){
+      const nk=cotDateKey(k); if(nk!==k) changed=true;
+      if(!out[nk] || String(hist[k]?.updatedAt||"")>String(out[nk]?.updatedAt||"")) out[nk]=hist[k];
+    }
+    if(changed){
+      const keys=Object.keys(out).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);
+      const trimmed={}; keys.forEach(k=>trimmed[k]=out[k]);
+      localStorage.setItem("cot_hist",JSON.stringify(trimmed));
+    }
+  }catch(e){}
+}
 function saveCOTSnapshot(scores,meta){
   try{
-    const key=(meta?.asOf||new Date().toISOString().split("T")[0]).replace(/\s+/g," ");
+    const key=cotDateKey(meta?.asOf);
     const hist=loadCOTHistory();hist[key]={scores,raw:meta?.raw||{},updatedAt:new Date().toISOString()};
-    const keys=Object.keys(hist).sort().slice(-320);const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
+    const keys=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
     localStorage.setItem("cot_hist",JSON.stringify(trimmed));
   }catch(e){}
 }
+// Spusť migraci jednou při načtení enginu (idempotentní, přepisuje jen když je co opravit).
+try{ migrateCOTHistoryKeys(); }catch(e){}
 async function fetchTextWithFallback(url){
   const urls=[url,"https://r.jina.ai/"+url,"https://api.allorigins.win/raw?url="+encodeURIComponent(url),"https://corsproxy.io/?"+encodeURIComponent(url)];
   let lastErr=null;
@@ -2015,7 +2041,7 @@ function buildDailySeries(currency,windowDays){
 }
 function getCOTNetSeries(currency,limit=104){
   const hist=loadCOTHistory();
-  const dates=Object.keys(hist).sort().slice(-limit);
+  const dates=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-limit);
   const values=dates.map(d=>{
     const r=hist[d]?.raw?.[currency];
     if(r&&Number.isFinite(r.levNet)) return r.levNet/10000;
