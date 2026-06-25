@@ -86,26 +86,39 @@ const SEASONALITY={
 
 
 // ── V5 ENGINE: ÚROKOVÉ SAZBY CB ──────────────────────────────
-let CENTRAL_BANK_RATES={USD:4.25,EUR:2.50,GBP:4.25,JPY:0.75,AUD:3.85,NZD:3.50,CAD:2.75,CHF:0.25};
+// Jednorázová baseline korekce: po ověření skutečných sazeb / politiky / CPI
+// (zasedání CB v polovině června 2026) vyčistíme zastaralé localStorage override,
+// ať se na všech zařízeních projeví správné hodnoty. Po této verzi fungují
+// ruční úpravy i auto-update z kalendáře normálně dál.
+try{
+  const CB_BASELINE="2026-06-verified";
+  if(localStorage.getItem("cb_baseline")!==CB_BASELINE){
+    localStorage.removeItem("v5_cb_rates");
+    localStorage.removeItem("v5_cb_policy");
+    localStorage.removeItem("v5_real_cpi");
+    localStorage.setItem("cb_baseline",CB_BASELINE);
+  }
+}catch(e){}
+let CENTRAL_BANK_RATES={USD:3.75,EUR:2.25,GBP:3.75,JPY:1.00,AUD:4.35,NZD:2.25,CAD:2.25,CHF:0.00};
 try{const usr=localStorage.getItem("v5_cb_rates");if(usr)CENTRAL_BANK_RATES={...CENTRAL_BANK_RATES,...JSON.parse(usr)};}catch(e){}
 
 // ── REAL CPI DATA (pro real yield = CB rate - CPI) ────────────
 // Aktualizuj po CPI datech každý měsíc
-let REAL_CPI_DATA={USD:3.2,EUR:2.3,GBP:2.8,JPY:2.8,AUD:3.5,NZD:3.8,CAD:2.4,CHF:0.9};
+let REAL_CPI_DATA={USD:3.2,EUR:3.2,GBP:2.8,JPY:2.8,AUD:3.5,NZD:3.8,CAD:2.8,CHF:0.9};
 try{const u=localStorage.getItem("v5_real_cpi");if(u)REAL_CPI_DATA={...REAL_CPI_DATA,...JSON.parse(u)};}catch(e){}
 
 // ── CB POLICY CYCLE — nejdůležitější makro faktor ─────────────
 // stance: "aggressive_hike" +3 | "hike" +2 | "hold" 0 | "cut" -1 | "aggressive_cut" -2
 // Aktualizuj po každém zasedání centrální banky
 let CB_POLICY_DATA={
-  USD:{score:0, label:"Fed — plateau, cuts pozastaveny"},
-  EUR:{score:-2,label:"ECB — aktivní cyklus řezů"},
-  GBP:{score:-1,label:"BoE — opatrné snižování"},
-  JPY:{score:2, label:"BoJ — první zvyšování za 17 let"},
-  AUD:{score:-1,label:"RBA — cyklus řezů"},
-  NZD:{score:-2,label:"RBNZ — agresivní řezy"},
-  CAD:{score:-2,label:"BoC — agresivní řezy"},
-  CHF:{score:-1,label:"SNB — blízko nuly"},
+  USD:{score:0, label:"Fed — drží 3.50–3.75 %, dot plot rozdělený"},
+  EUR:{score:2, label:"ECB — hike +25bp, návrat k utahování"},
+  GBP:{score:0, label:"BoE — drží 3.75 %, 2 hlasy pro hike"},
+  JPY:{score:2, label:"BoJ — hike na 1.0 %, nejvýš od 1995"},
+  AUD:{score:1, label:"RBA — drží 4.35 %, připraven hikovat dál"},
+  NZD:{score:0, label:"RBNZ — drží 2.25 %, externí členové pro hike"},
+  CAD:{score:0, label:"BoC — drží 2.25 %, cuts i hikes na stole"},
+  CHF:{score:0, label:"SNB — drží 0 %"},
 };
 try{const u=localStorage.getItem("v5_cb_policy");if(u){const p=JSON.parse(u);Object.keys(p).forEach(k=>{if(CB_POLICY_DATA[k])CB_POLICY_DATA[k]={...CB_POLICY_DATA[k],...p[k]};});}}catch(e){}
 
