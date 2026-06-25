@@ -91,7 +91,7 @@ const SEASONALITY={
 // ať se na všech zařízeních projeví správné hodnoty. Po této verzi fungují
 // ruční úpravy i auto-update z kalendáře normálně dál.
 try{
-  const CB_BASELINE="2026-06-verified";
+  const CB_BASELINE="2026-06-verified-2";
   if(localStorage.getItem("cb_baseline")!==CB_BASELINE){
     localStorage.removeItem("v5_cb_rates");
     localStorage.removeItem("v5_cb_policy");
