@@ -524,7 +524,7 @@ class FXApp extends React.Component{
     const inWin=d=>{ const t=new Date(d).getTime(); return !isNaN(t)&&t>=cut; };
     // SCORE z historie skóre
     let sh={}; try{sh=loadScoreHistory()||{};}catch(e){}
-    const sdates=Object.keys(sh).sort().filter(inWin);
+    const sdates=Object.keys(sh).sort((a,b)=>new Date(a)-new Date(b)).filter(inWin);
     const scoreSeries=[{name:p.base,col:T.accent,vals:sdates.map(d=>+(sh[d][p.base]||0))},{name:p.quote,col:T.violet,vals:sdates.map(d=>+(sh[d][p.quote]||0))}];
     // RETAIL z retail_hist
     const rpts=(this._retailHist||[]).filter(pt=>inWin(pt.t));
@@ -533,7 +533,7 @@ class FXApp extends React.Component{
     const retailSeries=[{name:'Long',col:T.green,vals:rlong},{name:'Short',col:T.red,vals:rlong.map(v=>100-v)}];
     // COT Long/Short z cot_hist (levLong/levShort)
     let ch={}; try{ch=loadCOTHistory()||{};}catch(e){}
-    const cdates=Object.keys(ch).sort().filter(inWin);
+    const cdates=Object.keys(ch).sort((a,b)=>new Date(a)-new Date(b)).filter(inWin);
     const cotLS=cur=>{ const lng=[],sht=[]; cdates.forEach(d=>{ const r=ch[d]&&ch[d].raw&&ch[d].raw[cur]; const l=(r&&+r.levLong)||0,s=(r&&+r.levShort)||0,tot=l+s; lng.push(tot?Math.round(l/tot*100):50); sht.push(tot?Math.round(s/tot*100):50); }); return [{name:'Long',col:T.green,vals:lng},{name:'Short',col:T.red,vals:sht}]; };
     const pctFmt=v=>Math.round(v)+'%';
     const cell=(title,sub,subCol,enough,body)=>h('div',{style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0}},
