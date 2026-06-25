@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260625b"></script>
-<script src="sync.js?v=20260625b"></script>
+<script src="engine.js?v=20260625c"></script>
+<script src="sync.js?v=20260625c"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -98,8 +98,8 @@ class FXApp extends React.Component{
         cotLong:(()=>{try{const ls=getCOTLongShort(c);return ls?ls.long:null;}catch(e){return null;}})(),
         retail:Math.round(sent[c]!=null?sent[c]:50) }; });
       // PAIRS
-      this.PAIRS=ranked.map(p=>{ let status='confirmed',prob=50; try{const ds=getPairDailyState(p,sc,cal,up);status=ds.level==='conflict'?'conflict':ds.level==='upcoming'?'upcoming':'confirmed';}catch(e){} try{const fc=buildForecastV5(p,sc,cal,up)||{};prob=fc.prob||50;}catch(e){}
-        return {pair:p.pair,base:p.base,quote:p.quote,dir:p.dir,diff:+p.diff,conv:Math.min(5,p.conviction||0),prob,status}; });
+      this.PAIRS=ranked.map(p=>{ let status='confirmed',prob=50,fdir=p.dir; try{const ds=getPairDailyState(p,sc,cal,up);status=ds.level==='conflict'?'conflict':ds.level==='upcoming'?'upcoming':'confirmed';}catch(e){} try{const fc=buildForecastV5(p,sc,cal,up)||{};prob=fc.prob||50;fdir=fc.dir||p.dir;}catch(e){}
+        return {pair:p.pair,base:p.base,quote:p.quote,dir:p.dir,fdir,diff:+p.diff,conv:Math.min(5,p.conviction||0),prob,status}; });
       if(!this.state.sel&&this.PAIRS[0]) this.state.sel=this.PAIRS[0].pair;
       try{ updateBiasFlips(this.PAIRS); this._flips=getRecentFlips(this.PAIRS,cal,up,36)||[]; }catch(e){ this._flips=this._flips||[]; }
       // series + dates (dle zvoleného rozsahu)
@@ -597,7 +597,7 @@ class FXApp extends React.Component{
           h('div',{style:{display:'flex',alignItems:'center',gap:14}},h('div',{style:self.mono({fontSize:22,fontWeight:700,letterSpacing:'-.02em',color:'#eef1f6',background:'#0b0e15',border:'1px solid #232b3d',borderRadius:12,padding:'8px 14px'})},p.pair),
             h('div',null,h('div',{style:{fontSize:13,color:T.dim}},(self.NAMES[p.base]||p.base)+' / '+(self.NAMES[p.quote]||p.quote)),h('div',{style:{display:'flex',alignItems:'center',gap:8,marginTop:5}},h('span',{style:{fontFamily:"'JetBrains Mono',monospace",fontSize:12,fontWeight:700,color:ac,background:buy?'rgba(46,211,160,.12)':'rgba(242,96,110,.12)',border:'1px solid '+(buy?'rgba(46,211,160,.3)':'rgba(242,96,110,.3)'),borderRadius:7,padding:'3px 10px'}},p.dir),h('span',{style:{fontSize:11,color:self.statusColor(p.status)}},'● '+self.statusLabel(p.status))))),
           h('div',{style:{textAlign:'right'}},h('div',{style:self.mono({fontSize:40,fontWeight:700,color:ac,lineHeight:.9})},(buy?'+':'−')+p.diff.toFixed(1)),h('div',{style:{fontSize:10.5,color:T.faint,marginTop:4,letterSpacing:'.04em'}},'SKÓRE DIFERENCIÁL'))),
-        h('div',{style:{display:'flex',borderTop:'1px solid #1b2130'}},stat('Conviction',h('span',{style:{color:T.amber,letterSpacing:'1px'}},stars(p.conv)),null,p.conv+' / 5 faktorů'),stat('14d výhled',p.prob+'%',probC,p.dir+' bias'),stat('CBDI',this.cbdi+'/100',this.cbdi>60?T.green:T.amber,'Podmínky'),stat(p.base+' skóre',self.sgn(sb.score),self.scol(sb.score),sb.cb),stat(p.quote+' skóre',self.sgn(sq.score),self.scol(sq.score),sq.cb))),
+        h('div',{style:{display:'flex',borderTop:'1px solid #1b2130'}},stat('Conviction',h('span',{style:{color:T.amber,letterSpacing:'1px'}},stars(p.conv)),null,p.conv+' / 5 faktorů'),stat('14d výhled',p.prob+'%',probC,p.fdir+(p.fdir!==p.dir?' (≠ bias)':' výhled')),stat('CBDI',this.cbdi+'/100',this.cbdi>60?T.green:T.amber,'Podmínky'),stat(p.base+' skóre',self.sgn(sb.score),self.scol(sb.score),sb.cb),stat(p.quote+' skóre',self.sgn(sq.score),self.scol(sq.score),sq.cb))),
       this.renderPairCharts(p),
       h('div',{style:self.card({padding:'14px 18px',background:verdict.bg,borderColor:verdict.c+'33',borderLeft:'3px solid '+verdict.c})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:11,flexWrap:'wrap'}},h('div',{style:{display:'flex',alignItems:'center',gap:10}},h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:verdict.c,background:verdict.c+'1c',border:'1px solid '+verdict.c+'44',borderRadius:7,padding:'4px 10px'}},verdict.t),h('span',{style:{fontSize:13,fontWeight:600,color:T.text}},verdict.msg)),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:verdict.c})},okN+'/'+fac.length+' faktorů')),h('div',{style:{display:'flex',gap:7,flexWrap:'wrap'}},fac.map(f=>h('span',{key:f.l,title:f.d,style:{display:'inline-flex',alignItems:'center',gap:5,fontSize:10.5,fontWeight:600,padding:'4px 9px',borderRadius:6,background:f.ok?'rgba(46,211,160,.1)':'rgba(120,130,150,.08)',border:'1px solid '+(f.ok?'rgba(46,211,160,.28)':'#222a39'),color:f.ok?T.green:T.faint}},h('span',null,f.ok?'✓':'○'),f.l)))),
       (()=>{ let store={}; try{store=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){} const ai=store[p.pair];
