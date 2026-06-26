@@ -60,7 +60,9 @@ function norm(e) {
 (async () => {
   const now = new Date();
   let rawEvents = [];
-  for (const off of [-7, 0, 7, 14]) {
+  // Širší zpětné okno: rozhodnutí CB o sazbách (á ~6 týdnů) zůstanou v kalendáři
+  // dostatečně dlouho, aby je auto-update stihl zachytit a uložit do v5_cb_rates.
+  for (const off of [-42, -35, -28, -21, -14, -7, 0, 7, 14]) {
     const wp = weekParam(new Date(now.getTime() + off * 86400000));
     try {
       const r = await fetch("https://www.forexfactory.com/calendar?week=" + wp, { headers: UA });
