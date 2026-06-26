@@ -135,6 +135,8 @@
   .badge.src{background:color-mix(in srgb,var(--blue) 13%,transparent);color:var(--blue);border:1px solid color-mix(in srgb,var(--blue) 28%,transparent)}
   .badge.cat{background:var(--panel-2);color:var(--txt-dim);border:1px solid var(--line-2)}
   .badge.cb{background:color-mix(in srgb,var(--amber) 14%,transparent);color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 32%,transparent)}
+  .badge.ana{background:color-mix(in srgb,var(--blue) 14%,transparent);color:var(--blue);border:1px solid color-mix(in srgb,var(--blue) 34%,transparent)}
+  .card.isana:before{background:var(--blue)}
   .cred{font-size:9px;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:5px;font-weight:800;display:inline-flex;align-items:center;gap:5px}
   .cred .dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
   .cred.conf{background:color-mix(in srgb,var(--green) 13%,transparent);color:var(--green);border:1px solid color-mix(in srgb,var(--green) 34%,transparent)}
@@ -345,13 +347,22 @@ function isCryptoOnly(h){ h=h||''; return CRYPTO_RE.test(h) && !FX_RE.test(h); }
 const HISTORY_DAYS = 7;
 // Výchozí finanční RSS zdroje — použijí se, když uživatel nezadá vlastní (přes rss2json, bez klíče).
 const DEFAULT_RSS = [
+  // zprávy na všechny měny
   'https://www.forexlive.com/feed/',
   'https://www.fxstreet.com/rss/news',
   'https://www.investing.com/rss/news.rss',
   'http://feeds.marketwatch.com/marketwatch/topstories/',
-  'https://www.aljazeera.com/xml/rss/all.xml',
-  'https://feeds.bbci.co.uk/news/world/rss.xml'
+  // ANALÝZY / výhledy známých analytiků (přehledy nad grafem)
+  'https://www.fxstreet.com/rss/analysis',
+  'https://www.dailyforex.com/rss/technicalanalysis.xml',
+  'https://www.dailyforex.com/rss/fundamentalanalysis.xml',
+  // geopolitika, co hýbe měnami
+  'https://www.aljazeera.com/xml/rss/all.xml'
 ];
+// Feedy, jejichž URL značí ANALÝZU (analytické články, ne breaking)
+const ANALYSIS_FEED_RE = /analysis|analytic|dailyfx|technicalanalysis|fundamentalanalysis|outlook|forecast/i;
+const ANALYSIS_HEAD_RE = /\b(forecast|outlook|technical analysis|analysis|prognóz\w*|výhled\w*|analýz\w*|chart|levels|support|resistance|price prediction|weekly|setup)\b/i;
+function isAnalysisItem(n){ return !!(n && (n.isAnalysis || ANALYSIS_HEAD_RE.test(n.headline||''))); }
 
 const SCORE_RULES = [
   [/\b(FOMC|rate decision|interest rate|úrokov\w*|sazb\w*|rate cut|rate hike)\b/i, 9],
@@ -489,7 +500,8 @@ function buildCluster(members){
   const first=srcs.slice().sort((a,b)=> new Date(a.publishedAt||0)-new Date(b.publishedAt||0))[0];
   return Object.assign({},rep,{
     srcCount:srcs.length, sources:srcs, bestTier:Math.min.apply(null,srcs.map(s=>s.tier)),
-    firstSource:first?first.source:rep.source, firstAt:first?first.publishedAt:rep.publishedAt
+    firstSource:first?first.source:rep.source, firstAt:first?first.publishedAt:rep.publishedAt,
+    isAnalysis: members.some(m=>m.isAnalysis)
   });
 }
 function clusterize(items){
@@ -720,12 +732,13 @@ async function fetchRSS(settings, force){
   const feeds=(force&&force.length)? force : (settings.rssFeeds||'').split('\n').map(s=>s.trim()).filter(Boolean);
   if(!feeds.length){ SRC_DIAG.rss={n:0,err:'no-feeds'}; return []; }
   const out=[];
-  for(const f of feeds.slice(0,6)){
+  for(const f of feeds.slice(0,8)){
+    const ana = ANALYSIS_FEED_RE.test(f); // analytický feed?
     try{
       const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(f));
       if(r.ok){ const d=await r.json(); const sn=(d.feed&&d.feed.title)||'RSS';
-        (d.items||[]).slice(0,12).forEach(it=>out.push({
-          id:'r'+hashStr(it.link||it.title||''), provider:'rss', source:sn, headline:it.title, url:it.link,
+        (d.items||[]).slice(0,10).forEach(it=>out.push({
+          id:'r'+hashStr(it.link||it.title||''), provider:'rss', source:sn, headline:it.title, url:it.link, isAnalysis:ana,
           publishedAt:it.pubDate? new Date(it.pubDate).toISOString() : new Date().toISOString()
         })); }
     }catch(e){}
@@ -870,7 +883,7 @@ const state = {
   status:'mock',
   loading:false,
   spoken:new Set(),
-  filter:{q:'',cat:'',inst:'',min:0,today:false},
+  filter:{q:'',cat:'',inst:'',min:0,today:false,ana:false},
   repTab:'asia',
   histSel:null,
   reports: LS.get('session_reports',{}),
@@ -947,8 +960,9 @@ function cardHTML(n){
   const tierBadge='<span class="tier t'+tier+'" title="Úroveň zdroje (Tier 1 = Reuters/Bloomberg/ČB)">Tier '+tier+'</span>';
   const srcCount=(n.srcCount>1)?'<span class="srccount" title="Stejnou událost hlásí více zdrojů">🔗 '+n.srcCount+' zdrojů</span>':'';
   const prov=n.provider?'<span class="tier" title="Odkud zpráva přišla" style="opacity:.75">'+(n.provider==='finnhub'?'⬡ Finnhub':'⌁ RSS')+'</span>':'';
-  return '<div class="card s'+sc+'">'+
-    '<div class="card-top"><span class="badge '+(n.cb?'cb':'cat')+'">'+esc(n.cat)+'</span>'+credBadge+tierBadge+srcCount+prov+
+  const ana=isAnalysisItem(n)?'<span class="badge ana" title="Analytický článek / výhled (přehled nad grafem)">📈 Analýza</span>':'';
+  return '<div class="card s'+sc+(isAnalysisItem(n)?' isana':'')+'">'+
+    '<div class="card-top"><span class="badge '+(n.cb?'cb':'cat')+'">'+esc(n.cat)+'</span>'+ana+credBadge+tierBadge+srcCount+prov+
     '<div class="date-row"><span class="date-badge">'+formatDateTime(n.publishedAt)+'</span><span class="age-badge '+(isOld(n.publishedAt)?'old':'')+'">'+ageText(n.publishedAt)+'</span></div>'+
     '<div class="gauge '+scoreCls(sc)+'" title="důležitost '+sc+'/10"><span>'+sc+'</span><small>imp</small></div></div>'+
     '<div class="headline">'+head+'</div>'+orig+
@@ -975,6 +989,7 @@ function filterList(){
     if(f.min && (n.score||0)<f.min) return false;
     if(f.inst && !(n.affects||[]).some(a=>a[0]===f.inst)) return false;
     if(f.today && !isTodayIso(n.publishedAt)) return false;
+    if(f.ana && !isAnalysisItem(n)) return false;
     return true;
   });
 }
@@ -992,7 +1007,8 @@ function toolbarHTML(){
     '<select id="f-cat"><option value="">Všechny kategorie</option>'+opt(CATEGORIES,f.cat)+'</select>'+
     '<select id="f-inst"><option value="">Všechny instrumenty</option>'+opt(INSTRUMENTS,f.inst)+'</select>'+
     '<select id="f-min"><option value="0"'+(f.min===0?' selected':'')+'>Důležitost 0+</option><option value="5"'+(f.min===5?' selected':'')+'>5+</option><option value="7"'+(f.min===7?' selected':'')+'>7+ (jen klíčové)</option></select>'+
-    '<button class="fchip'+(f.today?' on':'')+'" id="f-today">Jen dnešní</button></div>';
+    '<button class="fchip'+(f.today?' on':'')+'" id="f-today">Jen dnešní</button>'+
+    '<button class="fchip'+(f.ana?' on':'')+'" id="f-ana" title="Jen analytické články / výhledy">📈 Jen analýzy</button></div>';
 }
 function railHTML(){
   const conns=state.conns.slice(0,2).map(c=>'<div class="conn"><div class="tag">'+esc(c.tag)+'</div><p>'+esc(c.text)+' '+(c.pairs||[]).map(p=>'<span class="pair">'+esc(p)+'</span>').join(' ')+'</p></div>').join('');
@@ -1101,7 +1117,7 @@ function setHTML(){
       '</select><div class="hint"><b>Chyba 402 = účet nemá kredit.</b> Placené modely (gpt-4o…) potřebují dobitý kredit na openrouter.ai/credits. <b>Zdarma</b> jeď s modelem končícím na <code>:free</code> (nahoře) — limit ~20/min a ~50/den. Aktuální free modely: openrouter.ai/models?max_price=0 → ID vlož níže.</div><input type="text" id="set-modelCustom" style="margin-top:7px" value="" placeholder="vlastní model ID, např. ...:free (volitelné)"></div>'+
     '<div class="field"><label>Google Gemini API klíč — AI ZDARMA ~1500/den '+(s.geminiKey?'<span style="color:var(--green)">● vyplněn → Gemini aktivní (má přednost)</span>':'<span style="color:var(--amber)">● doporučeno (obejde limit OpenRouteru)</span>')+'</label><input type="password" id="set-geminiKey" value="'+esc(s.geminiKey||'')+'" placeholder="AIza… (zdarma, bez karty)"><div class="hint"><b>Nejštědřejší free AI:</b> ~1500 zpráv/den (vs OpenRouter 50/den), bez platební karty. Když je vyplněný, appka ho použije <b>místo OpenRouteru</b>. Klíč zdarma: <b>aistudio.google.com/apikey</b> → „Create API key". Model: gemini-2.5-flash (Flash je ve free tieru).</div></div>'+
     '<div class="field"><label>Finnhub API klíč — hlavní zdroj zpráv '+(s.finnhubKey?'<span style="color:var(--green)">● vyplněn → Finnhub aktivní</span>':'<span style="color:var(--amber)">● doporučeno vyplnit</span>')+'</label><input type="password" id="set-finnhubKey" value="'+esc(s.finnhubKey||'')+'" placeholder="d1abcd… (zdarma na finnhub.io)"><div class="hint"><b>News endpoint je ZDARMA</b> (free tier, 60 volání/min) — narozdíl od ekonomického kalendáře, který je placený. Vrací <b>skutečná média</b> u každého článku (Reuters, Bloomberg…), takže funguje tiering i slučování („Ověřeno · N zdrojů"). <b>Můžeš použít stejný klíč jako v analyzeru.</b> Načítá kategorie general + forex (zaměřeno na měny, bez krypta).</div></div>'+
-    '<div class="field"><label>RSS feedy (zdroj zpráv)</label><textarea id="set-rssFeeds" placeholder="jeden URL na řádek (necháš-li prázdné, použijí se výchozí: ForexLive, FXStreet, Investing, MarketWatch + světové: Al Jazeera, BBC World)">'+esc(s.rssFeeds||'')+'</textarea><div class="hint">Když necháš prázdné, načítají se výchozí feedy: 4 finanční + 2 světové (Al Jazeera, BBC World) pro geopolitiku/breaking. Vlastní URL (jeden na řádek) je nahradí. Načítá se přes rss2json (CORS), max 6 feedů.</div></div>'+
+    '<div class="field"><label>RSS feedy (zdroj zpráv + analýzy)</label><textarea id="set-rssFeeds" placeholder="jeden URL na řádek (prázdné = výchozí FX feedy)">'+esc(s.rssFeeds||'')+'</textarea><div class="hint">Prázdné = výchozí sada: zprávy (ForexLive, FXStreet, Investing, MarketWatch) + <b>analýzy/výhledy</b> (FXStreet Analysis, DailyForex Technical &amp; Fundamental) + geopolitika (Al Jazeera). Analytické články dostanou odznak 📈. Vlastní URL je nahradí (klidně přidej FXStreet.cz, DailyFX apod.). rss2json (CORS), max 8 feedů.</div></div>'+
     '<div class="field"><label>Max. zpráv k analýze / refresh</label><select id="set-maxItems">'+maxOpt(8,'8 (nejlevnější)')+maxOpt(14,'14 (doporučeno)')+maxOpt(20,'20')+'</select><div class="hint">Analyzuje se dávkově v jednom AI volání. Známé titulky se berou z cache.</div></div>'+
     '<div class="field"><label>Sledované zdroje (vizuální filtr)</label><div class="src-grid">'+sources+'</div></div>'+
     '<div class="field"><label>Interval obnovení</label><select id="set-interval">'+intOpt(1,'každou 1 minutu')+intOpt(5,'každých 5 minut')+intOpt(15,'každých 15 minut')+intOpt(0,'jen ručně')+'</select></div>'+
@@ -1195,6 +1211,7 @@ function bindView(){
     const inst=$('#f-inst'); if(inst) inst.onchange=()=>{ state.filter.inst=inst.value; repaintFeedList(); };
     const min=$('#f-min'); if(min) min.onchange=()=>{ state.filter.min=Number(min.value); repaintFeedList(); };
     const today=$('#f-today'); if(today) today.onclick=()=>{ state.filter.today=!state.filter.today; today.classList.toggle('on',state.filter.today); repaintFeedList(); };
+    const ana=$('#f-ana'); if(ana) ana.onclick=()=>{ state.filter.ana=!state.filter.ana; ana.classList.toggle('on',state.filter.ana); repaintFeedList(); };
   }
   if(state.tab==='conn'){}
   if(state.tab==='hist'){ $$('[data-hist]').forEach(b=> b.onclick=()=>{ const c=b.getAttribute('data-hist'); state.histSel = state.histSel===c?null:c; repaintMain(); }); }
