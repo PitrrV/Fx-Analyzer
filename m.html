@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260626a"></script>
-<script src="sync.js?v=20260626a"></script>
+<script src="engine.js?v=20260626b"></script>
+<script src="sync.js?v=20260626b"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -117,6 +117,7 @@ async function loadDataMobile(){
   try{ autoUpdateFromCalendar(cal); }catch(e){}
   const av=(localStorage.getItem("av")||"").trim();
   if(av){ try{ await fetchOilPrice(av); }catch(e){} }
+  try{ await fetchActionPrices(); }catch(e){}
   const cot=loadCOT(), sent=loadSentiment();
   const sc={}; CURRENCIES.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
   // D = odvozená per-měna data (shodné s PC this.D) pro COT/Sentiment/Dashboard bloky
@@ -432,6 +433,27 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,onClose}){
           </div>
           {p.cotPctBase!=null&&<div className="muted" style={{fontSize:11,marginTop:8}}>COT percentil {p.base}: {p.cotPctBase}p {p.cotCrowded?"· 🚨 crowded":""}</div>}
         </div>
+        {(()=>{ let cf={state:"unknown",mom:null},lp=null; try{cf=getBiasConfirmation(p.pair,p.dir);lp=getPairPrice(p.pair);}catch(e){}
+          const map={confirms:{c:"#2ed3a0",ic:"✓",t:"Trh POTVRZUJE "+p.dir,m:"Cena se hýbe ve směru biasu — konfluence."},
+            diverges:{c:"#f2606e",ic:"⚠",t:"Trh DIVERGUJE",m:"Cena jde proti biasu — počkej na potvrzení, nehoň cenu."},
+            flat:{c:"#e8ab3f",ic:"•",t:"Trh bez směru",m:"Cena stojí — bias zatím bez potvrzení trhem."},
+            unknown:{c:"#5a6273",ic:"…",t:"Cenová data nabíhají",m:"Momentum z denní historie naskočí během pár dní."}};
+          const v=map[cf.state]||map.unknown;
+          return (
+            <div className="card" style={{borderColor:v.c+"33",borderLeft:"3px solid "+v.c}}>
+              <div className="between" style={{gap:10,flexWrap:"wrap"}}>
+                <div style={{minWidth:0}}>
+                  <span className="vtag" style={{color:v.c,background:v.c+"1c",border:"1px solid "+v.c+"44"}}>{v.ic+" "+v.t}</span>
+                  <div className="muted" style={{fontSize:11.5,marginTop:6}}>{v.m}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  {lp!=null&&<div className="mono" style={{fontSize:14,fontWeight:700}}>{lp.toFixed(p.pair.includes("JPY")?3:5)}</div>}
+                  {cf.mom!=null&&<div className="mono" style={{fontSize:11,fontWeight:700,color:cf.mom>=0?"#2ed3a0":"#f2606e"}}>{"5d "+(cf.mom>=0?"+":"")+cf.mom+"%"}</div>}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         {(()=>{
           const lim=52;
           const bS=buildDailySeries(p.base,60),qS=buildDailySeries(p.quote,60);
