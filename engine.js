@@ -27,7 +27,7 @@ const STANDARD_PAIRS=[
 
 const EVENT_RULES=[
   // direction: 1 = vyšší actual než forecast je bullish; -1 = nižší actual je bullish; "pmi" = kombinuje beat/miss + hranici 50
-  {cat:"Interest Rates",keys:["interest rate","rate decision","funds rate","policy rate","deposit facility rate","refinancing rate","cash rate","overnight rate"],w:3.5,dir:1,cap:3},
+  {cat:"Interest Rates",keys:["interest rate","rate decision","rate statement","funds rate","policy rate","bank rate","deposit facility rate","refinancing rate","cash rate","overnight rate","main refinancing"],w:3.5,dir:1,cap:3},
   {cat:"Inflation",keys:["cpi","consumer price index","inflation rate","core inflation","hicp","pce","personal consumption","ppi","producer price"],w:3.0,dir:1,cap:3},
   {cat:"Labor +Jobs",keys:["non-farm","nonfarm","payroll","employment change","employment","adp","average hourly earnings","wage","earnings"],w:3.0,dir:1,cap:4},
   {cat:"Labor -Unemployment",keys:["unemployment rate","jobless claims","initial claims","continuing claims","claimant count"],w:3.0,dir:-1,cap:4},
@@ -1380,6 +1380,8 @@ function extractCBRatesFromCalendar(calData){
     if(!cur) continue;
     const val=parseFloat(ev.actual);
     if(isNaN(val)||val<-1||val>25) continue;
+    // ECB: ber jen depozitní sazbu (de facto policy rate), ne main refinancing (vyšší).
+    if(cur==="EUR" && !/deposit/i.test(ev.event||"")) continue;
     if(!histories[cur]) histories[cur]=[];
     histories[cur].push({date:ev.time,rate:val});
     if(!rates[cur]) rates[cur]=val; // nejnovější
