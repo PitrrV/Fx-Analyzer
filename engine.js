@@ -2118,6 +2118,35 @@ function getBiasConfirmation(pair,dir,days=5){
   return {state:"flat",mom:m,days};
 }
 
+// ── SCANNER PŘÍLEŽITOSTÍ (contrarian sweet spot, sdílené PC i mobil) ──
+// Pár se zařadí, když: dav přeplněný (retail ≥ retailMin) NA OPAČNÉ straně než
+// fundamentální bias, COT (smart money) souhlasí s biasem, a diff ≥ diffMin.
+// retailLatest = poslední bod z data/retail_hist.json (živý MyFxBook).
+function scanOpportunities(pairs,scores,retailLatest,opts){
+  const retailMin=(opts&&opts.retailMin)||70, diffMin=(opts&&opts.diffMin)||3;
+  if(!Array.isArray(pairs)||!scores) return [];
+  const rp=(retailLatest&&retailLatest.pairs)||null, rc=(retailLatest&&retailLatest.ccy)||null;
+  const out=[];
+  for(const p of pairs){
+    const diffAbs=Math.abs(+p.diff||0); if(diffAbs<diffMin) continue;
+    const dir=p.dir;
+    let rl=null;
+    if(rp&&rp[p.pair]&&isFinite(rp[p.pair].l)) rl=rp[p.pair].l;
+    else if(rc&&rc[p.base]!=null&&rc[p.quote]!=null) rl=Math.round((rc[p.base]+(100-rc[p.quote]))/2);
+    if(rl==null) continue;
+    const cotB=(scores[p.base]&&scores[p.base].cot_score)||0, cotQ=(scores[p.quote]&&scores[p.quote].cot_score)||0;
+    const cotNet=cotB-cotQ;
+    const conv=p.conviction!=null?p.conviction:(p.conv!=null?p.conv:null);
+    let crowd=null;
+    if(dir==="SELL" && rl>=retailMin && cotNet<0) crowd="long";        // dav long, fade=SELL
+    if(dir==="BUY"  && rl<=(100-retailMin) && cotNet>0) crowd="short"; // dav short, fade=BUY
+    if(!crowd) continue;
+    out.push({pair:p.pair,base:p.base,quote:p.quote,dir,diff:+(+p.diff).toFixed(1),retailLong:rl,cotNet:+cotNet.toFixed(1),conviction:conv,
+      reason:"Dav "+rl+"% "+crowd+" · COT "+(cotNet>=0?"long":"short")+" · fundament "+dir+" (diff "+((+p.diff)>=0?"+":"")+(+p.diff).toFixed(1)+")"});
+  }
+  return out.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
+}
+
 function loadJournal(){try{return JSON.parse(localStorage.getItem("journal")||"[]");}catch(e){return[];}}
 
 // ── SEASONALITY z reálných měsíčních cen (Alpha Vantage FX_MONTHLY) ──
