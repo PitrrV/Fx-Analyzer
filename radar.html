@@ -331,11 +331,17 @@ const LS = {
   set(k,v){ try{localStorage.setItem('amr_'+k,JSON.stringify(v))}catch(e){} }
 };
 
-const INSTRUMENTS = ['USD','EUR','GBP','JPY','AUD','CAD','CHF','NZD','Gold','Silver','Oil','BTC','US100','US500','US30'];
+const INSTRUMENTS = ['USD','EUR','GBP','JPY','AUD','CAD','CHF','NZD','Gold','Silver','Oil','US100','US500','US30'];
 const CURRENCIES  = ['USD','EUR','GBP','JPY','AUD','CAD','CHF','NZD'];
 const CATEGORIES  = ['MAKRO','CENTRÁLNÍ BANKA','POLITIKA','KOMODITY','TRH'];
 const SOURCES = ['Reuters','Bloomberg','CNBC','Financial Times','MarketWatch','Investing','ForexFactory','X (Twitter)'];
-const TICKER_ITEMS = ['EURUSD','GBPUSD','USDJPY','AUDUSD','US100','US500','US30','Gold','Silver','Oil','BTC'];
+const TICKER_ITEMS = ['EURUSD','GBPUSD','USDJPY','AUDUSD','USDCAD','AUDCHF','EURGBP','US100','US500','Gold','Oil'];
+// Měnové páry, na které se Radar (jako pomůcka pro FX analyzer) zaměřuje
+const PAIRS = ['EURUSD','GBPUSD','USDJPY','USDCHF','USDCAD','AUDUSD','NZDUSD','EURGBP','EURJPY','GBPJPY','AUDJPY','CADJPY','NZDJPY','EURCHF','GBPCHF','AUDCHF','EURAUD','GBPAUD','EURCAD','AUDNZD'];
+// Krypto-only zprávy filtrujeme pryč (Radar se zaměřuje na měny). Necháme jen ty, co se dotýkají i měn/makra.
+const CRYPTO_RE = /\b(bitcoin|btc|ethereum|ether|\beth\b|crypto|krypto|altcoin|coinbase|binance|solana|\bxrp\b|ripple|dogecoin|shiba|\bnft\b|blockchain|stablecoin|defi|memecoin|tether)\b/i;
+const FX_RE = /\b(usd|dollar|dolar|eur|euro|gbp|pound|sterling|jpy|yen|aud|cad|chf|franc|frank|nzd|kiwi|fed|fomc|ecb|boj|boe|snb|rate|rates|inflation|inflac|cpi|gdp|hdp|nfp|payroll|jobless|unemploy|gold|zlat|oil|ropa|treasury|bond|yield|forex|currenc|měn)\b/i;
+function isCryptoOnly(h){ h=h||''; return CRYPTO_RE.test(h) && !FX_RE.test(h); }
 const HISTORY_DAYS = 7;
 // Výchozí finanční RSS zdroje — použijí se, když uživatel nezadá vlastní (přes rss2json, bez klíče).
 const DEFAULT_RSS = [
@@ -368,7 +374,7 @@ function quickCat(h){
 }
 function quickAffects(h){
   h=h||'';
-  const map={USD:/\b(usd|dollar|dolar|fed|wall street|treasury)\b/i,EUR:/\b(eur|euro|ecb|eurozone|eurozón)\b/i,GBP:/\b(gbp|pound|sterling|libra|boe)\b/i,JPY:/\b(jpy|yen|jen|boj)\b/i,AUD:/\b(aud|aussie)\b/i,CAD:/\b(cad|loonie|canada|kanad)\b/i,CHF:/\b(chf|franc|frank|swiss|švýc)\b/i,Gold:/\b(gold|zlat|xau)\b/i,Oil:/\b(oil|ropa|crude|wti|brent)\b/i,BTC:/\b(bitcoin|btc|crypto|krypto)\b/i,US100:/\b(nasdaq|us100)\b/i,US500:/\b(s&p|sp500|us500)\b/i};
+  const map={USD:/\b(usd|dollar|dolar|fed|wall street|treasury)\b/i,EUR:/\b(eur|euro|ecb|eurozone|eurozón)\b/i,GBP:/\b(gbp|pound|sterling|libra|boe)\b/i,JPY:/\b(jpy|yen|jen|boj)\b/i,AUD:/\b(aud|aussie)\b/i,CAD:/\b(cad|loonie|canada|kanad)\b/i,CHF:/\b(chf|franc|frank|swiss|švýc)\b/i,NZD:/\b(nzd|kiwi)\b/i,Gold:/\b(gold|zlat|xau)\b/i,Oil:/\b(oil|ropa|crude|wti|brent)\b/i,US100:/\b(nasdaq|us100)\b/i,US500:/\b(s&p|sp500|us500)\b/i};
   const out=[]; Object.keys(map).forEach(k=>{ if(map[k].test(h)) out.push([k]); }); return out.slice(0,5);
 }
 // --- heuristiky pro režim bez AI klíče (reálná data, žádný mock) ---
@@ -458,7 +464,7 @@ function jaccard(a,b){ if(!a.length||!b.length) return 0; const B=new Set(b); le
 const ENTITY_RULES = [
   ['USD',/\b(usd|dollar|dolar|greenback)\b/],['EUR',/\b(eur|euro|eurozone|eurozón\w*)\b/],['GBP',/\b(gbp|pound|sterling|cable|libr\w*)\b/],
   ['JPY',/\b(jpy|yen|jen)\b/],['AUD',/\b(aud|aussie)\b/],['CAD',/\b(cad|loonie|canad\w*)\b/],['CHF',/\b(chf|franc|frank|swiss\w*|švýc\w*)\b/],['NZD',/\b(nzd|kiwi)\b/],
-  ['GOLD',/\b(gold|xau|bullion|zlat\w*)\b/],['SILVER',/\b(silver|xag|stříbr\w*)\b/],['OIL',/\b(oil|crude|wti|brent|ropa|ropy)\b/],['BTC',/\b(bitcoin|btc|crypto|krypto)\b/],
+  ['GOLD',/\b(gold|xau|bullion|zlat\w*)\b/],['SILVER',/\b(silver|xag|stříbr\w*)\b/],['OIL',/\b(oil|crude|wti|brent|ropa|ropy)\b/],
   ['FED',/\b(fed|fomc|powell|federal reserve)\b/],['ECB',/\b(ecb|lagarde)\b/],['BOJ',/\b(boj|ueda)\b/],['BOE',/\b(boe|bailey)\b/],
   ['RATES',/\b(rate|rates|hike|hikes|cut|cuts|sazb\w*|úrok\w*)\b/],['CPI',/\b(cpi|inflation|inflac\w*|pce)\b/],['JOBS',/\b(nfp|payroll\w*|jobs|jobless|unemploy\w*|nezaměstn\w*)\b/],
   ['GDP',/\b(gdp|hdp|growth)\b/],['PMI',/\b(pmi)\b/],['NASDAQ',/\b(nasdaq|us100)\b/],['SP500',/\b(sp500|us500)\b/],['DOW',/\b(dow|us30)\b/],['TARIFF',/\b(tariff\w*|sanction\w*|clo|cla|sankc\w*)\b/]
@@ -680,16 +686,20 @@ async function generateDesk(analyzed, settings){
 }
 async function generateSessionReport(items, sessionLabel, settings){
   const ctx = items.map((n,i)=>(i+1)+'. '+n.headline+' ('+n.source+', skóre '+(n.score||'?')+')').join('\n');
-  const prompt='Jsi finanční analytik. Napiš ČESKY souvislý report pro obchodní seanci „'+sessionLabel+'" jako krátký článek (3-5 vět): (1) hlavní téma seance, (2) co hýbalo trhem a proč, (3) které měny/komodity to zasáhlo, (4) co z toho plyne do dalšího obchodování. Bez obchodních doporučení (žádné vstupy/cíle/SL/TP). Vrať POUZE JSON: {"summary":"3-5 vět souvislého českého textu"}\nZprávy této seance:\n'+ctx;
+  const prompt='Jsi FX analytik. Tento nástroj je POMŮCKA k forex analyzeru — zaměř se VÝHRADNĚ na MĚNY a měnové páry (ŽÁDNÉ krypto). '+
+    'Ze zpráv seance „'+sessionLabel+'" napiš ČESKY: '+
+    '(1) summary = 3–5 vět: hlavní měnové téma seance, co hýbalo měnami a PROČ (konkrétní zprávy/data), a co z toho plyne. '+
+    '(2) pairs = 1–3 měnové páry, které dnes v této seanci udělaly něco VÝZNAMNÉHO, s krátkým „proč" (která zpráva/data). Páry vybírej JEN z: '+PAIRS.join(', ')+'. Když data na konkrétní pár nestačí, vrať prázdné pole. '+
+    'Bez obchodních doporučení (žádné vstupy/cíle/SL/TP). Vrať POUZE JSON: {"summary":"…","pairs":[{"pair":"AUDCHF","note":"co udělal a proč"}]}\nZprávy seance:\n'+ctx;
   const o = parseJSON(await callAI([{role:'system',content:SYSTEM_ANALYST},{role:'user',content:prompt}],settings));
-  return (o && o.summary) ? String(o.summary) : '';
+  return { summary:(o&&o.summary)?String(o.summary):'', pairs:(o&&Array.isArray(o.pairs))?o.pairs.filter(p=>p&&p.pair).slice(0,3):[] };
 }
 
 /* ---------- data sources ---------- */
 let SRC_DIAG={ran:false,fh:{n:0,err:''},rss:{n:0,err:''}};
 async function fetchFinnhub(settings){
   if(!settings.finnhubKey){ SRC_DIAG.fh={n:0,err:'no-key'}; return []; }
-  const cats=['general','forex','crypto'], out=[]; let err='';
+  const cats=['general','forex'], out=[]; let err='';
   // News endpoint je ve free tieru zdarma (na rozdíl od /calendar/economic). Vrací skutečné médium v poli source.
   const results=await Promise.all(cats.map(async c=>{
     try{
@@ -729,7 +739,7 @@ async function fetchRawNews(settings){
   SRC_DIAG.ran=true;
   const userRss = !!(settings.rssFeeds||'').trim();
   const arr = await Promise.all([fetchFinnhub(settings), fetchRSS(settings, userRss?null:DEFAULT_RSS)]);
-  let all=arr[0].concat(arr[1]).filter(n=>n.headline);
+  let all=arr[0].concat(arr[1]).filter(n=>n.headline && !isCryptoOnly(n.headline)); // krypto-only zprávy ven (zaměření na měny)
   all=clusterize(all);
   all.sort((a,b)=> new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
   return all.slice(0,28);
@@ -884,7 +894,7 @@ function tickerStatus(news){
     (n.affects||[]).forEach(a=>{ const w=Number(n.score||1); if(sc[a[0]]!==undefined) sc[a[0]]+= a[1]==='pos'?w:a[1]==='neg'?-w:0; });
   });
   const pair=(x,y)=>(sc[x]||0)-(sc[y]||0);
-  const raw={EURUSD:pair('EUR','USD'),GBPUSD:pair('GBP','USD'),USDJPY:pair('USD','JPY'),AUDUSD:pair('AUD','USD'),US100:sc.US100,US500:sc.US500,US30:sc.US30,Gold:sc.Gold,Silver:sc.Silver,Oil:sc.Oil,BTC:sc.BTC};
+  const raw={EURUSD:pair('EUR','USD'),GBPUSD:pair('GBP','USD'),USDJPY:pair('USD','JPY'),AUDUSD:pair('AUD','USD'),USDCAD:pair('USD','CAD'),AUDCHF:pair('AUD','CHF'),EURGBP:pair('EUR','GBP'),US100:sc.US100,US500:sc.US500,Gold:sc.Gold,Oil:sc.Oil};
   const o={}; Object.keys(raw).forEach(k=>{ const v=raw[k]; o[k]= v>1?'pos':v<-1?'neg':''; }); return o;
 }
 function tickerHTML(){
@@ -1041,7 +1051,7 @@ function histHTML(){
     (history.length?'':'<div class="notice">Historie se plní automaticky z načtených zpráv. Pozitivní/negativní mediální obraz se počítá jen u zpráv s AI analýzou (OpenRouter klíč) — bez klíče se ukládají titulky, ale bez směru dopadu. Zatím prázdné: zkus „Obnovit zprávy".</div>')+
     '<div class="cur-grid">'+grid+'</div>'+detail+'</div>';
 }
-const SESSIONS=[['asia','🌅','Asijská / ranní',0,8],['europe','🇪🇺','Evropská',8,13],['us','🇺🇸','Americká',13,18],['evening','🌙','Večerní',18,24]];
+const SESSIONS=[['asia','🌅','Asia',0,8],['europe','🇬🇧','Londýn',8,13],['us','🗽','New York',13,18],['evening','🌙','Večer',18,24]];
 function repHTML(){
   const cur=SESSIONS.find(x=>x[0]===state.repTab)||SESSIONS[0];
   const today=state.news.filter(n=>isTodayIso(n.publishedAt));
@@ -1058,8 +1068,11 @@ function repHTML(){
     if(state.repLoading===cur[0]){
       aiBlock='<div class="ai-block" style="margin-bottom:14px"><div class="ai-label"><span>✦</span> AI report seance (česky)</div><div class="ai-text"><span class="spin"></span> generuji český report…</div></div>';
     } else if(saved && saved.summary){
-      aiBlock='<div class="ai-block" style="margin-bottom:14px"><div class="ai-label"><span>✦</span> AI report seance (česky)</div><div class="ai-text" style="font-style:normal;color:var(--txt)">'+esc(saved.summary)+'</div>'+
-        '<div style="margin-top:8px"><button class="btn ghost" data-genrep="'+esc(cur[0])+'" style="padding:6px 12px;font-size:11px">↻ Přegenerovat</button> <span style="font-size:10px;color:var(--txt-faint)">vytvořeno '+ageText(saved.generatedAt)+'</span></div></div>';
+      const pairsHTML=(saved.pairs&&saved.pairs.length)? '<div style="margin-top:11px;border-top:1px solid var(--line);padding-top:11px;display:flex;flex-direction:column;gap:8px">'+
+        '<div style="font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--txt-faint);font-weight:800">Zajímavé páry dnes</div>'+
+        saved.pairs.map(p=>'<div style="font-size:12.5px;line-height:1.5;color:var(--txt-dim)"><b style="color:var(--amber);font-weight:700">'+esc(p.pair)+'</b> — '+esc(p.note||'')+'</div>').join('')+'</div>' : '';
+      aiBlock='<div class="ai-block" style="margin-bottom:14px"><div class="ai-label"><span>✦</span> AI report seance — měny (česky)</div><div class="ai-text" style="font-style:normal;color:var(--txt)">'+esc(saved.summary)+'</div>'+pairsHTML+
+        '<div style="margin-top:10px"><button class="btn ghost" data-genrep="'+esc(cur[0])+'" style="padding:6px 12px;font-size:11px">↻ Přegenerovat</button> <span style="font-size:10px;color:var(--txt-faint)">vytvořeno '+ageText(saved.generatedAt)+'</span></div></div>';
     } else if(state.settings.apiKey || state.settings.geminiKey){
       aiBlock='<div class="ai-block" style="margin-bottom:14px"><div class="ai-label"><span>✦</span> AI report seance (česky)</div><div class="ai-text">Klikni a AI napíše souvislý český report této seance z '+inRange.length+' zpráv.</div>'+
         '<div style="margin-top:9px"><button class="btn" data-genrep="'+esc(cur[0])+'" style="padding:8px 15px;font-size:12px">✨ Generovat český report</button></div></div>';
@@ -1067,7 +1080,7 @@ function repHTML(){
       aiBlock='<div class="notice" style="margin-bottom:14px">Souvislý <b>český report</b> seance vytvoří AI — vlož OpenRouter nebo Gemini klíč v ⚙️ Nastavení. Bez klíče se zobrazí jen seznam titulků.</div>';
     }
   }
-  return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>Reporty po seancích</h2><span class="meta">sestaveno z reálných dnešních zpráv · '+new Date().toLocaleDateString('cs-CZ')+'</span></div>'+
+  return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>Reporty po seancích</h2><span class="meta">měnový přehled · pomůcka k FX analyzeru · '+new Date().toLocaleDateString('cs-CZ')+'</span></div>'+
     '<div class="rep-tabs">'+tabs+'</div>'+
     '<div class="report"><h3>'+esc(cur[2])+' ('+cur[3]+':00–'+cur[4]+':00)</h3><div class="stamp">'+inRange.length+' zpráv v této seanci · časy v lokálním pásmu · titulky přeložené do češtiny (originál pod nimi)</div>'+aiBlock+body+'</div></div>';
 }
@@ -1087,7 +1100,7 @@ function setHTML(){
       '<optgroup label="Placené (vyžadují kredit)">'+modelOpt('openai/gpt-4o-mini','openai/gpt-4o-mini (levný)')+modelOpt('openai/gpt-4o','openai/gpt-4o')+modelOpt('anthropic/claude-3.5-sonnet','anthropic/claude-3.5-sonnet')+modelOpt('google/gemini-1.5-flash','google/gemini-1.5-flash')+'</optgroup>'+
       '</select><div class="hint"><b>Chyba 402 = účet nemá kredit.</b> Placené modely (gpt-4o…) potřebují dobitý kredit na openrouter.ai/credits. <b>Zdarma</b> jeď s modelem končícím na <code>:free</code> (nahoře) — limit ~20/min a ~50/den. Aktuální free modely: openrouter.ai/models?max_price=0 → ID vlož níže.</div><input type="text" id="set-modelCustom" style="margin-top:7px" value="" placeholder="vlastní model ID, např. ...:free (volitelné)"></div>'+
     '<div class="field"><label>Google Gemini API klíč — AI ZDARMA ~1500/den '+(s.geminiKey?'<span style="color:var(--green)">● vyplněn → Gemini aktivní (má přednost)</span>':'<span style="color:var(--amber)">● doporučeno (obejde limit OpenRouteru)</span>')+'</label><input type="password" id="set-geminiKey" value="'+esc(s.geminiKey||'')+'" placeholder="AIza… (zdarma, bez karty)"><div class="hint"><b>Nejštědřejší free AI:</b> ~1500 zpráv/den (vs OpenRouter 50/den), bez platební karty. Když je vyplněný, appka ho použije <b>místo OpenRouteru</b>. Klíč zdarma: <b>aistudio.google.com/apikey</b> → „Create API key". Model: gemini-2.5-flash (Flash je ve free tieru).</div></div>'+
-    '<div class="field"><label>Finnhub API klíč — hlavní zdroj zpráv '+(s.finnhubKey?'<span style="color:var(--green)">● vyplněn → Finnhub aktivní</span>':'<span style="color:var(--amber)">● doporučeno vyplnit</span>')+'</label><input type="password" id="set-finnhubKey" value="'+esc(s.finnhubKey||'')+'" placeholder="d1abcd… (zdarma na finnhub.io)"><div class="hint"><b>News endpoint je ZDARMA</b> (free tier, 60 volání/min) — narozdíl od ekonomického kalendáře, který je placený. Vrací <b>skutečná média</b> u každého článku (Reuters, Bloomberg…), takže funguje tiering i slučování („Ověřeno · N zdrojů"). <b>Můžeš použít stejný klíč jako v analyzeru.</b> Načítá kategorie general + forex + crypto.</div></div>'+
+    '<div class="field"><label>Finnhub API klíč — hlavní zdroj zpráv '+(s.finnhubKey?'<span style="color:var(--green)">● vyplněn → Finnhub aktivní</span>':'<span style="color:var(--amber)">● doporučeno vyplnit</span>')+'</label><input type="password" id="set-finnhubKey" value="'+esc(s.finnhubKey||'')+'" placeholder="d1abcd… (zdarma na finnhub.io)"><div class="hint"><b>News endpoint je ZDARMA</b> (free tier, 60 volání/min) — narozdíl od ekonomického kalendáře, který je placený. Vrací <b>skutečná média</b> u každého článku (Reuters, Bloomberg…), takže funguje tiering i slučování („Ověřeno · N zdrojů"). <b>Můžeš použít stejný klíč jako v analyzeru.</b> Načítá kategorie general + forex (zaměřeno na měny, bez krypta).</div></div>'+
     '<div class="field"><label>RSS feedy (zdroj zpráv)</label><textarea id="set-rssFeeds" placeholder="jeden URL na řádek (necháš-li prázdné, použijí se výchozí: ForexLive, FXStreet, Investing, MarketWatch + světové: Al Jazeera, BBC World)">'+esc(s.rssFeeds||'')+'</textarea><div class="hint">Když necháš prázdné, načítají se výchozí feedy: 4 finanční + 2 světové (Al Jazeera, BBC World) pro geopolitiku/breaking. Vlastní URL (jeden na řádek) je nahradí. Načítá se přes rss2json (CORS), max 6 feedů.</div></div>'+
     '<div class="field"><label>Max. zpráv k analýze / refresh</label><select id="set-maxItems">'+maxOpt(8,'8 (nejlevnější)')+maxOpt(14,'14 (doporučeno)')+maxOpt(20,'20')+'</select><div class="hint">Analyzuje se dávkově v jednom AI volání. Známé titulky se berou z cache.</div></div>'+
     '<div class="field"><label>Sledované zdroje (vizuální filtr)</label><div class="src-grid">'+sources+'</div></div>'+
@@ -1115,7 +1128,7 @@ function mount(){
   document.getElementById('app').innerHTML =
     '<aside class="sidebar">'+
       '<div class="brand"><div class="logo"><span class="ring"></span><span class="dot"></span></div>'+
-        '<div class="bt"><h1>Market <span>Radar</span></h1><div class="sub">AI finanční desk</div></div></div>'+
+        '<div class="bt"><h1>Market <span>Radar</span></h1><div class="sub">Měnový desk · pomůcka k FX analyzeru</div></div></div>'+
       '<nav class="tabs" id="nav">'+TABS.map(t=>'<button data-tab="'+t[0]+'" class="'+(state.tab===t[0]?'on':'')+'"><span>'+t[1]+'</span> '+t[2]+'</button>').join('')+'</nav>'+
       '<div class="side-foot"><button class="theme-btn" id="themeBtn" title="Přepnout světlý / tmavý režim" aria-label="Přepnout režim"></button><div class="side-ver">AI Market Radar · v4</div></div>'+
     '</aside>'+
@@ -1188,6 +1201,11 @@ function bindView(){
   if(state.tab==='rep'){
     $$('[data-rep]').forEach(b=> b.onclick=()=>{ state.repTab=b.getAttribute('data-rep'); repaintMain(); });
     $$('[data-genrep]').forEach(b=> b.onclick=()=> genSessionReport(b.getAttribute('data-genrep')));
+    // Auto-přehled: po otevření seance se report vygeneruje sám (když má zprávy, klíč a ještě není hotový)
+    const cur=SESSIONS.find(x=>x[0]===state.repTab)||SESSIONS[0];
+    const hasKey=state.settings.apiKey||state.settings.geminiKey;
+    const hasNews=state.news.some(n=>{ if(!isTodayIso(n.publishedAt)) return false; const h=new Date(n.publishedAt).getHours(); return h>=cur[3]&&h<cur[4]; });
+    if(hasKey && hasNews && !state.reports[repKey(cur[0])] && !state.repLoading){ setTimeout(()=>genSessionReport(cur[0], true), 60); }
   }
   if(state.tab==='set'){
     $$('[data-src]').forEach(t=> t.onclick=()=>{ const name=t.getAttribute('data-src'); state.settings.sources=state.settings.sources||{}; state.settings.sources[name]=!(state.settings.sources[name]!==false); t.classList.toggle('on'); });
@@ -1198,18 +1216,18 @@ function bindView(){
   }
 }
 
-async function genSessionReport(sessionId){
-  const cur=SESSIONS.find(x=>x[0]===sessionId); if(!cur) return;
-  if(!(state.settings.apiKey || state.settings.geminiKey)){ alert('Pro AI report vlož OpenRouter nebo Gemini klíč v Nastavení.'); return; }
+async function genSessionReport(sessionId, silent){
+  const cur=SESSIONS.find(x=>x[0]===sessionId); if(!cur || state.repLoading) return;
+  if(!(state.settings.apiKey || state.settings.geminiKey)){ if(!silent) alert('Pro AI report vlož OpenRouter nebo Gemini klíč v Nastavení.'); return; }
   const today=state.news.filter(n=>isTodayIso(n.publishedAt));
   const inRange=today.filter(n=>{ const h=new Date(n.publishedAt).getHours(); return h>=cur[3]&&h<cur[4]; }).sort((a,b)=> new Date(a.publishedAt||0)-new Date(b.publishedAt||0));
-  if(!inRange.length){ alert('Tato seance zatím nemá dnešní zprávy.'); return; }
+  if(!inRange.length){ if(!silent) alert('Tato seance zatím nemá dnešní zprávy.'); return; }
   state.repLoading=sessionId; if(state.tab==='rep') repaintMain();
   try{
-    const summary=await generateSessionReport(inRange, cur[2], state.settings);
-    if(summary){ state.reports[repKey(sessionId)]={summary:summary,generatedAt:new Date().toISOString()}; LS.set('session_reports',state.reports); }
-    else alert('AI nevrátila report, zkus to znovu.');
-  }catch(e){ alert('Generování reportu selhalo: '+e.message); }
+    const rep=await generateSessionReport(inRange, cur[2], state.settings);
+    if(rep && rep.summary){ state.reports[repKey(sessionId)]=Object.assign({generatedAt:new Date().toISOString()}, rep); LS.set('session_reports',state.reports); }
+    else if(!silent) alert('AI nevrátila report, zkus to znovu.');
+  }catch(e){ if(!silent) alert('Generování reportu selhalo: '+e.message); else console.warn('[report]', e.message); }
   state.repLoading='';
   if(state.tab==='rep') repaintMain();
 }
