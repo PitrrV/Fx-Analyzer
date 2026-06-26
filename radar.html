@@ -1051,7 +1051,7 @@ function histHTML(){
     (history.length?'':'<div class="notice">Historie se plní automaticky z načtených zpráv. Pozitivní/negativní mediální obraz se počítá jen u zpráv s AI analýzou (OpenRouter klíč) — bez klíče se ukládají titulky, ale bez směru dopadu. Zatím prázdné: zkus „Obnovit zprávy".</div>')+
     '<div class="cur-grid">'+grid+'</div>'+detail+'</div>';
 }
-const SESSIONS=[['asia','🌅','Asia',0,8],['europe','🇬🇧','Londýn',8,13],['us','🗽','New York',13,18],['evening','🌙','Večer',18,24]];
+const SESSIONS=[['asia','🌅','Asia',0,8],['europe','🇬🇧','Londýn',8,13],['us','🗽','New York',13,18],['allday','📊','Celý den',0,24]];
 function repHTML(){
   const cur=SESSIONS.find(x=>x[0]===state.repTab)||SESSIONS[0];
   const today=state.news.filter(n=>isTodayIso(n.publishedAt));
@@ -1082,7 +1082,7 @@ function repHTML(){
   }
   return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>Reporty po seancích</h2><span class="meta">měnový přehled · pomůcka k FX analyzeru · '+new Date().toLocaleDateString('cs-CZ')+'</span></div>'+
     '<div class="rep-tabs">'+tabs+'</div>'+
-    '<div class="report"><h3>'+esc(cur[2])+' ('+cur[3]+':00–'+cur[4]+':00)</h3><div class="stamp">'+inRange.length+' zpráv v této seanci · časy v lokálním pásmu · titulky přeložené do češtiny (originál pod nimi)</div>'+aiBlock+body+'</div></div>';
+    '<div class="report"><h3>'+esc(cur[2])+' '+(cur[0]==='allday'?'(od 0:00 do teď '+new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})+')':'('+cur[3]+':00–'+cur[4]+':00)')+'</h3><div class="stamp">'+inRange.length+(cur[0]==='allday'?' zpráv za celý dnešní den':' zpráv v této seanci')+' · časy v lokálním pásmu · titulky přeložené do češtiny (originál pod nimi)</div>'+aiBlock+body+'</div></div>';
 }
 function setHTML(){
   const s=state.settings;
@@ -1201,11 +1201,18 @@ function bindView(){
   if(state.tab==='rep'){
     $$('[data-rep]').forEach(b=> b.onclick=()=>{ state.repTab=b.getAttribute('data-rep'); repaintMain(); });
     $$('[data-genrep]').forEach(b=> b.onclick=()=> genSessionReport(b.getAttribute('data-genrep')));
-    // Auto-přehled: po otevření seance se report vygeneruje sám (když má zprávy, klíč a ještě není hotový)
+    // Auto-přehled: po otevření seance se report vygeneruje sám (má-li zprávy, klíč a ještě není hotový).
+    // U „Celý den" se navíc přegeneruje, když během dne přibyly novější zprávy než minulý report.
     const cur=SESSIONS.find(x=>x[0]===state.repTab)||SESSIONS[0];
     const hasKey=state.settings.apiKey||state.settings.geminiKey;
-    const hasNews=state.news.some(n=>{ if(!isTodayIso(n.publishedAt)) return false; const h=new Date(n.publishedAt).getHours(); return h>=cur[3]&&h<cur[4]; });
-    if(hasKey && hasNews && !state.reports[repKey(cur[0])] && !state.repLoading){ setTimeout(()=>genSessionReport(cur[0], true), 60); }
+    const inRangeNews=state.news.filter(n=>{ if(!isTodayIso(n.publishedAt)) return false; const h=new Date(n.publishedAt).getHours(); return h>=cur[3]&&h<cur[4]; });
+    const saved=state.reports[repKey(cur[0])];
+    let needGen=!saved;
+    if(saved && cur[0]==='allday' && inRangeNews.length){
+      const newest=inRangeNews.reduce((m,n)=>Math.max(m,new Date(n.publishedAt||0).getTime()),0);
+      if(newest > new Date(saved.generatedAt||0).getTime()) needGen=true; // přibyly novější zprávy → osvěž celodenní přehled
+    }
+    if(hasKey && inRangeNews.length && needGen && !state.repLoading){ setTimeout(()=>genSessionReport(cur[0], true), 60); }
   }
   if(state.tab==='set'){
     $$('[data-src]').forEach(t=> t.onclick=()=>{ const name=t.getAttribute('data-src'); state.settings.sources=state.settings.sources||{}; state.settings.sources[name]=!(state.settings.sources[name]!==false); t.classList.toggle('on'); });
