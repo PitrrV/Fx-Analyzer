@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260626b"></script>
-<script src="sync.js?v=20260626b"></script>
+<script src="engine.js?v=20260626c"></script>
+<script src="sync.js?v=20260626c"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -118,6 +118,7 @@ async function loadDataMobile(){
   const av=(localStorage.getItem("av")||"").trim();
   if(av){ try{ await fetchOilPrice(av); }catch(e){} }
   try{ await fetchActionPrices(); }catch(e){}
+  let retailLatest=null; try{ const rr=await fetch("data/retail_hist.json?h="+Math.floor(Date.now()/1800000),{cache:"no-store"}); if(rr.ok){ const rj=await rr.json(); if(rj&&Array.isArray(rj.points)&&rj.points.length) retailLatest=rj.points[rj.points.length-1]; } }catch(e){}
   const cot=loadCOT(), sent=loadSentiment();
   const sc={}; CURRENCIES.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
   // D = odvozená per-měna data (shodné s PC this.D) pro COT/Sentiment/Dashboard bloky
@@ -137,7 +138,7 @@ async function loadDataMobile(){
   else up=deriveUpcomingFromEvents(cal);
   const months=(calSource==="fmp"||calSource==="finnhub")?15:ffHistorySpanMonths(cal);
   const fc={}; ranked.forEach(p=>{ try{ fc[p.pair]=buildForecastV5(p,sc,cal,up); }catch(e){} });
-  return { scores:sc, D, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(),
+  return { scores:sc, D, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(), retailLatest,
     calMeta:{source:calSource||"none",months,count:cal.length,conf:Math.round((g_fundConfidence||0)*100)} };
 }
 
@@ -512,16 +513,16 @@ function SignalsTab({data,onTap}){
 }
 
 // ── ZÁLOŽKA: COT & SENTIMENT ────────────────────────────────
-function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg}){
+function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,onTapPair}){
   const cot=loadCOT(), meta=loadCOTMeta();
   const D=(data&&data.D)||{};
   let histN=0; try{histN=Object.keys(loadCOTHistory()||{}).length;}catch(e){}
   const cotAge=meta&&meta.asOf?Math.round((Date.now()-new Date(meta.asOf).getTime())/86400000):null;
   const [range,setRange]=useState("1Y");
   const RN={"6M":26,"1Y":52,"2Y":104,"ALL":520};
-  // Contrarian extrémy (instituce silně proti přeplněnému davu) — stejná logika jako PC
-  const flat=CURRENCIES.every(c=>(D[c]&&D[c].retail)===50);
-  const sigs=CURRENCIES.map(c=>{const d=D[c]||{};const crowded=(d.inst>30&&d.retail<42)||(d.inst<-30&&d.retail>58);if(!crowded)return null;return {c,side:d.inst>0?"LONG":"SHORT",retail:d.retail};}).filter(Boolean);
+  // Scanner příležitostí (dav přeplněný proti COT + fundamentu) — sdílená logika s PC
+  const rl=(data&&data.retailLatest)||null;
+  const ops=(typeof scanOpportunities==="function")?scanOpportunities((data&&data.pairs)||[],(data&&data.scores)||{},rl,{retailMin:70,diffMin:3}):[];
   return (
     <div>
       <div className="card">
@@ -535,17 +536,16 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg}
         {msg&&<div style={{fontSize:12,marginTop:9,color:msg[0]==="⚠"?"var(--red)":"var(--green)",lineHeight:1.5}}>{msg}</div>}
       </div>
 
-      {/* Contrarian signály */}
+      {/* Contrarian příležitosti */}
       <div className="card">
-        <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>🎯 Contrarian signály</div>
-        <div className="muted" style={{fontSize:11,marginBottom:8}}>Instituce silně proti přeplněnému davu</div>
-        {sigs.length?sigs.map(s=>(
-          <div className="between" key={s.c} style={{padding:"8px 0",borderBottom:"1px solid var(--line)"}}>
-            <span className="row" style={{gap:8}}><span style={{width:7,height:7,borderRadius:50,background:"var(--amber)",boxShadow:"0 0 8px var(--amber)"}}/><b className="mono">{FLAGS[s.c]} {s.c}</b></span>
-            <span className="muted" style={{fontSize:11,flex:1,textAlign:"center"}}>retail {s.retail}% long</span>
-            <b style={{fontSize:11,color:s.side==="LONG"?"var(--green)":"var(--red)"}}>Smart {s.side}</b>
+        <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>🎯 Contrarian příležitosti</div>
+        <div className="muted" style={{fontSize:11,marginBottom:8}}>Dav ≥70 % proti smart money + fundamentu · klepni na pár</div>
+        {ops.length?ops.map(o=>{const dc=o.dir==="BUY"?"#2ed3a0":"#f2606e";return (
+          <div key={o.pair} onClick={()=>{const po=((data&&data.pairs)||[]).find(x=>x.pair===o.pair);if(po&&onTapPair)onTapPair(po);}} style={{padding:"9px 0",borderBottom:"1px solid var(--line)",cursor:"pointer"}}>
+            <div className="between"><span className="row" style={{gap:8}}><span style={{width:8,height:8,borderRadius:50,background:dc,boxShadow:"0 0 8px "+dc}}/><b className="mono" style={{fontSize:13}}>{o.pair}</b></span><b className="mono" style={{fontSize:13,color:dc}}>{(o.diff>=0?"+":"")+o.diff}</b></div>
+            <div className="muted" style={{fontSize:11,marginTop:4}}>{o.reason}</div>
           </div>
-        )):<div className="muted" style={{fontSize:12,lineHeight:1.6}}>{flat?"⚠ Není načtený retail sentiment → klikni nahoře na 🔄 Retail.":"Teď žádné contrarian extrémy — dav ani instituce nejsou vyhraněně proti sobě."}</div>}
+        );}):<div className="muted" style={{fontSize:12,lineHeight:1.6}}>{!rl?"⚠ Živý retail ještě nenačten — naskočí z cronu (refresh).":"Teď žádná contrarian příležitost — žádný pár nesplňuje retail ≥70 % proti COT i fundamentu (diff ≥3)."}</div>}
       </div>
 
       {/* COT skóre + percentil */}
@@ -1048,7 +1048,7 @@ function MApp(){
         {error&&<div className="card" style={{borderColor:"#5c2626",color:"#f2606e",fontSize:12}}>⚠ {error}</div>}
         {loading&&!data&&<div className="card muted">⏳ Načítám data…</div>}
         {tab==="signals"&&<SignalsTab data={data} onTap={setSel}/>}
-        {tab==="cot"&&<CotTab data={data} onRefreshCot={refreshCot} onRefreshRetail={refreshRetail} cotLoading={cotLoading} retailLoading={retailLoading} msg={dataMsg}/>}
+        {tab==="cot"&&<CotTab data={data} onRefreshCot={refreshCot} onRefreshRetail={refreshRetail} cotLoading={cotLoading} retailLoading={retailLoading} msg={dataMsg} onTapPair={setSel}/>}
         {tab==="cal"&&<CalendarTab data={data}/>}
         {tab==="ai"&&<AITab/>}
         {tab==="coach"&&<CoachTab data={data}/>}
