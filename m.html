@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260625c"></script>
-<script src="sync.js?v=20260625c"></script>
+<script src="engine.js?v=20260626a"></script>
+<script src="sync.js?v=20260626a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -182,6 +182,47 @@ function MiniChart({values,color="#5e7cfb",height=54}){
     </svg>
   );
 }
+// ── INTERAKTIVNÍ GRAF (dotykový, více čar) ──────────────────
+function cotLSseriesM(cur,limit){
+  let ch={};try{ch=loadCOTHistory()||{};}catch(e){}
+  const dates=Object.keys(ch).sort((a,b)=>new Date(a)-new Date(b)).slice(-limit);
+  const lng=[],sht=[];
+  dates.forEach(d=>{const r=ch[d]&&ch[d].raw&&ch[d].raw[cur];const l=(r&&+r.levLong)||0,s=(r&&+r.levShort)||0,t=l+s;lng.push(t?Math.round(l/t*100):50);sht.push(t?Math.round(s/t*100):50);});
+  return {dates,long:lng,short:sht};
+}
+function BigChart({series,dates,height=120,yMin,yMax,mid,fmt,big}){
+  const valid=(series||[]).filter(s=>s&&s.vals&&s.vals.filter(v=>typeof v==="number"&&!isNaN(v)).length>=2);
+  const [hi,setHi]=useState(null);
+  if(!valid.length) return <div className="muted" style={{fontSize:11,padding:"14px 0",textAlign:"center"}}>Zatím málo historie (sbírá se týdně / po importu).</div>;
+  const n=Math.max(...valid.map(s=>s.vals.length));
+  const all=valid.flatMap(s=>s.vals).filter(v=>typeof v==="number"&&!isNaN(v));
+  let mn=yMin!=null?yMin:Math.min(...all), mx=yMax!=null?yMax:Math.max(...all);
+  if(mn===mx){mn-=1;mx+=1;}
+  const W=320,PT=6,PL=4,PR=big?38:4,PB=big?20:6,H=height,span=(mx-mn)||1;
+  const X=i=>PL+(W-PL-PR)*(n<2?0.5:i/(n-1));
+  const Y=v=>PT+(H-PT-PB)*(1-(v-mn)/span);
+  const move=(cx,el)=>{const r=el.getBoundingClientRect();const px=(cx-r.left)/r.width*W;let i=Math.round((px-PL)/((W-PL-PR)/Math.max(1,n-1)));setHi(Math.max(0,Math.min(n-1,i)));};
+  const idx=hi==null?n-1:Math.min(hi,n-1);
+  const fm=v=>fmt?fmt(v):(Math.round(v*10)/10);
+  const dfmt=d=>{const dt=new Date(d);return isNaN(dt)?"":(dt.getDate()+"."+(dt.getMonth()+1)+".");};
+  const midY=mid!=null?Y(mid):null;
+  return (
+    <div>
+    <svg viewBox={"0 0 "+W+" "+H} preserveAspectRatio="none" style={{width:"100%",height,display:"block",touchAction:big?"none":"auto"}}
+      onMouseMove={e=>move(e.clientX,e.currentTarget)} onMouseLeave={()=>setHi(null)}
+      onTouchStart={e=>{if(big){move(e.touches[0].clientX,e.currentTarget);}}} onTouchMove={e=>{if(big){move(e.touches[0].clientX,e.currentTarget);}}}>
+      {midY!=null&&<line x1={PL} x2={W-PR} y1={midY} y2={midY} stroke="#2a3242" strokeWidth="1" strokeDasharray="3 4"/>}
+      {valid.map((s,si)=>{const pts=s.vals.map((v,i)=>X(i).toFixed(1)+","+Y(v).toFixed(1)).join(" ");return <polyline key={si} points={pts} fill="none" stroke={s.color} strokeWidth={big?2.2:1.8} strokeLinejoin="round" strokeLinecap="round"/>;})}
+      {big&&<line x1={X(idx)} x2={X(idx)} y1={PT} y2={H-PB} stroke="#5e7cfb" strokeWidth="1" strokeDasharray="3 3" opacity=".75"/>}
+      {big&&valid.map((s,si)=><circle key={si} cx={X(idx)} cy={Y(s.vals[Math.min(idx,s.vals.length-1)])} r="3.5" fill={s.color} stroke="#0b0d13" strokeWidth="1.5"/>)}
+    </svg>
+    {big&&<div className="row" style={{justifyContent:"space-between",marginTop:8,flexWrap:"wrap",gap:8}}>
+      <span className="mono" style={{fontSize:11,color:"var(--dim)"}}>{dates&&dates[idx]?dfmt(dates[idx]):("bod "+(idx+1)+"/"+n)}</span>
+      <span className="row" style={{gap:12}}>{valid.map((s,si)=><b key={si} className="mono" style={{fontSize:12.5,color:s.color}}>{s.name} {fm(s.vals[Math.min(idx,s.vals.length-1)])}</b>)}</span>
+    </div>}
+    </div>
+  );
+}
 // ── DETAIL PÁRU ─────────────────────────────────────────────
 function compRow(label,base,quote){
   const diff=(base||0)-(quote||0);
@@ -224,6 +265,7 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,onClose}){
   const Dd=D||{}, sb=Dd[p.base]||{}, sq=Dd[p.quote]||{};
   const [pos,setPos]=useState(()=>{try{return getPosition(p.pair);}catch(e){return"none";}});
   const [note,setNote]=useState(()=>{try{return (loadNotes()||{})[p.pair]||"";}catch(e){return"";}});
+  const [zoom,setZoom]=useState(null);
   function changePos(s){const ns=pos===s?"none":s;setPos(ns);try{setPosition(p.pair,ns);}catch(e){}}
   function changeNote(v){setNote(v);try{const n=loadNotes()||{};if(v.trim())n[p.pair]=v;else delete n[p.pair];localStorage.setItem("pair_notes",JSON.stringify(n));}catch(e){}}
   // Confluence verdikt (shoda nezávislých faktorů)
@@ -390,12 +432,46 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,onClose}){
           </div>
           {p.cotPctBase!=null&&<div className="muted" style={{fontSize:11,marginTop:8}}>COT percentil {p.base}: {p.cotPctBase}p {p.cotCrowded?"· 🚨 crowded":""}</div>}
         </div>
-        {(()=>{const bd=buildDailySeries(p.base,60).values,qd=buildDailySeries(p.quote,60).values;const diff=bd.map((v,i)=>v-(qd[i]||0));const up=diff.length&&diff[diff.length-1]>=0;return (
-          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>📈 Historie skóre ({p.pair}, 60 dní)</div><div className="muted" style={{fontSize:10,marginBottom:4}}>skóre {p.base} − {p.quote} (roste = býčí pro pár)</div><MiniChart values={diff} color={up?"#2ed3a0":"#f2606e"}/></div>);})()}
-        {(()=>{const cb=getCOTNetSeries(p.base,52).values,cq=getCOTNetSeries(p.quote,52).values;const diff=cb.map((v,i)=>v-(cq[i]||0));return (
-          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>📊 COT net trend ({p.pair})</div><div className="muted" style={{fontSize:10,marginBottom:4}}>net pozice {p.base} − {p.quote} (smart money)</div><MiniChart values={diff} color="#9d7bff"/></div>);})()}
-        {(()=>{const rs=getRetailSeries(p,52);return (
-          <div className="card"><div style={{fontWeight:800,marginBottom:6,fontSize:13}}>👥 Retail long % ({p.pair})</div><div className="muted" style={{fontSize:10,marginBottom:4}}>retail dav (70%+ = kontrariánsky bearish)</div><MiniChart values={rs} color="#e8ab3f"/></div>);})()}
+        {(()=>{
+          const lim=52;
+          const bS=buildDailySeries(p.base,60),qS=buildDailySeries(p.quote,60);
+          const rl=getRetailSeries(p,lim)||[];
+          const cb=cotLSseriesM(p.base,lim),cq=cotLSseriesM(p.quote,lim);
+          const cells=[
+            {key:"sc",title:"Vývoj skóre",sub:p.base+" vs "+p.quote,dates:bS.dates,mid:0,fmt:v=>(v>0?"+":"")+Math.round(v),
+              series:[{name:p.base,color:"#5e7cfb",vals:bS.values||[]},{name:p.quote,color:"#9d7bff",vals:qS.values||[]}]},
+            {key:"rt",title:"Retail L/S",sub:"dav long vs short (70%+ = kontrariánsky)",dates:null,yMin:0,yMax:100,mid:50,fmt:v=>Math.round(v)+"%",
+              series:[{name:"Long",color:"#2ed3a0",vals:rl},{name:"Short",color:"#f2606e",vals:rl.map(v=>100-v)}]},
+            {key:"cb",title:"COT "+p.base+" L/S",sub:"smart money long vs short",dates:cb.dates,yMin:0,yMax:100,mid:50,fmt:v=>Math.round(v)+"%",
+              series:[{name:"Long",color:"#2ed3a0",vals:cb.long},{name:"Short",color:"#f2606e",vals:cb.short}]},
+            {key:"cq",title:"COT "+p.quote+" L/S",sub:"smart money long vs short",dates:cq.dates,yMin:0,yMax:100,mid:50,fmt:v=>Math.round(v)+"%",
+              series:[{name:"Long",color:"#2ed3a0",vals:cq.long},{name:"Short",color:"#f2606e",vals:cq.short}]},
+          ];
+          return (
+            <div className="card">
+              <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>📊 Grafy páru ({p.pair})</div>
+              <div className="muted" style={{fontSize:10.5,marginBottom:10}}>Klikni na graf → zvětší se a můžeš po něm táhnout prstem</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
+                {cells.map(c=>(
+                  <div key={c.key} onClick={()=>setZoom(c)} style={{background:"var(--inp)",border:"1px solid #161b27",borderRadius:11,padding:"9px 10px",cursor:"pointer"}}>
+                    <div className="between" style={{marginBottom:6}}><span style={{fontSize:10.5,fontWeight:800,color:"var(--dim)"}}>{c.title}</span><span style={{fontSize:13,color:"var(--faint)"}}>⤢</span></div>
+                    <BigChart series={c.series} dates={c.dates} height={62} yMin={c.yMin} yMax={c.yMax} mid={c.mid} fmt={c.fmt}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+        {zoom&&<div onClick={()=>setZoom(null)} style={{position:"fixed",inset:0,zIndex:60,background:"rgba(7,8,12,.92)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:560,background:"#0f1218",border:"1px solid #27304a",borderRadius:16,padding:"16px 16px 14px"}}>
+            <div className="between" style={{marginBottom:4}}>
+              <div><div style={{fontWeight:800,fontSize:15}}>{zoom.title}</div><div className="muted" style={{fontSize:11}}>{zoom.sub} · táhni prstem po grafu</div></div>
+              <button onClick={()=>setZoom(null)} style={{width:34,height:34,borderRadius:9,border:"1px solid #2a3242",background:"#161b27",color:"var(--dim)",fontSize:18,cursor:"pointer"}}>×</button>
+            </div>
+            <div style={{height:1,background:"#161b27",margin:"10px 0"}}/>
+            <BigChart series={zoom.series} dates={zoom.dates} height={250} yMin={zoom.yMin} yMax={zoom.yMax} mid={zoom.mid} fmt={zoom.fmt} big={true}/>
+          </div>
+        </div>}
       </div>
     </div>
   );
