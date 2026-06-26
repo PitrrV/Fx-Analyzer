@@ -2084,6 +2084,40 @@ async function fetchActionCalendar(){
   return j.events.map(mapFFEvent);
 }
 
+// ── FX CENY + PRICE-MOMENTUM (sdílené PC i mobil) ───────────────
+// Ceny ze serverového cronu (data/prices.json, bez API klíče). rates = měna za 1 USD.
+// Cena páru = rates[quote]/rates[base]. Denní historie → momentum potvrzení biasu.
+let _PRICES=null;
+async function fetchActionPrices(){
+  try{
+    const r=await fetch("data/prices.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"});
+    if(r.ok){ const j=await r.json(); if(j&&j.rates&&j.rates.USD){ _PRICES=j; return j; } }
+  }catch(e){}
+  return _PRICES;
+}
+function _pxPair(pair){return (typeof pair==="string")?STANDARD_PAIRS.find(x=>x.pair===pair):pair;}
+function _pxFrom(rates,p){ if(!rates) return null; const b=rates[p.base],q=rates[p.quote]; return (b&&q)?q/b:null; }
+function getPairPrice(pair){ const p=_pxPair(pair); if(!p||!_PRICES) return null; return _pxFrom(_PRICES.rates,p); }
+function getLivePrices(){ const o={}; if(!_PRICES) return o; STANDARD_PAIRS.forEach(p=>{const v=_pxFrom(_PRICES.rates,p); if(v!=null&&isFinite(v)) o[p.pair]=parseFloat(v.toFixed(p.pair.includes("JPY")?3:5));}); return o; }
+// % změna ceny páru za posledních `days` denních záznamů (null = málo historie)
+function getPriceMomentum(pair,days=5){
+  const p=_pxPair(pair); if(!p||!_PRICES||!Array.isArray(_PRICES.hist)||_PRICES.hist.length<2) return null;
+  const h=_PRICES.hist;
+  const last=_pxFrom(h[h.length-1].rates,p); if(last==null) return null;
+  const idx=Math.max(0,h.length-1-days);
+  const ref=_pxFrom(h[idx].rates,p); if(ref==null||ref===0) return null;
+  return parseFloat((((last-ref)/ref)*100).toFixed(2));
+}
+// Potvrzuje trh fundamentální bias? confirms / diverges / flat / unknown
+function getBiasConfirmation(pair,dir,days=5){
+  const m=getPriceMomentum(pair,days);
+  if(m==null) return {state:"unknown",mom:null,days};
+  const up=m>0.05, down=m<-0.05, isBuy=dir==="BUY";
+  if((isBuy&&up)||(!isBuy&&down)) return {state:"confirms",mom:m,days};
+  if((isBuy&&down)||(!isBuy&&up)) return {state:"diverges",mom:m,days};
+  return {state:"flat",mom:m,days};
+}
+
 function loadJournal(){try{return JSON.parse(localStorage.getItem("journal")||"[]");}catch(e){return[];}}
 
 // ── SEASONALITY z reálných měsíčních cen (Alpha Vantage FX_MONTHLY) ──

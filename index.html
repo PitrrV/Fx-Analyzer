@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260626a"></script>
-<script src="sync.js?v=20260626a"></script>
+<script src="engine.js?v=20260626b"></script>
+<script src="sync.js?v=20260626b"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -77,6 +77,7 @@ class FXApp extends React.Component{
       if(calSource==='action'||calSource==='fmp'||calSource==='finnhub') g_fundConfidence=1; else g_fundConfidence=ffConfidence(cal);
       try{ const upd=autoUpdateFromCalendar(cal); const list=(upd&&upd.updated)||[]; if(list.some(x=>/CB Sazby|CPI|Policy/i.test(x))){ try{ const prev=JSON.parse(localStorage.getItem('cb_last_auto')||'null')||{}; localStorage.setItem('cb_last_auto',JSON.stringify({items:list,at:new Date().toISOString()})); }catch(e){} } }catch(e){}
       const av=(localStorage.getItem('av')||'').trim(); if(av){ try{ await fetchOilPrice(av); }catch(e){} }
+      try{ await fetchActionPrices(); }catch(e){}
       // COT na pozadí když staré
       try{ const m0=loadCOTMeta(); const age=m0&&m0.asOf?((Date.now()-new Date(m0.asOf).getTime())/86400000):NaN; if(!(age<=4)){ await fetchCOTAuto(); } }catch(e){}
       const cot=loadCOT(), sent=loadSentiment();
@@ -111,8 +112,9 @@ class FXApp extends React.Component{
       if(typeof this.cbdi!=='number') this.cbdi=50;
       // journal
       this.buildJournal();
-      // prices (statické pro AI demo math)
-      this.PRICES={USDJPY:157.2,EURUSD:1.084,GBPUSD:1.271,AUDUSD:0.664,NZDUSD:0.612,USDCAD:1.372,USDCHF:0.888,CHFJPY:177,GBPJPY:199.8,EURJPY:170.4,GBPAUD:1.914,EURAUD:1.632};
+      // prices — živé ze serverového cronu (data/prices.json); statické jen jako fallback
+      const STATIC_PX={USDJPY:157.2,EURUSD:1.084,GBPUSD:1.271,AUDUSD:0.664,NZDUSD:0.612,USDCAD:1.372,USDCHF:0.888,CHFJPY:177,GBPJPY:199.8,EURJPY:170.4,GBPAUD:1.914,EURAUD:1.632};
+      try{ const lp=getLivePrices(); this.PRICES=Object.assign({},STATIC_PX,lp); }catch(e){ this.PRICES=STATIC_PX; }
       this.setState({loaded:Date.now()});
     }catch(e){ console.error('refreshData',e); this.setState({loaded:Date.now(),err:String(e&&e.message||e)}); }
   }
@@ -598,6 +600,20 @@ class FXApp extends React.Component{
             h('div',null,h('div',{style:{fontSize:13,color:T.dim}},(self.NAMES[p.base]||p.base)+' / '+(self.NAMES[p.quote]||p.quote)),h('div',{style:{display:'flex',alignItems:'center',gap:8,marginTop:5}},h('span',{style:{fontFamily:"'JetBrains Mono',monospace",fontSize:12,fontWeight:700,color:ac,background:buy?'rgba(46,211,160,.12)':'rgba(242,96,110,.12)',border:'1px solid '+(buy?'rgba(46,211,160,.3)':'rgba(242,96,110,.3)'),borderRadius:7,padding:'3px 10px'}},p.dir),h('span',{style:{fontSize:11,color:self.statusColor(p.status)}},'● '+self.statusLabel(p.status))))),
           h('div',{style:{textAlign:'right'}},h('div',{style:self.mono({fontSize:40,fontWeight:700,color:ac,lineHeight:.9})},(buy?'+':'−')+p.diff.toFixed(1)),h('div',{style:{fontSize:10.5,color:T.faint,marginTop:4,letterSpacing:'.04em'}},'SKÓRE DIFERENCIÁL'))),
         h('div',{style:{display:'flex',borderTop:'1px solid #1b2130'}},stat('Conviction',h('span',{style:{color:T.amber,letterSpacing:'1px'}},stars(p.conv)),null,p.conv+' / 5 faktorů'),stat('14d výhled',p.prob+'%',probC,p.fdir+(p.fdir!==p.dir?' (≠ bias)':' výhled')),stat('CBDI',this.cbdi+'/100',this.cbdi>60?T.green:T.amber,'Podmínky'),stat(p.base+' skóre',self.sgn(sb.score),self.scol(sb.score),sb.cb),stat(p.quote+' skóre',self.sgn(sq.score),self.scol(sq.score),sq.cb))),
+      (()=>{ let cf={state:'unknown',mom:null},lp=null; try{cf=getBiasConfirmation(p.pair,p.dir);lp=getPairPrice(p.pair);}catch(e){}
+        const map={confirms:{c:T.green,ic:'✓',t:'Trh POTVRZUJE '+p.dir,m:'Cena se hýbe ve směru biasu — konfluence.'},
+          diverges:{c:T.red,ic:'⚠',t:'Trh DIVERGUJE',m:'Cena jde proti biasu — počkej na potvrzení, nehoň cenu.'},
+          flat:{c:T.amber,ic:'•',t:'Trh bez směru',m:'Cena stojí — bias zatím bez potvrzení trhem.'},
+          unknown:{c:T.faint,ic:'…',t:'Cenová data nabíhají',m:'Momentum se počítá z denní historie (naskočí během pár dní).'}};
+        const v=map[cf.state]||map.unknown;
+        return h('div',{style:self.card({padding:'12px 16px',borderColor:v.c+'33',borderLeft:'3px solid '+v.c})},
+          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}},
+            h('div',{style:{display:'flex',alignItems:'center',gap:10,minWidth:0}},
+              h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:v.c,background:v.c+'1c',border:'1px solid '+v.c+'44',borderRadius:7,padding:'4px 10px',whiteSpace:'nowrap'}},v.ic+' '+v.t),
+              h('span',{style:{fontSize:12.5,color:T.dim}},v.m)),
+            h('div',{style:{textAlign:'right'}},
+              lp!=null?h('div',{style:self.mono({fontSize:14,fontWeight:700,color:T.text})},lp.toFixed(p.pair.includes('JPY')?3:5)):null,
+              cf.mom!=null?h('div',{style:self.mono({fontSize:11,fontWeight:700,color:cf.mom>=0?T.green:T.red})},'5d '+(cf.mom>=0?'+':'')+cf.mom+'%'):null))); })(),
       this.renderPairCharts(p),
       h('div',{style:self.card({padding:'14px 18px',background:verdict.bg,borderColor:verdict.c+'33',borderLeft:'3px solid '+verdict.c})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:11,flexWrap:'wrap'}},h('div',{style:{display:'flex',alignItems:'center',gap:10}},h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:verdict.c,background:verdict.c+'1c',border:'1px solid '+verdict.c+'44',borderRadius:7,padding:'4px 10px'}},verdict.t),h('span',{style:{fontSize:13,fontWeight:600,color:T.text}},verdict.msg)),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:verdict.c})},okN+'/'+fac.length+' faktorů')),h('div',{style:{display:'flex',gap:7,flexWrap:'wrap'}},fac.map(f=>h('span',{key:f.l,title:f.d,style:{display:'inline-flex',alignItems:'center',gap:5,fontSize:10.5,fontWeight:600,padding:'4px 9px',borderRadius:6,background:f.ok?'rgba(46,211,160,.1)':'rgba(120,130,150,.08)',border:'1px solid '+(f.ok?'rgba(46,211,160,.28)':'#222a39'),color:f.ok?T.green:T.faint}},h('span',null,f.ok?'✓':'○'),f.l)))),
       (()=>{ let store={}; try{store=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){} const ai=store[p.pair];
