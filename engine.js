@@ -2141,8 +2141,9 @@ function scanOpportunities(pairs,scores,retailLatest,opts){
     if(dir==="SELL" && rl>=retailMin && cotNet<0) crowd="long";        // dav long, fade=SELL
     if(dir==="BUY"  && rl<=(100-retailMin) && cotNet>0) crowd="short"; // dav short, fade=BUY
     if(!crowd) continue;
+    const crowdPct=crowd==="long"?rl:(100-rl); // % na straně, kde je dav přeplněný
     out.push({pair:p.pair,base:p.base,quote:p.quote,dir,diff:+(+p.diff).toFixed(1),retailLong:rl,cotNet:+cotNet.toFixed(1),conviction:conv,
-      reason:"Dav "+rl+"% "+crowd+" · COT "+(cotNet>=0?"long":"short")+" · fundament "+dir+" (diff "+((+p.diff)>=0?"+":"")+(+p.diff).toFixed(1)+")"});
+      reason:"Dav "+crowdPct+"% "+crowd+" · COT "+(cotNet>=0?"long":"short")+" · fundament "+dir+" (diff "+((+p.diff)>=0?"+":"")+(+p.diff).toFixed(1)+")"});
   }
   return out.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
 }
