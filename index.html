@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260627c"></script>
+<script src="engine.js?v=20260627d"></script>
 <script src="sync.js?v=20260627c"></script>
 <style>
 *{box-sizing:border-box}
@@ -78,6 +78,7 @@ class FXApp extends React.Component{
       try{ const upd=autoUpdateFromCalendar(cal); const list=(upd&&upd.updated)||[]; if(list.some(x=>/CB Sazby|CPI|Policy/i.test(x))){ try{ const prev=JSON.parse(localStorage.getItem('cb_last_auto')||'null')||{}; localStorage.setItem('cb_last_auto',JSON.stringify({items:list,at:new Date().toISOString()})); }catch(e){} } }catch(e){}
       const av=(localStorage.getItem('av')||'').trim(); if(av){ try{ await fetchOilPrice(av); }catch(e){} }
       try{ await fetchActionPrices(); }catch(e){}
+      try{ await fetchActionCOTHistory(); }catch(e){}
       // COT na pozadí když staré
       try{ const m0=loadCOTMeta(); const age=m0&&m0.asOf?((Date.now()-new Date(m0.asOf).getTime())/86400000):NaN; if(!(age<=4)){ await fetchCOTAuto(); } }catch(e){}
       const cot=loadCOT(), sent=loadSentiment();

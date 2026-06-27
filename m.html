@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260627c"></script>
+<script src="engine.js?v=20260627d"></script>
 <script src="sync.js?v=20260627c"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -118,6 +118,7 @@ async function loadDataMobile(){
   const av=(localStorage.getItem("av")||"").trim();
   if(av){ try{ await fetchOilPrice(av); }catch(e){} }
   try{ await fetchActionPrices(); }catch(e){}
+  try{ await fetchActionCOTHistory(); }catch(e){}
   let retailLatest=null, retailHist=[]; try{ const rr=await fetch("data/retail_hist.json?h="+Math.floor(Date.now()/1800000),{cache:"no-store"}); if(rr.ok){ const rj=await rr.json(); if(rj&&Array.isArray(rj.points)&&rj.points.length){ retailHist=rj.points; retailLatest=rj.points[rj.points.length-1]; } } }catch(e){}
   const cot=loadCOT(), sent=loadSentiment();
   const sc={}; CURRENCIES.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
