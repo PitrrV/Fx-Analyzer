@@ -1,0 +1,36 @@
+name: COT History
+
+on:
+  schedule:
+    - cron: "0 22 * * 5"   # pátek 22:00 UTC — po pátečním CFTC releasu (~15:30 ET)
+    - cron: "0 12 * * 6"   # + sobota dopoledne (jistota, kdyby release byl pozdě)
+  workflow_dispatch:        # ruční/API spuštění
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cot
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Stáhnout COT historii
+        run: node scripts/fetch-cot.js
+      - name: Commit při změně
+        run: |
+          git config user.name "cot-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/cot_hist.json)" ]; then
+            git add data/cot_hist.json
+            git commit -m "chore: update COT history [skip ci]"
+            git push
+          else
+            echo "Beze změny."
+          fi

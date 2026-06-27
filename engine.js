@@ -640,6 +640,28 @@ function saveCOTSnapshot(scores,meta){
 }
 // Spusť migraci jednou při načtení enginu (idempotentní, přepisuje jen když je co opravit).
 try{ migrateCOTHistoryKeys(); }catch(e){}
+// ── COT HISTORIE ZE SERVEROVÉHO CRONU (data/cot_hist.json) ──────────
+// Doplňuje lokální cot_hist o týdny, které appka sama nestihla stáhnout
+// (uživatel nebyl online/CFTC API zrovna nešlo) — bez nutnosti ručního
+// importu z classic.html. Stejné merge-not-overwrite jako saveCOTSnapshot,
+// jen pro víc týdnů najednou. Voláno z refreshData()/loadDataMobile().
+async function fetchActionCOTHistory(){
+  try{
+    const r=await fetch("data/cot_hist.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"});
+    if(!r.ok) return null;
+    const j=await r.json();
+    if(!j||!j.weeks||typeof j.weeks!=="object") return null;
+    const hist=loadCOTHistory();
+    for(const [date,week] of Object.entries(j.weeks)){
+      const key=cotDateKey(date);
+      if(!hist[key] || String(week.updatedAt||"")>=String(hist[key].updatedAt||"")) hist[key]=week;
+    }
+    const keys=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);
+    const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
+    localStorage.setItem("cot_hist",JSON.stringify(trimmed));
+    return j;
+  }catch(e){return null;}
+}
 async function fetchTextWithFallback(url){
   const urls=[url,"https://r.jina.ai/"+url,"https://api.allorigins.win/raw?url="+encodeURIComponent(url),"https://corsproxy.io/?"+encodeURIComponent(url)];
   let lastErr=null;
