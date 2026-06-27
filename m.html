@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260627d"></script>
+<script src="engine.js?v=20260627e"></script>
 <script src="sync.js?v=20260627c"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -875,9 +875,10 @@ function JournalTab(){
     setF({...f,entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
   }
   function del(id){ persist(list.filter(t=>t.id!==id)); }
-  const oc={open:"#5e7cfb",win:"#2ed3a0",loss:"#f2606e",be:"#e8ab3f"};
-  const closed=list.filter(t=>t.outcome&&t.outcome!=="open"), wins=closed.filter(t=>t.outcome==="win").length;
-  const wr=closed.length?Math.round(wins/closed.length*100):0, totR=closed.reduce((s,t)=>s+(t.rMultiple||0),0);
+  const oc={open:"#5e7cfb",win:"#2ed3a0",loss:"#f2606e",be:"#e8ab3f",early:"#9d7bff"};
+  const Rval=t=>t.outcome==="be"?0:+(t.rMultiple||0);
+  const closed=list.filter(t=>t.outcome&&t.outcome!=="open"), wins=closed.filter(t=>t.outcome==="win").length, losses=closed.filter(t=>t.outcome==="loss").length, decided=wins+losses;
+  const wr=decided?Math.round(wins/decided*100):0, totR=closed.reduce((s,t)=>s+Rval(t),0);
   return (
     <div>
       <div className="card">
@@ -895,7 +896,7 @@ function JournalTab(){
           <input className="fld" value={f.riskPct} onChange={e=>upd("riskPct",e.target.value)} placeholder="Risk %" inputMode="decimal"/>
         </div>
         <div className="grid2">
-          <select className="fld" value={f.outcome} onChange={e=>upd("outcome",e.target.value)}><option value="open">Otevřený</option><option value="win">Zisk</option><option value="loss">Ztráta</option><option value="be">BE</option></select>
+          <select className="fld" value={f.outcome} onChange={e=>upd("outcome",e.target.value)}><option value="open">Otevřený</option><option value="win">Zisk</option><option value="loss">Ztráta</option><option value="be">BE</option><option value="early">Zavřeno dřív</option></select>
           <input className="fld" value={f.rMultiple} onChange={e=>upd("rMultiple",e.target.value)} placeholder="R (2 / -1)" inputMode="decimal"/>
         </div>
         <input className="fld" value={f.notes} onChange={e=>upd("notes",e.target.value)} placeholder="Poznámka"/>

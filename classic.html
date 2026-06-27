@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260627d"></script>
+<script src="engine.js?v=20260627e"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sync.js?v=20260627c"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2227,7 +2227,7 @@ function jStat(list){
   var l=list.filter(function(t){return t.outcome==="loss";}).length;
   var be=list.filter(function(t){return t.outcome==="be";}).length;
   var dec=w+l; var wr=dec?Math.round(w/dec*100):null;
-  var rs=list.map(function(t){return typeof t.rMultiple==="number"?t.rMultiple:null;}).filter(function(x){return x!=null;});
+  var rs=list.map(function(t){return t.outcome==="be"?0:(typeof t.rMultiple==="number"?t.rMultiple:null);}).filter(function(x){return x!=null;});
   var sumR=rs.reduce(function(a,b){return a+b;},0);
   var avgR=rs.length?sumR/rs.length:null;
   var pos=rs.filter(function(x){return x>0;}).reduce(function(a,b){return a+b;},0);
@@ -2354,7 +2354,7 @@ function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,o
           <div><span style={lab}>Risk %</span><input value={f.riskPct} onChange={function(e){upd("riskPct",e.target.value);}} style={inp} placeholder="0.5"/></div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 3fr",gap:8,marginBottom:10}}>
-          <div><span style={lab}>Výsledek</span><select value={f.outcome} onChange={function(e){upd("outcome",e.target.value);}} style={inp}><option value="open">Otevřený</option><option value="win">Win</option><option value="loss">Loss</option><option value="be">BE</option></select></div>
+          <div><span style={lab}>Výsledek</span><select value={f.outcome} onChange={function(e){upd("outcome",e.target.value);}} style={inp}><option value="open">Otevřený</option><option value="win">Win</option><option value="loss">Loss</option><option value="be">BE</option><option value="early">Zavřeno dřív (mimo plán)</option></select></div>
           <div><span style={lab}>R (násobek)</span><input value={f.rMultiple} onChange={function(e){upd("rMultiple",e.target.value);}} style={inp} placeholder="+1.8 / -1"/></div>
           <div><span style={lab}>Poznámka</span><input value={f.notes} onChange={function(e){upd("notes",e.target.value);}} style={inp} placeholder="důvod vstupu, emoce, co se povedlo/nepovedlo..."/></div>
         </div>
@@ -2371,7 +2371,7 @@ function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,o
           ? <div style={{fontSize:12,color:"#8b949e",padding:14}}>Zatím žádný obchod. Zapiš první nahoře — uloží se k němu i to, co appka v tu chvíli říkala.</div>
           : shown.map(function(t){
               var c=t.ctx||{};
-              var oc=t.outcome==="win"?{t:"WIN",col:"#2ed3a0"}:t.outcome==="loss"?{t:"LOSS",col:"#ff4d4d"}:t.outcome==="be"?{t:"BE",col:"#8b949e"}:{t:"OTEVŘENÝ",col:"#d29922"};
+              var oc=t.outcome==="win"?{t:"WIN",col:"#2ed3a0"}:t.outcome==="loss"?{t:"LOSS",col:"#ff4d4d"}:t.outcome==="be"?{t:"BE",col:"#8b949e"}:t.outcome==="early"?{t:"DŘÍV",col:"#9d7bff"}:{t:"OTEVŘENÝ",col:"#d29922"};
               var dt=t.openedAt?new Date(t.openedAt):null;
               return(
                 <div key={t.id} style={{borderTop:"1px solid #16202c",padding:"10px 0"}}>
@@ -2382,7 +2382,7 @@ function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,o
                     {typeof t.rMultiple==="number"&&<span style={{fontSize:12,fontWeight:700,color:t.rMultiple>=0?"#2ed3a0":"#ff4d4d"}}>{t.rMultiple>0?"+":""}{t.rMultiple}R</span>}
                     <span style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
                       <select value={t.outcome} onChange={function(e){onUpdate(t.id,{outcome:e.target.value,closedAt:e.target.value!=="open"?(t.closedAt||new Date().toISOString()):null});}} style={{background:"#0d1117",border:"1px solid #1d2a36",borderRadius:6,color:"#b7c3d1",fontSize:11,padding:"3px 6px"}}>
-                        <option value="open">Otevřený</option><option value="win">Win</option><option value="loss">Loss</option><option value="be">BE</option>
+                        <option value="open">Otevřený</option><option value="win">Win</option><option value="loss">Loss</option><option value="be">BE</option><option value="early">Zavřeno dřív</option>
                       </select>
                       <span onClick={function(){onDelete(t.id);}} title="Smazat" style={{cursor:"pointer",color:"#4a6a88",padding:"0 4px"}}>✕</span>
                     </span>
