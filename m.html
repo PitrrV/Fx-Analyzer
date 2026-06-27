@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260626d"></script>
-<script src="sync.js?v=20260626d"></script>
+<script src="engine.js?v=20260627a"></script>
+<script src="sync.js?v=20260627a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -118,7 +118,7 @@ async function loadDataMobile(){
   const av=(localStorage.getItem("av")||"").trim();
   if(av){ try{ await fetchOilPrice(av); }catch(e){} }
   try{ await fetchActionPrices(); }catch(e){}
-  let retailLatest=null; try{ const rr=await fetch("data/retail_hist.json?h="+Math.floor(Date.now()/1800000),{cache:"no-store"}); if(rr.ok){ const rj=await rr.json(); if(rj&&Array.isArray(rj.points)&&rj.points.length) retailLatest=rj.points[rj.points.length-1]; } }catch(e){}
+  let retailLatest=null, retailHist=[]; try{ const rr=await fetch("data/retail_hist.json?h="+Math.floor(Date.now()/1800000),{cache:"no-store"}); if(rr.ok){ const rj=await rr.json(); if(rj&&Array.isArray(rj.points)&&rj.points.length){ retailHist=rj.points; retailLatest=rj.points[rj.points.length-1]; } } }catch(e){}
   const cot=loadCOT(), sent=loadSentiment();
   const sc={}; CURRENCIES.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
   // D = odvozená per-měna data (shodné s PC this.D) pro COT/Sentiment/Dashboard bloky
@@ -138,7 +138,7 @@ async function loadDataMobile(){
   else up=deriveUpcomingFromEvents(cal);
   const months=(calSource==="fmp"||calSource==="finnhub")?15:ffHistorySpanMonths(cal);
   const fc={}; ranked.forEach(p=>{ try{ fc[p.pair]=buildForecastV5(p,sc,cal,up); }catch(e){} });
-  return { scores:sc, D, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(), retailLatest,
+  return { scores:sc, D, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(), retailLatest, retailHist,
     calMeta:{source:calSource||"none",months,count:cal.length,conf:Math.round((g_fundConfidence||0)*100)} };
 }
 
@@ -261,7 +261,7 @@ function DailyBriefM({pair,scores,calData,upcoming}){
     </div>
   );
 }
-function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,onClose}){
+function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onClose}){
   const b=scores[p.base]||{}, q=scores[p.quote]||{};
   const buy=p.dir==="BUY";
   const Dd=D||{}, sb=Dd[p.base]||{}, sq=Dd[p.quote]||{};
@@ -458,7 +458,8 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,onClose}){
         {(()=>{
           const lim=52;
           const bS=buildDailySeries(p.base,60),qS=buildDailySeries(p.quote,60);
-          const rl=getRetailSeries(p,lim)||[];
+          const rpts=(retailHist||[]).slice(-lim);
+          const rl=rpts.map(pt=>{ const d=pt.pairs&&pt.pairs[p.pair]; if(d&&isFinite(d.l)) return d.l; const b=pt.ccy&&pt.ccy[p.base],q=pt.ccy&&pt.ccy[p.quote]; return (b!=null&&q!=null)?Math.round((b+(100-q))/2):50; });
           const cb=cotLSseriesM(p.base,lim),cq=cotLSseriesM(p.quote,lim);
           const cells=[
             {key:"sc",title:"Vývoj skóre",sub:p.base+" vs "+p.quote,dates:bS.dates,mid:0,fmt:v=>(v>0?"+":"")+Math.round(v),
@@ -1070,7 +1071,7 @@ function MApp(){
           ))}
         </div>
       </div>}
-      {sel&&data&&<PairDetail p={sel} scores={data.scores} D={data.D} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} calData={data.cal} upcoming={data.upcoming} onClose={()=>setSel(null)}/>}
+      {sel&&data&&<PairDetail p={sel} scores={data.scores} D={data.D} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} calData={data.cal} upcoming={data.upcoming} retailHist={data.retailHist} onClose={()=>setSel(null)}/>}
     </div>
   );
 }
