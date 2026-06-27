@@ -883,7 +883,9 @@ function withBinaryProxies(url){
 }
 async function fetchCOTHistoryYears(years){
   if(!window.JSZip) throw new Error("JSZip knihovna není načtená — zkontroluj internet/CDN.");
-  const hist={};let loaded=0;let lastErr=null;
+  // Sloučit s tím, co už v cot_hist je (ne přepsat) — jinak import staršího roku
+  // smaže novější živé týdny, které import zatím nepokrývá (např. aktuální týden).
+  const hist=loadCOTHistory();let loaded=0;let lastErr=null;
   for(const y of years){
     // Primární CFTC naming pro Traders in Financial Futures; když CFTC změní název, aplikace jen zahlásí konkrétní chybu.
     const base=`https://www.cftc.gov/files/dea/history/fut_fin_txt_${y}.zip`;
@@ -898,8 +900,8 @@ async function fetchCOTHistoryYears(years){
       Object.assign(hist,parsed); loaded++;
     }catch(e){lastErr=e;}
   }
-  if(!Object.keys(hist).length) throw new Error("Nepodařilo se načíst historický COT. Pravděpodobně CORS nebo změněný název CFTC ZIPu: "+(lastErr?.message||lastErr));
-  const dates=Object.keys(hist).sort().slice(-260);const trimmed={};dates.forEach(d=>trimmed[d]=hist[d]);
+  if(!loaded) throw new Error("Nepodařilo se načíst historický COT. Pravděpodobně CORS nebo změněný název CFTC ZIPu: "+(lastErr?.message||lastErr));
+  const dates=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);const trimmed={};dates.forEach(d=>trimmed[d]=hist[d]);
   localStorage.setItem("cot_hist",JSON.stringify(trimmed));
   const scoreHistRecords=backfillScoreHistoryFromCOTHistory(trimmed);
   const last=dates.at(-1),lastRow=trimmed[last];
@@ -927,7 +929,8 @@ async function readLocalCOTFile(file){
 async function loadCOTHistoryFromLocalFiles(fileList){
   const files=Array.from(fileList||[]);
   if(!files.length) throw new Error("Nevybral jsi žádný COT soubor.");
-  const hist={};let loaded=0;const errors=[];
+  // Sloučit s tím, co už v cot_hist je (ne přepsat) — viz fetchCOTHistoryYears.
+  const hist=loadCOTHistory();let loaded=0;const errors=[];
   for(const file of files){
     try{
       const text=await readLocalCOTFile(file);
@@ -936,10 +939,10 @@ async function loadCOTHistoryFromLocalFiles(fileList){
       loaded++;
     }catch(e){errors.push((file.name||"soubor")+": "+(e?.message||e));}
   }
-  if(!Object.keys(hist).length){
+  if(!loaded){
     throw new Error("Nepodařilo se načíst žádný lokální COT soubor. "+errors.slice(0,2).join(" | "));
   }
-  const dates=Object.keys(hist).sort().slice(-260);
+  const dates=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);
   const trimmed={};dates.forEach(d=>trimmed[d]=hist[d]);
   localStorage.setItem("cot_hist",JSON.stringify(trimmed));
   const scoreHistRecords=backfillScoreHistoryFromCOTHistory(trimmed);
