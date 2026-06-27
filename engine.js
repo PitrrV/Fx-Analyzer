@@ -1332,6 +1332,22 @@ function getCOTPercentile(currency){
     return Math.round((hist2.filter(s=>s<=cur).length/hist2.length)*100);
   }catch(e){return null;}
 }
+// Změna COT percentilu oproti poslednímu staženému týdnu (kolik p se posunul dav/smart money).
+// Vrací null, pokud ještě nemáme dost historie na obě strany srovnání (potřeba 13+ týdnů).
+function getCOTPercentileChange(currency){
+  try{
+    const hist=loadCOTHistory();
+    const entries=Object.entries(hist).sort(([a],[b])=>new Date(a)-new Date(b));
+    const scores=entries.map(([,w])=>{
+      const v=w.scores?.[currency];
+      return typeof v==="number"?v:null;
+    }).filter(s=>s!==null);
+    if(scores.length<13) return null;
+    const pct=arr=>{ const cur=arr[arr.length-1],h=arr.slice(0,-1); return Math.round((h.filter(s=>s<=cur).length/h.length)*100); };
+    const curPct=pct(scores),prevPct=pct(scores.slice(0,-1));
+    return {cur:curPct,prev:prevPct,delta:curPct-prevPct};
+  }catch(e){return null;}
+}
 function getCurrencyMomentum(currency){
   try{
     // OPRAVA: loadScoreHistory() vrací objekt klíčovaný datem, ne pole.

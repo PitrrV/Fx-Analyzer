@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260627a"></script>
-<script src="sync.js?v=20260627a"></script>
+<script src="engine.js?v=20260627b"></script>
+<script src="sync.js?v=20260627b"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -127,6 +127,7 @@ async function loadDataMobile(){
     score:+(s.score||0), fund:+(s.fund_score||0), policy:+(s.policy_adj||0), yield:+(s.yield_adj||0),
     cot:+(s.cot_score||0), sent:+(s.sent_score||0), season:+(s.season_score||0),
     cotPct:(()=>{try{return getCOTPercentile(c);}catch(e){return 50;}})()||50,
+    cotPctDelta:(()=>{try{return getCOTPercentileChange(c);}catch(e){return null;}})(),
     chg7:(()=>{try{return getScoreChange(c,7);}catch(e){return 0;}})()||0,
     cb:(typeof CB_POLICY_DATA!=="undefined"&&CB_POLICY_DATA[c]&&CB_POLICY_DATA[c].label)||"—",
     inst:Math.round(Math.max(-100,Math.min(100,(cot[c]||0)*12))),
@@ -551,12 +552,13 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
 
       {/* COT skóre + percentil */}
       <div className="card">
-        <div style={{fontWeight:800,fontSize:13,marginBottom:8}}>📊 COT skóre & percentil <span className="muted" style={{fontWeight:400,fontSize:11}}>(3+ roky)</span></div>
-        {CURRENCIES.map(c=>{const d=D[c]||{};const ext=d.cotPct>=85||d.cotPct<=15;const col=ext?"var(--amber)":"var(--dim)";return (
-          <div key={c} style={{display:"grid",gridTemplateColumns:"54px 1fr 52px 44px",alignItems:"center",gap:8,padding:"6px 0"}}>
+        <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>📊 COT skóre & percentil <span className="muted" style={{fontWeight:400,fontSize:11}}>(3+ roky)</span></div>
+        <div className="muted" style={{fontSize:10.5,marginBottom:8,lineHeight:1.5}}>p = kde je dnešní COT skóre v historii (0–100). Δ v závorce = posun oproti minulému staženému COT (týdenní). Skóre vpravo = aktuální síla měny podle COT (−10…+10), ne změna.</div>
+        {CURRENCIES.map(c=>{const d=D[c]||{};const ext=d.cotPct>=85||d.cotPct<=15;const col=ext?"var(--amber)":"var(--dim)";const dl=d.cotPctDelta;return (
+          <div key={c} style={{display:"grid",gridTemplateColumns:"54px 1fr 78px 44px",alignItems:"center",gap:8,padding:"6px 0"}}>
             <span className="mono" style={{fontSize:12,fontWeight:700}}>{FLAGS[c]} {c}</span>
             <div style={{height:7,background:"var(--inp)",border:"1px solid #161b27",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:(d.cotPct||50)+"%",background:col,opacity:.85,borderRadius:4}}/></div>
-            <span className="mono" style={{fontSize:11,fontWeight:700,color:col,textAlign:"right"}}>{(d.cotPct||50)}p{ext?" ⚑":""}</span>
+            <span className="mono" style={{fontSize:11,fontWeight:700,color:col,textAlign:"right"}}>{(d.cotPct||50)}p{ext?" ⚑":""}{dl&&dl.delta!==0&&<span style={{marginLeft:4,fontWeight:700,color:dl.delta>0?"var(--green)":"var(--red)"}}>{"("+(dl.delta>0?"+":"")+dl.delta+")"}</span>}</span>
             <b className="mono" style={{fontSize:13,color:cScore(cot[c]||0),textAlign:"right"}}>{fmtNum(cot[c]||0)}</b>
           </div>
         );})}
