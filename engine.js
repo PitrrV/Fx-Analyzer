@@ -196,6 +196,50 @@ function getScoreChange(currency,days=7){
 }
 
 function loadScoreHistory(){try{return JSON.parse(localStorage.getItem("score_hist")||"{}");}catch(e){return{};}}
+
+// ── SCORE DELTA 24H (rolling, timestamped — nezávislé na denním score_hist) ──
+// score_hist výše ukládá jen 1 snapshot/den (přepisovaný), takže neumí "hodnotu
+// přesně před 24h". Tenhle buffer ukládá timestampované snapshoty celého
+// scores[c].score a maže je dle stáří (ne dle počtu), aby šlo najít vzorek
+// nejblíž now-24h. Čistě přídavný ukazatel — nic ze score logiky nemění.
+const SCORE_DELTA_KEY="score_delta_buffer";
+const SCORE_DELTA_MAX_AGE_MS=48*3600000; // drž ~48h, ať je vždy z čeho vybrat okolo 24h
+const SCORE_DELTA_MIN_GAP_MS=20*60000; // throttle zápisů, ať buffer nebobtná při častých refreshích
+function loadScoreDeltaBuffer(){try{return JSON.parse(localStorage.getItem(SCORE_DELTA_KEY)||"[]");}catch(e){return[];}}
+function saveScoreDeltaSnapshot(scores){
+  try{
+    const buf=loadScoreDeltaBuffer();
+    const now=Date.now();
+    const last=buf[buf.length-1];
+    if(last&&(now-last.ts)<SCORE_DELTA_MIN_GAP_MS) return;
+    const snap={ts:now,scores:{}};
+    CURRENCIES.forEach(c=>{ const v=scores[c]&&scores[c].score; snap.scores[c]=typeof v==="number"?parseFloat(v.toFixed(2)):null; });
+    buf.push(snap);
+    const cutoff=now-SCORE_DELTA_MAX_AGE_MS;
+    const trimmed=buf.filter(b=>b.ts>=cutoff);
+    localStorage.setItem(SCORE_DELTA_KEY,JSON.stringify(trimmed));
+  }catch(e){}
+}
+function getScoreDelta24h(currency,currentScore){
+  try{
+    if(typeof currentScore!=="number") return null;
+    const buf=loadScoreDeltaBuffer();
+    if(!buf.length) return null;
+    const targetMs=Date.now()-24*3600000;
+    const oldest=buf[0].ts;
+    if(oldest>targetMs+6*3600000) return null; // historie ještě nesahá ~18h+ zpátky
+    let best=null,bestDiff=Infinity;
+    for(const snap of buf){
+      const d=Math.abs(snap.ts-targetMs);
+      if(d<bestDiff){bestDiff=d;best=snap;}
+    }
+    if(!best||bestDiff>6*3600000) return null; // nejbližší vzorek je dál než ±6h od cíle
+    const past=best.scores&&best.scores[currency];
+    if(typeof past!=="number") return null;
+    return parseFloat((currentScore-past).toFixed(2));
+  }catch(e){return null;}
+}
+
 function backfillScoreHistoryFromCOTHistory(cotHist){
   // V4.1: okamžitě vytvoří historickou score křivku z COT historie.
   // Není to plný makro backtest; je to COT/smart-money historický proxy score,

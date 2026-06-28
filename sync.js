@@ -15,7 +15,7 @@
   const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","oanda_token","oanda_env","v5_risk_sent","v5_regime","cot_data","cot_meta","sent_data","positions_ts"];
   const KEYS_ARR=["v5_ff_hist","journal"];                                              // pole → sloučit
   const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","positions","bias_state"]; // objekty → sloučit
-  const TRANSIENT=["v5_ff_cache","fmp_cal_block","fh_cal_block"];                        // NIKDY nesynchronizovat
+  const TRANSIENT=["v5_ff_cache","fmp_cal_block","fh_cal_block","score_delta_buffer"];   // NIKDY nesynchronizovat
 
   const rdStr=k=>{try{const v=localStorage.getItem(k);return v==null?null:v;}catch(e){return null;}};
   const rdJSON=k=>{try{return JSON.parse(localStorage.getItem(k)||"null");}catch(e){return null;}};

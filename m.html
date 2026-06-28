@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260627f"></script>
-<script src="sync.js?v=20260627c"></script>
+<script src="engine.js?v=20260628a"></script>
+<script src="sync.js?v=20260628a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -83,6 +83,16 @@ const cComp=v=>v>0.3?"#2ed3a0":v<-0.3?"#f2606e":"#8b93a3";
 const fmtNum=v=>(v>0?"+":"")+(Math.round(v*10)/10);
 // Skóre-barvy pro 14d/probabilitu (PC palette)
 const cProb=v=>v>=65?"#2ed3a0":v<=35?"#f2606e":"#e8ab3f";
+// Samostatný 24h Δ ukazatel páru — žádný vliv na p.diff/skóre/rank.
+function pairDelta24h(p){
+  let dB=null,dQ=null;
+  try{ dB=getScoreDelta24h(p.base,p.s1); dQ=getScoreDelta24h(p.quote,p.s2); }catch(e){}
+  if(dB==null||dQ==null) return null;
+  const d=parseFloat((dB-dQ).toFixed(2)), a=Math.abs(d);
+  const arrow=a<0.5?"—":d>0?"↗":"↘";
+  const color=a<0.5?"#8b93a3":a<1.5?(d>0?"#7fe0bf":"#f29aa3"):(d>0?"#2ed3a0":"#f2606e");
+  return {d,arrow,color,label:arrow+" "+(d>0?"+":"")+d.toFixed(1)};
+}
 function impactColor(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"#f2606e";if(i.includes("medium")||i==="2")return"#e8ab3f";return"#5a6273";}
 function impactLabel(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"HIGH";if(i.includes("medium")||i==="2")return"MED";if(i.includes("low")||i==="1")return"LOW";return"—";}
 function evFlag(ev){const c=String(ev.country||ev.currency||"").toUpperCase();return COUNTRY_FLAGS[c]||"🏳️";}
@@ -123,6 +133,7 @@ async function loadDataMobile(){
   let retailLatest=null, retailHist=[]; try{ const rr=await fetch("data/retail_hist.json?h="+Math.floor(Date.now()/1800000),{cache:"no-store"}); if(rr.ok){ const rj=await rr.json(); if(rj&&Array.isArray(rj.points)&&rj.points.length){ retailHist=rj.points; retailLatest=rj.points[rj.points.length-1]; } } }catch(e){}
   const cot=loadCOT(), sent=loadSentiment();
   const sc={}; CURRENCIES.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
+  try{ if(typeof saveScoreDeltaSnapshot==='function') saveScoreDeltaSnapshot(sc); }catch(e){}
   // D = odvozená per-měna data (shodné s PC this.D) pro COT/Sentiment/Dashboard bloky
   const D={};
   CURRENCIES.forEach(c=>{ const s=sc[c]||{}; D[c]={
@@ -150,6 +161,7 @@ function PairCard({p,f,daily,onTap}){
   const buy=p.dir==="BUY";
   const isCAD=p.base==='CAD'||p.quote==='CAD';
   let oilSt=null; if(isCAD){ try{oilSt=getOilStatus();}catch(e){} }
+  const d24=pairDelta24h(p);
   return (
     <div className="card" onClick={onTap} style={{borderColor:buy?"#1f5c34":"#5c2626"}}>
       <div className="between">
@@ -168,6 +180,7 @@ function PairCard({p,f,daily,onTap}){
         </div>
         <div className="row" style={{gap:6}}>
           {oilSt&&<span className="chip" style={{color:oilSt.color,borderColor:oilSt.color+"55"}}>🛢 ${oilSt.price.toFixed(1)}</span>}
+          {d24&&<span className="chip" title="Změna skóre páru za posledních ~24h" style={{color:d24.color,borderColor:d24.color+"55"}}>{d24.label}</span>}
           <span className="chip">{p.base} {fmtNum(p.s1)}</span>
           <span className="chip">{p.quote} {fmtNum(p.s2)}</span>
         </div>
