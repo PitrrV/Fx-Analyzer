@@ -1773,6 +1773,7 @@ function getOilStatus(){
   return{
     price: oil.current,
     date:  oil.date,
+    series: oil.series||null,
     mom4w: parseFloat(mom.toFixed(1)),
     trend13: parseFloat(trend.toFixed(1)),
     direction: mom>2?"BULLISH (CAD+)":mom<-2?"BEARISH (CAD-)":"NEUTRAL",
@@ -2135,6 +2136,17 @@ async function fetchActionPrices(){
     if(r.ok){ const j=await r.json(); if(j&&j.rates&&j.rates.USD){ _PRICES=j; return j; } }
   }catch(e){}
   return _PRICES;
+}
+// Ropa (WTI) ze serverového cronu (data/oil.json, bez API klíče, refresh ~15 min) —
+// mergne se do stejného localStorage klíče jako klientský fetchOilPrice() (Alpha
+// Vantage), takže getOilStatus()/getOilMomentumScore() jedou pro každého i bez
+// vlastního AV klíče a aktualizují se mnohem rychleji než týdenní AV data.
+async function fetchActionOil(){
+  try{
+    const r=await fetch("data/oil.json?h="+Math.floor(Date.now()/600000),{cache:"no-store"});
+    if(r.ok){ const j=await r.json(); if(j&&j.current&&j.w4ago){ try{localStorage.setItem("oil_wti_v1",JSON.stringify({data:j,ts:Date.now()}));}catch(e){} return j; } }
+  }catch(e){}
+  return null;
 }
 function _pxPair(pair){return (typeof pair==="string")?STANDARD_PAIRS.find(x=>x.pair===pair):pair;}
 function _pxFrom(rates,p){ if(!rates) return null; const b=rates[p.base],q=rates[p.quote]; return (b&&q)?q/b:null; }

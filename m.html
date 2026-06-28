@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260627e"></script>
+<script src="engine.js?v=20260627f"></script>
 <script src="sync.js?v=20260627c"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -117,6 +117,7 @@ async function loadDataMobile(){
   try{ autoUpdateFromCalendar(cal); }catch(e){}
   const av=(localStorage.getItem("av")||"").trim();
   if(av){ try{ await fetchOilPrice(av); }catch(e){} }
+  try{ await fetchActionOil(); }catch(e){}
   try{ await fetchActionPrices(); }catch(e){}
   try{ await fetchActionCOTHistory(); }catch(e){}
   let retailLatest=null, retailHist=[]; try{ const rr=await fetch("data/retail_hist.json?h="+Math.floor(Date.now()/1800000),{cache:"no-store"}); if(rr.ok){ const rj=await rr.json(); if(rj&&Array.isArray(rj.points)&&rj.points.length){ retailHist=rj.points; retailLatest=rj.points[rj.points.length-1]; } } }catch(e){}
@@ -147,6 +148,8 @@ async function loadDataMobile(){
 // ── KARTA PÁRU ──────────────────────────────────────────────
 function PairCard({p,f,daily,onTap}){
   const buy=p.dir==="BUY";
+  const isCAD=p.base==='CAD'||p.quote==='CAD';
+  let oilSt=null; if(isCAD){ try{oilSt=getOilStatus();}catch(e){} }
   return (
     <div className="card" onClick={onTap} style={{borderColor:buy?"#1f5c34":"#5c2626"}}>
       <div className="between">
@@ -164,6 +167,7 @@ function PairCard({p,f,daily,onTap}){
           {f&&f.prob!=null&&<span style={{fontSize:13}}><span className="muted">14d </span><b style={{color:f.prob>=65?"#2ed3a0":f.prob<=35?"#f2606e":"#e8ab3f"}}>{f.prob+"% "+f.dir}</b></span>}
         </div>
         <div className="row" style={{gap:6}}>
+          {oilSt&&<span className="chip" style={{color:oilSt.color,borderColor:oilSt.color+"55"}}>🛢 ${oilSt.price.toFixed(1)}</span>}
           <span className="chip">{p.base} {fmtNum(p.s1)}</span>
           <span className="chip">{p.quote} {fmtNum(p.s2)}</span>
         </div>
@@ -227,6 +231,48 @@ function BigChart({series,dates,height=120,yMin,yMax,mid,fmt,big}){
     </div>
   );
 }
+// ── WTI OIL PANEL (CAD páry) ─────────────────────────────────
+function OilPanelM({pair}){
+  let oilSt=null; try{oilSt=getOilStatus();}catch(e){}
+  if(!oilSt) return (
+    <div className="card">
+      <div style={{fontWeight:800,fontSize:13,marginBottom:6}}>🛢 WTI Ropa — korekce CAD</div>
+      <div className="muted" style={{fontSize:11.5}}>Data ropy se načtou automaticky při příštím refreshi.</div>
+    </div>
+  );
+  const cadAdj=oilSt.cadAdj;
+  const impactLabel=cadAdj>0.5?`CAD silnější (+${cadAdj.toFixed(2)}) → USDCAD dolů`:cadAdj<-0.5?`CAD slabší (${cadAdj.toFixed(2)}) → USDCAD nahoru`:"Vliv ropy na CAD neutrální";
+  return (
+    <div className="card">
+      <div className="between" style={{marginBottom:8}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:13}}>🛢 WTI Ropa — {pair.pair}</div>
+          <div className="muted" style={{fontSize:10.5}}>Korelace WTI ↔ CAD: −0.70</div>
+        </div>
+        <div style={{textAlign:"right"}}>
+          <div className="mono" style={{fontSize:18,fontWeight:800}}>${oilSt.price.toFixed(1)}</div>
+          <div className="muted" style={{fontSize:10}}>{oilSt.date}</div>
+        </div>
+      </div>
+      {oilSt.series&&oilSt.series.length>4&&<div style={{marginBottom:8}}><MiniChart values={oilSt.series} color={oilSt.mom4w>0?"#2ed3a0":"#f85149"} height={48}/></div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:7}}>
+        <div style={{background:"var(--inp)",border:"1px solid #161b27",borderRadius:8,padding:8}}>
+          <div className="muted" style={{fontSize:9.5}}>4t momentum</div>
+          <div className="mono" style={{fontSize:13.5,fontWeight:800,color:oilSt.mom4w>2?"#2ed3a0":oilSt.mom4w<-2?"#f2606e":"#e8ab3f"}}>{(oilSt.mom4w>0?"+":"")+oilSt.mom4w}%</div>
+        </div>
+        <div style={{background:"var(--inp)",border:"1px solid #161b27",borderRadius:8,padding:8}}>
+          <div className="muted" style={{fontSize:9.5}}>13t trend</div>
+          <div className="mono" style={{fontSize:13.5,fontWeight:800,color:oilSt.trend13>4?"#2ed3a0":oilSt.trend13<-4?"#f2606e":"#e8ab3f"}}>{(oilSt.trend13>0?"+":"")+oilSt.trend13}%</div>
+        </div>
+        <div style={{background:cadAdj>0.5?"rgba(46,211,160,.08)":cadAdj<-0.5?"rgba(242,96,110,.08)":"rgba(120,130,150,.08)",border:"1px solid "+(cadAdj>0.5?"rgba(46,211,160,.28)":cadAdj<-0.5?"rgba(242,96,110,.28)":"#222a39"),borderRadius:8,padding:8}}>
+          <div className="muted" style={{fontSize:9.5}}>CAD korekce</div>
+          <div className="mono" style={{fontSize:13.5,fontWeight:800,color:cadAdj>0.5?"#2ed3a0":cadAdj<-0.5?"#f2606e":"#e8ab3f"}}>{(cadAdj>0?"+":"")+cadAdj.toFixed(2)}</div>
+        </div>
+      </div>
+      <div className="muted" style={{fontSize:11,marginTop:8}}><b style={{color:oilSt.color}}>{oilSt.direction}</b> · {impactLabel}</div>
+    </div>
+  );
+}
 // ── DETAIL PÁRU ─────────────────────────────────────────────
 function compRow(label,base,quote){
   const diff=(base||0)-(quote||0);
@@ -266,6 +312,7 @@ function DailyBriefM({pair,scores,calData,upcoming}){
 function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onClose}){
   const b=scores[p.base]||{}, q=scores[p.quote]||{};
   const buy=p.dir==="BUY";
+  const isCAD=p.base==='CAD'||p.quote==='CAD';
   const Dd=D||{}, sb=Dd[p.base]||{}, sq=Dd[p.quote]||{};
   const [pos,setPos]=useState(()=>{try{return getPosition(p.pair);}catch(e){return"none";}});
   const [note,setNote]=useState(()=>{try{return (loadNotes()||{})[p.pair]||"";}catch(e){return"";}});
@@ -316,6 +363,8 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
             );})}
           </div>
         </div>
+
+        {isCAD&&<OilPanelM pair={p}/>}
 
         {/* Confluence verdikt */}
         <div className="card" style={{borderColor:verdict.c+"44",borderLeft:"3px solid "+verdict.c}}>

@@ -1,0 +1,35 @@
+name: Oil Price (WTI)
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # každých 15 min (commit jen při změně ceny) — CAD reaguje na ropu rychle
+  workflow_dispatch:          # ruční/API spuštění
+
+permissions:
+  contents: write
+
+concurrency:
+  group: oil
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Stáhnout cenu ropy (WTI)
+        run: node scripts/fetch-oil.js
+      - name: Commit při změně
+        run: |
+          git config user.name "oil-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/oil.json)" ]; then
+            git add data/oil.json
+            git commit -m "chore: update oil price [skip ci]"
+            git push
+          else
+            echo "Beze změny."
+          fi
