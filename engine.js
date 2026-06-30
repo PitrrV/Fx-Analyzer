@@ -1283,6 +1283,38 @@ function ffConfidence(events){
   return parseFloat((FF_FUND_DAMP+(1-FF_FUND_DAMP)*frac).toFixed(2));
 }
 
+// ── RUČNÍ DOPLNĚNÍ ACTUAL ────────────────────────────────────────────
+// Dočasná náhrada za placená data: uživatel může u eventu bez actual
+// (placeholder/PENDING) zadat hodnotu ručně. Klíčuje se stejně jako
+// FF historie (ffHistKey), takže se ručně zadaná hodnota automaticky
+// "smaže", jakmile dorazí skutečný actual se stejným klíčem.
+const MANUAL_ACTUAL_KEY="v5_manual_actual";
+function loadManualActuals(){
+  try{const o=JSON.parse(localStorage.getItem(MANUAL_ACTUAL_KEY)||"{}");return (o&&typeof o==="object")?o:{};}
+  catch(e){return{};}
+}
+function saveManualActual(key,value){
+  try{
+    const m=loadManualActuals();
+    const v=(value==null)?"":String(value).trim();
+    if(!v) delete m[key]; else m[key]={value:v,ts:Date.now()};
+    localStorage.setItem(MANUAL_ACTUAL_KEY,JSON.stringify(m));
+  }catch(e){}
+}
+// Doplní ručně zadané actual hodnoty do eventů, kde actual zatím chybí.
+// Jakmile dorazí skutečný actual, ruční hodnota se z úložiště sama smaže.
+function applyManualActuals(events){
+  const m=loadManualActuals();let dirty=false;
+  const out=(events||[]).map(e=>{
+    const k=ffHistKey(e);
+    if(e.actual){ if(m[k]){delete m[k];dirty=true;} return e; }
+    const o=m[k];
+    return o?Object.assign({},e,{actual:o.value,_manual:true}):e;
+  });
+  if(dirty){ try{localStorage.setItem(MANUAL_ACTUAL_KEY,JSON.stringify(m));}catch(e){} }
+  return out;
+}
+
 // ── IMPORT / EXPORT historie (CSV + JSON adaptéry) ──────────────────
 // Normalizuje libovolný zdroj (Kaggle/HF/FF export, vlastní JSON) na interní
 // tvar {event,country,time,impact,actual,estimate,prev} — score engine pak

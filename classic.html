@@ -8,9 +8,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260628a"></script>
+<script src="engine.js?v=20260630a"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="sync.js?v=20260628a"></script>
+<script src="sync.js?v=20260630a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -886,7 +886,7 @@ function getSurpriseInfo(ev){
   if(dir<0) return {label:"MISS",color:"#ff4d4d",bg:"rgba(255,77,77,.12)",bias:"bearish pro měnu"};
   return {label:"INLINE",color:"#d29922",bg:"rgba(210,153,34,.12)",bias:"v souladu s odhadem"};
 }
-function CalendarEventRow({e,compact=false}){
+function CalendarEventRow({e,compact=false,onSetManual}){
   const dt=evDate(e);
   const cur=getEventCurrency(e);
   const impact=getImpactInfo(e);
@@ -898,13 +898,13 @@ function CalendarEventRow({e,compact=false}){
     <span style={{fontWeight:900}}>{FLAGS[cur]||COUNTRY_FLAGS[(e.country||"").toUpperCase()]||""} {cur}</span>
     <div style={{minWidth:0}}><b style={{fontWeight:800,color:"#eaf2f8"}}>{e.event}</b><div style={{fontSize:10,color:"#8b949e",marginTop:2}}>{surprise.bias}</div></div>
     <span style={{justifySelf:"start",fontSize:10,fontWeight:1000,color:impact.color,background:impact.bg,border:`1px solid ${impact.color}44`,borderRadius:999,padding:"4px 7px"}}>{impact.label}</span>
-    <span style={{textAlign:"right",color:surprise.label==="PENDING"?"#8b949e":"#eaf2f8",fontWeight:800}}>{fmtCalValue(e.actual)}</span>
+    <span title="Klikni pro ruční doplnění Actual" onClick={()=>onSetManual&&onSetManual(e)} style={{textAlign:"right",color:e._manual?"#d29922":(surprise.label==="PENDING"?"#8b949e":"#eaf2f8"),fontWeight:800,cursor:onSetManual?"pointer":undefined,textDecoration:onSetManual?"underline dotted":undefined}}>{e._manual?"✎ ":""}{fmtCalValue(e.actual)}</span>
     <span style={{textAlign:"right",color:"#cbd6e2"}}>{fmtCalValue(forecast)}</span>
     <span style={{textAlign:"right",color:"#8b949e"}}>{fmtCalValue(previous)}</span>
     <span style={{justifySelf:"end",fontSize:10,fontWeight:1000,color:surprise.color,background:surprise.bg,border:`1px solid ${surprise.color}44`,borderRadius:999,padding:"4px 7px"}}>{surprise.label}</span>
   </div>;
 }
-function DashboardCalendarPanel({events,pair}){
+function DashboardCalendarPanel({events,pair,onSetManual}){
   const all=(events||[]).sort((a,b)=>new Date(a.time)-new Date(b.time));
   const relevant=pair?all.filter(e=>eventRelevance(pair.base,e)||eventRelevance(pair.quote,e)):all;
   const list=(relevant.length?relevant:all).slice(0,12);
@@ -921,7 +921,7 @@ function DashboardCalendarPanel({events,pair}){
     <div style={{display:"grid",gridTemplateColumns:"54px 50px minmax(150px,1fr) 58px 64px 64px 64px 74px",gap:8,padding:"7px 0",borderTop:"1px solid #1b2a35",borderBottom:"1px solid #1b2a35",fontSize:10,color:"#8b949e",fontWeight:900,letterSpacing:".04em"}}>
       <span>TIME</span><span>CCY</span><span>EVENT</span><span>IMPACT</span><span style={{textAlign:"right"}}>ACTUAL</span><span style={{textAlign:"right"}}>FORECAST</span><span style={{textAlign:"right"}}>PREV</span><span style={{textAlign:"right"}}>SURPRISE</span>
     </div>
-    {list.length?list.map((e,i)=><CalendarEventRow key={i} e={e} compact={true}/>) : <div style={{color:"#8b949e",fontSize:13,padding:12}}>Pro {pair?.pair||"vybraný filtr"} teď nejsou dostupné žádné relevantní události. Zkus refresh Finnhub dat.</div>}
+    {list.length?list.map((e,i)=><CalendarEventRow key={i} e={e} compact={true} onSetManual={onSetManual}/>) : <div style={{color:"#8b949e",fontSize:13,padding:12}}>Pro {pair?.pair||"vybraný filtr"} teď nejsou dostupné žádné relevantní události. Zkus refresh Finnhub dat.</div>}
     <div style={{fontSize:10,color:"#4a6a88",marginTop:10,lineHeight:1.45}}>Interpretace: BEAT/MISS je počítaný podle typu události. U unemployment/claims je nižší výsledek bullish, u CPI/sazeb/NFP je vyšší výsledek většinou bullish.</div>
   </div>;
 }
@@ -1373,19 +1373,24 @@ function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},cal
   </div>;
 }
 // ── CALENDAR ─────────────────────────────────────────────
-function CalendarPanel({events}){
+function CalendarPanel({events,onRefreshLive,liveLoading,onSetManual,msg}){
   const all=(events||[]).sort((a,b)=>new Date(a.time)-new Date(b.time));
-  if(!all.length) return <div className="pro-card" style={{padding:18,color:"#8b949e",fontSize:13}}>Kalendář zatím nemá data. Zadej Finnhub API klíč a spusť Refresh.</div>;
+  const refreshBtn=<button onClick={onRefreshLive} disabled={!!liveLoading} className="pro-btn" style={{fontSize:11,padding:"5px 9px"}}>{liveLoading?"⏳ Aktualizuji…":"🔄 Refresh teď"}</button>;
+  if(!all.length) return <div className="pro-card" style={{padding:18,color:"#8b949e",fontSize:13}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:msg?8:0}}><span>Kalendář zatím nemá data. Zadej Finnhub API klíč a spusť Refresh.</span>{refreshBtn}</div>
+    {msg&&<div style={{fontSize:11,color:"#8b949e"}}>{msg}</div>}
+  </div>;
   const highCount=all.filter(e=>getImpactInfo(e).label==="HIGH").length;
   return <div className="pro-card" style={{padding:18}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:12}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:12,flexWrap:"wrap"}}>
       <div><div className="pro-panel-title" style={{margin:0}}>Fundamentální kalendář</div><div style={{fontSize:11,color:"#8b949e",marginTop:3}}>Actual · Forecast · Previous · Surprise · bias impact</div></div>
-      <div style={{display:"flex",gap:8,fontSize:11}}><span style={{background:"rgba(255,77,77,.12)",border:"1px solid rgba(255,77,77,.3)",color:"#ff4d4d",borderRadius:999,padding:"5px 9px",fontWeight:900}}>HIGH {highCount}</span><span style={{background:"rgba(88,166,255,.10)",border:"1px solid rgba(88,166,255,.25)",color:"#7d95ff",borderRadius:999,padding:"5px 9px",fontWeight:900}}>EVENTS {all.length}</span></div>
+      <div style={{display:"flex",gap:8,fontSize:11,alignItems:"center"}}><span style={{background:"rgba(255,77,77,.12)",border:"1px solid rgba(255,77,77,.3)",color:"#ff4d4d",borderRadius:999,padding:"5px 9px",fontWeight:900}}>HIGH {highCount}</span><span style={{background:"rgba(88,166,255,.10)",border:"1px solid rgba(88,166,255,.25)",color:"#7d95ff",borderRadius:999,padding:"5px 9px",fontWeight:900}}>EVENTS {all.length}</span>{refreshBtn}</div>
     </div>
+    {msg&&<div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>{msg}</div>}
     <div style={{display:"grid",gridTemplateColumns:"88px 58px minmax(230px,1fr) 70px 82px 82px 82px 90px",gap:8,padding:"8px 0",borderTop:"1px solid #1b2a35",borderBottom:"1px solid #1b2a35",fontSize:10,color:"#8b949e",fontWeight:900,letterSpacing:".04em"}}>
       <span>TIME</span><span>CCY</span><span>EVENT</span><span>IMPACT</span><span style={{textAlign:"right"}}>ACTUAL</span><span style={{textAlign:"right"}}>FORECAST</span><span style={{textAlign:"right"}}>PREVIOUS</span><span style={{textAlign:"right"}}>SURPRISE</span>
     </div>
-    {all.map((e,i)=><CalendarEventRow key={i} e={e}/>) }
+    {all.map((e,i)=><CalendarEventRow key={i} e={e} onSetManual={onSetManual}/>) }
   </div>;
 }
 
@@ -2827,6 +2832,8 @@ function App(){
   const [sentData,setSentData]=useState(loadSentiment());
   const [retailLoading,setRetailLoading]=useState(false);
   const [retailMeta,setRetailMeta]=useState(null);
+  const [calLiveLoading,setCalLiveLoading]=useState(false);
+  const [calMsg,setCalMsg]=useState("");
   const timer=useRef(null);
   // Refy drží vždy nejnovější data — auto-refresh interval i loadData z nich čtou,
   // aby 5min refresh nepoužíval zastaralý COT/sentiment/AI z původní closure.
@@ -2911,6 +2918,7 @@ function App(){
         const span=ffHistorySpanMonths(cal);
         calWarn="ℹ Kalendář jede z ForexFactory ("+cal.length+" událostí, ~"+span.toFixed(1)+" měs historie, fundamenty "+Math.round(g_fundConfidence*100)+"% — roste s historií; COT/yield/policy drží bias)."+((fmpKey&&(fmpErr||fmpBlocked))?" Pozn.: FMP free tarif ekonomický kalendář nemá (jen placený plán) — proto FF.":"");
       } else { g_fundConfidence=FF_FUND_DAMP; }
+      try{ cal=applyManualActuals(cal); }catch(e){}
       setCalData(cal);
 
       // AUTO-UPDATE: CB sazby, CPI, CB Policy stance z kalendáře (bez extra API)
@@ -2948,6 +2956,27 @@ function App(){
     }catch(e){setError(e.message);}
     setLoading(false);
   },[]);
+
+  // Vyžádaný refresh přímo z živého ForexFactory feedu (bez GitHub cronu) —
+  // funguje pro kohokoliv s internetem, ne jen pro vlastníka GH repa.
+  const refreshCalendarLive=useCallback(async()=>{
+    setCalLiveLoading(true);setCalMsg("");
+    try{
+      const fr=await fetchFFEventsCached(true);
+      mergeFFHistory(fr);
+      await loadData(fhKey||"",cotRef.current,sentRef.current);
+      setCalMsg("✅ Kalendář obnoven z živého FF feedu ("+new Date().toLocaleTimeString("cs-CZ")+").");
+    }catch(e){ setCalMsg("⚠ Live refresh selhal: "+String(e&&e.message||e)); }
+    setCalLiveLoading(false);
+  },[loadData,fhKey]);
+
+  const setManualActual=useCallback(async(e)=>{
+    const cur=(e.actual||"").toString();
+    const v=window.prompt('Ruční hodnota Actual pro "'+e.event+'" ('+getEventCurrency(e)+'):',cur);
+    if(v===null) return;
+    try{ saveManualActual(ffHistKey(e),v); }catch(err){}
+    await loadData(fhKey||"",cotRef.current,sentRef.current);
+  },[loadData,fhKey]);
 
   useEffect(()=>{
     if(!started) return;
@@ -3139,7 +3168,7 @@ function App(){
             </div>
             <div>{selected&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses} calData={calData} upcoming={upcoming} positions={positions} onPosition={updatePosition} notes={notes} onNote={updateNote}/>}</div>
             <div>
-              <DashboardCalendarPanel events={buildEventWatch(calData,upcoming)} pair={selected}/>
+              <DashboardCalendarPanel events={buildEventWatch(calData,upcoming)} pair={selected} onSetManual={setManualActual}/>
               <DailyBriefBar pairs={top} scores={scores} calData={calData} upcoming={upcoming} positions={positions} inline/>
             </div>
           </div>
@@ -3166,7 +3195,7 @@ function App(){
         {tab==="calendar"&&(
           <div style={{maxWidth:700}}>
             <div style={{fontSize:11,color:"#8b949e",marginBottom:14}}>Příštích 14 dní · HIGH & MEDIUM impact</div>
-            <CalendarPanel events={upcoming}/>
+            <CalendarPanel events={upcoming} onRefreshLive={refreshCalendarLive} liveLoading={calLiveLoading} onSetManual={setManualActual} msg={calMsg}/>
           </div>
         )}
 

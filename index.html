@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260628a"></script>
-<script src="sync.js?v=20260628a"></script>
+<script src="engine.js?v=20260630a"></script>
+<script src="sync.js?v=20260630a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -74,6 +74,7 @@ class FXApp extends React.Component{
       try{ const fresh=await fetchActionCalendar(); cal=mergeFFHistory(fresh); calSource='action'; }catch(e){}
       if(!cal.length&&fmpKey){ try{ cal=await fetchFMPCalendar(fmpKey,15); calSource='fmp'; }catch(e){} }
       if(!cal.length){ try{ const fr=await fetchFFEventsCached(false); cal=mergeFFHistory(fr); calSource='ff'; }catch(e){ cal=loadFFHistory(); } }
+      try{ cal=applyManualActuals(cal); }catch(e){}
       if(calSource==='action'||calSource==='fmp'||calSource==='finnhub') g_fundConfidence=1; else g_fundConfidence=ffConfidence(cal);
       try{ const upd=autoUpdateFromCalendar(cal); const list=(upd&&upd.updated)||[]; if(list.some(x=>/CB Sazby|CPI|Policy/i.test(x))){ try{ const prev=JSON.parse(localStorage.getItem('cb_last_auto')||'null')||{}; localStorage.setItem('cb_last_auto',JSON.stringify({items:list,at:new Date().toISOString()})); }catch(e){} } }catch(e){}
       const av=(localStorage.getItem('av')||'').trim(); if(av){ try{ await fetchOilPrice(av); }catch(e){} }
@@ -121,6 +122,27 @@ class FXApp extends React.Component{
       try{ const lp=getLivePrices(); this.PRICES=Object.assign({},STATIC_PX,lp); }catch(e){ this.PRICES=STATIC_PX; }
       this.setState({loaded:Date.now()});
     }catch(e){ console.error('refreshData',e); this.setState({loaded:Date.now(),err:String(e&&e.message||e)}); }
+  }
+  // Vyžádaný refresh přímo z živého ForexFactory feedu (bez GitHub cronu) —
+  // funguje pro kohokoliv s internetem, ne jen pro vlastníka GH repa.
+  async forceLiveCalendarRefresh(){
+    this.setState({calBusy:true,calMsg:''});
+    try{
+      const fr=await fetchFFEventsCached(true);
+      mergeFFHistory(fr);
+      await this.refreshData();
+      this.setState({calMsg:'✅ Kalendář obnoven z živého FF feedu ('+new Date().toLocaleTimeString('cs-CZ')+').'});
+    }catch(e){
+      this.setState({calMsg:'⚠ Live refresh selhal: '+(e&&e.message||e)});
+    }
+    this.setState({calBusy:false});
+  }
+  setManualActual(e){
+    const cur=(e.actual||'').toString();
+    const v=window.prompt('Ruční hodnota Actual pro "'+e.event+'" ('+ev2ccy(e)+'):',cur);
+    if(v===null) return;
+    try{ saveManualActual(ffHistKey(e),v); }catch(err){}
+    this.refreshData();
   }
   updateMacroLatest(cal){
     try{
@@ -734,15 +756,16 @@ class FXApp extends React.Component{
       h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Equity křivka','Kumulativní R'),h('div',{style:{marginTop:6}},this.EquityChart())),
       h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Poslední obchody'),h('div',{style:{display:'grid',gridTemplateColumns:'62px 78px 56px 116px 56px 28px',gap:8,padding:'8px 0',borderBottom:'1px solid #1b2130',fontSize:9.5,color:T.faint,letterSpacing:'.06em',fontWeight:700}},['DATUM','PÁR','SMĚR','VÝSLEDEK','R',''].map((x,i)=>h('span',{key:i,style:x==='R'?{textAlign:'right'}:null},x))),j.rows.length?j.rows.map((r,i)=>{const win=r.res==='win';return h('div',{key:r.id||i,style:{display:'grid',gridTemplateColumns:'62px 78px 56px 116px 56px 28px',gap:8,alignItems:'center',padding:'10px 0',boxShadow:'0 1px 0 #14182333'}},h('span',{style:self.mono({fontSize:11,color:T.dim})},r.d),h('span',{style:self.mono({fontSize:12,fontWeight:700})},r.pair),h('span',{style:{fontSize:11,fontWeight:700,color:r.dir==='BUY'?T.green:T.red}},r.dir),h('select',{value:r.res==='open'?'open':r.res,onChange:e=>self.setTradeOutcome(r.id,e.target.value),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:7,color:r.res==='open'?T.amber:r.res==='be'?T.accent:r.res==='early'?T.violet:win?T.green:T.red,fontSize:11,fontWeight:700,padding:'4px 6px',cursor:'pointer',fontFamily:'inherit'}},[['open','Otevřený'],['win','Zisk'],['loss','Ztráta'],['be','BE (break-even)'],['early','Zavřeno dřív (mimo plán)']].map(([v,l])=>h('option',{key:v,value:v},l))),h('span',{style:self.mono({fontSize:12.5,fontWeight:700,color:win?T.green:r.res==='loss'?T.red:r.res==='be'?T.accent:r.res==='early'?T.violet:T.dim,textAlign:'right'})},r.res==='be'?'BE':self.sgn(r.r)),h('button',{type:'button',title:'Smazat',onClick:()=>self.delTrade(r.id),style:{border:'none',background:'none',color:T.faint,fontSize:14,cursor:'pointer',padding:0}},'✕'));}):h('div',{style:{fontSize:12,color:T.faint,padding:'14px 0'}},'Zatím žádné obchody — přidej obchod formulářem výše.')));
   }
-  renderCalendar(){ const self=this,h=this.h,T=this.tok; const cal=this._cal||[]; const up=this._up||[];
+  renderCalendar(){ const self=this,h=this.h,T=this.tok,st=this.state; const cal=this._cal||[]; const up=this._up||[];
     const list=((typeof buildEventWatch==='function')?buildEventWatch(cal,up):up).filter(e=>{const im=impUp(e.impact);return im==='HIGH'||im==='MEDIUM';}).slice(0,80);
     const ic=i=>i==='HIGH'?T.red:T.amber; const cols='84px 48px minmax(180px,1fr) 64px 78px 78px 78px 86px'; let lastDay=null;
     const surprise=e=>{const a=parseFloat(e.actual),f=parseFloat(e.estimate??e.forecast);if(isNaN(a)||isNaN(f))return null;return a>f?'beat':a<f?'miss':'inline';};
     const sc=s=>s==='beat'?T.green:s==='miss'?T.red:T.faint;
-    return h('div',{style:{maxWidth:1080}},this.renderMacroSnapshot(),h('div',{style:self.card({padding:'20px 22px'})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:14,flexWrap:'wrap'}},self.ptitle('Fundamentální kalendář','Příštích 14 dní · Actual / Forecast / Previous / Surprise'),h('div',{style:{display:'flex',gap:8}},h('span',{style:{fontSize:11,fontWeight:800,color:T.red,background:'rgba(242,96,110,.12)',border:'1px solid rgba(242,96,110,.3)',borderRadius:999,padding:'5px 11px'}},'HIGH '+list.filter(e=>impUp(e.impact)==='HIGH').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.accent,background:'rgba(94,124,251,.1)',border:'1px solid rgba(94,124,251,.28)',borderRadius:999,padding:'5px 11px'}},'EVENTS '+list.length))),
+    return h('div',{style:{maxWidth:1080}},this.renderMacroSnapshot(),h('div',{style:self.card({padding:'20px 22px'})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:6,flexWrap:'wrap'}},self.ptitle('Fundamentální kalendář','Příštích 14 dní · Actual / Forecast / Previous / Surprise'),h('div',{style:{display:'flex',gap:8,alignItems:'center'}},h('span',{style:{fontSize:11,fontWeight:800,color:T.red,background:'rgba(242,96,110,.12)',border:'1px solid rgba(242,96,110,.3)',borderRadius:999,padding:'5px 11px'}},'HIGH '+list.filter(e=>impUp(e.impact)==='HIGH').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.accent,background:'rgba(94,124,251,.1)',border:'1px solid rgba(94,124,251,.28)',borderRadius:999,padding:'5px 11px'}},'EVENTS '+list.length),h('button',{onClick:()=>self.forceLiveCalendarRefresh(),disabled:!!st.calBusy,style:{fontSize:11,fontWeight:800,color:T.text,background:'rgba(94,124,251,.14)',border:'1px solid rgba(94,124,251,.4)',borderRadius:999,padding:'5px 11px',cursor:st.calBusy?'default':'pointer'}},st.calBusy?'⏳ Aktualizuji…':'🔄 Refresh teď'))),
+      st.calMsg&&h('div',{style:{fontSize:11,color:T.dim,marginBottom:8}},st.calMsg),
       h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,padding:'9px 0',borderTop:'1px solid #1b2130',borderBottom:'1px solid #1b2130',fontSize:9.5,fontWeight:700,letterSpacing:'.05em',color:T.faint}},['ČAS','MĚNA','UDÁLOST','IMPACT','ACTUAL','FORECAST','PREVIOUS','SURPRISE'].map((x,i)=>h('span',{key:x,style:i>=4?{textAlign:'right'}:null},x))),
       list.map((e,i)=>{const dt=new Date(parseEventTime(e.time));const dlabel=dt.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric',weekday:'long'});const dayHdr=dlabel!==lastDay;lastDay=dlabel;const s=surprise(e);
-        return h('div',{key:i},dayHdr&&h('div',{style:self.mono({fontSize:10.5,fontWeight:700,color:T.dim,letterSpacing:'.04em',padding:'13px 0 7px',marginTop:i?4:0})},dlabel),h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,alignItems:'center',padding:'10px 0',boxShadow:'0 1px 0 #14182333'}},h('span',{style:self.mono({fontSize:11.5,color:T.dim})},dt.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})),h('span',{style:self.mono({fontSize:12,fontWeight:700})},ev2ccy(e)),h('span',{style:{fontSize:12.5,color:T.text}},e.event),h('span',{style:{fontSize:9,fontWeight:700,color:ic(impUp(e.impact)),background:ic(impUp(e.impact))+'1c',border:'1px solid '+ic(impUp(e.impact))+'40',borderRadius:5,padding:'3px 7px',justifySelf:'start'}},impUp(e.impact)),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:e.actual?T.text:T.faint,textAlign:'right'})},e.actual||'—'),h('span',{style:self.mono({fontSize:12,color:T.dim,textAlign:'right'})},(e.estimate||e.forecast)||'—'),h('span',{style:self.mono({fontSize:12,color:T.faint,textAlign:'right'})},(e.prev||e.previous)||'—'),h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:sc(s),textAlign:'right'})},s?(s==='beat'?'BEAT ▲':s==='miss'?'MISS ▼':'INLINE'):'PENDING')));})));
+        return h('div',{key:i},dayHdr&&h('div',{style:self.mono({fontSize:10.5,fontWeight:700,color:T.dim,letterSpacing:'.04em',padding:'13px 0 7px',marginTop:i?4:0})},dlabel),h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,alignItems:'center',padding:'10px 0',boxShadow:'0 1px 0 #14182333'}},h('span',{style:self.mono({fontSize:11.5,color:T.dim})},dt.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})),h('span',{style:self.mono({fontSize:12,fontWeight:700})},ev2ccy(e)),h('span',{style:{fontSize:12.5,color:T.text}},e.event),h('span',{style:{fontSize:9,fontWeight:700,color:ic(impUp(e.impact)),background:ic(impUp(e.impact))+'1c',border:'1px solid '+ic(impUp(e.impact))+'40',borderRadius:5,padding:'3px 7px',justifySelf:'start'}},impUp(e.impact)),h('span',{title:'Klikni pro ruční doplnění Actual',onClick:()=>self.setManualActual(e),style:self.mono({fontSize:12,fontWeight:700,color:e._manual?T.amber:(e.actual?T.text:T.faint),textAlign:'right',cursor:'pointer',textDecoration:'underline dotted'})},(e._manual?'✎ ':'')+(e.actual||'—')),h('span',{style:self.mono({fontSize:12,color:T.dim,textAlign:'right'})},(e.estimate||e.forecast)||'—'),h('span',{style:self.mono({fontSize:12,color:T.faint,textAlign:'right'})},(e.prev||e.previous)||'—'),h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:sc(s),textAlign:'right'})},s?(s==='beat'?'BEAT ▲':s==='miss'?'MISS ▼':'INLINE'):'PENDING')));})));
   }
   renderAIAnalysis(){ const self=this,h=this.h,T=this.tok,st=this.state; const R=st.aiResult; const p=this.pairObj(st.sel)||{};
     const biasC=R&&R.bias==='BULLISH'?T.green:R&&R.bias==='BEARISH'?T.red:T.amber;
