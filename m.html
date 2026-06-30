@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260628a"></script>
-<script src="sync.js?v=20260628a"></script>
+<script src="engine.js?v=20260630a"></script>
+<script src="sync.js?v=20260630a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -121,6 +121,7 @@ async function loadDataMobile(){
     try{ const fresh=await fetchFFEventsCached(false); calSource="forexfactory"; cal=mergeFFHistory(fresh); }
     catch(e2){ cal=loadFFHistory(); if(cal.length) calSource="forexfactory"; }
   }
+  try{ cal=applyManualActuals(cal); }catch(e){}
   if(calSource==="action"||calSource==="fmp"||calSource==="finnhub") g_fundConfidence=1;
   else if(calSource==="forexfactory") g_fundConfidence=ffConfidence(cal);
   else g_fundConfidence=FF_FUND_DAMP;
@@ -664,14 +665,20 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
 }
 
 // ── ZÁLOŽKA: KALENDÁŘ ───────────────────────────────────────
-function CalendarTab({data}){
+function CalendarTab({data,onRefreshLive,liveLoading,onSetManual,msg}){
   if(!data) return null;
   // Dnešní den (vč. už proběhlých) + 14 dní dopředu — stejné jako PC dashboard
   const evs=buildEventWatch(data.cal,data.upcoming).slice(0,80);
   const todayStr=new Date().toLocaleDateString("cs-CZ",{day:"2-digit",month:"2-digit"});
   return (
     <div>
-      <div className="card muted" style={{fontSize:12}}>Události ({evs.length}) · zdroj {data.calMeta.source} · {data.calMeta.months.toFixed(0)}m · {data.calMeta.conf}%</div>
+      <div className="card" style={{padding:"10px 12px"}}>
+        <div className="between">
+          <span className="muted" style={{fontSize:12}}>Události ({evs.length}) · zdroj {data.calMeta.source} · {data.calMeta.months.toFixed(0)}m · {data.calMeta.conf}%</span>
+          <button className="btn sec" style={{width:"auto",padding:"6px 10px",fontSize:12}} disabled={!!liveLoading} onClick={onRefreshLive}>{liveLoading?"⏳…":"🔄 Refresh teď"}</button>
+        </div>
+        {msg&&<div className="muted" style={{fontSize:11,marginTop:6}}>{msg}</div>}
+      </div>
       {evs.map((e,i)=>{
         const isToday=fmtDT(e.time).startsWith(todayStr);
         return (
@@ -682,7 +689,7 @@ function CalendarTab({data}){
           </div>
           <div className="between" style={{marginTop:6}}>
             <span className="muted" style={{fontSize:12}}>{isToday?"🔵 ":""}{fmtDT(e.time)}</span>
-            <span className="muted" style={{fontSize:11}}>{(e.actual?("akt "+e.actual+" · "):"")}{(e.estimate?("odhad "+e.estimate):"")}{(e.prev?(" · min "+e.prev):"")}</span>
+            <span className="muted" style={{fontSize:11,color:e._manual?"#e8ab3f":undefined,textDecoration:"underline dotted",cursor:"pointer"}} onClick={()=>onSetManual&&onSetManual(e)}>{(e._manual?"✎ ":"")}{(e.actual?("akt "+e.actual+" · "):"")}{(e.estimate?("odhad "+e.estimate):"")}{(e.prev?(" · min "+e.prev):"")}</span>
           </div>
         </div>
         );
@@ -1063,6 +1070,8 @@ function MApp(){
   const [loading,setLoading]=useState(true);
   const [cotLoading,setCotLoading]=useState(false);
   const [retailLoading,setRetailLoading]=useState(false);
+  const [calLiveLoading,setCalLiveLoading]=useState(false);
+  const [calMsg,setCalMsg]=useState("");
   const [dataMsg,setDataMsg]=useState("");
   const [error,setError]=useState("");
   const [sel,setSel]=useState(null);
@@ -1086,6 +1095,27 @@ function MApp(){
     try{ const res=await fetchRetailSentiment(); const rs=res&&res.sentData||res; saveSentiment(rs); try{saveRetailSnapshot(rs);}catch(e){} await load(); setDataMsg("✅ Retail aktualizován · "+((res&&res.method)||"CFTC")); }
     catch(e){ try{const d=deriveRetailFromCOTData();saveSentiment(d);try{saveRetailSnapshot(d);}catch(e3){}await load();setDataMsg("⚠ Retail auto selhal — použita záloha z COT.");}catch(e2){setDataMsg("⚠ Retail selhal: "+String(e&&e.message||e));} }
     setRetailLoading(false);
+  },[load]);
+
+  // Vyžádaný refresh přímo z živého ForexFactory feedu (bez GitHub cronu) —
+  // funguje pro kohokoliv s internetem, ne jen pro vlastníka GH repa.
+  const refreshCalendarLive=useCallback(async()=>{
+    setCalLiveLoading(true);setCalMsg("");
+    try{
+      const fr=await fetchFFEventsCached(true);
+      mergeFFHistory(fr);
+      await load();
+      setCalMsg("✅ Kalendář obnoven z živého FF feedu ("+new Date().toLocaleTimeString("cs-CZ")+").");
+    }catch(e){ setCalMsg("⚠ Live refresh selhal: "+String(e&&e.message||e)); }
+    setCalLiveLoading(false);
+  },[load]);
+
+  const setManualActual=useCallback(async(e)=>{
+    const cur=(e.actual||"").toString();
+    const v=window.prompt('Ruční hodnota Actual pro "'+e.event+'" ('+(e.country||"")+'):',cur);
+    if(v===null) return;
+    try{ saveManualActual(ffHistKey(e),v); }catch(err){}
+    await load();
   },[load]);
 
   useEffect(()=>{
@@ -1116,7 +1146,7 @@ function MApp(){
         {loading&&!data&&<div className="card muted">⏳ Načítám data…</div>}
         {tab==="signals"&&<SignalsTab data={data} onTap={setSel}/>}
         {tab==="cot"&&<CotTab data={data} onRefreshCot={refreshCot} onRefreshRetail={refreshRetail} cotLoading={cotLoading} retailLoading={retailLoading} msg={dataMsg} onTapPair={setSel}/>}
-        {tab==="cal"&&<CalendarTab data={data}/>}
+        {tab==="cal"&&<CalendarTab data={data} onRefreshLive={refreshCalendarLive} liveLoading={calLiveLoading} onSetManual={setManualActual} msg={calMsg}/>}
         {tab==="ai"&&<AITab/>}
         {tab==="coach"&&<CoachTab data={data}/>}
         {tab==="strength"&&<StrengthTab data={data}/>}
