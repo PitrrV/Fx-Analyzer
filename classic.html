@@ -905,7 +905,8 @@ function CalendarEventRow({e,compact=false,onSetManual}){
   </div>;
 }
 function DashboardCalendarPanel({events,pair,onSetManual}){
-  const all=(events||[]).sort((a,b)=>new Date(a.time)-new Date(b.time));
+  // Jen HIGH+MEDIUM dopad — sjednoceno s PC verzí (LOW eventy jsou jen šum)
+  const all=(events||[]).filter(e=>{const im=getImpactInfo(e).label;return im==="HIGH"||im==="MED";}).sort((a,b)=>new Date(a.time)-new Date(b.time));
   const relevant=pair?all.filter(e=>eventRelevance(pair.base,e)||eventRelevance(pair.quote,e)):all;
   const list=(relevant.length?relevant:all).slice(0,12);
   const title=pair?`Fundamentální kalendář — ${pair.pair}`:"Fundamentální kalendář";
@@ -1374,7 +1375,8 @@ function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},cal
 }
 // ── CALENDAR ─────────────────────────────────────────────
 function CalendarPanel({events,onRefreshLive,liveLoading,onSetManual,msg}){
-  const all=(events||[]).sort((a,b)=>new Date(a.time)-new Date(b.time));
+  // Jen HIGH+MEDIUM dopad — sjednoceno s PC verzí (LOW eventy jsou jen šum)
+  const all=(events||[]).filter(e=>{const im=getImpactInfo(e).label;return im==="HIGH"||im==="MED";}).sort((a,b)=>new Date(a.time)-new Date(b.time));
   const refreshBtn=<button onClick={onRefreshLive} disabled={!!liveLoading} className="pro-btn" style={{fontSize:11,padding:"5px 9px"}}>{liveLoading?"⏳ Aktualizuji…":"🔄 Refresh teď"}</button>;
   if(!all.length) return <div className="pro-card" style={{padding:18,color:"#8b949e",fontSize:13}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:msg?8:0}}><span>Kalendář zatím nemá data. Zadej Finnhub API klíč a spusť Refresh.</span>{refreshBtn}</div>

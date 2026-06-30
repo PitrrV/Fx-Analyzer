@@ -668,7 +668,8 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
 function CalendarTab({data,onRefreshLive,liveLoading,onSetManual,msg}){
   if(!data) return null;
   // Dnešní den (vč. už proběhlých) + 14 dní dopředu — stejné jako PC dashboard
-  const evs=buildEventWatch(data.cal,data.upcoming).slice(0,80);
+  // Jen HIGH+MEDIUM dopad — sjednoceno s PC verzí (LOW eventy jsou jen šum)
+  const evs=buildEventWatch(data.cal,data.upcoming).filter(e=>{const im=impactLabel(e.impact);return im==="HIGH"||im==="MED";}).slice(0,80);
   const todayStr=new Date().toLocaleDateString("cs-CZ",{day:"2-digit",month:"2-digit"});
   return (
     <div>
