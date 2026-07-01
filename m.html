@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260630a"></script>
-<script src="sync.js?v=20260630a"></script>
+<script src="engine.js?v=20260701a"></script>
+<script src="sync.js?v=20260701a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -158,7 +158,7 @@ async function loadDataMobile(){
 }
 
 // ── KARTA PÁRU ──────────────────────────────────────────────
-function PairCard({p,f,daily,onTap}){
+function PairCard({p,f,daily,onTap,isFav,onToggleFav}){
   const buy=p.dir==="BUY";
   const isCAD=p.base==='CAD'||p.quote==='CAD';
   let oilSt=null; if(isCAD){ try{oilSt=getOilStatus();}catch(e){} }
@@ -172,7 +172,10 @@ function PairCard({p,f,daily,onTap}){
           {daily&&daily.dot&&<span style={{fontSize:13}}>{daily.dot}</span>}
           {p.conviction>=3&&<span style={{color:"#e8ab3f",fontSize:12}}>{"★".repeat(Math.min(5,p.conviction))}</span>}
         </div>
-        <span className={"pill "+(buy?"buy":"sell")}>{p.dir}</span>
+        <div className="row" style={{gap:5}}>
+          <span title={isFav?"Odebrat z oblíbených":"Přidat do oblíbených"} onClick={e=>{e.stopPropagation();onToggleFav&&onToggleFav(p.pair);}} style={{fontSize:18,cursor:"pointer",color:isFav?"#f0b429":"#2a3348",userSelect:"none",lineHeight:1,padding:"0 2px"}}>{isFav?"★":"☆"}</span>
+          <span className={"pill "+(buy?"buy":"sell")}>{p.dir}</span>
+        </div>
       </div>
       <div className="between" style={{marginTop:8}}>
         <div className="row" style={{gap:12}}>
@@ -567,12 +570,20 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
 }
 
 // ── ZÁLOŽKA: SIGNÁLY ────────────────────────────────────────
-function SignalsTab({data,onTap}){
+function SignalsTab({data,onTap,favs,onToggleFav}){
   if(!data) return null;
   const pairs=data.pairs||[];
+  const favPairs=pairs.filter(p=>favs&&favs.has(p.pair));
   return (
     <div>
-      {pairs.map(p=><PairCard key={p.pair} p={p} f={data.forecasts[p.pair]} daily={getPairDailyState(p,data.scores,data.cal,data.upcoming)} onTap={()=>onTap(p)}/>)}
+      {favPairs.length>0&&<div>
+        <div className="card" style={{padding:"8px 12px",marginBottom:0,borderBottomLeftRadius:0,borderBottomRightRadius:0}}>
+          <span style={{fontSize:12,fontWeight:700,color:"#f0b429"}}>★ Oblíbené ({favPairs.length})</span>
+        </div>
+        {favPairs.map(p=><PairCard key={"fav-"+p.pair} p={p} f={data.forecasts[p.pair]} daily={getPairDailyState(p,data.scores,data.cal,data.upcoming)} onTap={()=>onTap(p)} isFav={true} onToggleFav={onToggleFav}/>)}
+        <div style={{height:1,background:"#1b2130",margin:"4px 0 6px"}}/>
+      </div>}
+      {pairs.map(p=><PairCard key={p.pair} p={p} f={data.forecasts[p.pair]} daily={getPairDailyState(p,data.scores,data.cal,data.upcoming)} onTap={()=>onTap(p)} isFav={favs&&favs.has(p.pair)} onToggleFav={onToggleFav}/>)}
       {!pairs.length&&<div className="card muted">Žádné páry. Zkus Refresh.</div>}
     </div>
   );
@@ -1073,6 +1084,7 @@ function MApp(){
   const [retailLoading,setRetailLoading]=useState(false);
   const [calLiveLoading,setCalLiveLoading]=useState(false);
   const [calMsg,setCalMsg]=useState("");
+  const [favs,setFavs]=useState(()=>new Set(loadFavoritePairs()));
   const [dataMsg,setDataMsg]=useState("");
   const [error,setError]=useState("");
   const [sel,setSel]=useState(null);
@@ -1119,6 +1131,15 @@ function MApp(){
     await load();
   },[load]);
 
+  const toggleFav=useCallback((pair)=>{
+    setFavs(prev=>{
+      const f=new Set(prev);
+      if(f.has(pair))f.delete(pair);else f.add(pair);
+      saveFavoritePairs([...f]);
+      return f;
+    });
+  },[]);
+
   useEffect(()=>{
     (async()=>{
       // Cloud sync při startu (když přihlášen) → slije data z cloudu, pak načti
@@ -1145,7 +1166,7 @@ function MApp(){
       <div className="content">
         {error&&<div className="card" style={{borderColor:"#5c2626",color:"#f2606e",fontSize:12}}>⚠ {error}</div>}
         {loading&&!data&&<div className="card muted">⏳ Načítám data…</div>}
-        {tab==="signals"&&<SignalsTab data={data} onTap={setSel}/>}
+        {tab==="signals"&&<SignalsTab data={data} onTap={setSel} favs={favs} onToggleFav={toggleFav}/>}
         {tab==="cot"&&<CotTab data={data} onRefreshCot={refreshCot} onRefreshRetail={refreshRetail} cotLoading={cotLoading} retailLoading={retailLoading} msg={dataMsg} onTapPair={setSel}/>}
         {tab==="cal"&&<CalendarTab data={data} onRefreshLive={refreshCalendarLive} liveLoading={calLiveLoading} onSetManual={setManualActual} msg={calMsg}/>}
         {tab==="ai"&&<AITab/>}

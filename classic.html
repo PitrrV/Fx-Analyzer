@@ -8,9 +8,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260630a"></script>
+<script src="engine.js?v=20260701a"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="sync.js?v=20260630a"></script>
+<script src="sync.js?v=20260701a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -463,7 +463,8 @@ function CopyBtn({text}){
   );
 }
 
-function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note}){
+function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note,isFav,onToggleFav}){
+  const [hovered,setHovered]=useState(false);
   const buy=p.dir==="BUY", ac=buy?"#2ed3a0":"#ff5470";
   const f=forecast||{};
   const probColor=f.prob>=65?"#2ed3a0":f.prob<=35?"#ff5470":"#d29922";
@@ -482,7 +483,7 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note}){
     }
   }catch(e){}
   return(
-    <div onClick={onClick} className={"pro-pair-row "+(selected?"selected":"")}>
+    <div onClick={onClick} onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)} className={"pro-pair-row "+(selected?"selected":"")}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:9,minWidth:0}}>
           <span style={{width:7,height:7,borderRadius:"50%",background:statusColor,boxShadow:"0 0 9px "+statusColor,flexShrink:0}}/>
@@ -491,7 +492,10 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note}){
           {dailyState&&dailyState.dot&&<span title="Dnešní fundamenty" style={{fontSize:11}}>{dailyState.dot}</span>}
           {isPairFlipped(p.pair)&&<span title="14d výhled se otočil" style={{fontSize:10}}>🔄</span>}
         </div>
-        <span style={{...mono,fontWeight:700,fontSize:10.5,letterSpacing:".06em",color:ac,background:buy?"rgba(46,211,160,.1)":"rgba(255,84,112,.1)",border:"1px solid "+ac+"38",borderRadius:6,padding:"2px 7px"}}>{p.dir}</span>
+        <div style={{display:"flex",alignItems:"center",gap:5}}>
+          <span title={isFav?"Odebrat z oblíbených":"Přidat do oblíbených"} onClick={e=>{e.stopPropagation();onToggleFav&&onToggleFav(p.pair);}} style={{fontSize:14,cursor:"pointer",color:isFav?"#f0b429":(hovered?"rgba(240,180,41,0.45)":"transparent"),userSelect:"none",lineHeight:1,transition:"color .15s"}}>{isFav?"★":"☆"}</span>
+          <span style={{...mono,fontWeight:700,fontSize:10.5,letterSpacing:".06em",color:ac,background:buy?"rgba(46,211,160,.1)":"rgba(255,84,112,.1)",border:"1px solid "+ac+"38",borderRadius:6,padding:"2px 7px"}}>{p.dir}</span>
+        </div>
       </div>
       <div style={{display:"flex",alignItems:"baseline",gap:10,marginTop:11}}>
         <span style={{...mono,fontSize:23,fontWeight:700,color:ac,lineHeight:1}}>{(buy?"+":"-")+p.diff.toFixed(1)}</span>
@@ -2835,6 +2839,7 @@ function App(){
   const [retailLoading,setRetailLoading]=useState(false);
   const [retailMeta,setRetailMeta]=useState(null);
   const [calLiveLoading,setCalLiveLoading]=useState(false);
+  const [favs,setFavs]=useState(()=>new Set(loadFavoritePairs()));
   const [calMsg,setCalMsg]=useState("");
   const timer=useRef(null);
   // Refy drží vždy nejnovější data — auto-refresh interval i loadData z nich čtou,
@@ -2979,6 +2984,15 @@ function App(){
     try{ saveManualActual(ffHistKey(e),v); }catch(err){}
     await loadData(fhKey||"",cotRef.current,sentRef.current);
   },[loadData,fhKey]);
+
+  const toggleFav=useCallback((pair)=>{
+    setFavs(prev=>{
+      const f=new Set(prev);
+      if(f.has(pair))f.delete(pair);else f.add(pair);
+      saveFavoritePairs([...f]);
+      return f;
+    });
+  },[]);
 
   useEffect(()=>{
     if(!started) return;
@@ -3164,7 +3178,19 @@ function App(){
               <div className="pro-panel-title">Měnové páry</div>
               <div className="pro-pair-list">
                 {loading&&!top.length?<div style={{color:"#8b949e",padding:"20px 0"}}>⏳ Načítám 15 měsíců dat...</div>
-                  :top.map((p,i)=><PairRow key={p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:(i+1)+" / "+top.length})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]} dailyState={getPairDailyState(p,scores,calData,upcoming)} note={notes[p.pair]}/>) }
+                  :(()=>{
+                    const favPairs=top.filter(p=>favs.has(p.pair));
+                    return(<>
+                      {favPairs.length>0&&<div style={{marginBottom:8}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6,padding:"4px 2px",fontSize:11,fontWeight:700,color:"#f0b429"}}>
+                          <span>★</span><span>Oblíbené</span><span style={{color:"#8b949e",fontWeight:400}}>({favPairs.length})</span>
+                        </div>
+                        {favPairs.map((p,i)=><PairRow key={"fav-"+p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:p.pair})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]} dailyState={getPairDailyState(p,scores,calData,upcoming)} note={notes[p.pair]} isFav={true} onToggleFav={toggleFav}/>)}
+                        <div style={{height:1,background:"#263242",margin:"4px 0 10px"}}/>
+                      </div>}
+                      {top.map((p,i)=><PairRow key={p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:(i+1)+" / "+top.length})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]} dailyState={getPairDailyState(p,scores,calData,upcoming)} note={notes[p.pair]} isFav={favs.has(p.pair)} onToggleFav={toggleFav}/>)}
+                    </>);
+                  })()}
               </div>
               <div style={{borderTop:"1px solid #263242",paddingTop:12,marginTop:10,display:"flex",justifyContent:"space-between",fontSize:12,color:"#8b949e"}}><span>Celkem párů: {top.length}</span><button className="pro-btn" onClick={()=>loadData(fhKey||"",cotData,sentData,true)}>Aktualizovat</button></div>
             </div>
