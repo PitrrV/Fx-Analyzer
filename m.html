@@ -571,19 +571,21 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
 
 // ── ZÁLOŽKA: SIGNÁLY ────────────────────────────────────────
 function SignalsTab({data,onTap,favs,onToggleFav}){
+  const [filter,setFilter]=useState("all");
   if(!data) return null;
   const pairs=data.pairs||[];
-  const favPairs=pairs.filter(p=>favs&&favs.has(p.pair));
+  const shown=filter==="favs"?pairs.filter(p=>favs&&favs.has(p.pair)):pairs;
+  const favCount=(favs&&favs.size)||0;
   return (
     <div>
-      {favPairs.length>0&&<div>
-        <div className="card" style={{padding:"8px 12px",marginBottom:0,borderBottomLeftRadius:0,borderBottomRightRadius:0}}>
-          <span style={{fontSize:12,fontWeight:700,color:"#f0b429"}}>★ Oblíbené ({favPairs.length})</span>
-        </div>
-        {favPairs.map(p=><PairCard key={"fav-"+p.pair} p={p} f={data.forecasts[p.pair]} daily={getPairDailyState(p,data.scores,data.cal,data.upcoming)} onTap={()=>onTap(p)} isFav={true} onToggleFav={onToggleFav}/>)}
-        <div style={{height:1,background:"#1b2130",margin:"4px 0 6px"}}/>
-      </div>}
-      {pairs.map(p=><PairCard key={p.pair} p={p} f={data.forecasts[p.pair]} daily={getPairDailyState(p,data.scores,data.cal,data.upcoming)} onTap={()=>onTap(p)} isFav={favs&&favs.has(p.pair)} onToggleFav={onToggleFav}/>)}
+      <div style={{display:"flex",gap:6,padding:"8px 12px 0"}}>
+        {[["all","Vše"],["favs","★ Oblíbené"]].map(([id,lbl])=>{
+          const on=filter===id;
+          return <button key={id} onClick={()=>setFilter(id)} className={on?"btn":"btn sec"} style={{flex:1,padding:"7px 6px",fontSize:12,fontWeight:on?700:400}}>{lbl}{id==="favs"&&favCount>0?" ("+favCount+")":""}</button>;
+        })}
+      </div>
+      {shown.length===0&&filter==="favs"&&<div className="card muted" style={{textAlign:"center"}}>Zatím žádné oblíbené. Klikni ☆ na páru.</div>}
+      {shown.map(p=><PairCard key={p.pair} p={p} f={data.forecasts[p.pair]} daily={getPairDailyState(p,data.scores,data.cal,data.upcoming)} onTap={()=>onTap(p)} isFav={favs&&favs.has(p.pair)} onToggleFav={onToggleFav}/>)}
       {!pairs.length&&<div className="card muted">Žádné páry. Zkus Refresh.</div>}
     </div>
   );

@@ -2840,6 +2840,7 @@ function App(){
   const [retailMeta,setRetailMeta]=useState(null);
   const [calLiveLoading,setCalLiveLoading]=useState(false);
   const [favs,setFavs]=useState(()=>new Set(loadFavoritePairs()));
+  const [pairFilter,setPairFilter]=useState("all");
   const [calMsg,setCalMsg]=useState("");
   const timer=useRef(null);
   // Refy drží vždy nejnovější data — auto-refresh interval i loadData z nich čtou,
@@ -3175,21 +3176,22 @@ function App(){
               </div>
             )}
             <div className="pro-card" style={{padding:14}}>
-              <div className="pro-panel-title">Měnové páry</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,gap:8,flexWrap:"wrap"}}>
+                <div className="pro-panel-title" style={{margin:0}}>Měnové páry</div>
+                <div style={{display:"flex",gap:4}}>
+                  {[["all","Vše"],["strong","Silné"],["sweet","Sweetspot"],["favs","★ Oblíbené"]].map(([id,lbl])=>{
+                    const on=pairFilter===id;
+                    const gold=id==="favs";
+                    return <button key={id} onClick={()=>setPairFilter(id)} style={{padding:"4px 9px",fontSize:10,fontWeight:on?700:400,borderRadius:5,border:"1px solid "+(on?(gold?"#f0b42988":"#7d95ff88"):"#1d2a36"),background:on?(gold?"rgba(240,180,41,.1)":"rgba(125,149,255,.1)"):"transparent",color:on?(gold?"#f0b429":"#7d95ff"):"#4a6a88",cursor:"pointer"}}>{lbl}</button>;
+                  })}
+                </div>
+              </div>
               <div className="pro-pair-list">
                 {loading&&!top.length?<div style={{color:"#8b949e",padding:"20px 0"}}>⏳ Načítám 15 měsíců dat...</div>
                   :(()=>{
-                    const favPairs=top.filter(p=>favs.has(p.pair));
-                    return(<>
-                      {favPairs.length>0&&<div style={{marginBottom:8}}>
-                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6,padding:"4px 2px",fontSize:11,fontWeight:700,color:"#f0b429"}}>
-                          <span>★</span><span>Oblíbené</span><span style={{color:"#8b949e",fontWeight:400}}>({favPairs.length})</span>
-                        </div>
-                        {favPairs.map((p,i)=><PairRow key={"fav-"+p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:p.pair})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]} dailyState={getPairDailyState(p,scores,calData,upcoming)} note={notes[p.pair]} isFav={true} onToggleFav={toggleFav}/>)}
-                        <div style={{height:1,background:"#263242",margin:"4px 0 10px"}}/>
-                      </div>}
-                      {top.map((p,i)=><PairRow key={p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:(i+1)+" / "+top.length})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]} dailyState={getPairDailyState(p,scores,calData,upcoming)} note={notes[p.pair]} isFav={favs.has(p.pair)} onToggleFav={toggleFav}/>)}
-                    </>);
+                    const shown=pairFilter==="strong"?top.filter(p=>p.diff>=5):pairFilter==="sweet"?top.filter(p=>p.diff>=2.5&&p.diff<5):pairFilter==="favs"?top.filter(p=>favs.has(p.pair)):top;
+                    if(pairFilter==="favs"&&!shown.length) return <div style={{color:"#8b949e",fontSize:12,padding:"20px 0",textAlign:"center"}}>Zatím žádné oblíbené. Najeď na pár a klikni ☆.</div>;
+                    return shown.map((p,i)=><PairRow key={p.pair} p={p} rank={i+1} selected={selected?.pair===p.pair} onClick={()=>setSelected({...p,rankLabel:(i+1)+" / "+top.length})} forecast={forecasts[p.pair]} aiData={aiAnalyses[p.pair]} dailyState={getPairDailyState(p,scores,calData,upcoming)} note={notes[p.pair]} isFav={favs.has(p.pair)} onToggleFav={toggleFav}/>);
                   })()}
               </div>
               <div style={{borderTop:"1px solid #263242",paddingTop:12,marginTop:10,display:"flex",justifyContent:"space-between",fontSize:12,color:"#8b949e"}}><span>Celkem párů: {top.length}</span><button className="pro-btn" onClick={()=>loadData(fhKey||"",cotData,sentData,true)}>Aktualizovat</button></div>
