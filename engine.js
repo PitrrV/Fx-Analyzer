@@ -1315,6 +1315,14 @@ function applyManualActuals(events){
   return out;
 }
 
+const FAV_PAIRS_KEY="v5_fav_pairs";
+function loadFavoritePairs(){
+  try{const a=JSON.parse(localStorage.getItem(FAV_PAIRS_KEY)||"[]");return Array.isArray(a)?a:[];}catch(e){return[];}
+}
+function saveFavoritePairs(arr){
+  try{localStorage.setItem(FAV_PAIRS_KEY,JSON.stringify((arr||[]).filter(Boolean)));}catch(e){}
+}
+
 // ── IMPORT / EXPORT historie (CSV + JSON adaptéry) ──────────────────
 // Normalizuje libovolný zdroj (Kaggle/HF/FF export, vlastní JSON) na interní
 // tvar {event,country,time,impact,actual,estimate,prev} — score engine pak
