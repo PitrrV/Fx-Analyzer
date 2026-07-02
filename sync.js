@@ -13,7 +13,7 @@
 
   // localStorage klíče k synchronizaci
   const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","oanda_token","oanda_env","v5_risk_sent","v5_regime","cot_data","cot_meta","sent_data","positions_ts"];
-  const KEYS_ARR=["v5_ff_hist","journal"];                                              // pole → sloučit
+  const KEYS_ARR=["v5_ff_hist","journal","v5_fav_pairs"];                               // pole → sloučit
   const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","positions","bias_state"]; // objekty → sloučit
   const TRANSIENT=["v5_ff_cache","fmp_cal_block","fh_cal_block","score_delta_buffer"];   // NIKDY nesynchronizovat
 
@@ -31,6 +31,7 @@
   function mergeArr(key,a,b){
     a=Array.isArray(a)?a:[]; b=Array.isArray(b)?b:[];
     if(key==="journal"){const m={};[...a,...b].forEach(t=>{if(t&&t.id)m[t.id]=t;});return Object.values(m);}
+    if(key==="v5_fav_pairs"){return [...new Set([...a,...b].filter(x=>typeof x==="string"&&x))];} // prostá množina symbolů
     const m=new Map();[...a,...b].forEach(e=>{const k=ffKey(e);const p=m.get(k);if(!p||(!p.actual&&e.actual))m.set(k,e);});return [...m.values()]; // v5_ff_hist: dedupe, preferuj s actual
   }
   function mergeObj(key,a,b){

@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260701a"></script>
-<script src="sync.js?v=20260701a"></script>
+<script src="engine.js?v=20260702a"></script>
+<script src="sync.js?v=20260702a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -158,7 +158,8 @@ class FXApp extends React.Component{
       const num=x=>{const n=parseFloat(String(x).replace(/[^0-9.\-]/g,''));return isNaN(n)?null:n;};
       const dirOf=e=>{const a=num(e.actual),f=num(e.estimate);if(a==null||f==null)return null;return a>f?'up':a<f?'down':'flat';};
       const pick=(cur,pred,prefer)=>{
-        const ev=(cal||[]).filter(e=>String(e.country||'').toUpperCase()===cur&&e.actual!=null&&String(e.actual).trim()!==''&&pred(String(e.event||'')));
+        // e.country je kód ZEMĚ (US/EU/CH…), cur je kód MĚNY (USD/EUR/CHF…) — mapovat přes ev2ccy
+        const ev=(cal||[]).filter(e=>ev2ccy(e)===cur&&e.actual!=null&&String(e.actual).trim()!==''&&pred(String(e.event||'')));
         if(!ev.length) return null;
         ev.sort((a,b)=>{const pa=prefer.test(a.event||'')?1:0,pb=prefer.test(b.event||'')?1:0;return (pb-pa)||(new Date(b.time||0)-new Date(a.time||0));});
         const e=ev[0]; return {val:String(e.actual).trim(),date:String(e.time||'').slice(0,10),dir:dirOf(e),title:String(e.event||'')};
