@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260702d"></script>
-<script src="sync.js?v=20260702d"></script>
+<script src="engine.js?v=20260702e"></script>
+<script src="sync.js?v=20260702e"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -125,6 +125,7 @@ async function loadDataMobile(){
   if(calSource==="action"||calSource==="fmp"||calSource==="finnhub") g_fundConfidence=1;
   else if(calSource==="forexfactory") g_fundConfidence=ffConfidence(cal);
   else g_fundConfidence=FF_FUND_DAMP;
+  try{ g_calSource=calSource||"ff-hist"; }catch(e){}
   try{ autoUpdateFromCalendar(cal); }catch(e){}
   const av=(localStorage.getItem("av")||"").trim();
   if(av){ try{ await fetchOilPrice(av); }catch(e){} }
@@ -804,9 +805,17 @@ function SettingsTab({onSaved}){
     or.trim()?localStorage.setItem("or_key",or.trim()):localStorage.removeItem("or_key");
     setMsg("✅ Uloženo — načítám znovu…"); onSaved();
   }
+  let dg=null; try{dg=getEngineDiagnostics();}catch(e){}
   return (
     <div>
       <SyncCard onSynced={onSaved}/>
+      {dg&&<div className="card" style={{padding:"10px 12px"}}>
+        <div style={{fontWeight:800,fontSize:12,marginBottom:6}}>📡 Diagnostika enginu</div>
+        <div className="mono muted" style={{fontSize:10,lineHeight:1.6,wordBreak:"break-all"}}>
+          zdroj {dg.calSource} · fund {dg.fundConf}% · risk {dg.risk>0?"ON":dg.risk<0?"OFF":"0"}/{dg.riskMode} · regime {dg.regime} · COT {dg.cotAsOf} · CB {dg.cbRates}
+        </div>
+        <div className="muted" style={{fontSize:10,marginTop:5}}>Při rozdílu skóre PC ↔ mobil porovnej tenhle řádek na obou zařízeních.</div>
+      </div>}
       <div className="card">
         <div style={{fontWeight:800,marginBottom:10}}>API klíče</div>
         <label className="muted" style={{fontSize:12}}>FMP (kalendář)</label>

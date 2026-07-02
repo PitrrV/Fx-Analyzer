@@ -12,13 +12,20 @@
   catch(e){ console.warn("Supabase init selhal:",e); }
 
   // localStorage klíče k synchronizaci
-  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","oanda_token","oanda_env","v5_regime","cot_data","cot_meta","sent_data","positions_ts"];
+  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","oanda_token","oanda_env","cot_data","cot_meta","sent_data","positions_ts"];
   const KEYS_ARR=["v5_ff_hist","journal","v5_fav_pairs"];                               // pole → sloučit
   const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","positions","bias_state"]; // objekty → sloučit
-  // v5_risk_sent/_manual NIKDY nesynchronizovat: je to teď auto-počítané z živých cen
-  // per zařízení (applyAutoRiskSentiment); starý synchronizovaný záznam by se jinak
-  // mohl vrátit zpátky na jiné zařízení a vypadat jako "záměrná ruční volba".
-  const TRANSIENT=["v5_ff_cache","fmp_cal_block","fh_cal_block","score_delta_buffer","v5_risk_sent","v5_risk_sent_manual"];
+  // TRANSIENT klíče se NIKDY nesynchronizují — a stripTransient() je navíc aktivně
+  // odstraňuje ze slitých dat (applyLocal by jinak zapsal i staré kopie z cloudu
+  // zpátky do zařízení a při push by se vracely do cloudu donekonečna):
+  // - v5_risk_sent/_manual: auto-počítané z živých cen per zařízení
+  // - v5_regime: mrtvý klíč bez zapisovače, ale čtený ve scoringu (mění váhy)
+  const TRANSIENT=["v5_ff_cache","fmp_cal_block","fh_cal_block","score_delta_buffer","v5_risk_sent","v5_risk_sent_manual","v5_regime"];
+  function stripTransient(d){
+    if(!d) return d;
+    TRANSIENT.forEach(k=>{ if(d._scalar)delete d._scalar[k]; if(d._arr)delete d._arr[k]; if(d._obj)delete d._obj[k]; });
+    return d;
+  }
 
   const rdStr=k=>{try{const v=localStorage.getItem(k);return v==null?null:v;}catch(e){return null;}};
   const rdJSON=k=>{try{return JSON.parse(localStorage.getItem(k)||"null");}catch(e){return null;}};
@@ -79,9 +86,9 @@
     const uid=s.user.id;
     const local=collectLocal();
     let remote=null; try{ remote=await pull(uid); }catch(e){ throw new Error("Stažení selhalo: "+(e.message||e)); }
-    const merged=smartMerge(local, remote?remote.data:null);
+    const merged=stripTransient(smartMerge(local, remote?remote.data:null));
     applyLocal(merged);
-    await push(uid,merged);
+    await push(uid,merged); // push očištěných dat → cloud se starých TRANSIENT kopií zbaví natrvalo
     const stats={
       events:(merged._arr&&merged._arr.v5_ff_hist?merged._arr.v5_ff_hist.length:0),
       cotWeeks:(merged._obj&&merged._obj.cot_hist?Object.keys(merged._obj.cot_hist).length:0),
