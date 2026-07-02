@@ -1503,13 +1503,18 @@ function extractCBRatesFromCalendar(calData){
   for(const ev of rateEvents){
     const cur=getCurrencyFromEvent(ev);
     if(!cur) continue;
-    const val=parseFloat(ev.actual);
+    // "MPC Official Bank Rate Votes" (actual "2-0-7") matchuje keyword "bank rate", ale není to sazba
+    if(/votes?/i.test(ev.event||"")) continue;
+    const rawAct=String(ev.actual).trim();
+    // jen hodnoty tvaru sazby — odmítne "2-0-7"; toleruje FF zápis "<1.00%" (BoJ)
+    if(!/^[<>~≈]?\s*-?\d+(\.\d+)?\s*%?$/.test(rawAct)) continue;
+    const val=parseFloat(rawAct.replace(/^[<>~≈\s]+/,""));
     if(isNaN(val)||val<-1||val>25) continue;
     // ECB: ber jen depozitní sazbu (de facto policy rate), ne main refinancing (vyšší).
     if(cur==="EUR" && !/deposit/i.test(ev.event||"")) continue;
     if(!histories[cur]) histories[cur]=[];
     histories[cur].push({date:ev.time,rate:val});
-    if(!rates[cur]) rates[cur]=val; // nejnovější
+    if(!(cur in rates)) rates[cur]=val; // nejnovější (pozor: sazba 0.00 je falsy — nutný "in" test)
   }
   // Seřadit historii chronologicky (starší → novější)
   for(const cur of Object.keys(histories)){
@@ -1526,18 +1531,21 @@ function extractCPIFromCalendar(calData){
   });
   const cpi={};
   const sorted=past.sort((a,b)=>new Date(b.time)-new Date(a.time));
-  // 1. průchod: preferuj YoY události
+  // 1. průchod: preferuj YoY události (pozor: CPI 0.0 je falsy — nutný "in" test)
   for(const ev of sorted){
-    const cur=getCurrencyFromEvent(ev); if(!cur||cpi[cur]) continue;
+    const cur=getCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
     const name=(ev.event||"").toLowerCase();
     const isYoY=name.includes("yoy")||name.includes("y/y")||name.includes("annual")||name.includes("year");
     if(!isYoY) continue;
     const val=parseFloat(ev.actual);
     if(!isNaN(val)&&val>=-2&&val<=20) cpi[cur]=parseFloat(val.toFixed(1));
   }
-  // 2. průchod: doplň zbývající jakýmkoliv CPI
+  // 2. průchod: doplň zbývající — ale NE měsíční (m/m) čísla; REAL_CPI_DATA je roční
+  // inflace a m/m hodnota (např. CH 0.0 %) by rozbila real yield. Bez ročního CPI
+  // v kalendáři se drží stávající/ruční hodnota.
   for(const ev of sorted){
-    const cur=getCurrencyFromEvent(ev); if(!cur||cpi[cur]) continue;
+    const cur=getCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
+    if(/m\/?m|monthly/i.test(ev.event||"")) continue;
     const val=parseFloat(ev.actual);
     if(!isNaN(val)&&val>=-2&&val<=20) cpi[cur]=parseFloat(val.toFixed(1));
   }
