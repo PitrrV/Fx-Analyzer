@@ -2291,7 +2291,18 @@ function computeAutoRiskSentiment(){
 }
 function applyAutoRiskSentiment(){
   try{
+    // Migrace: v5_risk_sent_manual je nový příznak (neexistoval před nasazením
+    // auto-detekce). Kdokoli měl dřív ručně přepnutý RISK-ON/OFF, měl hodnotu
+    // uloženou BEZ tohoto příznaku — bez migrace by mu ji auto-detekce hned
+    // při prvním načtení tiše přepsala. Nenulová existující hodnota bez
+    // příznaku = považuj za záměrnou ruční volbu, jen ji dodatečně označ.
     if(localStorage.getItem("v5_risk_sent_manual")==="1") return {mode:"manual",value:g_riskSentiment};
+    const stored=parseInt(localStorage.getItem("v5_risk_sent")||"0");
+    if(stored!==0){
+      try{localStorage.setItem("v5_risk_sent_manual","1");}catch(e){}
+      g_riskSentiment=stored;
+      return {mode:"manual-migrated",value:stored};
+    }
     const v=computeAutoRiskSentiment();
     if(v==null) return {mode:"auto-nodata",value:g_riskSentiment};
     g_riskSentiment=v;
