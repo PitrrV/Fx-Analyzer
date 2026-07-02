@@ -117,6 +117,46 @@ function runCOTBacktest(series, weeks, pctMap, { horizonWeeks, diffThreshold, av
   }
   const agg = aggregate(trades); agg.byPair = byPair; return agg;
 }
+// Test konkrétního tvrzení "silný fundament/COT + pozice už v extrému = zralý/rizikovější
+// trend" (ne binární filtr on/off jako runCOTBacktest, ale 3 pásma zralosti pozicování).
+// favoredPct = percentil MĚNY, na kterou obchod sází (ne obou stran) — to je přesně ta
+// informace, kterou by "kontextová karta" použila pro rozlišení fresh/maturing/aging.
+const MATURITY_DIFF_MIN = 1; // stejný práh jako nejnižší "reálný signál" v gridu
+function classifyMaturity(diff, pctBase, pctQuote) {
+  const dir = diff > 0 ? 1 : -1;
+  const favoredPct = dir === 1 ? pctBase : pctQuote;
+  if (favoredPct == null) return null;
+  if (favoredPct >= 88) return "aging";     // měna, na kterou sázíme, je už crowded ve svůj prospěch
+  if (favoredPct >= 70) return "maturing";
+  return "fresh";
+}
+function runMaturityTest(series, weeks, pctMap) {
+  const dates = Object.keys(weeks).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  const out = {};
+  for (const h of BT_HORIZONS) {
+    const horizonMs = h * 7 * 86400000;
+    const buckets = { fresh: [], maturing: [], aging: [] };
+    for (const pr of STANDARD_PAIRS) {
+      for (const d of dates) {
+        const sc = weeks[d]?.scores; if (!sc) continue;
+        const diff = (sc[pr.base] ?? 0) - (sc[pr.quote] ?? 0);
+        if (Math.abs(diff) < MATURITY_DIFF_MIN) continue;
+        const pctBase = pctMap[pr.base]?.[d], pctQuote = pctMap[pr.quote]?.[d];
+        const bucket = classifyMaturity(diff, pctBase, pctQuote);
+        if (!bucket) continue;
+        const t0 = Date.parse(d + "T00:00:00Z");
+        const p0 = pairPrice(series, pr.base, pr.quote, t0);
+        const p1 = pairPrice(series, pr.base, pr.quote, t0 + horizonMs);
+        if (p0 == null || p1 == null) continue;
+        const dir = diff > 0 ? 1 : -1;
+        const ret = (p1 / p0 - 1) * dir * 100;
+        buckets[bucket].push({ ret });
+      }
+    }
+    out[`h${h}`] = { fresh: aggregate(buckets.fresh), maturing: aggregate(buckets.maturing), aging: aggregate(buckets.aging) };
+  }
+  return out;
+}
 function runSweep(series, weeks) {
   const dates = Object.keys(weeks).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
   const pctMap = buildPercentiles(weeks, dates);
@@ -134,7 +174,7 @@ function runSweep(series, weeks) {
     extremeCompare = { off: aggregate(off.trades || (function () { const t = []; Object.values(off.byPair).forEach((a) => t.push(...a)); return t; })()), on: aggregate((function () { const t = []; Object.values(on.byPair).forEach((a) => t.push(...a)); return t; })()) };
     byPairBest = Object.fromEntries(Object.entries(off.byPair).map(([p, trades]) => [p, aggregate(trades)]).sort((a, b) => (b[1].pf || 0) - (a[1].pf || 0)));
   }
-  return { grid, best, extremeCompare, byPairBest, weeksUsed: dates.length, dateFrom: dates[0], dateTo: dates.at(-1) };
+  return { grid, best, extremeCompare, byPairBest, pctMap, weeksUsed: dates.length, dateFrom: dates[0], dateTo: dates.at(-1) };
 }
 
 (async () => {
@@ -154,17 +194,21 @@ function runSweep(series, weeks) {
 
   const res = runSweep(series, weeks);
   if (!res.best) throw new Error("Backtest nevrátil žádný validní výsledek (nedostatek dat?).");
+  const maturity = runMaturityTest(series, weeks, res.pctMap);
 
   const summary = `COT backtest ${res.dateFrom} → ${res.dateTo} (${res.weeksUsed} týdnů, ${STANDARD_PAIRS.length} párů). ` +
     `Nejlepší nastavení: |diff| ≥ ${res.best.diff}, horizont ${res.best.horizon}t → WR ${res.best.wr}%, PF ${res.best.pf === Infinity ? "∞" : res.best.pf}, ` +
     `průměr ${res.best.avg > 0 ? "+" : ""}${res.best.avg}%/obchod, n=${res.best.n}.`;
   console.log(summary);
+  const m1 = maturity.h1;
+  console.log(`Zralost pozicování (1t): fresh WR ${m1.fresh.wr}%/PF ${m1.fresh.pf} (n=${m1.fresh.n}) · maturing WR ${m1.maturing.wr}%/PF ${m1.maturing.pf} (n=${m1.maturing.n}) · aging WR ${m1.aging.wr}%/PF ${m1.aging.pf} (n=${m1.aging.n})`);
 
   const out = {
     updated: new Date().toISOString(),
     source: "Frankfurter (ECB) denní kurzy × CFTC TFF COT historie",
     dateFrom: res.dateFrom, dateTo: res.dateTo, weeksUsed: res.weeksUsed, pairsUsed: STANDARD_PAIRS.length,
     grid: res.grid, best: res.best, extremeCompare: res.extremeCompare, byPairBest: res.byPairBest,
+    maturityTest: maturity,
     summary,
   };
 
