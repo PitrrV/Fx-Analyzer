@@ -1,0 +1,35 @@
+name: COT Backtest Calibration
+
+on:
+  schedule:
+    - cron: "0 14 * * 6"   # sobota 14:00 UTC — po pátečním/sobotním COT cronu
+  workflow_dispatch:        # ruční/API spuštění
+
+permissions:
+  contents: write
+
+concurrency:
+  group: calibration
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Spustit backtest/kalibraci
+        run: node scripts/backtest-cot.js
+      - name: Commit při změně
+        run: |
+          git config user.name "calibration-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/calibration.json)" ]; then
+            git add data/calibration.json
+            git commit -m "chore: update backtest calibration [skip ci]"
+            git push
+          else
+            echo "Beze změny."
+          fi
