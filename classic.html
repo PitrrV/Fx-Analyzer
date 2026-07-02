@@ -8,9 +8,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260702a"></script>
+<script src="engine.js?v=20260702b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="sync.js?v=20260702a"></script>
+<script src="sync.js?v=20260702b"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -501,6 +501,7 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note,isFav,
         <span style={{...mono,fontSize:23,fontWeight:700,color:ac,lineHeight:1}}>{(buy?"+":"-")+p.diff.toFixed(1)}</span>
         <span style={{fontSize:9,fontWeight:700,letterSpacing:".1em",color:band.c,background:band.bg,borderRadius:5,padding:"3px 7px"}}>{band.l}</span>
         {d24&&<span title="Změna skóre páru za posledních ~24h" style={{...mono,fontSize:9,fontWeight:700,letterSpacing:".04em",color:d24.color,background:d24.color+"1c",border:"1px solid "+d24.color+"44",borderRadius:5,padding:"3px 7px"}}>{d24.label}</span>}
+        {(()=>{let px1=null;try{px1=getPriceMomentum(p.pair,1);}catch(e){}if(px1==null)return null;const c=px1>0.03?"#2ed3a0":px1<-0.03?"#ff5470":"#8b93a3";return <span title="Dnešní reakce trhu (změna ceny od posledního denního záznamu)" style={{...mono,fontSize:9,fontWeight:700,letterSpacing:".04em",color:c,background:c+"1c",border:"1px solid "+c+"44",borderRadius:5,padding:"3px 7px"}}>{"px "+(px1>0?"+":"")+px1.toFixed(2)+"%"}</span>;})()}
         {f.prob&&<span style={{...mono,fontSize:11,color:probColor,marginLeft:"auto"}}>{f.prob+"% 14d"}</span>}
       </div>
       <div style={{display:"flex",gap:13,marginTop:10,...mono,fontSize:10,color:"#6b7384",alignItems:"center",flexWrap:"wrap"}}>
@@ -2828,7 +2829,9 @@ function App(){
   const deleteTrade=useCallback(function(id){setJournal(function(prev){var n=prev.filter(function(t){return t.id!==id;});saveJournalArr(n);return n;});},[]);
   const importTrades=useCallback(function(arr){setJournal(function(prev){var map={};prev.concat(arr).forEach(function(t){if(t&&t.id)map[t.id]=t;});var n=Object.keys(map).map(function(k){return map[k];});saveJournalArr(n);return n;});},[]);
   const [riskSentimentUI,setRiskSentimentUI]=useState(g_riskSentiment);
-  function setRiskSent(v){g_riskSentiment=v;setRiskSentimentUI(v);localStorage.setItem("v5_risk_sent",String(v));}
+  const [riskManual,setRiskManual]=useState(()=>{try{return localStorage.getItem("v5_risk_sent_manual")==="1";}catch(e){return false;}});
+  function setRiskSent(v){g_riskSentiment=v;setRiskSentimentUI(v);setRiskManual(true);try{localStorage.setItem("v5_risk_sent",String(v));localStorage.setItem("v5_risk_sent_manual","1");}catch(e){}}
+  function setRiskAuto(){try{localStorage.removeItem("v5_risk_sent_manual");}catch(e){}setRiskManual(false);try{applyAutoRiskSentiment();}catch(e){}setRiskSentimentUI(g_riskSentiment);}
 
   const [aiAnalyses,setAiAnalyses]=useState(()=>{try{return JSON.parse(localStorage.getItem("ai_analyses_v1")||"{}");}catch(e){return {};}});
   function saveAIResult(pair,tf,result){const u={...aiAnalyses,[pair]:{...result,pair,tf,savedAt:Date.now()}};setAiAnalyses(u);try{localStorage.setItem("ai_analyses_v1",JSON.stringify(u));}catch(e){}}
@@ -2937,6 +2940,8 @@ function App(){
       const currentAvKey=localStorage.getItem("av")||"";
       if(currentAvKey) await fetchOilPrice(currentAvKey).catch(()=>{});
       await fetchActionOil().catch(()=>{});
+      await fetchActionPrices().catch(()=>{});
+      try{ applyAutoRiskSentiment(); setRiskSentimentUI(g_riskSentiment); }catch(e){}
 
       const sc={};
       CURRENCIES.forEach(c=>{sc[c]=scoreCurrency(cal,c,cot,sent);});
@@ -2954,6 +2959,7 @@ function App(){
       setUpcoming(up);
       const fc={};ranked.forEach(p=>{fc[p.pair]=buildForecastV5(p,sc,cal,up);});
       setForecasts(fc);
+      try{ if(typeof logForecastSnapshot==='function') logForecastSnapshot(fc); }catch(e){}
       setLastUp(new Date());
       // přehled stavu kalendáře pro hlavičku
       const nowMs=Date.now();
@@ -3148,8 +3154,11 @@ function App(){
             {/* ── RISK SENTIMENT TOGGLE ── */}
             <div style={{gridColumn:"1 / -1",display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
               <span style={{fontSize:10,color:"#8b949e",letterSpacing:".06em"}}>RISK SENTIMENT:</span>
+              <button onClick={setRiskAuto} title="Automatická detekce z cenové akce AUDJPY/NZDJPY (~5 dní)" style={{padding:"3px 10px",fontSize:10,borderRadius:5,border:"1px solid "+(!riskManual?"#7d95ff":"#1d2a36"),background:!riskManual?"rgba(125,149,255,.12)":"transparent",color:!riskManual?"#7d95ff":"#4a6a88",cursor:"pointer",fontWeight:!riskManual?700:400}}>
+                ⚙ AUTO{!riskManual?(" → "+(riskSentimentUI>0?"RISK-ON":riskSentimentUI<0?"RISK-OFF":"NEUTRAL")):""}
+              </button>
               {[{v:-1,l:"⛔ RISK-OFF",col:"#f85149"},{v:0,l:"○ NEUTRAL",col:"#8b949e"},{v:1,l:"🟢 RISK-ON",col:"#2ed3a0"}].map(function(item){
-                var active=riskSentimentUI===item.v;
+                var active=riskManual&&riskSentimentUI===item.v;
                 return(
                   <button key={item.v} onClick={function(){setRiskSent(item.v);}} style={{padding:"3px 10px",fontSize:10,borderRadius:5,border:"1px solid "+(active?item.col:"#1d2a36"),background:active?"rgba(120,120,120,.12)":"transparent",color:active?item.col:"#4a6a88",cursor:"pointer",fontWeight:active?700:400}}>
                     {item.l}
