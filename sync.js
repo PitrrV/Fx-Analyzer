@@ -12,10 +12,13 @@
   catch(e){ console.warn("Supabase init selhal:",e); }
 
   // localStorage klíče k synchronizaci
-  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","oanda_token","oanda_env","v5_risk_sent","v5_regime","cot_data","cot_meta","sent_data","positions_ts"];
+  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","oanda_token","oanda_env","v5_regime","cot_data","cot_meta","sent_data","positions_ts"];
   const KEYS_ARR=["v5_ff_hist","journal","v5_fav_pairs"];                               // pole → sloučit
   const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","positions","bias_state"]; // objekty → sloučit
-  const TRANSIENT=["v5_ff_cache","fmp_cal_block","fh_cal_block","score_delta_buffer"];   // NIKDY nesynchronizovat
+  // v5_risk_sent/_manual NIKDY nesynchronizovat: je to teď auto-počítané z živých cen
+  // per zařízení (applyAutoRiskSentiment); starý synchronizovaný záznam by se jinak
+  // mohl vrátit zpátky na jiné zařízení a vypadat jako "záměrná ruční volba".
+  const TRANSIENT=["v5_ff_cache","fmp_cal_block","fh_cal_block","score_delta_buffer","v5_risk_sent","v5_risk_sent_manual"];
 
   const rdStr=k=>{try{const v=localStorage.getItem(k);return v==null?null:v;}catch(e){return null;}};
   const rdJSON=k=>{try{return JSON.parse(localStorage.getItem(k)||"null");}catch(e){return null;}};
