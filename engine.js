@@ -125,6 +125,23 @@ try{const u=localStorage.getItem("v5_cb_policy");if(u){const p=JSON.parse(u);Obj
 // ── GLOBAL RISK SENTIMENT: -1=risk-off, 0=neutral, +1=risk-on ─
 let g_riskSentiment=0;
 try{g_riskSentiment=parseInt(localStorage.getItem("v5_risk_sent")||"0");}catch(e){}
+// Jednorázový úklid stavu (marker v5_state_fix_20260702):
+// 1) vadná migrace z verze 20260702c mohla trvale zasadit v5_risk_sent_manual
+//    ze staré synchronizované hodnoty — na postiženém zařízení pak auto-detekce
+//    navždy mlčela; 2) v5_regime nemá od V5 žádný zapisovač (mrtvý pozůstatek),
+//    ale čte se ve scoringu (mění váhy) a syncoval se — stará hodnota z cloudu
+//    uměla tiše rozhodit váhy jen na některém zařízení.
+try{
+  if(localStorage.getItem("v5_state_fix_20260702")!=="1"){
+    localStorage.removeItem("v5_risk_sent_manual");
+    localStorage.removeItem("v5_risk_sent");
+    localStorage.removeItem("v5_regime");
+    localStorage.setItem("v5_state_fix_20260702","1");
+    g_riskSentiment=0;
+  }
+}catch(e){}
+// Zdroj kalendáře pro diagnostiku (nastavuje každý frontend po resolv fallbacků)
+let g_calSource="";
 // Důvěra ve fundamentální data podle délky historie kalendáře.
 // 1 = plná (Finnhub 15 měsíců, ladění s 65% WR). <1 = krátká záloha (ForexFactory
 // ~3 týdny) → fundamentální tilt z dat se ztlumí, ať pár čerstvých čísel nerozhází
@@ -2358,6 +2375,25 @@ function logForecastSnapshot(forecasts){
     const keys=Object.keys(log).sort().slice(-200);const t={};keys.forEach(k=>t[k]=log[k]);
     localStorage.setItem("forecast_log",JSON.stringify(t));
   }catch(e){}
+}
+
+// ── DIAGNOSTIKA ENGINU (porovnání PC ↔ mobil na jeden pohled) ─────────
+// Vrací všechny vstupy, které můžou způsobit rozdílné skóre mezi zařízeními.
+function getEngineDiagnostics(){
+  let riskManual=false,regime="—",cotAsOf="—";
+  try{riskManual=localStorage.getItem("v5_risk_sent_manual")==="1";}catch(e){}
+  try{const r=localStorage.getItem("v5_regime");if(r&&r!=="{}")regime=r;}catch(e){}
+  try{const m=loadCOTMeta();cotAsOf=(m&&m.asOf)?String(m.asOf).slice(0,10):"—";}catch(e){}
+  const rates=(typeof CENTRAL_BANK_RATES!=="undefined")?CURRENCIES.map(c=>CENTRAL_BANK_RATES[c]).join("/"):"—";
+  return {
+    calSource:g_calSource||"?",
+    fundConf:Math.round((g_fundConfidence||0)*100),
+    risk:g_riskSentiment,
+    riskMode:riskManual?"MANUAL":"AUTO",
+    regime,
+    cotAsOf,
+    cbRates:rates,
+  };
 }
 
 // ── HLÍDAČ ČERSTVOSTI DAT ─────────────────────────────────────────────
