@@ -214,7 +214,8 @@ function runSweep(series, weeks) {
 
   let prev = null;
   try { prev = JSON.parse(fs.readFileSync("data/calibration.json", "utf8")); } catch (e) {}
-  const same = prev && JSON.stringify(prev.grid) === JSON.stringify(out.grid) && JSON.stringify(prev.best) === JSON.stringify(out.best);
+  const same = prev && JSON.stringify(prev.grid) === JSON.stringify(out.grid) && JSON.stringify(prev.best) === JSON.stringify(out.best)
+    && JSON.stringify(prev.maturityTest) === JSON.stringify(out.maturityTest);
   if (same) { console.log("Kalibrace beze změny, nepřepisuji."); process.exit(0); }
 
   fs.mkdirSync("data", { recursive: true });
