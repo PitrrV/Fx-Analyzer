@@ -224,17 +224,28 @@ function getScoreDelta24h(currency,currentScore){
   try{
     if(typeof currentScore!=="number") return null;
     const buf=loadScoreDeltaBuffer();
-    if(!buf.length) return null;
     const targetMs=Date.now()-24*3600000;
-    const oldest=buf[0].ts;
-    if(oldest>targetMs+6*3600000) return null; // historie ještě nesahá ~18h+ zpátky
-    let best=null,bestDiff=Infinity;
-    for(const snap of buf){
-      const d=Math.abs(snap.ts-targetMs);
-      if(d<bestDiff){bestDiff=d;best=snap;}
+    if(buf.length&&buf[0].ts<=targetMs+6*3600000){
+      let best=null,bestDiff=Infinity;
+      for(const snap of buf){
+        const d=Math.abs(snap.ts-targetMs);
+        if(d<bestDiff){bestDiff=d;best=snap;}
+      }
+      if(best&&bestDiff<=6*3600000){
+        const past=best.scores&&best.scores[currency];
+        if(typeof past==="number") return parseFloat((currentScore-past).toFixed(2));
+      }
     }
-    if(!best||bestDiff>6*3600000) return null; // nejbližší vzorek je dál než ±6h od cíle
-    const past=best.scores&&best.scores[currency];
+    // Fallback: buffer žije jen když je app otevřená (zavřená app včera = žádný
+    // vzorek = žádný čip). Denní score_hist je trvalá a synchronizovaná — vezmi
+    // poslední den před dneškem (max 5 dní zpět), ať čip funguje i po pauze.
+    const hist=JSON.parse(localStorage.getItem("score_hist")||"{}");
+    const today=new Date().toISOString().split("T")[0];
+    const dates=Object.keys(hist).sort().filter(d=>d<today);
+    if(!dates.length) return null;
+    const prevDate=dates[dates.length-1];
+    if((Date.now()-new Date(prevDate+"T12:00:00Z").getTime())>5*86400000) return null;
+    const past=hist[prevDate]&&hist[prevDate][currency];
     if(typeof past!=="number") return null;
     return parseFloat((currentScore-past).toFixed(2));
   }catch(e){return null;}
@@ -2091,7 +2102,10 @@ function updateBiasFlips(pairs){
     const prev=st[p.pair];
     const clear=Math.abs(signed)>=0.5;
     const newDir=clear?(signed>0?"BUY":"SELL"):(prev?.dir||(signed>=0?"BUY":"SELL"));
-    if(prev&&prev.dir&&newDir!==prev.dir&&Math.abs(signed)>=0.8){
+    // Flip se zapisuje při překročení hystereze (clear ≥0.5). Dřívější podmínka ≥0.8
+    // vyžadovala skok přes pásmo 0.5–0.8 v jediném refreshi — skóre se ale mění
+    // po setinách, směr se tak přepsal potichu a flip se nikdy nezaznamenal.
+    if(prev&&prev.dir&&newDir!==prev.dir&&clear){
       st[p.pair]={dir:newDir,from:prev.dir,flippedAt:now,diff:p.diff};
     }else{
       st[p.pair]={dir:newDir,from:prev?.from,flippedAt:prev?.flippedAt,diff:p.diff};
@@ -2215,6 +2229,7 @@ async function fetchActionCalendar(){
   if(!r.ok) throw new Error("HTTP "+r.status);
   const j=await r.json();
   if(!j||!Array.isArray(j.events)||j.events.length<10) throw new Error("calendar.json prázdné");
+  try{if(j.updated)localStorage.setItem("action_cal_updated",j.updated);}catch(e){}
   return j.events.map(mapFFEvent);
 }
 
@@ -2261,6 +2276,98 @@ function getBiasConfirmation(pair,dir,days=5){
   if((isBuy&&up)||(!isBuy&&down)) return {state:"confirms",mom:m,days};
   if((isBuy&&down)||(!isBuy&&up)) return {state:"diverges",mom:m,days};
   return {state:"flat",mom:m,days};
+}
+
+// ── AUTO RISK SENTIMENT (nahrazuje zapomenutý ruční přepínač) ─────────
+// Risk-on/off z cenové akce klasických barometrů AUDJPY/NZDJPY za ~5 dní.
+// Ruční volba má přednost: v5_risk_sent_manual==="1" auto detekci vypne.
+function computeAutoRiskSentiment(){
+  try{
+    const a=getPriceMomentum("AUDJPY",5), n=getPriceMomentum("NZDJPY",5);
+    if(a==null&&n==null) return null;
+    const m=(((a!=null?a:n)+(n!=null?n:a))/2);
+    return m>=0.6?1:m<=-0.6?-1:0;
+  }catch(e){return null;}
+}
+function applyAutoRiskSentiment(){
+  try{
+    if(localStorage.getItem("v5_risk_sent_manual")==="1") return {mode:"manual",value:g_riskSentiment};
+    const v=computeAutoRiskSentiment();
+    if(v==null) return {mode:"auto-nodata",value:g_riskSentiment};
+    g_riskSentiment=v;
+    try{localStorage.setItem("v5_risk_sent",String(v));}catch(e){}
+    return {mode:"auto",value:v};
+  }catch(e){return {mode:"auto-err",value:g_riskSentiment};}
+}
+
+// ── DENNÍ SNAPSHOT KOMPONENT SKÓRE + VYSVĚTLENÍ ZMĚNY ────────────────
+// Stejný klíč/formát jako engine_log v classic (forward-log backtest) — jen se
+// nově plní ze všech frontendů a slouží i pro "proč se skóre změnilo".
+const ENGINE_DAILY_FIELDS=["score","fund_score","cot_score","sent_score","season_score","yield_adj","policy_adj","momentum_adj","oil_adj","risk_adj"];
+const ENGINE_DAILY_LABELS={fund_score:"Fundamenty",cot_score:"COT",sent_score:"Retail",season_score:"Sezónnost",yield_adj:"Real yield",policy_adj:"CB policy",momentum_adj:"Momentum",oil_adj:"Ropa",risk_adj:"Risk režim"};
+function saveEngineDailySnapshot(scores){
+  try{
+    const today=new Date().toISOString().split("T")[0];
+    const log=JSON.parse(localStorage.getItem("engine_log")||"{}");
+    const snap={};
+    CURRENCIES.forEach(c=>{const s=scores[c]||{};const o={};ENGINE_DAILY_FIELDS.forEach(f=>{o[f]=typeof s[f]==="number"?parseFloat(s[f].toFixed(3)):0;});snap[c]=o;});
+    log[today]={ts:Date.now(),cur:snap};
+    const keys=Object.keys(log).sort().slice(-400);const t={};keys.forEach(k=>t[k]=log[k]);
+    localStorage.setItem("engine_log",JSON.stringify(t));
+  }catch(e){}
+}
+// Rozklad změny skóre od posledního zapsaného dne: {since,totalDelta,parts:[{label,delta}]}
+function explainScoreChange(currency,current){
+  try{
+    if(!current) return null;
+    const log=JSON.parse(localStorage.getItem("engine_log")||"{}");
+    const today=new Date().toISOString().split("T")[0];
+    const dates=Object.keys(log).sort().filter(d=>d<today);
+    if(!dates.length) return null;
+    const prevDate=dates[dates.length-1];
+    const prev=log[prevDate]&&log[prevDate].cur&&log[prevDate].cur[currency];
+    if(!prev) return null;
+    const parts=[];
+    for(const f of ENGINE_DAILY_FIELDS){
+      if(f==="score") continue;
+      const now=typeof current[f]==="number"?current[f]:0;
+      const d=parseFloat((now-(prev[f]||0)).toFixed(2));
+      if(Math.abs(d)>=0.05) parts.push({comp:f,label:ENGINE_DAILY_LABELS[f]||f,delta:d});
+    }
+    parts.sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta));
+    const totalDelta=parseFloat(((typeof current.score==="number"?current.score:0)-(prev.score||0)).toFixed(2));
+    return {since:prevDate,totalDelta,parts};
+  }catch(e){return null;}
+}
+
+// ── LOG PŘEDPOVĚDÍ (seed pro budoucí kalibraci "je 65 % opravdu 65 %?") ──
+function logForecastSnapshot(forecasts){
+  try{
+    const day={};
+    Object.entries(forecasts||{}).forEach(([pair,f])=>{ if(f&&typeof f.prob==="number") day[pair]={p:f.prob,d:f.dir}; });
+    if(!Object.keys(day).length) return;
+    const today=new Date().toISOString().split("T")[0];
+    const log=JSON.parse(localStorage.getItem("forecast_log")||"{}");
+    log[today]=day;
+    const keys=Object.keys(log).sort().slice(-200);const t={};keys.forEach(k=>t[k]=log[k]);
+    localStorage.setItem("forecast_log",JSON.stringify(t));
+  }catch(e){}
+}
+
+// ── HLÍDAČ ČERSTVOSTI DAT ─────────────────────────────────────────────
+// Vrací stáří klíčových zdrojů v hodinách + semafor ok/warn/bad.
+function getDataFreshness(){
+  const now=Date.now(),out=[];
+  const push=(label,ts,warnH,badH)=>{
+    if(!ts){out.push({label,hours:null,level:"bad"});return;}
+    const h=(now-new Date(ts).getTime())/3600000;
+    out.push({label,hours:parseFloat(h.toFixed(1)),level:h<=warnH?"ok":h<=badH?"warn":"bad"});
+  };
+  try{push("Kalendář",localStorage.getItem("action_cal_updated"),6,26);}catch(e){push("Kalendář",null,6,26);}
+  try{const m=loadCOTMeta();push("COT",m&&m.asOf,9*24,14*24);}catch(e){push("COT",null,216,336);}
+  push("Ceny",_PRICES&&_PRICES.updated,4,26);
+  try{const o=JSON.parse(localStorage.getItem("oil_wti_v1")||"null");push("Ropa (WTI)",o&&o.ts,6,50);}catch(e){push("Ropa (WTI)",null,6,50);}
+  return out;
 }
 
 // ── SCANNER PŘÍLEŽITOSTÍ (contrarian sweet spot, sdílené PC i mobil) ──

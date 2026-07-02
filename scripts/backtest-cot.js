@@ -157,6 +157,35 @@ function runMaturityTest(series, weeks, pctMap) {
   }
   return out;
 }
+// Price-momentum kontinuace: když se pár za posledních L týdnů pohnul o ≥0.3 %,
+// pokračuje pohyb dalších H týdnů, nebo se vrací? Čistě cenový test (bez COT) —
+// podklad pro rozhodnutí, jestli má smysl zapínat momentum složku ve skóre.
+const MOM_LOOKBACKS = [1, 2, 4];
+const MOM_HORIZONS = [1, 2, 4];
+const MOM_MIN_ABS = 0.3; // % — menší pohyb je šum, nepočítá se jako signál
+function runMomentumTest(series, dateFrom, dateTo) {
+  const out = [];
+  const startMs = Date.parse(dateFrom + "T00:00:00Z");
+  const endMs = Date.parse(dateTo + "T00:00:00Z");
+  for (const L of MOM_LOOKBACKS) for (const H of MOM_HORIZONS) {
+    const trades = [];
+    for (let t0 = startMs + L * 7 * 86400000; t0 <= endMs - H * 7 * 86400000; t0 += 7 * 86400000) {
+      for (const pr of STANDARD_PAIRS) {
+        const pPast = pairPrice(series, pr.base, pr.quote, t0 - L * 7 * 86400000);
+        const p0 = pairPrice(series, pr.base, pr.quote, t0);
+        const p1 = pairPrice(series, pr.base, pr.quote, t0 + H * 7 * 86400000);
+        if (pPast == null || p0 == null || p1 == null) continue;
+        const mom = (p0 / pPast - 1) * 100;
+        if (Math.abs(mom) < MOM_MIN_ABS) continue;
+        const dir = mom > 0 ? 1 : -1;
+        trades.push({ ret: (p1 / p0 - 1) * dir * 100 });
+      }
+    }
+    const agg = aggregate(trades);
+    out.push({ lookback: L, horizon: H, n: agg.n, wr: agg.wr, pf: agg.pf, avg: agg.avg });
+  }
+  return out;
+}
 function runSweep(series, weeks) {
   const dates = Object.keys(weeks).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
   const pctMap = buildPercentiles(weeks, dates);
@@ -195,6 +224,7 @@ function runSweep(series, weeks) {
   const res = runSweep(series, weeks);
   if (!res.best) throw new Error("Backtest nevrátil žádný validní výsledek (nedostatek dat?).");
   const maturity = runMaturityTest(series, weeks, res.pctMap);
+  const momentum = runMomentumTest(series, res.dateFrom, endDate);
 
   const summary = `COT backtest ${res.dateFrom} → ${res.dateTo} (${res.weeksUsed} týdnů, ${STANDARD_PAIRS.length} párů). ` +
     `Nejlepší nastavení: |diff| ≥ ${res.best.diff}, horizont ${res.best.horizon}t → WR ${res.best.wr}%, PF ${res.best.pf === Infinity ? "∞" : res.best.pf}, ` +
@@ -209,13 +239,15 @@ function runSweep(series, weeks) {
     dateFrom: res.dateFrom, dateTo: res.dateTo, weeksUsed: res.weeksUsed, pairsUsed: STANDARD_PAIRS.length,
     grid: res.grid, best: res.best, extremeCompare: res.extremeCompare, byPairBest: res.byPairBest,
     maturityTest: maturity,
+    momentumTest: momentum,
     summary,
   };
 
   let prev = null;
   try { prev = JSON.parse(fs.readFileSync("data/calibration.json", "utf8")); } catch (e) {}
   const same = prev && JSON.stringify(prev.grid) === JSON.stringify(out.grid) && JSON.stringify(prev.best) === JSON.stringify(out.best)
-    && JSON.stringify(prev.maturityTest) === JSON.stringify(out.maturityTest);
+    && JSON.stringify(prev.maturityTest) === JSON.stringify(out.maturityTest)
+    && JSON.stringify(prev.momentumTest) === JSON.stringify(out.momentumTest);
   if (same) { console.log("Kalibrace beze změny, nepřepisuji."); process.exit(0); }
 
   fs.mkdirSync("data", { recursive: true });
