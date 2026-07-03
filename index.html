@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260703d"></script>
-<script src="sync.js?v=20260703d"></script>
+<script src="engine.js?v=20260703e"></script>
+<script src="sync.js?v=20260703e"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -109,7 +109,8 @@ class FXApp extends React.Component{
       try{ await fetchActionCOTHistory(); }catch(e){}
       // COT na pozadí když staré
       try{ const m0=loadCOTMeta(); const age=m0&&m0.asOf?((Date.now()-new Date(m0.asOf).getTime())/86400000):NaN; if(!(age<=4)){ await fetchCOTAuto(); } }catch(e){}
-      const cot=(typeof getLatestCOTScores==='function'&&getLatestCOTScores())||loadCOT(), sent=loadSentiment();
+      try{ const rj=await fetchActionRetail(); if(rj&&Array.isArray(rj.points)) this._retailHist=rj.points; }catch(e){}
+      const cot=(typeof getLatestCOTScores==='function'&&getLatestCOTScores())||loadCOT(), sent=(typeof getCanonicalSent==='function'&&getCanonicalSent())||loadSentiment();
       const sc={}; this.CUR.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
       try{ if(typeof saveScoreHistory==='function') saveScoreHistory(sc); }catch(e){}
       try{ if(typeof saveScoreDeltaSnapshot==='function') saveScoreDeltaSnapshot(sc); }catch(e){}
@@ -118,7 +119,6 @@ class FXApp extends React.Component{
       const up=deriveUpcomingFromEvents(cal);
       this._cal=cal; this._scores=sc; this._up=up;
       try{ this.updateMacroLatest(cal); }catch(e){}
-      try{ const rr=await fetch('data/retail_hist.json?h='+Math.floor(Date.now()/1800000),{cache:'no-store'}); if(rr.ok){ const rj=await rr.json(); if(rj&&Array.isArray(rj.points)) this._retailHist=rj.points; } }catch(e){}
       // D
       this.CUR.forEach(c=>{ const s=sc[c]||{}; this.D[c]={
         score:+(s.score||0), fund:+(s.fund_score||0), policy:+(s.policy_adj||0), yield:+(s.yield_adj||0),
@@ -927,7 +927,7 @@ class FXApp extends React.Component{
         return h('div',{style:self.card({padding:'16px 20px',marginBottom:16})},self.ptitle('📡 Stav dat','Stáří zdrojů · zelená čerstvé, jantar pozor, červená zastaralé'),
           h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:8}},fr.map(x=>h('div',{key:x.label,style:{display:'flex',alignItems:'center',gap:7,fontSize:11.5}},h('span',{style:{width:8,height:8,borderRadius:'50%',background:col(x.level),flex:'none'}}),h('span',{style:{color:T.dim}},x.label),h('b',{style:self.mono({fontSize:11,color:col(x.level),marginLeft:'auto'})},fmt(x))))),
           dg&&h('div',{title:'Diagnostika enginu — při rozdílu skóre mezi PC a mobilem porovnej tenhle řádek na obou zařízeních; liší-li se cokoliv z něj, je to příčina',style:self.mono({fontSize:10,color:T.faint,marginTop:11,paddingTop:9,borderTop:'1px solid #161b27',lineHeight:1.6,wordBreak:'break-all'})},
-            'DIAG · zdroj '+dg.calSource+' · fund '+dg.fundConf+'% · risk '+(dg.risk>0?'ON':dg.risk<0?'OFF':'0')+'/'+dg.riskMode+' · regime '+dg.regime+' · COT '+dg.cotAsOf+' · CB '+dg.cbRates));
+            'DIAG · zdroj '+dg.calSource+' · fund '+dg.fundConf+'% · risk '+(dg.risk>0?'ON':dg.risk<0?'OFF':'0')+'/'+dg.riskMode+' · regime '+dg.regime+' · COT '+dg.cotAsOf+' · CB '+dg.cbRates+' · kal '+dg.ffLen+' ev · COT '+dg.cotWeeks+' t · retail '+dg.sentSrc));
       })(),
       h('div',{style:self.card({padding:'22px 24px'})},
         self.ptitle('☁️ Cloud sync'+(sess?' · přihlášen':''),'E-mail + heslo · stejné na PC i v mobilu'),
