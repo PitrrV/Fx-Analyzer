@@ -8,9 +8,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260703e"></script>
+<script src="engine.js?v=20260703f"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="sync.js?v=20260703e"></script>
+<script src="sync.js?v=20260703f"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -560,7 +560,7 @@ function ScoreBreakdown({currency,scores}){
       })}
       {s.cot_pct!==null&&s.cot_pct!==undefined&&(
         <div style={{marginTop:8,paddingTop:7,borderTop:"1px solid #21262d",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontSize:10,color:"#8b949e"}}>COT Percentil (3+ roky)</span>
+          <span style={{fontSize:10,color:"#8b949e"}}>COT Percentil (okno 78 týdnů)</span>
           <div style={{display:"flex",alignItems:"center",gap:5}}>
             <div style={{width:50,height:4,background:"#21262d",borderRadius:2,overflow:"hidden"}}><div style={{width:`${s.cot_pct}%`,height:"100%",background:s.cot_pct>=85||s.cot_pct<=15?"#d29922":"#7d95ff",borderRadius:2}}/></div>
             <span style={{fontSize:11,fontWeight:700,color:s.cot_pct>=88||s.cot_pct<=12?"#d29922":"#8b949e"}}>{s.cot_pct}p{s.cot_pct>=88?" 🚨":s.cot_pct<=12?" 🚨":""}</span>

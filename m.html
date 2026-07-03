@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260703e"></script>
-<script src="sync.js?v=20260703e"></script>
+<script src="engine.js?v=20260703f"></script>
+<script src="sync.js?v=20260703f"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -671,7 +671,7 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
 
       {/* COT skóre + percentil */}
       <div className="card">
-        <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>📊 COT skóre & percentil <span className="muted" style={{fontWeight:400,fontSize:11}}>(3+ roky)</span></div>
+        <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>📊 COT skóre & percentil <span className="muted" style={{fontWeight:400,fontSize:11}}>(okno 78 týdnů)</span></div>
         <div className="muted" style={{fontSize:10.5,marginBottom:8,lineHeight:1.5}}>p = kde je dnešní COT skóre v historii (0–100). Δ v závorce = posun oproti minulému staženému COT (týdenní). Skóre vpravo = aktuální síla měny podle COT (−10…+10), ne změna.</div>
         {CURRENCIES.map(c=>{const d=D[c]||{};const ext=d.cotPct>=85||d.cotPct<=15;const col=ext?"var(--amber)":"var(--dim)";const dl=d.cotPctDelta;return (
           <div key={c} style={{display:"grid",gridTemplateColumns:"54px 1fr 78px 44px",alignItems:"center",gap:8,padding:"6px 0"}}>
