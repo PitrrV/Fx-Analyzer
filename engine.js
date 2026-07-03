@@ -1476,10 +1476,16 @@ function buildEventWatch(calData,upcoming){
 }
 // ── SCORING ───────────────────────────────────────────────
 // ═══════════════ V5 ENGINE HELPERS ═══════════════════════════
+// Percentil se počítá přes PEVNÉ okno posledních týdnů (ne přes celou lokální
+// historii): zařízení s déle střádanou cot_hist (PC 200+ týdnů vs mobil 86 ze
+// serveru) by jinak spočítala jiný percentil → na hraně 85/15 přepnutá COT váha
+// (0.45↔0.80) = skok skóre až ~0.7 jen podle stáří zařízení. Okno ≤ rozsah
+// serverového data/cot_hist.json → po merge mají všechna zařízení identický vstup.
+const COT_PCT_WINDOW=78; // ~1.5 roku týdenních reportů
 function getCOTPercentile(currency){
   try{
     const hist=loadCOTHistory();
-    const entries=Object.entries(hist).sort(([a],[b])=>new Date(a)-new Date(b));
+    const entries=Object.entries(hist).sort(([a],[b])=>new Date(a)-new Date(b)).slice(-COT_PCT_WINDOW);
     // OPRAVA: hist[date].scores[currency] — ne hist[date][currency]
     const scores=entries.map(([,w])=>{
       const v=w.scores?.[currency];
@@ -1496,7 +1502,7 @@ function getCOTPercentile(currency){
 function getCOTPercentileChange(currency){
   try{
     const hist=loadCOTHistory();
-    const entries=Object.entries(hist).sort(([a],[b])=>new Date(a)-new Date(b));
+    const entries=Object.entries(hist).sort(([a],[b])=>new Date(a)-new Date(b)).slice(-COT_PCT_WINDOW);
     const scores=entries.map(([,w])=>{
       const v=w.scores?.[currency];
       return typeof v==="number"?v:null;
@@ -2294,6 +2300,22 @@ async function fetchActionOil(){
   }catch(e){}
   return null;
 }
+// ── KANONICKÝ RETAIL SENTIMENT PRO SKÓRE (data/retail_hist.json, cron ~30 min) ──
+// sent_data v localStorage je per zařízení (PC s OANDA tokenem vs mobil bez něj) a
+// v cloud syncu je KEYS_SCALAR ("lokál vyhrává") → NIKDY se mezi zařízeními nesrovná.
+// Pro výpočet skóre proto všechny frontendy použijí poslední bod ze serverového
+// cronu (stejný soubor pro všechny) a sent_data zůstává jen jako fallback/na ruční
+// slidery v Classic. Stejný half-hour cache-bust jako ostatní fetche → i v rámci
+// 30min okna tahají všechna zařízení identickou verzi souboru.
+let _RETAIL_LATEST=null;
+async function fetchActionRetail(){
+  try{
+    const r=await fetch("data/retail_hist.json?h="+Math.floor(Date.now()/1800000),{cache:"no-store"});
+    if(r.ok){ const j=await r.json(); if(j&&Array.isArray(j.points)&&j.points.length){ _RETAIL_LATEST=j.points[j.points.length-1]; return j; } }
+  }catch(e){}
+  return null;
+}
+function getCanonicalSent(){ return (_RETAIL_LATEST&&_RETAIL_LATEST.ccy)||null; }
 function _pxPair(pair){return (typeof pair==="string")?STANDARD_PAIRS.find(x=>x.pair===pair):pair;}
 function _pxFrom(rates,p){ if(!rates) return null; const b=rates[p.base],q=rates[p.quote]; return (b&&q)?q/b:null; }
 function getPairPrice(pair){ const p=_pxPair(pair); if(!p||!_PRICES) return null; return _pxFrom(_PRICES.rates,p); }
@@ -2407,6 +2429,9 @@ function getEngineDiagnostics(){
   try{const r=localStorage.getItem("v5_regime");if(r&&r!=="{}")regime=r;}catch(e){}
   try{const m=loadCOTMeta();cotAsOf=(m&&m.asOf)?String(m.asOf).slice(0,10):"—";}catch(e){}
   const rates=(typeof CENTRAL_BANK_RATES!=="undefined")?CURRENCIES.map(c=>CENTRAL_BANK_RATES[c]).join("/"):"—";
+  let ffLen=0,cotWeeks=0;
+  try{ffLen=(JSON.parse(localStorage.getItem("v5_ff_hist")||"[]")||[]).length;}catch(e){}
+  try{cotWeeks=Object.keys(loadCOTHistory()||{}).length;}catch(e){}
   return {
     calSource:g_calSource||"?",
     fundConf:Math.round((g_fundConfidence||0)*100),
@@ -2415,6 +2440,11 @@ function getEngineDiagnostics(){
     regime,
     cotAsOf,
     cbRates:rates,
+    // Vstupy, které rozhodují o shodě PC↔mobil: délka kalendářní historie
+    // (sjednocuje cloud sync), počet COT týdnů a zdroj retailu pro skóre.
+    ffLen,
+    cotWeeks,
+    sentSrc:(typeof getCanonicalSent==="function"&&getCanonicalSent())?"cron":"local",
   };
 }
 

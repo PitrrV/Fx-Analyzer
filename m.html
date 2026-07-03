@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260703d"></script>
-<script src="sync.js?v=20260703d"></script>
+<script src="engine.js?v=20260703e"></script>
+<script src="sync.js?v=20260703e"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -167,8 +167,8 @@ async function loadDataMobile(){
   try{ await fetchActionPrices(); }catch(e){}
   try{ applyAutoRiskSentiment(); }catch(e){}
   try{ await fetchActionCOTHistory(); }catch(e){}
-  let retailLatest=null, retailHist=[]; try{ const rr=await fetch("data/retail_hist.json?h="+Math.floor(Date.now()/1800000),{cache:"no-store"}); if(rr.ok){ const rj=await rr.json(); if(rj&&Array.isArray(rj.points)&&rj.points.length){ retailHist=rj.points; retailLatest=rj.points[rj.points.length-1]; } } }catch(e){}
-  const cot=(typeof getLatestCOTScores==='function'&&getLatestCOTScores())||loadCOT(), sent=loadSentiment();
+  let retailLatest=null, retailHist=[]; try{ const rj=await fetchActionRetail(); if(rj&&Array.isArray(rj.points)&&rj.points.length){ retailHist=rj.points; retailLatest=rj.points[rj.points.length-1]; } }catch(e){}
+  const cot=(typeof getLatestCOTScores==='function'&&getLatestCOTScores())||loadCOT(), sent=(typeof getCanonicalSent==='function'&&getCanonicalSent())||loadSentiment();
   const sc={}; CURRENCIES.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
   try{ if(typeof saveScoreDeltaSnapshot==='function') saveScoreDeltaSnapshot(sc); }catch(e){}
   try{ if(typeof saveScoreHistory==='function') saveScoreHistory(sc); }catch(e){}
@@ -846,7 +846,7 @@ function SettingsTab({onSaved}){
       {dg&&<div className="card" style={{padding:"10px 12px"}}>
         <div style={{fontWeight:800,fontSize:12,marginBottom:6}}>📡 Diagnostika enginu</div>
         <div className="mono muted" style={{fontSize:10,lineHeight:1.6,wordBreak:"break-all"}}>
-          zdroj {dg.calSource} · fund {dg.fundConf}% · risk {dg.risk>0?"ON":dg.risk<0?"OFF":"0"}/{dg.riskMode} · regime {dg.regime} · COT {dg.cotAsOf} · CB {dg.cbRates}
+          zdroj {dg.calSource} · fund {dg.fundConf}% · risk {dg.risk>0?"ON":dg.risk<0?"OFF":"0"}/{dg.riskMode} · regime {dg.regime} · COT {dg.cotAsOf} · CB {dg.cbRates} · kal {dg.ffLen} ev · COT {dg.cotWeeks} t · retail {dg.sentSrc}
         </div>
         <div className="muted" style={{fontSize:10,marginTop:5}}>Při rozdílu skóre PC ↔ mobil porovnej tenhle řádek na obou zařízeních.</div>
       </div>}
