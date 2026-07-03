@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260702f"></script>
-<script src="sync.js?v=20260702f"></script>
+<script src="engine.js?v=20260703a"></script>
+<script src="sync.js?v=20260703a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -97,6 +97,40 @@ function impactColor(imp){const i=String(imp||"").toLowerCase();if(i.includes("h
 function impactLabel(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"HIGH";if(i.includes("medium")||i==="2")return"MED";if(i.includes("low")||i==="1")return"LOW";return"—";}
 function evFlag(ev){const c=String(ev.country||ev.currency||"").toUpperCase();return COUNTRY_FLAGS[c]||"🏳️";}
 function fmtDT(t){const d=new Date(parseEventTime(t));if(isNaN(d))return"";return d.toLocaleString("cs-CZ",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});}
+
+// ── DENÍK: kontext obchodu (sdíleno s Classic/PC — stejná logika) ──
+const PAIR_LIST_TYPE={EURUSD:"white",USDJPY:"white",GBPUSD:"white",AUDUSD:"grey",USDCAD:"grey",USDCHF:"black"};
+function captureContext(pairSym,pairs,scores,calData,upcoming,aiAnalyses){
+  const p=(pairs||[]).find(x=>x.pair===pairSym)||null;
+  const diff=p?p.diff:null;
+  const band=diff==null?null:(Math.abs(diff)<2?"slabý":(Math.abs(diff)<=3?"sweetspot":"silný"));
+  let dailyLevel="none",flip=false,cbdi=null,cbStage=null;
+  try{ if(p) dailyLevel=getPairDailyState(p,scores,calData,upcoming).level; }catch(e){}
+  try{ flip=isPairFlipped(pairSym); }catch(e){}
+  try{ cbdi=calcCBDI(); }catch(e){}
+  try{ cbStage=getCBCycleStage().stage; }catch(e){}
+  const ai=(aiAnalyses||{})[pairSym]||null;
+  return {diff,dir:p?p.dir:null,conviction:p?p.conviction:null,band,dailyLevel,flip,cbdi,cbStage,aiBias:ai?ai.bias:null,aiConf:ai?ai.confidence:null,listType:PAIR_LIST_TYPE[pairSym]||"other"};
+}
+function jStat(list){
+  const w=list.filter(t=>t.outcome==="win").length, l=list.filter(t=>t.outcome==="loss").length, be=list.filter(t=>t.outcome==="be").length;
+  const dec=w+l, wr=dec?Math.round(w/dec*100):null;
+  const rs=list.map(t=>t.outcome==="be"?0:(typeof t.rMultiple==="number"?t.rMultiple:null)).filter(x=>x!=null);
+  const sumR=rs.reduce((a,b)=>a+b,0), avgR=rs.length?sumR/rs.length:null;
+  const pos=rs.filter(x=>x>0).reduce((a,b)=>a+b,0), neg=Math.abs(rs.filter(x=>x<0).reduce((a,b)=>a+b,0));
+  const pf=neg>0?pos/neg:(pos>0?999:null);
+  return {n:list.length,w,l,be,wr,sumR,avgR,pf};
+}
+function SliceBarM({label,s}){
+  const wr=s.wr; const col=wr==null?"#4a6a88":(wr>=60?"#2ed3a0":(wr>=50?"#d29922":"#ff4d4d"));
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,fontSize:11}}>
+      <div style={{width:100,color:"#b7c3d1",flexShrink:0}}>{label}</div>
+      <div style={{flex:1,height:7,background:"#0d1117",borderRadius:5,overflow:"hidden"}}><div style={{width:(wr==null?0:wr)+"%",height:"100%",background:col,borderRadius:5}}/></div>
+      <div style={{width:110,textAlign:"right",color:"#8b949e",flexShrink:0,fontSize:10.5}}>{wr==null?"—":<b style={{color:col}}>{wr}%</b>} · {s.n}{s.avgR!=null?(" · "+(s.avgR>0?"+":"")+s.avgR.toFixed(1)+"R"):""}</div>
+    </div>
+  );
+}
 
 // ── DATA: stejná orchestrace jako PC (engine globals) ───────
 async function loadDataMobile(){
@@ -960,7 +994,7 @@ function StrengthTab({data}){
   );
 }
 // ── ZÁLOŽKA: DENÍK ──────────────────────────────────────────
-function JournalTab(){
+function JournalTab({data}){
   const [list,setList]=useState(()=>{try{return JSON.parse(localStorage.getItem("journal")||"[]");}catch(e){return[];}});
   const pairOpts=(typeof STANDARD_PAIRS!=="undefined"?STANDARD_PAIRS.map(p=>p.pair):["EURUSD"]);
   const [f,setF]=useState({pair:pairOpts[0],dir:"LONG",entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
@@ -969,7 +1003,9 @@ function JournalTab(){
   function add(){
     if(!f.pair)return;
     const now=new Date().toISOString(), closed=f.outcome&&f.outcome!=="open";
-    const t={id:Date.now()+"_"+Math.random().toString(36).slice(2,7),pair:f.pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:f.rMultiple===""?null:parseFloat(f.rMultiple),notes:f.notes,openedAt:now,closedAt:closed?now:null};
+    let aiAnalyses={}; try{aiAnalyses=JSON.parse(localStorage.getItem("ai_analyses_v1")||"{}")||{};}catch(e){}
+    const ctx=captureContext(f.pair,(data&&data.pairs)||[],(data&&data.scores)||{},(data&&data.cal)||[],(data&&data.upcoming)||[],aiAnalyses);
+    const t={id:Date.now()+"_"+Math.random().toString(36).slice(2,7),pair:f.pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:f.rMultiple===""?null:parseFloat(f.rMultiple),notes:f.notes,openedAt:now,closedAt:closed?now:null,ctx};
     persist([t,...list]);
     setF({...f,entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
   }
@@ -978,8 +1014,28 @@ function JournalTab(){
   const Rval=t=>t.outcome==="be"?0:+(t.rMultiple||0);
   const closed=list.filter(t=>t.outcome&&t.outcome!=="open"), wins=closed.filter(t=>t.outcome==="win").length, losses=closed.filter(t=>t.outcome==="loss").length, decided=wins+losses;
   const wr=decided?Math.round(wins/decided*100):0, totR=closed.reduce((s,t)=>s+Rval(t),0);
+  const hasCtx=closed.some(t=>!!t.ctx);
+  const je=hasCtx?{
+    byConvHi:jStat(closed.filter(t=>(t.ctx&&t.ctx.conviction||0)>=3)),
+    byConvLo:jStat(closed.filter(t=>(t.ctx&&t.ctx.conviction||0)<3)),
+    bandSweet:jStat(closed.filter(t=>t.ctx&&t.ctx.band==="sweetspot")),
+    bandStrong:jStat(closed.filter(t=>t.ctx&&t.ctx.band==="silný")),
+    bandWeak:jStat(closed.filter(t=>t.ctx&&t.ctx.band==="slabý")),
+    listWhite:jStat(closed.filter(t=>t.ctx&&t.ctx.listType==="white")),
+    listGrey:jStat(closed.filter(t=>t.ctx&&t.ctx.listType==="grey")),
+    listBlack:jStat(closed.filter(t=>t.ctx&&t.ctx.listType==="black")),
+    vsConflict:jStat(closed.filter(t=>t.ctx&&t.ctx.dailyLevel==="conflict")),
+    vsClear:jStat(closed.filter(t=>t.ctx&&t.ctx.dailyLevel!=="conflict")),
+  }:null;
   return (
     <div>
+      {je&&<div className="card">
+        <div style={{fontWeight:800,marginBottom:8,fontSize:13}}>🎯 Ověření edge — WR podle kontextu</div>
+        <SliceBarM label="Conviction ★3+" s={je.byConvHi}/><SliceBarM label="Conviction ★0–2" s={je.byConvLo}/>
+        <SliceBarM label="Sweetspot 2–3" s={je.bandSweet}/><SliceBarM label="Silný 3+" s={je.bandStrong}/><SliceBarM label="Slabý <2" s={je.bandWeak}/>
+        <SliceBarM label="Whitelist" s={je.listWhite}/><SliceBarM label="Graylist" s={je.listGrey}/><SliceBarM label="Blacklist" s={je.listBlack}/>
+        <SliceBarM label="Proti konfliktu" s={je.vsConflict}/><SliceBarM label="Bez konfliktu" s={je.vsClear}/>
+      </div>}
       <div className="card">
         <div style={{fontWeight:800,marginBottom:8}}>📓 Nový obchod</div>
         <div className="grid2">
@@ -1190,7 +1246,7 @@ function MApp(){
         {tab==="ai"&&<AITab/>}
         {tab==="coach"&&<CoachTab data={data}/>}
         {tab==="strength"&&<StrengthTab data={data}/>}
-        {tab==="journal"&&<JournalTab/>}
+        {tab==="journal"&&<JournalTab data={data}/>}
         {tab==="set"&&<SettingsTab onSaved={load}/>}
       </div>
       <div className="bottomnav">
