@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260702f"></script>
-<script src="sync.js?v=20260702f"></script>
+<script src="engine.js?v=20260703a"></script>
+<script src="sync.js?v=20260703a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -31,6 +31,30 @@ body{background:#07080c;color:#eaedf3;font-family:'Manrope',system-ui,-apple-sys
 const COUNTRY2CCY=(()=>{const m={};try{Object.entries(CURRENCY_COUNTRIES).forEach(([ccy,arr])=>arr.forEach(c=>{if(!m[c])m[c]=ccy;}));}catch(e){}return m;})();
 function ev2ccy(e){const c=(e.country||"").toUpperCase();return COUNTRY2CCY[c]||e.currency||c;}
 function impUp(s){s=String(s||"").toLowerCase();return s.includes("high")||s==="3"?"HIGH":s.includes("med")||s==="2"?"MEDIUM":"LOW";}
+
+// ── DENÍK: kontext obchodu (sdíleno s Classic — stejná logika, stejná klasifikace) ──
+const PAIR_LIST_TYPE={EURUSD:'white',USDJPY:'white',GBPUSD:'white',AUDUSD:'grey',USDCAD:'grey',USDCHF:'black'};
+function captureContext(pairSym,pairs,scores,calData,upcoming,aiAnalyses){
+  const p=(pairs||[]).find(x=>x.pair===pairSym)||null;
+  const diff=p?p.diff:null;
+  const band=diff==null?null:(Math.abs(diff)<2?'slabý':(Math.abs(diff)<=3?'sweetspot':'silný'));
+  let dailyLevel='none',flip=false,cbdi=null,cbStage=null;
+  try{ if(p) dailyLevel=getPairDailyState(p,scores,calData,upcoming).level; }catch(e){}
+  try{ flip=isPairFlipped(pairSym); }catch(e){}
+  try{ cbdi=calcCBDI(); }catch(e){}
+  try{ cbStage=getCBCycleStage().stage; }catch(e){}
+  const ai=(aiAnalyses||{})[pairSym]||null;
+  return {diff:diff,dir:p?p.dir:null,conviction:p?p.conviction:null,band:band,dailyLevel:dailyLevel,flip:flip,cbdi:cbdi,cbStage:cbStage,aiBias:ai?ai.bias:null,aiConf:ai?ai.confidence:null,listType:PAIR_LIST_TYPE[pairSym]||'other'};
+}
+function jStat(list){
+  const w=list.filter(t=>t.outcome==='win').length, l=list.filter(t=>t.outcome==='loss').length, be=list.filter(t=>t.outcome==='be').length;
+  const dec=w+l, wr=dec?Math.round(w/dec*100):null;
+  const rs=list.map(t=>t.outcome==='be'?0:(typeof t.rMultiple==='number'?t.rMultiple:null)).filter(x=>x!=null);
+  const sumR=rs.reduce((a,b)=>a+b,0), avgR=rs.length?sumR/rs.length:null;
+  const pos=rs.filter(x=>x>0).reduce((a,b)=>a+b,0), neg=Math.abs(rs.filter(x=>x<0).reduce((a,b)=>a+b,0));
+  const pf=neg>0?pos/neg:(pos>0?999:null);
+  return {n:list.length,w,l,be,wr,sumR,avgR,pf};
+}
 
 class FXApp extends React.Component{
   constructor(p){
@@ -217,6 +241,20 @@ class FXApp extends React.Component{
     this.journal={ wr:decided?Math.round(wins/decided*100):0, pf:sumNeg?+(sumPos/sumNeg).toFixed(1):(sumPos>0?9:0), trades:rows.length, avgR:closed.length?+(Rs.reduce((a,b)=>a+b,0)/closed.length).toFixed(2):0, bestR:Rs.length?Math.max(0,...Rs):0,
       buckets:[], rows:rows.slice(0,12).map(t=>({id:t.id,d:(t.openedAt||'').slice(5,10).split('-').reverse().join('.'),pair:t.pair,dir:t.dir==='LONG'?'BUY':t.dir==='SHORT'?'SELL':t.dir,r:Rval(t),res:t.outcome==='win'?'win':t.outcome==='loss'?'loss':t.outcome==='be'?'be':t.outcome==='early'?'early':'open'})) };
     const eq=[0]; closed.slice().reverse().forEach(t=>eq.push(+(eq[eq.length-1]+Rval(t)).toFixed(2))); this.equity=eq.length>1?eq:[0,0];
+    // Ověření edge podle kontextu appky (stejná logika jako Classic) — jen na uzavřených obchodech s ctx
+    this.journalEdge={
+      byConvHi: jStat(closed.filter(t=>(t.ctx&&t.ctx.conviction||0)>=3)),
+      byConvLo: jStat(closed.filter(t=>(t.ctx&&t.ctx.conviction||0)<3)),
+      bandSweet: jStat(closed.filter(t=>t.ctx&&t.ctx.band==='sweetspot')),
+      bandStrong: jStat(closed.filter(t=>t.ctx&&t.ctx.band==='silný')),
+      bandWeak: jStat(closed.filter(t=>t.ctx&&t.ctx.band==='slabý')),
+      listWhite: jStat(closed.filter(t=>t.ctx&&t.ctx.listType==='white')),
+      listGrey: jStat(closed.filter(t=>t.ctx&&t.ctx.listType==='grey')),
+      listBlack: jStat(closed.filter(t=>t.ctx&&t.ctx.listType==='black')),
+      vsConflict: jStat(closed.filter(t=>t.ctx&&t.ctx.dailyLevel==='conflict')),
+      vsClear: jStat(closed.filter(t=>t.ctx&&t.ctx.dailyLevel!=='conflict')),
+      hasCtx: closed.some(t=>!!t.ctx),
+    };
   }
 
   get tok(){ const a=this.props.accent||'#5e7cfb'; return {bg:'#07080c',line:'#1b2130',line2:'#262d3d',text:'#eaedf3',dim:'#8b93a3',faint:'#5a6273',green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',accent:a,violet:'#9d7bff'}; }
@@ -250,7 +288,9 @@ class FXApp extends React.Component{
   async fetchRetailNow(){ this.setState({retailBusy:true,dataMsg:'⏳ Stahuji retail sentiment…'}); try{ const res=await fetchRetailSentiment(); const rs=res&&res.sentData||res; saveSentiment(rs); try{saveRetailSnapshot(rs);}catch(e){} await this.refreshData(); this.setState({dataMsg:'✅ Retail aktualizován · '+((res&&res.method)||'CFTC')}); }catch(e){ try{const d=deriveRetailFromCOTData();saveSentiment(d);saveRetailSnapshot(d);await this.refreshData();}catch(e2){} this.setState({dataMsg:'⚠ Retail auto selhal, použita záloha z COT.'}); } this.setState({retailBusy:false}); }
   jSet(k,v){ this.setState(s=>({jForm:Object.assign({},s.jForm,{[k]:v})})); }
   addTrade(){ const f=this.state.jForm; const pair=(f.pair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD'); const now=new Date().toISOString(); const closed=f.outcome&&f.outcome!=='open';
-    const t={id:Date.now()+'_'+Math.random().toString(36).slice(2,7),pair:pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:f.rMultiple===''?null:parseFloat(f.rMultiple),notes:f.notes,openedAt:now,closedAt:closed?now:null};
+    let aiAnalyses={}; try{aiAnalyses=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){}
+    const ctx=captureContext(pair,this.PAIRS,this._scores,this._cal,this._up,aiAnalyses);
+    const t={id:Date.now()+'_'+Math.random().toString(36).slice(2,7),pair:pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:f.rMultiple===''?null:parseFloat(f.rMultiple),notes:f.notes,openedAt:now,closedAt:closed?now:null,ctx:ctx};
     let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=[t].concat(arr); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){}
     this.setState(s=>({jForm:Object.assign({},s.jForm,{entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''})})); this.buildJournal(); this.forceUpdate(); }
   setTradeOutcome(id,outcome){ let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=arr.map(t=>t.id===id?Object.assign({},t,{outcome:outcome,closedAt:outcome!=='open'?(t.closedAt||new Date().toISOString()):null}):t); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){} this.buildJournal(); this.forceUpdate(); }
@@ -758,11 +798,24 @@ class FXApp extends React.Component{
       h('div',{style:self.card({padding:'18px 20px'})},h('div',{style:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:6}},self.ptitle('Vývoj COT v čase','Jak se postupně pozicovali velcí hráči (net) · per měna'),h('div',{style:{display:'flex',gap:6}},[['6M',26],['1Y',52],['2Y',104],['ALL',520]].map(([l,n])=>{const on=st.cotRange===l;return h('button',{key:l,type:'button',onClick:()=>self.setState({cotRange:l}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:8,padding:'5px 11px',fontSize:10.5,fontWeight:700,cursor:'pointer'})},l);}))),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:12}},this.CUR.map(c=>{const lim=({'6M':26,'1Y':52,'2Y':104,'ALL':520})[st.cotRange]||52;const d=this.D[c];return h('div',{key:c,onClick:()=>self.setState({cotModal:c}),title:'Klikni pro zvětšení',style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'10px 12px',cursor:'pointer'}},h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}},h('span',{style:{display:'flex',alignItems:'center',gap:6}},h('span',{style:self.mono({fontSize:12.5,fontWeight:700})},c),h('span',{style:{fontSize:11,color:T.faint}},'⤢')),h('span',{style:self.mono({fontSize:11,fontWeight:700,color:d.inst>=0?T.green:T.red})},(d.inst>0?'net +':'net ')+d.inst)),this.CotHistChart(c,lim));}))));
   }
+  sliceBar(label,s){ const h=this.h; const wr=s.wr; const col=wr==null?'#4a6a88':(wr>=60?'#2ed3a0':(wr>=50?'#d29922':'#ff4d4d'));
+    return h('div',{key:label,style:{display:'flex',alignItems:'center',gap:10,marginBottom:6,fontSize:12}},
+      h('div',{style:{width:130,color:'#b7c3d1'}},label),
+      h('div',{style:{flex:1,height:8,background:'#0d1117',borderRadius:5,overflow:'hidden'}},h('div',{style:{width:(wr==null?0:wr)+'%',height:'100%',background:col,borderRadius:5}})),
+      h('div',{style:{width:150,textAlign:'right',color:'#8b949e'}},wr==null?'—':h('b',{style:{color:col}},wr+'% WR'),' · '+s.n+' obch.'+(s.avgR!=null?' · '+(s.avgR>0?'+':'')+s.avgR.toFixed(2)+'R':'')));
+  }
   renderJournal(){ const self=this,h=this.h,T=this.tok, j=this.journal,st=this.state,f=st.jForm; const kpi=(l,v,col)=>h('div',{style:self.card({padding:'16px 18px',flex:1})},h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:8}},l),h('div',{style:self.mono({fontSize:24,fontWeight:700,color:col||T.text})},v));
+    const je=this.journalEdge||{};
     const inp={background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 11px',fontSize:12.5,fontFamily:"'Manrope',sans-serif",outline:'none',width:'100%'};
     const lab=t=>h('div',{style:{fontSize:10,color:T.faint,marginBottom:4}},t);
     const pairOpts=this.PAIRS.map(p=>p.pair); const curPair=f.pair||pairOpts[0]||'EURUSD';
     return h('div',{style:{maxWidth:1080,display:'flex',flexDirection:'column',gap:16}},h('div',{style:{display:'flex',gap:14,flexWrap:'wrap'}},kpi('Win Rate',j.wr+'%',T.green),kpi('Profit Factor',(j.pf||0).toFixed(1),T.green),kpi('Obchodů',j.trades),kpi('Průměr R',self.sgn(j.avgR,2),T.green),kpi('Nejlepší R','+'+(j.bestR||0).toFixed(1),T.accent)),
+      je.hasCtx&&h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Ověření edge','WR podle kontextu appky — nové obchody si kontext uloží samy'),
+        this.sliceBar('Conviction ★3+',je.byConvHi),this.sliceBar('Conviction ★0–2',je.byConvLo),
+        this.sliceBar('Sweetspot 2–3',je.bandSweet),this.sliceBar('Silný 3+',je.bandStrong),this.sliceBar('Slabý <2',je.bandWeak),
+        this.sliceBar('Whitelist páry',je.listWhite),this.sliceBar('Graylist páry',je.listGrey),this.sliceBar('Blacklist páry',je.listBlack),
+        this.sliceBar('Proti konfliktu',je.vsConflict),this.sliceBar('Bez konfliktu',je.vsClear),
+        h('div',{style:{fontSize:11,color:T.faint,marginTop:8}},'Tip: pokud máš výrazně horší WR u „Conviction ★0–2", „Slabý <2", „Blacklist" nebo „Proti konfliktu" — to jsou obchody, které appka neradí. Data ti to ukážou na vlastních číslech.')),
       h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Zapsat obchod','Nový záznam do deníku'),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))',gap:10,alignItems:'end'}},
           h('div',null,lab('Pár'),h('select',{value:curPair,onChange:e=>self.jSet('pair',e.target.value),style:Object.assign({},inp,{cursor:'pointer'})},pairOpts.map(p=>h('option',{key:p,value:p},p)))),
