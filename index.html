@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260703a"></script>
-<script src="sync.js?v=20260703a"></script>
+<script src="engine.js?v=20260703b"></script>
+<script src="sync.js?v=20260703b"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -635,7 +635,7 @@ class FXApp extends React.Component{
         self.ptitle(p.pair+' — grafy','Skóre · Retail · COT '+p.base+' & '+p.quote),
         h('div',{style:{display:'flex',gap:5}},rng.map(r=>{const on=gr===r;return h('button',{key:r,type:'button',onClick:()=>self.setState({gridRange:r}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:7,padding:'4px 9px',fontSize:10,fontWeight:700,cursor:'pointer'})},r);}))),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginTop:8}},
-        cell('Vývoj skóre',self.sgn(sb.score)+' / '+self.sgn(sq.score),T.dim,sdates.length>=2,h(self.HoverChart,{key:'sc'+p.pair+gr,dates:sdates,series:scoreSeries,height:128,yMin:-10,yMax:10,fmt:v=>(v>0?'+':'')+Math.round(v),mid:0})),
+        cell('Vývoj skóre',self.sgn(sb.score)+' / '+self.sgn(sq.score),T.dim,sdates.length>=2,h(self.HoverChart,{key:'sc'+p.pair+gr,dates:sdates,series:scoreSeries,height:128,yMin:-10,yMax:10,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0})),
         cell('Retail L/S',rlong.length?('L '+rlong[rlong.length-1]+'% · S '+(100-rlong[rlong.length-1])+'%'):null,T.green,rpts.length>=2,h(self.HoverChart,{key:'rt'+p.pair+gr,dates:rdates,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50})),
         cell('COT '+p.base+' L/S',(sb.inst>0?'net +':'net ')+sb.inst,sb.inst>=0?T.green:T.red,cdates.length>=2,h(self.HoverChart,{key:'cb'+p.pair+gr,dates:cdates,series:cotLS(p.base),height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50})),
         cell('COT '+p.quote+' L/S',(sq.inst>0?'net +':'net ')+sq.inst,sq.inst>=0?T.green:T.red,cdates.length>=2,h(self.HoverChart,{key:'cq'+p.pair+gr,dates:cdates,series:cotLS(p.quote),height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50})))); }
