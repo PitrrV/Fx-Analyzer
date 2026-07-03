@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260703c"></script>
-<script src="sync.js?v=20260703c"></script>
+<script src="engine.js?v=20260703d"></script>
+<script src="sync.js?v=20260703d"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -764,8 +764,17 @@ class FXApp extends React.Component{
     return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
       this.renderFlipsPanel(),
       (()=>{ const confl=this.PAIRS.filter(p=>p.status==='conflict').slice(0,6); const upc=this.PAIRS.filter(p=>p.status==='upcoming').slice(0,6);
-        if(!confl.length&&!upc.length) return null;
+        let rel={}; try{ const ev=mergeEvents(this._cal,this._up); this.CUR.forEach(c=>{const st=getShortTermFundScore(c,ev,DAY_WINDOW); if(st.count>0) rel[c]=st;}); }catch(e){}
+        const relKeys=Object.keys(rel);
+        if(!confl.length&&!upc.length&&!relKeys.length) return null;
         return h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Denní brief','Dnešní data vs. 14denní bias'),
+          relKeys.length?h('div',{style:{display:'flex',flexDirection:'column',gap:5,marginBottom:(confl.length||upc.length)?10:0}},
+            h('div',{style:{fontSize:9.5,color:T.faint,letterSpacing:'.06em',marginBottom:1}},'UŽ VYŠLO (24H)'),
+            relKeys.map(c=>{ const st=rel[c],col=st.score>0.5?T.green:st.score<-0.5?T.red:T.dim;
+              return h('div',{key:c,style:{fontSize:11.5,color:T.dim,lineHeight:1.5}},
+                h('b',{style:{color:T.text}},(FLAGS[c]||'')+' '+c),' — '+st.items.map(i=>i.event+' '+(i.beat?'BEAT':'MISS')).slice(0,3).join(', ')+' ',
+                h('b',{style:self.mono({color:col})},'('+(st.score>0?'+':'')+st.score+')'));
+            })):null,
           confl.length?h('div',{style:{display:'flex',flexDirection:'column',gap:6,marginBottom:upc.length?10:0}},confl.map(p=>h('div',{key:p.pair,style:{display:'flex',alignItems:'center',gap:8,fontSize:11.5}},h('span',{style:{width:7,height:7,borderRadius:'50%',background:T.red,flex:'none'}}),h('b',{style:self.mono({fontSize:12})},p.pair),h('span',{style:{color:T.dim}},'dnešní data jdou proti '+p.dir+' biasu')))):null,
           upc.length?h('div',{style:{display:'flex',flexDirection:'column',gap:6}},upc.map(p=>h('div',{key:p.pair,style:{display:'flex',alignItems:'center',gap:8,fontSize:11.5}},h('span',{style:{width:7,height:7,borderRadius:'50%',background:T.amber,flex:'none'}}),h('b',{style:self.mono({fontSize:12})},p.pair),h('span',{style:{color:T.dim}},'dnes velký event — bias zatím nepotvrzený')))):null);
       })(),

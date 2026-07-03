@@ -29,8 +29,12 @@ const EVENT_RULES=[
   // direction: 1 = vyšší actual než forecast je bullish; -1 = nižší actual je bullish; "pmi" = kombinuje beat/miss + hranici 50
   {cat:"Interest Rates",keys:["interest rate","rate decision","rate statement","funds rate","policy rate","bank rate","deposit facility rate","refinancing rate","cash rate","overnight rate","main refinancing"],w:3.5,dir:1,cap:3},
   {cat:"Inflation",keys:["cpi","consumer price index","inflation rate","core inflation","hicp","pce","personal consumption","ppi","producer price"],w:3.0,dir:1,cap:3},
+  // Pořadí záměrné: "Labor -Unemployment" MUSÍ být před "Labor +Jobs" — "unemployment"
+  // obsahuje jako substring "employment", takže "Unemployment Rate"/"Unemployment Claims"
+  // by jinak vždy chytila +Jobs (dir:1) místo správné -Unemployment (dir:-1) a engine by
+  // KAŽDÝ pokles nezaměstnanosti (bullish) vykládal jako bearish miss a naopak.
+  {cat:"Labor -Unemployment",keys:["unemployment rate","unemployment claims","unemployment change","jobless claims","initial claims","continuing claims","claimant count"],w:3.0,dir:-1,cap:4},
   {cat:"Labor +Jobs",keys:["non-farm","nonfarm","payroll","employment change","employment","adp","average hourly earnings","wage","earnings"],w:3.0,dir:1,cap:4},
-  {cat:"Labor -Unemployment",keys:["unemployment rate","jobless claims","initial claims","continuing claims","claimant count"],w:3.0,dir:-1,cap:4},
   {cat:"GDP",keys:["gdp","gross domestic product"],w:2.2,dir:1,cap:2},
   {cat:"PMI",keys:["manufacturing pmi","services pmi","service pmi","composite pmi","pmi","purchasing managers","ism manufacturing","ism services"],w:1.8,dir:"pmi",cap:2},
   {cat:"Retail Sales",keys:["retail sales"],w:1.7,dir:1,cap:2},
