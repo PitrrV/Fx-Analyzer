@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260702e"></script>
-<script src="sync.js?v=20260702e"></script>
+<script src="engine.js?v=20260702f"></script>
+<script src="sync.js?v=20260702f"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -609,7 +609,7 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
   const RN={"6M":26,"1Y":52,"2Y":104,"ALL":520};
   // Scanner příležitostí (dav přeplněný proti COT + fundamentu) — sdílená logika s PC
   const rl=(data&&data.retailLatest)||null;
-  const ops=(typeof scanOpportunities==="function")?scanOpportunities((data&&data.pairs)||[],(data&&data.scores)||{},rl,{retailMin:70,diffMin:2}):[];
+  const ops=(typeof scanOpportunities==="function")?scanOpportunities((data&&data.pairs)||[],(data&&data.scores)||{},rl,{retailMin:70,diffMin:0}):[];
   return (
     <div>
       <div className="card">
@@ -632,7 +632,7 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
             <div className="between"><span className="row" style={{gap:8}}><span style={{width:8,height:8,borderRadius:50,background:dc,boxShadow:"0 0 8px "+dc}}/><b className="mono" style={{fontSize:13}}>{o.pair}</b></span><b className="mono" style={{fontSize:13,color:dc}}>{(o.diff>=0?"+":"")+o.diff}</b></div>
             <div className="muted" style={{fontSize:11,marginTop:4}}>{o.reason}</div>
           </div>
-        );}):<div className="muted" style={{fontSize:12,lineHeight:1.6}}>{!rl?"⚠ Živý retail ještě nenačten — naskočí z cronu (refresh).":"Teď žádná contrarian příležitost — žádný pár nesplňuje retail ≥70 % proti COT i fundamentu (diff ≥2)."}</div>}
+        );}):<div className="muted" style={{fontSize:12,lineHeight:1.6}}>{!rl?"⚠ Živý retail ještě nenačten — naskočí z cronu (refresh).":"Teď žádná contrarian příležitost — žádný pár nesplňuje retail ≥70 % proti COT i fundamentu (bez ohledu na výši skóre)."}</div>}
       </div>
 
       {/* COT skóre + percentil */}

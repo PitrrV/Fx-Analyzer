@@ -2417,7 +2417,9 @@ function getDataFreshness(){
 // fundamentální bias, COT (smart money) souhlasí s biasem, a diff ≥ diffMin.
 // retailLatest = poslední bod z data/retail_hist.json (živý MyFxBook).
 function scanOpportunities(pairs,scores,retailLatest,opts){
-  const retailMin=(opts&&opts.retailMin)||70, diffMin=(opts&&opts.diffMin)||3;
+  // diffMin=0 je validní hodnota (vypiš každou příležitost bez ohledu na skóre) — nesmí spadnout do ||default
+  const retailMin=(opts&&opts.retailMin!=null)?opts.retailMin:70;
+  const diffMin=(opts&&opts.diffMin!=null)?opts.diffMin:3;
   if(!Array.isArray(pairs)||!scores) return [];
   const rp=(retailLatest&&retailLatest.pairs)||null, rc=(retailLatest&&retailLatest.ccy)||null;
   const out=[];
