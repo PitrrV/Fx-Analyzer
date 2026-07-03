@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260703b"></script>
-<script src="sync.js?v=20260703b"></script>
+<script src="engine.js?v=20260703c"></script>
+<script src="sync.js?v=20260703c"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -109,7 +109,7 @@ class FXApp extends React.Component{
       try{ await fetchActionCOTHistory(); }catch(e){}
       // COT na pozadí když staré
       try{ const m0=loadCOTMeta(); const age=m0&&m0.asOf?((Date.now()-new Date(m0.asOf).getTime())/86400000):NaN; if(!(age<=4)){ await fetchCOTAuto(); } }catch(e){}
-      const cot=loadCOT(), sent=loadSentiment();
+      const cot=(typeof getLatestCOTScores==='function'&&getLatestCOTScores())||loadCOT(), sent=loadSentiment();
       const sc={}; this.CUR.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
       try{ if(typeof saveScoreHistory==='function') saveScoreHistory(sc); }catch(e){}
       try{ if(typeof saveScoreDeltaSnapshot==='function') saveScoreDeltaSnapshot(sc); }catch(e){}
