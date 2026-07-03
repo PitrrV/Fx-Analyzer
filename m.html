@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260703b"></script>
-<script src="sync.js?v=20260703b"></script>
+<script src="engine.js?v=20260703c"></script>
+<script src="sync.js?v=20260703c"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -168,7 +168,7 @@ async function loadDataMobile(){
   try{ applyAutoRiskSentiment(); }catch(e){}
   try{ await fetchActionCOTHistory(); }catch(e){}
   let retailLatest=null, retailHist=[]; try{ const rr=await fetch("data/retail_hist.json?h="+Math.floor(Date.now()/1800000),{cache:"no-store"}); if(rr.ok){ const rj=await rr.json(); if(rj&&Array.isArray(rj.points)&&rj.points.length){ retailHist=rj.points; retailLatest=rj.points[rj.points.length-1]; } } }catch(e){}
-  const cot=loadCOT(), sent=loadSentiment();
+  const cot=(typeof getLatestCOTScores==='function'&&getLatestCOTScores())||loadCOT(), sent=loadSentiment();
   const sc={}; CURRENCIES.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
   try{ if(typeof saveScoreDeltaSnapshot==='function') saveScoreDeltaSnapshot(sc); }catch(e){}
   try{ if(typeof saveScoreHistory==='function') saveScoreHistory(sc); }catch(e){}

@@ -678,6 +678,19 @@ function parseCOTFinancialText(txt){
   return{scores:{...COT_DEFAULT,...out},raw};
 }
 function loadCOTHistory(){try{return JSON.parse(localStorage.getItem("cot_hist")||"{}");}catch(e){return{};}}
+// Kanonický COT vstup pro scoreCurrency: poslední týden ze SDÍLENÉ historie (cot_hist),
+// do které se mergne server-cron data/cot_hist.json — stejná data na PC/mobilu/Classic.
+// Záměrně NE loadCOT()/"cot_data": to je per-zařízení live snapshot z fetchCOTAuto(),
+// který si každé zařízení natáhne nezávisle a v jinou dobu → stejný den pak vycházel
+// s jinými čísly (viz PC vs mobil AUD 0.4 vs 0.3 při identickém "3.7." skóre).
+function getLatestCOTScores(){
+  try{
+    const hist=loadCOTHistory();
+    const keys=Object.keys(hist).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+    if(!keys.length) return null;
+    return hist[keys[keys.length-1]].scores||null;
+  }catch(e){return null;}
+}
 // Normalizuj jakékoli datum (ISO i textové "June 17, 2026" z CFTC .htm) na klíč YYYY-MM-DD.
 // Bez toho se mixují formáty a Object.keys().sort() řadí abecedně → měsíce prohozené v grafu.
 function cotDateKey(s){
@@ -726,7 +739,12 @@ async function fetchActionCOTHistory(){
     const hist=loadCOTHistory();
     for(const [date,week] of Object.entries(j.weeks)){
       const key=cotDateKey(date);
-      if(!hist[key] || String(week.updatedAt||"")>=String(hist[key].updatedAt||"")) hist[key]=week;
+      // Server (týdenní cron, stejný zdroj pro všechna zařízení) je autoritativní pro
+      // každý týden, který má — vždy přepíše lokální kopii (i live-fetchnutou vlastním
+      // zařízením), ať PC/mobil/Classic vidí pro daný týden identická čísla. Dřív
+      // rozhodoval "kdo má novější updatedAt", což při vlastním live-fetchi na jednom
+      // zařízení natrvalo rozjelo hodnoty mezi zařízeními (viz PC vs mobil skóre).
+      hist[key]=week;
     }
     const keys=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);
     const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
