@@ -753,6 +753,18 @@ async function fetchActionCOTHistory(){
     const keys=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);
     const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
     localStorage.setItem("cot_hist",JSON.stringify(trimmed));
+    // Kanonický snapshot ČISTĚ serverových týdnů (jen scores) pro percentil:
+    // cot_hist je union se staršími lokálními týdny — na dlouho používaném PC má
+    // posledních 78 záznamů jiné složení než na mobilu (staré live-fetche vmíchané
+    // mezi serverové) → percentil pořád vycházel jinak (USD 92p vs 84p). Percentil
+    // proto čte výhradně tenhle snapshot, identický na všech zařízeních.
+    try{
+      const srv={};
+      Object.entries(j.weeks).forEach(([d,w])=>{ if(w&&w.scores) srv[cotDateKey(d)]=w.scores; });
+      const sk=Object.keys(srv).sort().slice(-COT_PCT_WINDOW);
+      const srvTrim={}; sk.forEach(k=>srvTrim[k]=srv[k]);
+      if(sk.length>=12) localStorage.setItem("cot_pct_server",JSON.stringify(srvTrim));
+    }catch(e){}
     return j;
   }catch(e){return null;}
 }
@@ -1482,15 +1494,28 @@ function buildEventWatch(calData,upcoming){
 // (0.45↔0.80) = skok skóre až ~0.7 jen podle stáří zařízení. Okno ≤ rozsah
 // serverového data/cot_hist.json → po merge mají všechna zařízení identický vstup.
 const COT_PCT_WINDOW=78; // ~1.5 roku týdenních reportů
-function getCOTPercentile(currency){
+// Řada pro percentil: primárně ČISTĚ serverový snapshot (cot_pct_server, ukládá
+// fetchActionCOTHistory — identický soubor pro všechna zařízení), fallback lokální
+// cot_hist jen dokud se snapshot poprvé nestáhne. Lokální union historie má na
+// každém zařízení jiné složení (staré live-fetche), takže z ní percentil nikdy
+// nevycházel stejně.
+function _cotPctSeries(currency){
+  try{
+    const srv=JSON.parse(localStorage.getItem("cot_pct_server")||"null");
+    if(srv&&typeof srv==="object"){
+      const vals=Object.keys(srv).sort().slice(-COT_PCT_WINDOW).map(k=>srv[k]?.[currency]).filter(v=>typeof v==="number");
+      if(vals.length>=12) return vals;
+    }
+  }catch(e){}
   try{
     const hist=loadCOTHistory();
     const entries=Object.entries(hist).sort(([a],[b])=>new Date(a)-new Date(b)).slice(-COT_PCT_WINDOW);
-    // OPRAVA: hist[date].scores[currency] — ne hist[date][currency]
-    const scores=entries.map(([,w])=>{
-      const v=w.scores?.[currency];
-      return typeof v==="number"?v:null;
-    }).filter(s=>s!==null);
+    return entries.map(([,w])=>w.scores?.[currency]).filter(v=>typeof v==="number");
+  }catch(e){return [];}
+}
+function getCOTPercentile(currency){
+  try{
+    const scores=_cotPctSeries(currency);
     if(scores.length<12) return null;
     const cur=scores[scores.length-1];
     const hist2=scores.slice(0,-1);
@@ -1501,12 +1526,7 @@ function getCOTPercentile(currency){
 // Vrací null, pokud ještě nemáme dost historie na obě strany srovnání (potřeba 13+ týdnů).
 function getCOTPercentileChange(currency){
   try{
-    const hist=loadCOTHistory();
-    const entries=Object.entries(hist).sort(([a],[b])=>new Date(a)-new Date(b)).slice(-COT_PCT_WINDOW);
-    const scores=entries.map(([,w])=>{
-      const v=w.scores?.[currency];
-      return typeof v==="number"?v:null;
-    }).filter(s=>s!==null);
+    const scores=_cotPctSeries(currency);
     if(scores.length<13) return null;
     const pct=arr=>{ const cur=arr[arr.length-1],h=arr.slice(0,-1); return Math.round((h.filter(s=>s<=cur).length/h.length)*100); };
     const curPct=pct(scores),prevPct=pct(scores.slice(0,-1));
