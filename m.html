@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260703a"></script>
-<script src="sync.js?v=20260703a"></script>
+<script src="engine.js?v=20260703b"></script>
+<script src="sync.js?v=20260703b"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -572,7 +572,7 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
           const rl=rpts.map(pt=>{ const d=pt.pairs&&pt.pairs[p.pair]; if(d&&isFinite(d.l)) return d.l; const b=pt.ccy&&pt.ccy[p.base],q=pt.ccy&&pt.ccy[p.quote]; return (b!=null&&q!=null)?Math.round((b+(100-q))/2):50; });
           const cb=cotLSseriesM(p.base,lim),cq=cotLSseriesM(p.quote,lim);
           const cells=[
-            {key:"sc",title:"Vývoj skóre",sub:p.base+" vs "+p.quote,dates:bS.dates,mid:0,fmt:v=>(v>0?"+":"")+Math.round(v),
+            {key:"sc",title:"Vývoj skóre",sub:p.base+" vs "+p.quote,dates:bS.dates,mid:0,fmt:v=>(v>0?"+":"")+v.toFixed(1),
               series:[{name:p.base,color:"#5e7cfb",vals:bS.values||[]},{name:p.quote,color:"#9d7bff",vals:qS.values||[]}]},
             {key:"rt",title:"Retail L/S",sub:"dav long vs short (70%+ = kontrariánsky)",dates:null,yMin:0,yMax:100,mid:50,fmt:v=>Math.round(v)+"%",
               series:[{name:"Long",color:"#2ed3a0",vals:rl},{name:"Short",color:"#f2606e",vals:rl.map(v=>100-v)}]},
