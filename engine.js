@@ -2554,3 +2554,56 @@ function getCOTLongShort(currency){
     const L=(r.levLong||0)+(r.assetLong||0), S=(r.levShort||0)+(r.assetShort||0); const tot=L+S;
     if(tot<=0) return null; return {long:Math.round(L/tot*100), short:Math.round(S/tot*100), L,S}; }catch(e){ return null; }
 }
+
+// Sdílený instrukční blok pro AI Coache: jak odpovědět na dotaz o KONKRÉTNÍM
+// ekonomickém reportu/eventu (např. "co znamená NFP", "jak dopadne CPI", "co
+// čekat od PMI") — místo pouhého zopakování biasu z Analyzeru. Sdíleno napříč
+// PC/mobil/Classic, ať mají všechny tři shodnou strukturu odpovědi.
+const COACH_ECON_REPORT_RULES=`DOTAZY NA KONKRÉTNÍ EKONOMICKÝ REPORT/EVENT (např. "co znamená NFP", "jak dopadne CPI", "co čekat od PMI"):
+Nikdy neopakuj jen obecný bias z Analyzeru — vždy odpověz přímo na otázku uživatele. Najdi danou událost v econEvents (obsahuje previous/forecast/actual/category/weight/rule/status/impact) a odpověz PŘESNĚ v téhle struktuře (u tohoto typu dotazu neplatí limit 3–4 odstavce):
+1. Očekávání trhu — co Forecast říká a proč trh zrovna tohle číslo čeká (vztáhni k Previous).
+2. Previous vs Forecast — konkrétní srovnání (rozdíl, směr).
+3. Bias z Forecastu vs Previous: BULLISH / BEARISH / NEUTRÁLNÍ pro danou měnu — urči podle pole "rule" (higher_is_bullish / lower_is_bullish / pmi_50_threshold).
+4. Síla dopadu hvězdičkami ⭐ (1–5) — vycházej z "impact" a "weight": impact=high + weight≥3 → 4–5⭐; medium nebo nižší weight → 2–3⭐; nízká váha → 1⭐.
+5. Reaction matrix — 5 pásem hodnoty Actual (výrazně nad / mírně nad / v souladu s forecastem / mírně pod / výrazně pod, dle "rule") a co by to znamenalo pro danou měnu (výrazně posílí / mírně posílí / bez reakce / mírně oslabí / výrazně oslabí), každé pásmo označ ⭐ silou očekávané reakce. Pásma odvoď z rozdílu Previous↔Forecast jako měřítka běžného rozptylu čísla; pokud přesná historická volatilita není v datech, řekni to jako kvalifikovaný odhad, ne jako změřené číslo.
+6. Vysvětli mechanismus — proč by trh takhle reagoval (sazby/inflace/zaměstnanost → CB politika → měna).
+7. Na konci VŽDY samostatně jako poslední bod: "Co z toho plyne pro moje otevřené obchody?" — propoj s topPairs[].position / aktivním párem.
+Pokud je status daného eventu "upcoming" nebo "pending_actual" (Actual ještě nedorazil), postav odpověď na Forecast vs Previous a řekni, že čekáš na zveřejnění. Pokud je "released" (Actual už je k dispozici), nejdřív zhodnoť samotné zveřejněné číslo (beat/miss vůči forecastu) a pak teprve scénář pro zbytek dne.`;
+
+// ── AI COACH: KONTEXT EKONOMICKÝCH UDÁLOSTÍ (sdíleno PC/mobil/Classic) ──
+// Coach dřív dostával jen název/impact dnešních eventů — bez Previous/Forecast/
+// Actual nemohl nikdy odpovědět na "co znamená tenhle report", jen zopakovat
+// bias z Analyzeru. Tahle funkce vrátí přímé HIGH/MEDIUM události od včerejška
+// do +horizonDays dopředu se všemi čísly + metadaty (kategorie, váha, pravidlo
+// směru překvapení), aby AI mohl postavit očekávání/reaction-matrix/dopad sám.
+function buildCoachEventContext(calData,upcoming,opts){
+  try{
+    const limit=(opts&&opts.limit)||16;
+    const horizonDays=(opts&&opts.horizonDays)||7;
+    const ev=mergeEvents(calData||[],upcoming||[]);
+    const now=Date.now(), from=startOfTodayMs()-2*86400000, to=now+horizonDays*86400000;
+    const seen=new Set(),out=[];
+    ev.filter(e=>{
+      const t=parseEventTime(e.time); if(isNaN(t)||t<from||t>to) return false;
+      const imp=(e.impact||"").toString().toLowerCase();
+      return evIsHighImpact(e)||imp.includes("medium")||imp==="2";
+    }).forEach(e=>{
+      const meta=getEventMeta(e.event); if(!meta) return;
+      const ccy=getCurrencyFromEvent(e); if(!ccy) return;
+      const t=parseEventTime(e.time); if(isNaN(t)) return;
+      const key=ccy+"|"+e.event+"|"+t; if(seen.has(key)) return; seen.add(key);
+      out.push({
+        ccy,event:e.event,category:meta.cat,weight:meta.w,
+        time:new Date(t).toISOString(),
+        status:e.actual?"released":(t<=now?"pending_actual":"upcoming"),
+        previous:e.prev||"",forecast:e.estimate||"",actual:e.actual||"",
+        rule:meta.dir==="pmi"?"pmi_50_threshold":(meta.dir===-1?"lower_is_bullish":"higher_is_bullish"),
+        impact:(e.impact||"").toString().toLowerCase()||"—",
+      });
+    });
+    // Nejrelevantnější (nejblíž "teď", proběhlé i budoucí) první — ať je při
+    // oříznutí limitem nevynechá právě to, na co se uživatel nejspíš ptá.
+    out.sort((a,b)=>Math.abs(new Date(a.time)-now)-Math.abs(new Date(b.time)-now));
+    return out.slice(0,limit);
+  }catch(e){ return []; }
+}

@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260704a"></script>
+<script src="engine.js?v=20260704b"></script>
 <script src="sync.js?v=20260704a"></script>
 <style>
 *{box-sizing:border-box}
@@ -304,9 +304,9 @@ class FXApp extends React.Component{
     if(!orKey){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ Chybí OpenRouter API klíč — přidej ho v záložce Nastavení ⚙ (zdarma na openrouter.ai).'}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); return; }
     try{
       const ctx=this.buildCoachContext();
-      const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce; vždy zmiň invalidaci; jsi mentor ne signální služba.';
+      const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce (mimo strukturovanou odpověď na ekonomický report, viz pravidla níže); vždy zmiň invalidaci; jsi mentor ne signální služba.\n\n'+COACH_ECON_REPORT_RULES;
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
-      const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:600,temperature:0.4});
+      const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:900,temperature:0.4});
       const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Coach'};
       const models=[(localStorage.getItem('or_coach_model')||'').trim()||'openrouter/free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free','google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
       let reply='';
@@ -316,9 +316,9 @@ class FXApp extends React.Component{
     }catch(e){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ '+(e&&e.message||e)}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); } }
   buildCoachContext(){ const sc={}; this.CUR.forEach(c=>{const d=this.D[c];sc[c]={score:+d.score.toFixed(2),fund:+d.fund.toFixed(2),cot:+d.cot.toFixed(2),cotPct:d.cotPct,policy:+d.policy.toFixed(2),cb:d.cb,inst:d.inst,retail:d.retail};});
     const top=this.PAIRS.slice(0,8).map(p=>({pair:p.pair,dir:p.dir,diff:+p.diff.toFixed(2),conviction:p.conv,prob:p.prob,status:p.status,position:(this.state.pos[p.pair]||'none')}));
-    const today=this.daily.map(d=>({t:d.t,ccy:d.ccy,ev:d.ev,imp:d.imp}));
+    let econEvents=[]; try{ econEvents=buildCoachEventContext(this._cal,this._up); }catch(e){}
     const cb={}; this.CUR.forEach(c=>{ const r=(typeof CENTRAL_BANK_RATES!=='undefined'?CENTRAL_BANK_RATES[c]:null); const p=(typeof CB_POLICY_DATA!=='undefined'?CB_POLICY_DATA[c]:null); cb[c]={rate:r,policy:p&&p.label}; });
-    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',centralBanks:cb,currencyScores:sc,topPairs:top,todayEvents:today}; }
+    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',centralBanks:cb,currencyScores:sc,topPairs:top,econEvents:econEvents}; }
   async runVision(){ const file=this._aiFile; if(!file){ this.setState({aiErr:'Nejprve nahrej screenshot grafu.'}); return; }
     const orKey=(localStorage.getItem('or_key')||'').trim(); if(!orKey){ this.setState({aiErr:'Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).'}); return; }
     this.setState({aiBusy:true,aiErr:'',aiResult:null});
