@@ -881,7 +881,7 @@ class FXApp extends React.Component{
           Array.isArray(R.risk_warnings)&&R.risk_warnings.length&&sec('Rizika',h('div',null,R.risk_warnings.map((w,i)=>h('div',{key:i,style:{fontSize:12.5,color:T.amber,padding:'3px 0'}},'⚠ '+w)))),
           R.summary&&sec('Shrnutí',h('div',{style:{fontSize:13,color:T.text,lineHeight:1.6}},R.summary)))));
   }
-  renderAICoach(){ const self=this,h=this.h,T=this.tok,st=this.state; const chips=['Které páry dnes neobchodovat?','Top setupy dnes?','Co s mými pozicemi?','Kde je konflikt?'];
+  renderAICoach(){ const self=this,h=this.h,T=this.tok,st=this.state; const chips=['Top setupy dnes?','Rozeber nejbližší velký report','Otočil se dnes někde bias?','Co s mými otevřenými pozicemi?'];
     const send=text=>self.sendCoach(text);
     return h('div',{style:{maxWidth:860,margin:'0 auto'}},h('div',{style:self.card({padding:0,overflow:'hidden',display:'flex',flexDirection:'column',height:'calc(100vh - 150px)',minHeight:520})},
       h('div',{style:{display:'flex',alignItems:'center',gap:12,padding:'15px 20px',borderBottom:'1px solid #1b2130'}},h('div',{style:self.mono({width:38,height:38,borderRadius:11,background:'linear-gradient(150deg,#10131c,#0a0c12)',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13})},'AT'),h('div',{style:{flex:1}},h('div',{style:{fontSize:14,fontWeight:800}},'AI Coach'),h('div',{style:{fontSize:11,color:T.green,display:'flex',alignItems:'center',gap:6}},h('span',{style:{width:6,height:6,borderRadius:50,background:T.green}}),'Vidí tvé živé skóre, COT a pozice')),
