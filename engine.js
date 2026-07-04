@@ -2607,3 +2607,67 @@ function buildCoachEventContext(calData,upcoming,opts){
     return out.slice(0,limit);
   }catch(e){ return []; }
 }
+
+// ── AI COACH: "DOSSIER" KONKRÉTNÍHO PÁRU (sdíleno PC/mobil/Classic) ──
+// Coach dostával jen holé diff/conviction/prob za top 8 párů — bez rozpadu skóre
+// (fund/policy/yield/COT/sentiment/sezónnost), který appka už počítá a zobrazuje
+// v "Komponenty skóre". Bez něj si na dotaz "vysvětli mi EURCAD" musel vymýšlet
+// vysvětlení místo aby citoval reálná čísla. Tahle funkce nic nového nepočítá —
+// jen posbírá už existující výstupy (scoreCurrency/calcConvictionScore/
+// buildForecastV5/getPairDailyState/getRecentFlips/getOilStatus) do jednoho
+// „dossier" objektu, který jde poslat modelu jako jediný zdroj pravdy o páru.
+function buildPairDossier(pairSym,scores,calData,upcoming,aiAnalyses,opts){
+  try{
+    const pairObj=STANDARD_PAIRS.find(x=>x.pair===pairSym); if(!pairObj) return null;
+    const {base,quote}=pairObj;
+    const sB=(scores&&scores[base])||{}, sQ=(scores&&scores[quote])||{};
+    const diffRaw=(sB.score||0)-(sQ.score||0);
+    const dir=diffRaw>=0?"BUY":"SELL", diff=+Math.abs(diffRaw).toFixed(2);
+    const p={pair:pairSym,base,quote,dir,diff,s1:sB.score||0,s2:sQ.score||0};
+    let conv={stars:0,reasons:[]}; try{ conv=calcConvictionScore(p,scores||{},aiAnalyses||{})||conv; }catch(e){}
+    let forecast=null; try{ const fc=buildForecastV5(p,scores||{},calData||[],upcoming||[]); if(fc) forecast={prob:fc.prob,dir:fc.dir,desc:fc.desc,newsLabel:fc.newsLabel||"",cotWarning:fc.cotWarning||""}; }catch(e){}
+    let daily=null; try{ const ds=getPairDailyState(p,scores||{},calData||[],upcoming||[]); if(ds) daily={level:ds.level}; }catch(e){}
+    let flip=null; try{ if(isPairFlipped(pairSym)){ const fl=getRecentFlips([p],calData||[],upcoming||[],36); if(fl&&fl[0]) flip={from:fl[0].from,to:fl[0].to,driver:fl[0].driver}; } }catch(e){}
+    let oil=null; if(base==="CAD"||quote==="CAD"){ try{ const os=getOilStatus(); if(os) oil={price:os.price,direction:os.direction,mom4w:os.mom4w,cadAdj:os.cadAdj}; }catch(e){} }
+    const ai=(aiAnalyses||{})[pairSym]||null;
+    const cmp=(field)=>({base:+((sB[field]||0)).toFixed(2),quote:+((sQ[field]||0)).toFixed(2)});
+    return {
+      pair:pairSym,base,quote,dir,diff,
+      components:{fund:cmp("fund_score"),policy:cmp("policy_adj"),yield:cmp("yield_adj"),cot:cmp("cot_score"),sent:cmp("sent_score"),season:cmp("season_score")},
+      cotPercentile:{base:sB.cot_pct??null,quote:sQ.cot_pct??null},
+      conviction:{stars:conv.stars,reasons:conv.reasons},
+      forecast,dailyBrief:daily,biasFlip:flip,oilCorrection:oil,
+      aiChartAnalysis:ai?{tf:ai.tf,bias:ai.bias,confidence:ai.confidence}:null,
+    };
+  }catch(e){ return null; }
+}
+
+// Sdílený slovníček pojmů appky pro AI Coache — ať u "co znamená X" cituje
+// definici appky, ne vlastní odhad.
+const COACH_GLOSSARY=`SLOVNÍČEK POJMŮ APPKY (použij tyhle definice, nevymýšlej vlastní):
+- score: celkové skóre měny −10 až +10, vážený součet fundamentů, COT, retailu, sezónnosti, CB policy, real yieldu, rizika a ropy (jen CAD/USD).
+- diff: rozdíl skóre base−quote páru; kladné = BUY bias, záporné = SELL bias.
+- conviction (★): 0–5 hvězd, kolik nezávislých faktorů (CB policy, real yield, síla fundamentů, COT bez extrému, AI graf, ropa u CAD) souhlasí se směrem.
+- COT skóre: pozicování velkých institucí (CFTC), rozsah −3 až +3, vyšší = víc long.
+- COT percentil: kde je dnešní COT skóre v posledních ~104 týdnech historie (0–100).
+- crowded/extrém: COT percentil ≥85 nebo ≤15 — institucionální dav je nahromaděný na jedné straně, riziko obratu.
+- retail sentiment: % retailových traderů long na páru/měně — appka to bere kontrariánsky (hodně long retailu = mírně bearish signál).
+- CBDI (Divergence): 0–100, jak moc se centrální banky světa dnes liší směrem politiky (víc = lepší podmínky pro tenhle typ fundamentální analýzy).
+- real yield: nominální sazba CB minus inflace (CPI); vyšší reálný výnos = přitažlivější měna.
+- 14denní forecast (prob): pravděpodobnost (schválně opatrně omezená na 35–75 %), že se pár pohne ve forecastovaném směru podle nadcházejících dat; může nesouhlasit s dlouhodobým fundamentálním biasem.
+- daily brief / denní konflikt: srovnání dnešních čerstvých dat s 14denním biasem — "conflict" = dnešní data jdou proti dlouhodobému biasu.
+- bias flip: fundamentální bias měny/páru se za posledních 36 h otočil (BUY↔SELL).
+- korelační skupina: páry, co se obvykle hýbou spolu (např. EURUSD/GBPUSD/AUDUSD/NZDUSD) — appka mezi nimi nepočítá duplicitní příležitosti.`;
+
+// Sdílená pravidla pro přesnost čísel + použití focusPairDossier — bez nich model
+// plete cot/cotPct/inst/retail dohromady a u konkrétního páru si vymýšlí čísla
+// místo aby četl ta, co appka už spočítala.
+const COACH_GROUNDING_RULES=`PRAVIDLA PRO PŘESNOST ČÍSEL (hodně se to plete, čti pozorně):
+- cot = institucionální COT skóre v rozsahu −3 až +3 (NENÍ procento).
+- cotPct/cotPercentile = percentil (0–100) — kde je dnešní COT skóre v historii.
+- inst = institucionální náklon škálovaný na −100..+100 (odvozeno z cot×12, jen pro vizuální bary — neplet s cotPct).
+- retail/sent = % retailových long pozic (0–100).
+- score/fund/policy/yield/season = typicky v rozsahu −10 až +10.
+Nikdy tato pole nezaměňuj a nikdy si číslo nevymýšlej — když ho v datech níže nevidíš, řekni, že ho nemáš, nehádej ho.
+DOSSIER KONKRÉTNÍHO PÁRU: pokud data obsahují "focusPairDossier", u otázek na TENTO pár cituj VÝHRADNĚ čísla z něj (components.fund/policy/yield/cot/sent/season pro base i quote, cotPercentile, conviction.stars/reasons, forecast.prob/dir, dailyBrief.level, biasFlip, oilCorrection) — nic nepřepočítávej, nic nedomýšlej, drž se přesně těchto hodnot. Strukturuj odpověď: Fundamenty (base vs quote) → COT → Retail → Conviction → 14d forecast (uveď, pokud nesouhlasí se směrem biasu) → Denní brief/bias flip (pokud relevantní) → Shrnutí pro uživatele. Pokud focusPairDossier chybí a uživatel se ptá na konkrétní pár, řekni, že teď pro něj nemáš detailní data, místo abys je vymyslel.
+FORMÁT ODPOVĚDI: piš VÝHRADNĚ česky. Nikdy nezobrazuj svoje uvažování, plán odpovědi ani jakýkoli text v angličtině (např. "we need to…", "let's produce…") — jen rovnou finální odpověď pro uživatele, bez meta-komentářů o tom, jak ji skládáš.`;
