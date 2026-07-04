@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://www.google.com; connect-src 'self' https://generativelanguage.googleapis.com https://openrouter.ai https://finnhub.io https://api.rss2json.com https://*.github.io https://raw.githubusercontent.com; base-uri 'none'; object-src 'none'" />
 <title>AI Market Radar v4</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -327,6 +328,7 @@
 const $ = (s,r)=> (r||document).querySelector(s);
 const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function safeUrl(u){ return /^https?:\/\//i.test(String(u||'').trim()) ? String(u).trim() : '#'; }
 
 const LS = {
   get(k,d){ try{const v=localStorage.getItem('amr_'+k);return v?JSON.parse(v):d}catch(e){return d} },
@@ -344,7 +346,7 @@ const PAIRS = ['EURUSD','GBPUSD','USDJPY','USDCHF','USDCAD','AUDUSD','NZDUSD','E
 const CRYPTO_RE = /\b(bitcoin|btc|ethereum|ether|\beth\b|crypto|krypto|altcoin|coinbase|binance|solana|\bxrp\b|ripple|dogecoin|shiba|\bnft\b|blockchain|stablecoin|defi|memecoin|tether)\b/i;
 const FX_RE = /\b(usd|dollar|dolar|eur|euro|gbp|pound|sterling|jpy|yen|aud|cad|chf|franc|frank|nzd|kiwi|fed|fomc|ecb|boj|boe|snb|rate|rates|inflation|inflac|cpi|gdp|hdp|nfp|payroll|jobless|unemploy|gold|zlat|oil|ropa|treasury|bond|yield|forex|currenc|měn)\b/i;
 function isCryptoOnly(h){ h=h||''; return CRYPTO_RE.test(h) && !FX_RE.test(h); }
-const HISTORY_DAYS = 7;
+const HISTORY_DAYS = 30; // server (scripts/fetch-radar.js) teď dodává reálnou historii přes GitHub Action, ne jen tenhle prohlížeč
 // Výchozí finanční RSS zdroje — použijí se, když uživatel nezadá vlastní (přes rss2json, bez klíče).
 const DEFAULT_RSS = [
   // zprávy na všechny měny
@@ -545,7 +547,13 @@ function mergeHistory(items){
   LS.set('history',merged); return merged;
 }
 function getCache(){ return LS.get('analysis_cache',{}); }
-function setCache(c){ LS.set('analysis_cache',c); }
+const CACHE_DAYS = 14;
+function pruneCache(c){
+  const cut=Date.now()-CACHE_DAYS*24*3600*1000, out={};
+  Object.keys(c||{}).forEach(k=>{ const rec=c[k]; const t=rec&&rec.analyzedAt?new Date(rec.analyzedAt).getTime():0; if(t>=cut) out[k]=rec; });
+  return out;
+}
+function setCache(c){ LS.set('analysis_cache',pruneCache(c)); }
 function mediaImage(history){
   const m={}; INSTRUMENTS.forEach(c=>m[c]={pos:0,neg:0});
   (history||[]).forEach(n=> (n.affects||[]).forEach(a=>{ const s=a[0],d=a[1]; if(m[s]){ if(d==='pos')m[s].pos++; else if(d==='neg')m[s].neg++; } }));
@@ -628,8 +636,8 @@ async function callGemini(messages, settings){
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   let lastStatus=0;
   for(let i=0;i<models.length;i++){
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(models[i])+':generateContent?key='+encodeURIComponent(settings.geminiKey),{
-      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(models[i])+':generateContent',{
+      method:'POST', headers:{'Content-Type':'application/json','x-goog-api-key':settings.geminiKey}, body:JSON.stringify(body)
     });
     if(r.ok){ const d=await r.json(); const parts=d&&d.candidates&&d.candidates[0]&&d.candidates[0].content&&d.candidates[0].content.parts; return (parts?parts.map(p=>p.text||'').join(''):''); }
     lastStatus=r.status;
@@ -676,7 +684,8 @@ async function analyzeBatch(items, settings){
 '"story":"1 věta: do jakého širšího příběhu zpráva zapadá",'+
 '"affects":[["SYMBOL","pos"]],"score":5}]\n'+
 '"cs" = výstižný český překlad titulku (zachovej čísla a názvy). '+
-'SYMBOL jen z: '+INSTRUMENTS.join(',')+'. score 1-10: 10=Fed sazby/CPI/NFP, 7-8=důležitý projev/data, 3-4=běžná zpráva.\nZprávy:\n'+list;
+'SYMBOL jen z: '+INSTRUMENTS.join(',')+'. score 1-10: 10=Fed sazby/CPI/NFP, 7-8=důležitý projev/data, 3-4=běžná zpráva. '+
+'Pokud samotný titulek na spolehlivou interpretaci nestačí (chybí kontext), vrať "ai":"" a "story":"" a "affects":[] — NEVYMÝŠLEJ si dopad ani souvislosti, které z titulku neplynou.\nZprávy:\n'+list;
   const arr = parseJSON(await callAI([{role:'system',content:SYSTEM_ANALYST},{role:'user',content:prompt}],settings));
   if(!Array.isArray(arr)) throw new Error('BAD_BATCH');
   return arr;
@@ -715,7 +724,7 @@ async function fetchFinnhub(settings){
   // News endpoint je ve free tieru zdarma (na rozdíl od /calendar/economic). Vrací skutečné médium v poli source.
   const results=await Promise.all(cats.map(async c=>{
     try{
-      const r=await fetch('https://finnhub.io/api/v1/news?category='+c+'&token='+encodeURIComponent(settings.finnhubKey));
+      const r=await fetch('https://finnhub.io/api/v1/news?category='+c,{headers:{'X-Finnhub-Token':settings.finnhubKey}});
       if(!r.ok){ if(!err) err='HTTP '+r.status; return []; }
       const arr=await r.json();
       return (Array.isArray(arr)?arr:[]).slice(0,25).map(n=>({
@@ -767,6 +776,35 @@ async function fetchFromBackend(settings){
   if(Array.isArray(d.news)) mergeHistory(d.news.map(n=>Object.assign({hid:n.hid||hashStr(normHeadline(n.headline))},n)));
   return { status:'live', news:d.news||[], conns:(d.conns&&d.conns.length)?d.conns:MOCK_CONNECTIONS, desk:d.desk||Object.assign({},MOCK_DESK,{updatedAt:new Date().toISOString()}) };
 }
+// Statický sdílený feed z GitHub Action (scripts/fetch-radar.js, ~15min cron) — 1 AI
+// analýza pro všechny návštěvníky místo N klientů = N analýz stejné zprávy. Funguje
+// bez jakéhokoli nastavení; když neexistuje/je starý, appka tiše spadne na klientský
+// pipeline níž (Finnhub + RSS přímo z prohlížeče, jak fungovala dřív).
+const STATIC_FEED_MAX_AGE_MS = 3*3600*1000;
+async function fetchStaticFeed(){
+  const r = await fetch('data/radar_feed.json?h='+Math.floor(Date.now()/900000), {cache:'no-store'});
+  if(!r.ok) throw new Error('static '+r.status);
+  const d = await r.json();
+  if(!d || !Array.isArray(d.news) || !d.news.length) throw new Error('static empty');
+  const age = Date.now()-new Date(d.updatedAt||0).getTime();
+  if(!(age>=0) || age>STATIC_FEED_MAX_AGE_MS) throw new Error('static stale ('+Math.round(age/60000)+' min)');
+  mergeHistory(d.news.map(n=>Object.assign({hid:n.hid||hashStr(normHeadline(n.headline))},n)));
+  return { status:d.status||'live', error:d.error||'', news:d.news, conns:(d.conns&&d.conns.length)?d.conns:MOCK_CONNECTIONS, desk:d.desk||Object.assign({},MOCK_DESK,{updatedAt:new Date().toISOString()}) };
+}
+// Sdílenou historii/heat mapu i automatické seanční reporty ze serveru natáhni jen
+// jednou při startu appky (ne při každém refreshi) — jsou to doplňková, ne primární data.
+let staticExtrasLoaded=false;
+async function loadStaticExtrasOnce(){
+  if(staticExtrasLoaded) return; staticExtrasLoaded=true;
+  try{
+    const r=await fetch('data/radar_hist.json?h='+Math.floor(Date.now()/1800000),{cache:'no-store'});
+    if(r.ok){ const d=await r.json(); if(Array.isArray(d)&&d.length) mergeHistory(d); else if(d&&Array.isArray(d.items)) mergeHistory(d.items); }
+  }catch(e){}
+  try{
+    const r=await fetch('data/radar_reports.json?h='+Math.floor(Date.now()/1800000),{cache:'no-store'});
+    if(r.ok){ const d=await r.json(); if(d&&typeof d==='object'){ state.reports=Object.assign({},d,state.reports); LS.set('session_reports',state.reports); } }
+  }catch(e){}
+}
 
 /* ---------- refresh pipeline ---------- */
 async function runRefresh(settings){
@@ -778,6 +816,12 @@ async function runRefresh(settings){
       r.error = 'Backend nedostupný ('+e.message+') — přepnuto na živé zprávy (Finnhub + RSS). Pokud jsi „Backend URL" nevyplnil schválně, vymaž ho v ⚙️ Nastavení.' + (r.error? ' · '+r.error : '');
       return r;
     }
+  }
+  // Sdílený statický feed (GitHub Action) — jen když si uživatel nenastavil vlastní RSS
+  // (jinak by mu appka tiše ignorovala jeho výběr zdrojů).
+  if(!(settings.rssFeeds||'').trim()){
+    try{ return await fetchStaticFeed(); }
+    catch(e){ /* tichý fallback níž — statický feed je bonus navíc, ne požadavek */ }
   }
   // VŽDY zkus načíst reálné zprávy (uživatelův zdroj nebo výchozí RSS)
   let raw;
@@ -818,7 +862,7 @@ async function runRefresh(settings){
     try{
       const res = await analyzeBatch(toAnalyze, settings);
       toAnalyze.forEach((it,idx)=>{
-        const a = res[idx] || res.find(x=>x&&x.i===idx+1) || {};
+        const a = res.find(x=>x&&x.i===idx+1) || res[idx] || {};
         const rec = {
           cat: CATEGORIES.indexOf(a.cat)>=0? a.cat : 'TRH',
           cb: !!a.cb,
@@ -934,7 +978,7 @@ function sourceRowHTML(n){
     return '<div class="source-row">'+
       (fav?'<img class="fav" src="'+esc(fav)+'" alt="" onerror="this.style.display=\'none\'">':'')+
       '<span class="src-meta"><b>'+esc(n.source)+'</b> · '+esc(host)+'</span>'+
-      '<a class="verify" href="'+esc(n.url)+'" target="_blank" rel="noopener" title="Otevřít původní článek">Ověřit u zdroje ↗</a></div>';
+      '<a class="verify" href="'+esc(safeUrl(n.url))+'" target="_blank" rel="noopener" title="Otevřít původní článek">Ověřit u zdroje ↗</a></div>';
   }
   // mock / bez URL → odkaz na vyhledání původní zprávy (poctivě označeno)
   const q='https://www.google.com/search?q='+encodeURIComponent(n.headline);
@@ -944,14 +988,14 @@ function sourceRowHTML(n){
 }
 function clusterSrcsHTML(n){
   if(!(n.srcCount>1) || !Array.isArray(n.sources)) return '';
-  const list=n.sources.slice(0,6).map(s=>{ const t='t'+(s.tier||2); const a=s.url?'<a href="'+esc(s.url)+'" target="_blank" rel="noopener">'+esc(s.source)+'</a>':esc(s.source); return '<span class="tier '+t+'">T'+(s.tier||2)+'</span> '+a; }).join(' · ');
+  const list=n.sources.slice(0,6).map(s=>{ const t='t'+(s.tier||2); const a=s.url?'<a href="'+esc(safeUrl(s.url))+'" target="_blank" rel="noopener">'+esc(s.source)+'</a>':esc(s.source); return '<span class="tier '+t+'">T'+(s.tier||2)+'</span> '+a; }).join(' · ');
   const ft=n.firstAt?new Date(n.firstAt).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}):'';
   return '<div class="cluster-srcs"><span class="first">⚑ První: '+esc(n.firstSource||'?')+(ft?' v '+ft:'')+'</span><span>Zdroje: '+list+'</span></div>';
 }
 function cardHTML(n){
   const aff=(n.affects||[]).map(a=>'<span class="chip '+(a[1]||'')+'">'+esc(a[0])+(a[1]==='pos'?' ↑':a[1]==='neg'?' ↓':'')+'</span>').join('');
   const title = n.cs && n.cs!==n.headline ? n.cs : n.headline;
-  const head = n.url? '<a href="'+esc(n.url)+'" target="_blank" rel="noopener">'+esc(title)+'</a>' : esc(title);
+  const head = n.url? '<a href="'+esc(safeUrl(n.url))+'" target="_blank" rel="noopener">'+esc(title)+'</a>' : esc(title);
   const orig = (n.cs && n.cs!==n.headline) ? '<div style="font-size:11px;color:var(--txt-faint);margin-top:-4px;margin-bottom:9px">'+esc(n.headline)+'</div>' : '';
   const sc=n.score||0;
   const cr=credibility(n);
@@ -976,7 +1020,7 @@ function deskHTML(d){
   return '<div class="editorial"><div class="ed-top"><div class="ed-kicker">✦ AI šéfredaktor</div><div class="ed-stamp">aktualizováno '+formatDateTime(d.updatedAt)+' · '+ageText(d.updatedAt)+'</div></div>'+
     '<div class="ed-title">'+esc(d.title)+'</div><div class="ed-summary">'+esc(d.summary)+'</div>'+
     ((d.points&&d.points.length)?'<div class="ed-grid">'+d.points.map(p=>'<div class="ed-mini"><b>'+esc(p[0])+'</b><span>'+esc(p[1])+'</span></div>').join('')+'</div>':'')+
-    ((d.sources&&d.sources.length)?'<div class="ed-sources"><span class="ed-srclabel">Na základě těchto zpráv (ověř si):</span>'+d.sources.map(x=> x.url? '<a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.source)+': '+esc(x.headline)+' ↗</a>' : '<span>'+esc(x.headline)+'</span>').join('')+'</div>':'')+
+    ((d.sources&&d.sources.length)?'<div class="ed-sources"><span class="ed-srclabel">Na základě těchto zpráv (ověř si):</span>'+d.sources.map(x=> x.url? '<a href="'+esc(safeUrl(x.url))+'" target="_blank" rel="noopener">'+esc(x.source)+': '+esc(x.headline)+' ↗</a>' : '<span>'+esc(x.headline)+'</span>').join('')+'</div>':'')+
     '</div>';
 }
 function skeletonHTML(){ const one='<div class="sk"><div class="ln" style="width:40%"></div><div class="ln" style="width:90%;height:14px"></div><div class="ln" style="width:75%"></div><div class="ln" style="width:55%"></div></div>'; return one+one+one; }
@@ -1076,7 +1120,7 @@ function repHTML(){
   let body;
   if(!today.length) body='<div class="notice">Reporty se sestavují z reálných dnešních zpráv. Zatím nejsou načtené žádné dnešní zprávy — zkus „Obnovit zprávy" v Nastavení.</div>';
   else if(!inRange.length) body='<div class="empty"><div class="ic">🕒</div>Pro tuto seanci ('+cur[3]+':00–'+cur[4]+':00) zatím nejsou dnešní zprávy.</div>';
-  else body='<div class="rep-list">'+inRange.map(n=>{ const t=new Date(n.publishedAt).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}); const title=(n.cs&&n.cs!==n.headline)?n.cs:n.headline; const link=n.url?'<a href="'+esc(n.url)+'" target="_blank" rel="noopener">'+esc(title)+' ↗</a>':esc(title); const orig=(n.cs&&n.cs!==n.headline)?'<div style="font-size:10px;color:var(--txt-faint);margin-top:2px">'+esc(n.headline)+'</div>':''; return '<div class="rep-item"><span class="t">'+t+'</span><span class="h">'+link+orig+'</span></div>'; }).join('')+'</div>';
+  else body='<div class="rep-list">'+inRange.map(n=>{ const t=new Date(n.publishedAt).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}); const title=(n.cs&&n.cs!==n.headline)?n.cs:n.headline; const link=n.url?'<a href="'+esc(safeUrl(n.url))+'" target="_blank" rel="noopener">'+esc(title)+' ↗</a>':esc(title); const orig=(n.cs&&n.cs!==n.headline)?'<div style="font-size:10px;color:var(--txt-faint);margin-top:2px">'+esc(n.headline)+'</div>':''; return '<div class="rep-item"><span class="t">'+t+'</span><span class="h">'+link+orig+'</span></div>'; }).join('')+'</div>';
   // AI report seance (česky)
   const saved=state.reports[repKey(cur[0])];
   let aiBlock='';
@@ -1108,8 +1152,8 @@ function setHTML(){
   const maxOpt=(v,l)=>'<option value="'+v+'"'+((s.maxItems||14)===v?' selected':'')+'>'+l+'</option>';
   const sqOpt=(v,l)=>'<option value="'+v+'"'+((Number(s.squawkMin)||8)===v?' selected':'')+'>'+l+'</option>';
   return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2><span class="bar"></span>Nastavení</h2></div><div class="set">'+
-    '<div class="notice">Hned po otevření se načítají <b>reálné aktuální zprávy</b> z výchozích RSS zdrojů (s odkazem a datem). OpenRouter klíč přidá navrch AI komentář, skóre a souvislosti. Ukázková (mock) data se zobrazí jen když jsi offline.</div>'+
-    '<div class="field"><label>Backend URL (volitelné — nech PRÁZDNÉ)</label><input type="text" id="set-backendUrl" value="'+esc(s.backendUrl||'')+'" placeholder="nech prázdné"><div class="hint">Vyplň POUZE pokud sis spustil vlastní server (server.js) — viz README-backend.md. Většina lidí tu nic nevyplňuje a nechá prázdné.</div></div>'+
+    '<div class="notice">Appka automaticky čte <b>sdílený feed</b>, který na serveru (GitHub Action) každých ~15 min stahuje a AI analyzuje <em>jednou pro všechny</em> — nic tu není potřeba nastavovat. Vlastní OpenRouter/Gemini klíč níže appka použije jen jako záložní klientský pipeline, kdyby sdílený feed nebyl dostupný/aktuální. Ukázková (mock) data se zobrazí jen když selže úplně vše.</div>'+
+    '<div class="field"><label>Backend URL (volitelné — nech PRÁZDNÉ)</label><input type="text" id="set-backendUrl" value="'+esc(s.backendUrl||'')+'" placeholder="nech prázdné"><div class="hint">Sdílený feed (data/radar_feed.json z GitHub Action) se načítá automaticky bez vyplnění. Tohle pole vyplň POUZE pokud si běžíš úplně vlastní server s jiným /api/feed. Pozor: CSP appky povoluje jen předem vyjmenované domény — vlastní server musí být na stejné doméně jako appka nebo v allowlistu, jinak ho prohlížeč zablokuje.</div></div>'+
     '<div class="field"><label>OpenRouter API klíč '+(s.apiKey?'<span style="color:var(--green)">● vyplněn → AI zapnutá</span>':'<span style="color:var(--txt-faint)">● prázdný → AI vypnutá (běží jen živé titulky)</span>')+'</label><input type="password" id="set-apiKey" value="'+esc(s.apiKey||'')+'" placeholder="sk-or-v1-… (nepovinné)"><div class="hint">Bez klíče vidíš reálné dnešní titulky s odkazy. Klíč přidá AI komentář, skóre, souvislosti a šéfredaktora. Vytvoříš na openrouter.ai/keys.</div></div>'+
     '<div class="field"><label>AI model (NENÍ to klíč — jen volba „mozku")</label><select id="set-model">'+
       '<optgroup label="ZDARMA (bez kreditu)">'+modelOpt('meta-llama/llama-3.3-70b-instruct:free','Llama 3.3 70B — ZDARMA')+modelOpt('deepseek/deepseek-r1:free','DeepSeek R1 — ZDARMA')+modelOpt('google/gemini-2.0-flash-exp:free','Gemini 2.0 Flash — ZDARMA')+'</optgroup>'+
@@ -1263,6 +1307,7 @@ async function genSessionReport(sessionId, silent){
 async function refresh(){
   state.loading=true; repaintHeader(); if(state.tab==='feed') repaintFeedList();
   try{
+    await loadStaticExtrasOnce();
     const r=await runRefresh(state.settings);
     state.news=r.news||[]; state.conns=r.conns||[]; if(r.desk) state.desk=r.desk; state.status=r.status||'mock';
     state.lastError = r.error || '';

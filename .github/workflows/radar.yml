@@ -1,0 +1,41 @@
+name: AI Market Radar Feed
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"  # každých 15 min (GitHub část přeskočí; commit jen při změně)
+  workflow_dispatch:        # ruční/API spuštění
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Stáhnout a analyzovat zprávy
+        env:
+          GEMINI_KEY: ${{ secrets.RADAR_GEMINI_KEY }}
+          FINNHUB_KEY: ${{ secrets.RADAR_FINNHUB_KEY }}
+        run: node scripts/fetch-radar.js
+      - name: Commit při změně
+        run: |
+          git config user.name "radar-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          FILES="data/radar_feed.json data/radar_hist.json data/radar_cache.json data/radar_reports.json"
+          EXISTING=""
+          for f in $FILES; do [ -f "$f" ] && EXISTING="$EXISTING $f"; done
+          if [ -n "$EXISTING" ] && [ -n "$(git status --porcelain $EXISTING)" ]; then
+            git add $EXISTING
+            git commit -m "chore: update AI Market Radar feed [skip ci]"
+            git push
+          else
+            echo "Beze změny, nic necommituju."
+          fi
