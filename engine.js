@@ -1493,7 +1493,12 @@ function buildEventWatch(calData,upcoming){
 // serveru) by jinak spočítala jiný percentil → na hraně 85/15 přepnutá COT váha
 // (0.45↔0.80) = skok skóre až ~0.7 jen podle stáří zařízení. Okno ≤ rozsah
 // serverového data/cot_hist.json → po merge mají všechna zařízení identický vstup.
-const COT_PCT_WINDOW=78; // ~1.5 roku týdenních reportů
+// Sweep 2010–2026: v pásmu 78–130 týdnů jsou výsledky nejstabilnější; 104 (2 roky)
+// je vyvážený střed — na 4t horizontu nejmenší škoda extrém-flagu (Δavg −0.06 vs
+// −0.25 u 208+), favored<=15 kladný na 4t, a "crowded" penalizace ve forecastu
+// (favored>=85: avg −0.11 %) zůstává s daty konzistentní. Percentil už NEmění váhy
+// skóre (viz getDynamicWeights) — slouží forecastu a zobrazení.
+const COT_PCT_WINDOW=104; // 2 roky týdenních reportů
 // Řada pro percentil: primárně ČISTĚ serverový snapshot (cot_pct_server, ukládá
 // fetchActionCOTHistory — identický soubor pro všechna zařízení), fallback lokální
 // cot_hist jen dokud se snapshot poprvé nestáhne. Lokální union historie má na
@@ -1772,9 +1777,15 @@ function getAutoUpdateStatus(){
 function getDynamicWeights(cotPct,regime){
   // Audit výsledek: sezónnost při váze 8% škodí výsledkům (+0.6% WR bez ní).
   // Redukováno na 2%. CB Policy zvýšena. Backtest 2022-2024: WR diff2-3=65.5% PF=2.039.
-  const ext=cotPct!==null&&(cotPct>=85||cotPct<=15);
-  if(regime==="BULLISH"||regime==="BEARISH") return{fund:0.55,cot:ext?0.70:0.35,sent:0.08,sea:0.02};
-  return{fund:0.42,cot:ext?0.80:0.45,sent:0.11,sea:0.02};
+  // Sweep 2010–2026 (600 hodnocených týdnů, ~11 000 obchodů, 9 definic percentil
+  // okna, horizonty 1t/4t, obě poloviny období zvlášť): obchody v týdnech s
+  // percentil-extrémem dopadly VŽDY hůř než zbytek (PF 0.74–0.91 vs 0.91–1.06,
+  // Δavg −0.004 až −0.30 %/obchod, všech 36 srovnání záporných). Dřívější
+  // zesilování COT váhy na extrému (0.45→0.80 / 0.35→0.70) tedy skóre soustavně
+  // škodilo → zrušeno; cotPct v signatuře zůstává kvůli volajícím. Percentil dál
+  // žije ve forecastu (penalizace crowded směru, s daty konzistentní) a v UI.
+  if(regime==="BULLISH"||regime==="BEARISH") return{fund:0.55,cot:0.35,sent:0.08,sea:0.02};
+  return{fund:0.42,cot:0.45,sent:0.11,sea:0.02};
 }
 
 // ── CB CYCLE STAGE — detektor tržního režimu ─────────────────
