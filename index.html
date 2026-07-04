@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260704b"></script>
+<script src="engine.js?v=20260704c"></script>
 <script src="sync.js?v=20260704a"></script>
 <style>
 *{box-sizing:border-box}
@@ -314,8 +314,8 @@ class FXApp extends React.Component{
     const orKey=(localStorage.getItem('or_key')||'').trim();
     if(!orKey){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ Chybí OpenRouter API klíč — přidej ho v záložce Nastavení ⚙ (zdarma na openrouter.ai).'}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); return; }
     try{
-      const ctx=this.buildCoachContext();
-      const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce (mimo strukturovanou odpověď na ekonomický report, viz pravidla níže); vždy zmiň invalidaci; jsi mentor ne signální služba.\n\n'+COACH_ECON_REPORT_RULES;
+      const ctx=this.buildCoachContext(t);
+      const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce (mimo strukturovanou odpověď na ekonomický report / konkrétní pár, viz pravidla níže); vždy zmiň invalidaci; jsi mentor ne signální služba.\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY;
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
       const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:900,temperature:0.4});
       const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Coach'};
@@ -323,13 +323,39 @@ class FXApp extends React.Component{
       let reply='';
       for(const m of models){ try{ const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:body(m)}); const d=await r.json(); if(!d.error&&d.choices&&d.choices[0]&&d.choices[0].message){reply=d.choices[0].message.content;break;} }catch(e){} }
       if(!reply) throw new Error('Žádný free model momentálně neodpověděl. Zkus to za chvíli.');
+      reply=this.sanitizeCoachReply(reply);
       this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:reply}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};});
     }catch(e){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ '+(e&&e.message||e)}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); } }
-  buildCoachContext(){ const sc={}; this.CUR.forEach(c=>{const d=this.D[c];sc[c]={score:+d.score.toFixed(2),fund:+d.fund.toFixed(2),cot:+d.cot.toFixed(2),cotPct:d.cotPct,policy:+d.policy.toFixed(2),cb:d.cb,inst:d.inst,retail:d.retail};});
+  // Free/slabší modely občas do odpovědi propašují vlastní "uvažování" (anglické
+  // věty typu "we need to…", "let's produce…") před skutečnou odpovědí — tohle
+  // takové úvodní odstavce useče, ať uživatel nevidí scratchpad modelu.
+  sanitizeCoachReply(text){
+    if(!text) return text;
+    const LEAK_RX=[/^(we|i)\s+(need to|should|will|must)\b/i,/^let'?s\s+(produce|write|draft|make|translate)\b/i,/^(the\s+user|user)\s+(only\s+)?wants\b/i,/^okay,?\s+(let'?s|i)\b/i,/^\(?thinking\)?\s*[:\-]/i,/^here'?s\s+(the|my)\s+(translation|answer|response)\b/i];
+    let paras=String(text).split(/\n{1,}/);
+    while(paras.length>1){
+      const p=paras[0].trim();
+      const looksLikeLeak=p&&!/[ěščřžýáíéůúťďň]/i.test(p)&&LEAK_RX.some(rx=>rx.test(p));
+      if(looksLikeLeak) paras.shift(); else break;
+    }
+    const cleaned=paras.join('\n\n').trim();
+    return cleaned||text;
+  }
+  buildCoachContext(focusText){ const sc={}; this.CUR.forEach(c=>{const d=this.D[c];sc[c]={score:+d.score.toFixed(2),fund:+d.fund.toFixed(2),cot:+d.cot.toFixed(2),cotPct:d.cotPct,policy:+d.policy.toFixed(2),cb:d.cb,inst:d.inst,retail:d.retail};});
     const top=this.PAIRS.slice(0,8).map(p=>({pair:p.pair,dir:p.dir,diff:+p.diff.toFixed(2),conviction:p.conv,prob:p.prob,status:p.status,position:(this.state.pos[p.pair]||'none')}));
     let econEvents=[]; try{ econEvents=buildCoachEventContext(this._cal,this._up); }catch(e){}
     const cb={}; this.CUR.forEach(c=>{ const r=(typeof CENTRAL_BANK_RATES!=='undefined'?CENTRAL_BANK_RATES[c]:null); const p=(typeof CB_POLICY_DATA!=='undefined'?CB_POLICY_DATA[c]:null); cb[c]={rate:r,policy:p&&p.label}; });
-    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',centralBanks:cb,currencyScores:sc,topPairs:top,econEvents:econEvents}; }
+    // Zaměřený pár: pokud uživatel napíše symbol páru přímo do zprávy (např. "EURCAD"),
+    // vezme se ten; jinak padne zpět na vybraný pár z dropdownu "Zaměřit na pár".
+    let focusPairDossier=null;
+    try{
+      const msg=(focusText||'').toUpperCase();
+      const found=this.PAIRS.find(p=>msg.includes(p.pair));
+      const focusPair=(found&&found.pair)||this.state.coachPair||null;
+      if(focusPair){ let aiAnalyses={}; try{aiAnalyses=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){}
+        focusPairDossier=buildPairDossier(focusPair,this._scores,this._cal,this._up,aiAnalyses); }
+    }catch(e){}
+    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',centralBanks:cb,currencyScores:sc,topPairs:top,econEvents:econEvents,focusPairDossier:focusPairDossier}; }
   async runVision(){ const file=this._aiFile; if(!file){ this.setState({aiErr:'Nejprve nahrej screenshot grafu.'}); return; }
     const orKey=(localStorage.getItem('or_key')||'').trim(); if(!orKey){ this.setState({aiErr:'Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).'}); return; }
     this.setState({aiBusy:true,aiErr:'',aiResult:null});
@@ -999,8 +1025,11 @@ class FXApp extends React.Component{
             lab('🤖 OpenRouter API klíč','✓ ZDARMA — pro AI analýzu a AI coache'),
             h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:6,lineHeight:1.5}},'openrouter.ai → Sign up → Keys → Create Key (začíná sk-or-v1-…)'),
             keyInput('or_key','sk-or-v1-…','password'),
-            lab('Model pro AI (nepovinné, prázdné = auto)'),
+            lab('Model pro AI Analýzu grafu (nepovinné, prázdné = auto)'),
             h('select',{defaultValue:(localStorage.getItem('or_model')||''),onChange:e=>self.setKey('or_model',e.target.value),style:Object.assign({},fld,{cursor:'pointer'})},[['','🔄 Auto — live seznam free vision modelů'],['meta-llama/llama-3.2-11b-vision-instruct:free','llama-3.2-11b-vision'],['meta-llama/llama-3.2-90b-vision-instruct:free','llama-3.2-90b-vision'],['qwen/qwen-2-vl-7b-instruct:free','qwen-2-vl-7b']].map(([v,l])=>h('option',{key:v,value:v},l))),
+            lab('Model pro AI Coache (nepovinné, prázdné = auto/free)'),
+            keyInput('or_coach_model','např. openrouter/free nebo placený: openai/gpt-4o-mini, google/gemini-2.0-flash-001…'),
+            h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:6,lineHeight:1.5}},'Prázdné = zkusí zdarma modely automaticky (méně spolehlivé). Chceš-li přesnější a spolehlivější Coache, vlož sem ID placeného modelu z ',h('a',{href:'https://openrouter.ai/models',target:'_blank',rel:'noopener',style:{color:T.accent}},'openrouter.ai/models'),' — platí se jen podle spotřeby (typicky zlomky centu až pár centů za dotaz), žádné předplatné.'),
             lab('FMP klíč','kalendář, záloha'),
             keyInput('fmp','FMP API key'),
             lab('Finnhub klíč'),
