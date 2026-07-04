@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260704a"></script>
+<script src="engine.js?v=20260704b"></script>
 <script src="sync.js?v=20260704a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -1081,18 +1081,16 @@ function buildCoachContextM(data,activePair){
   const top=((data&&data.pairs)||[]).slice(0,8).map(p=>{const f=((data&&data.forecasts)||{})[p.pair]||{};return {pair:p.pair,dir:p.dir,diff:+(+p.diff).toFixed(2),conviction:p.conviction,prob:f.prob,position:(pos[p.pair]||"none")};});
   const cb={}; CURRENCIES.forEach(c=>{const r=(typeof CENTRAL_BANK_RATES!=="undefined"?CENTRAL_BANK_RATES[c]:null);const pl=(typeof CB_POLICY_DATA!=="undefined"?CB_POLICY_DATA[c]:null);cb[c]={rate:r,policy:pl&&pl.label};});
   let cbdi=null; try{cbdi=calcCBDI();}catch(e){}
-  let today=[];
-  try{ const ev=buildEventWatch((data&&data.cal)||[],(data&&data.upcoming)||[])||[]; const ts=new Date().toDateString();
-    today=ev.filter(e=>{const d=new Date(parseEventTime(e.time));return !isNaN(d)&&d.toDateString()===ts;}).slice(0,12).map(e=>({t:fmtDT(e.time),ccy:(e.country||e.currency||""),ev:e.event,imp:impactLabel(e.impact)})); }catch(e){}
-  return {timestamp:new Date().toISOString(),cbdi,activePair:activePair||"none",centralBanks:cb,currencyScores:sc,topPairs:top,todayEvents:today};
+  let econEvents=[]; try{ econEvents=buildCoachEventContext((data&&data.cal)||[],(data&&data.upcoming)||[]); }catch(e){}
+  return {timestamp:new Date().toISOString(),cbdi,activePair:activePair||"none",centralBanks:cb,currencyScores:sc,topPairs:top,econEvents:econEvents};
 }
 async function coachReply(ctx,history){
   const orKey=(localStorage.getItem("or_key")||"").trim();
   if(!orKey) throw new Error("Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).");
-  const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce; vždy zmiň invalidaci; jsi mentor ne signální služba.';
+  const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce (mimo strukturovanou odpověď na ekonomický report, viz pravidla níže); vždy zmiň invalidaci; jsi mentor ne signální služba.\n\n'+COACH_ECON_REPORT_RULES;
   const apiMsgs=history.slice(-10).map(m=>({role:m.role==="user"?"user":"assistant",content:m.text}));
   const head={"Content-Type":"application/json","Authorization":"Bearer "+orKey,"HTTP-Referer":"https://pitrrv.github.io","X-Title":"AT Trading AI Coach"};
-  const body=m=>JSON.stringify({model:m,messages:[{role:"system",content:sys}].concat(apiMsgs),max_tokens:600,temperature:0.4});
+  const body=m=>JSON.stringify({model:m,messages:[{role:"system",content:sys}].concat(apiMsgs),max_tokens:900,temperature:0.4});
   const models=[(localStorage.getItem("or_coach_model")||"").trim()||"openrouter/free","deepseek/deepseek-chat-v3-0324:free","qwen/qwen3-8b:free","google/gemma-3-12b-it:free","meta-llama/llama-4-scout:free"].filter((v,i,a)=>v&&a.indexOf(v)===i);
   for(const m of models){ try{ const r=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:head,body:body(m)}); const d=await r.json(); if(!d.error&&d.choices&&d.choices[0]&&d.choices[0].message){return d.choices[0].message.content;} }catch(e){} }
   throw new Error("Žádný free model momentálně neodpověděl. Zkus to za chvíli.");

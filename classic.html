@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260704a"></script>
+<script src="engine.js?v=20260704b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sync.js?v=20260704a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1882,6 +1882,10 @@ function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming
     const rsSentiment=typeof g_riskSentiment!=="undefined"?
       (g_riskSentiment>0?"RISK-ON":g_riskSentiment<0?"RISK-OFF":"NEUTRAL"):"NEUTRAL";
 
+    // Ekonomické eventy s Previous/Forecast/Actual — bez tohohle Coach nemohl
+    // odpovídat na "co znamená tenhle report", jen zopakovat bias z Analyzeru.
+    let econEvents=[]; try{ econEvents=buildCoachEventContext(calData||[],upcoming||[]); }catch(e){}
+
     return {
       timestamp:new Date().toISOString(),
       riskSentiment:rsSentiment,
@@ -1889,6 +1893,7 @@ function AICoachTab({scores,pairs,forecasts,aiAnalyses,cotData,selected,upcoming
       currencyScores,
       cbPolicy:cbContext,
       recentFlips:getRecentFlips(pairs,calData||[],upcoming||[]).map(f=>({pair:f.pair,from:f.from,to:f.to,driver:f.driver,news:f.driverItems.map(i=>i.event+" "+(i.beat?"BEAT":"MISS"))})),
+      econEvents,
       topPairs,
       activeAIAnalysis:activeAI?{
         pair:activePair,
@@ -1917,12 +1922,14 @@ PRAVIDLA ODPOVĚDÍ:
 1. Nikdy neříkej "kup teď" nebo "prodej teď" bez podmínek
 2. Formát: [bias] → [scénář] → [podmínky vstupu] → [invalidace] → [riziko]
 3. Pokud vidíš konflikt (např. fundamenty BUY ale AI analýza BEARISH) — vysvětli ho
-4. Buď přímý a stručný — max 3–4 odstavce
+4. Buď přímý a stručný — max 3–4 odstavce (mimo strukturovanou odpověď na ekonomický report, viz pravidla níže)
 5. Vždy zmiň kde je invalidace
 6. Jsi mentor, ne signální služba
 7. DAILY BRIEF (dnešní vrstva): U párů sleduj dailyBrief. Pokud conflict=true, upozorni, že dnešní data jdou proti 14d biasu → dnes nehledat vstupy ve směru biasu, počkat na uklidnění (spíš pullback než hluboký obrat). Pokud todayNews není prázdné, varuj před nadcházející volatilitou. Pokud position != "none", veď uživatele co s pozicí (zajistit část, SL na BE, počkat na pullback) — vždy jako upozornění, ne příkaz.
 8. OTOČENÍ VÝHLEDU: Pokud recentFlips není prázdné, sám to zmíň — 14d bias se po čerstvých datech otočil (uveď měnu a výsledky). Otočení NENÍ pokyn obchodovat opačně hned; vítr se obrátil, ke vstupu je potřeba technické potvrzení.
 9. PROAKTIVITA: Na začátku nebo při obecném dotazu sám zmiň páry s conflict, otočením nebo todayNews i bez přímého dotazu.
+
+${COACH_ECON_REPORT_RULES}
 
 STYL:
 - Mluv jako zkušený trader, ne jako robot
@@ -1967,7 +1974,7 @@ STYL:
         body:JSON.stringify({
           model:(()=>{const saved=localStorage.getItem("or_coach_model")||localStorage.getItem("or_model")||"";return saved&&saved!=="meta-llama/llama-3.1-8b-instruct:free"?saved:"openrouter/free";})(),
           messages:[{role:"system",content:sysPrompt},...apiMessages],
-          max_tokens:600,
+          max_tokens:900,
           temperature:0.4
         })
       });
@@ -1979,7 +1986,7 @@ STYL:
         let reply="";
         for(const m of FALLBACKS){
           try{
-            const r2=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+orKey,"HTTP-Referer":"https://attrading.netlify.app","X-Title":"AT Trading AI Coach"},body:JSON.stringify({model:m,messages:[{role:"system",content:sysPrompt},...apiMessages],max_tokens:600,temperature:0.4})});
+            const r2=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+orKey,"HTTP-Referer":"https://attrading.netlify.app","X-Title":"AT Trading AI Coach"},body:JSON.stringify({model:m,messages:[{role:"system",content:sysPrompt},...apiMessages],max_tokens:900,temperature:0.4})});
             const d2=await r2.json();
             if(!d2.error&&d2.choices?.[0]?.message?.content){reply=d2.choices[0].message.content;console.log("Coach model:",m);break;}
           }catch(e){}

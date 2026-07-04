@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260704a"></script>
+<script src="engine.js?v=20260704b"></script>
 <script src="sync.js?v=20260704a"></script>
 <style>
 *{box-sizing:border-box}
@@ -21,8 +21,8 @@ body{background:#07080c;color:#eaedf3;font-family:'Manrope',system-ui,-apple-sys
 ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#1b2130;border-radius:5px}::-webkit-scrollbar-thumb:hover{background:#2a3346}
 @keyframes fxpulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes fxfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@media(max-width:1300px){.fx-grid{grid-template-columns:340px minmax(0,1fr)!important}.fx-right{display:none!important}}
-@media(max-width:1000px){.fx-grid{grid-template-columns:1fr!important}.fx-aside{display:none!important}.fx-left,.fx-right{position:static!important;max-height:none!important;top:auto!important}}
+@media(max-width:1300px){.fx-grid{grid-template-columns:340px minmax(0,1fr)!important}.fx-right{grid-column:1/-1!important;position:static!important;max-height:none!important;top:auto!important}}
+@media(max-width:1000px){.fx-grid{grid-template-columns:1fr!important}.fx-root{flex-direction:column!important}.fx-aside{position:static!important;width:100%!important;height:auto!important;max-height:none!important;top:auto!important}.fx-left,.fx-right{position:static!important;max-height:none!important;top:auto!important}}
 </style>
 </head>
 <body>
@@ -60,14 +60,14 @@ class FXApp extends React.Component{
   constructor(p){
     super(p);
     const h=React.createElement; this.h=h;
-    this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, gridRange:'1M', alerts:(()=>{try{return JSON.parse(localStorage.getItem('alerts_v1')||'[]')||[];}catch(e){return [];}})(), alertForm:{dir:'above',price:'',note:''}, alertMsg:'', seasPair:'', seasData:null, seasBusy:false, seasErr:'' };
+    this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', alerts:(()=>{try{return JSON.parse(localStorage.getItem('alerts_v1')||'[]')||[];}catch(e){return [];}})(), alertForm:{dir:'above',price:'',note:''}, alertMsg:'', seasPair:'', seasData:null, seasBusy:false, seasErr:'' };
     this.CUR=(typeof CURRENCIES!=='undefined')?CURRENCIES:['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
     this.NAMES=(typeof NAMES!=='undefined')?NAMES:{};
     this.D={}; this.PAIRS=[]; this.series={}; this.dates=[]; this.daily=[]; this.cbdi=50; this.PRICES={};
-    this.journal={wr:0,pf:0,trades:0,avgR:0,bestR:0,buckets:[],rows:[]}; this.equity=[0];
+    this.journal={wr:0,pf:0,trades:0,avgR:0,bestR:0,buckets:[],rows:[]}; this.equity=[0]; this.equityMeta=[{date:null,pair:null,r:0}];
     this.CUR.forEach(c=>{this.D[c]={score:0,fund:0,policy:0,yield:0,cot:0,sent:0,season:0,cotPct:50,chg7:0,cb:'—',inst:0,retail:50};this.series[c]=[0,0];});
     this.smooth=(pts)=>{ if(pts.length<2) return pts.length?`M ${pts[0][0]} ${pts[0][1]}`:''; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=0;i<pts.length-1;i++){ const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2; const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6,c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6; d+=` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2[0]} ${p2[1]}`; } return d; };
-    this.buildLineChart(); this.buildGauge(); this.buildCotModal(); this.buildHoverChart();
+    this.buildGauge(); this.buildCotModal(); this.buildHoverChart(); this.buildChartModal();
   }
   componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000); this._pxT=setInterval(()=>this.fetchAlertPrices(),60000); setTimeout(()=>this.fetchAlertPrices(),2500); try{document.addEventListener('visibilitychange',()=>{ if(!document.hidden) this.fetchAlertPrices(); });}catch(e){}
     if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s){ this._didInitSync=true; window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); } }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(!s){ this._didInitSync=false; return; } if(event==='SIGNED_IN'&&!this._didInitSync){ this._didInitSync=true; this.doSync(false); } }); } }
@@ -224,9 +224,11 @@ class FXApp extends React.Component{
   buildToday(cal,up){
     const ev=(typeof buildEventWatch==='function')?buildEventWatch(cal,up):(up||[]);
     const s=new Date(); s.setHours(0,0,0,0); const e=new Date(); e.setHours(23,59,59,999);
+    // Bez limitu na PC — pravý sloupec má vlastní scroll a v nabitých dnech
+    // (US CPI + projevy CB) by slice(0,8) zahazoval odpolední události.
     return ev.filter(x=>{const t=parseEventTime(x.time);if(!(t>=s.getTime()&&t<=e.getTime()))return false;const im=impUp(x.impact);return im==='HIGH'||im==='MEDIUM';})
       .sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time))
-      .slice(0,8).map(x=>{ let dir=0; try{ dir=(typeof eventDirection==='function')?eventDirection(x):0; }catch(e){}
+      .map(x=>{ let dir=0; try{ dir=(typeof eventDirection==='function')?eventDirection(x):0; }catch(e){}
         const act=(x.actual!=null&&String(x.actual).trim()!=='')?String(x.actual).trim():'';
         const fc=(x.estimate!=null&&String(x.estimate).trim()!=='')?String(x.estimate).trim():((x.forecast!=null&&String(x.forecast).trim()!=='')?String(x.forecast).trim():'');
         return {ccy:ev2ccy(x),ev:x.event,t:new Date(parseEventTime(x.time)).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'}),imp:impUp(x.impact),act:act,fc:fc,dir:dir,note:(fc?('odhad '+fc):'')}; });
@@ -239,8 +241,17 @@ class FXApp extends React.Component{
     const Rs=closed.map(Rval);
     const sumPos=Rs.filter(r=>r>0).reduce((a,b)=>a+b,0), sumNeg=Math.abs(Rs.filter(r=>r<0).reduce((a,b)=>a+b,0));
     this.journal={ wr:decided?Math.round(wins/decided*100):0, pf:sumNeg?+(sumPos/sumNeg).toFixed(1):(sumPos>0?9:0), trades:rows.length, avgR:closed.length?+(Rs.reduce((a,b)=>a+b,0)/closed.length).toFixed(2):0, bestR:Rs.length?Math.max(0,...Rs):0,
-      buckets:[], rows:rows.slice(0,12).map(t=>({id:t.id,d:(t.openedAt||'').slice(5,10).split('-').reverse().join('.'),pair:t.pair,dir:t.dir==='LONG'?'BUY':t.dir==='SHORT'?'SELL':t.dir,r:Rval(t),res:t.outcome==='win'?'win':t.outcome==='loss'?'loss':t.outcome==='be'?'be':t.outcome==='early'?'early':'open'})) };
-    const eq=[0]; closed.slice().reverse().forEach(t=>eq.push(+(eq[eq.length-1]+Rval(t)).toFixed(2))); this.equity=eq.length>1?eq:[0,0];
+      // PC zobrazuje VŠECHNY obchody (scroll), ne jen posledních 12 — a plný kontext
+      // (vstup/SL/TP/risk/poznámka/conviction/band/konflikt), ne jen zkrácený náhled.
+      buckets:[], rows:rows.map(t=>({id:t.id,d:(t.openedAt||'').slice(5,10).split('-').reverse().join('.'),pair:t.pair,dir:t.dir==='LONG'?'BUY':t.dir==='SHORT'?'SELL':t.dir,
+        entry:t.entry||'',sl:t.sl||'',tp:t.tp||'',riskPct:t.riskPct||'',notes:t.notes||'',
+        conv:(t.ctx&&typeof t.ctx.conviction==='number')?t.ctx.conviction:null,band:(t.ctx&&t.ctx.band)||null,conflict:!!(t.ctx&&t.ctx.dailyLevel==='conflict'),
+        r:Rval(t),res:t.outcome==='win'?'win':t.outcome==='loss'?'loss':t.outcome==='be'?'be':t.outcome==='early'?'early':'open'})) };
+    // equityMeta: datum/pár/R k danému bodu (index 0 = start před prvním obchodem) — pro interaktivní tooltip.
+    const eq=[0], eqMeta=[{date:null,pair:null,r:0}];
+    closed.slice().reverse().forEach(t=>{ eq.push(+(eq[eq.length-1]+Rval(t)).toFixed(2)); eqMeta.push({date:t.closedAt||t.openedAt||null,pair:t.pair,r:Rval(t)}); });
+    this.equity=eq.length>1?eq:[0,0];
+    this.equityMeta=eqMeta.length>1?eqMeta:[{date:null,pair:null,r:0},{date:null,pair:null,r:0}];
     // Ověření edge podle kontextu appky (stejná logika jako Classic) — jen na uzavřených obchodech s ctx
     this.journalEdge={
       byConvHi: jStat(closed.filter(t=>(t.ctx&&t.ctx.conviction||0)>=3)),
@@ -304,9 +315,9 @@ class FXApp extends React.Component{
     if(!orKey){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ Chybí OpenRouter API klíč — přidej ho v záložce Nastavení ⚙ (zdarma na openrouter.ai).'}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); return; }
     try{
       const ctx=this.buildCoachContext();
-      const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce; vždy zmiň invalidaci; jsi mentor ne signální služba.';
+      const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce (mimo strukturovanou odpověď na ekonomický report, viz pravidla níže); vždy zmiň invalidaci; jsi mentor ne signální služba.\n\n'+COACH_ECON_REPORT_RULES;
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
-      const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:600,temperature:0.4});
+      const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:900,temperature:0.4});
       const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Coach'};
       const models=[(localStorage.getItem('or_coach_model')||'').trim()||'openrouter/free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free','google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
       let reply='';
@@ -316,9 +327,9 @@ class FXApp extends React.Component{
     }catch(e){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ '+(e&&e.message||e)}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); } }
   buildCoachContext(){ const sc={}; this.CUR.forEach(c=>{const d=this.D[c];sc[c]={score:+d.score.toFixed(2),fund:+d.fund.toFixed(2),cot:+d.cot.toFixed(2),cotPct:d.cotPct,policy:+d.policy.toFixed(2),cb:d.cb,inst:d.inst,retail:d.retail};});
     const top=this.PAIRS.slice(0,8).map(p=>({pair:p.pair,dir:p.dir,diff:+p.diff.toFixed(2),conviction:p.conv,prob:p.prob,status:p.status,position:(this.state.pos[p.pair]||'none')}));
-    const today=this.daily.map(d=>({t:d.t,ccy:d.ccy,ev:d.ev,imp:d.imp}));
+    let econEvents=[]; try{ econEvents=buildCoachEventContext(this._cal,this._up); }catch(e){}
     const cb={}; this.CUR.forEach(c=>{ const r=(typeof CENTRAL_BANK_RATES!=='undefined'?CENTRAL_BANK_RATES[c]:null); const p=(typeof CB_POLICY_DATA!=='undefined'?CB_POLICY_DATA[c]:null); cb[c]={rate:r,policy:p&&p.label}; });
-    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',centralBanks:cb,currencyScores:sc,topPairs:top,todayEvents:today}; }
+    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',centralBanks:cb,currencyScores:sc,topPairs:top,econEvents:econEvents}; }
   async runVision(){ const file=this._aiFile; if(!file){ this.setState({aiErr:'Nejprve nahrej screenshot grafu.'}); return; }
     const orKey=(localStorage.getItem('or_key')||'').trim(); if(!orKey){ this.setState({aiErr:'Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).'}); return; }
     this.setState({aiBusy:true,aiErr:'',aiResult:null});
@@ -353,7 +364,9 @@ class FXApp extends React.Component{
     try{ const av=(localStorage.getItem('av')||'').trim(); const data=await fetchSeasonality(p,av); this.setState({seasData:data,seasBusy:false}); }
     catch(e){ this.setState({seasErr:String(e&&e.message||e),seasBusy:false}); } }
   buildHoverChart(){ const self=this,h=this.h;
-    this.HoverChart=({dates,series,height,yMin,yMax,fmt,area,mid})=>{
+    // pointLabels (volitelné): pole rovnoběžné s dates, extra řádek v tooltipu nad
+    // hodnotami sérií — používá Equity křivka pro pár/číslo obchodu k danému bodu.
+    this.HoverChart=({dates,series,height,yMin,yMax,fmt,area,mid,pointLabels})=>{
       const T=self.tok; const f=fmt||(v=>Math.round(v));
       const n=Math.max((series[0]&&series[0].vals.length)||0,2);
       const W=720,H=height||130,PL=8,PR=46,PT=12,PB=22;
@@ -367,7 +380,8 @@ class FXApp extends React.Component{
       const dfmt=d=>{ const dt=new Date(d); return isNaN(dt)?'':(dt.getDate()+'.'+(dt.getMonth()+1)+'.'); };
       const yt=[0,0.5,1].map(t=>mn+span*t);
       const steps=Math.min(4,n-1), xl=[]; for(let k=0;k<=steps;k++) xl.push(Math.round(k/Math.max(1,steps)*(n-1)));
-      const tl=hx>W*0.62, tw=132, th=16+series.length*15;
+      const hasLbl=Array.isArray(pointLabels)&&pointLabels[idx];
+      const tl=hx>W*0.62, tw=hasLbl?168:132, th=16+(hasLbl?14:0)+series.length*15;
       return h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',overflow:'visible',cursor:'crosshair'},onMouseMove:move,onMouseLeave:()=>setHi(null)},
         yt.map((t,k)=>h('g',{key:'y'+k},h('line',{x1:PL,x2:W-PR,y1:Y(t),y2:Y(t),stroke:'#161b27',strokeWidth:1,strokeDasharray:'3 5'}),h('text',{x:W-PR+6,y:Y(t)+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},f(t)))),
         mid!=null&&h('line',{x1:PL,x2:W-PR,y1:Y(mid),y2:Y(mid),stroke:'#2a3242',strokeWidth:1}),
@@ -380,7 +394,8 @@ class FXApp extends React.Component{
         h('g',{transform:'translate('+(tl?hx-tw-8:hx+8)+','+PT+')'},
           h('rect',{width:tw,height:th,rx:7,fill:'#11151d',stroke:'#2a3242'}),
           h('text',{x:9,y:13,fontSize:9.5,fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},dates[idx]?dfmt(dates[idx]):''),
-          series.map((sr,si)=>h('text',{key:'l'+si,x:9,y:29+si*15,fontSize:10.5,fontWeight:700,fill:sr.col,fontFamily:"'JetBrains Mono',monospace"},sr.name+'  '+f(sr.vals[idx])))));
+          hasLbl&&h('text',{x:9,y:27,fontSize:10,fontWeight:700,fill:T.text,fontFamily:"'JetBrains Mono',monospace"},pointLabels[idx]),
+          series.map((sr,si)=>h('text',{key:'l'+si,x:9,y:(hasLbl?41:29)+si*15,fontSize:10.5,fontWeight:700,fill:sr.col,fontFamily:"'JetBrains Mono',monospace"},sr.name+'  '+f(sr.vals[idx])))));
     };
   }
   buildCotModal(){ const self=this,h=this.h;
@@ -447,6 +462,25 @@ class FXApp extends React.Component{
             stats.map(([l,v,col],k)=>h('div',{key:'s'+k},h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:4}},l),h('div',{style:self.mono({fontSize:14,fontWeight:800,color:col})},v))))));
     };
   }
+  // Univerzální zoom modal pro libovolný pár-graf (skóre/retail/COT z renderPairCharts) —
+  // stejný vzor jako CotModal, jen data dostává hotová od volajícího místo vlastního fetch.
+  buildChartModal(){ const self=this,h=this.h;
+    this.ChartModal=({title,subtitle,dates,series,yMin,yMax,mid,fmt})=>{
+      const T=self.tok;
+      const close=()=>self.setState({chartModal:null});
+      React.useEffect(()=>{ const k=e=>{ if(e.key==='Escape') self.setState({chartModal:null}); }; window.addEventListener('keydown',k); return ()=>window.removeEventListener('keydown',k); },[]);
+      const enough=Array.isArray(series)&&series.length&&series[0].vals&&series[0].vals.length>=2;
+      return h('div',{onClick:close,style:{position:'fixed',inset:0,background:'rgba(7,8,12,.82)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:120,padding:'24px',animation:'fxfade .2s ease'}},
+        h('div',{onClick:e=>e.stopPropagation(),style:{width:'min(1100px,96vw)',maxHeight:'92vh',overflow:'auto',background:'#0f1218',border:'1px solid #27304a',borderRadius:16,padding:'22px 26px',boxShadow:'0 30px 80px rgba(0,0,0,.55)'}},
+          h('div',{style:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginBottom:18}},
+            h('div',null,
+              h('div',{style:self.mono({fontSize:18,fontWeight:800})},title),
+              h('div',{style:{fontSize:12.5,color:T.dim,marginTop:5}},(subtitle?subtitle+' · ':'')+'klikni mimo okno nebo Esc pro zavření')),
+            h('button',{type:'button',onClick:close,style:{width:34,height:34,borderRadius:9,border:'1px solid #2a3242',background:'#161b27',color:T.dim,fontSize:18,cursor:'pointer',lineHeight:1}},'×')),
+          enough?h(self.HoverChart,{dates:dates,series:series,height:380,yMin:yMin,yMax:yMax,mid:mid,fmt:fmt,area:true})
+                :h('div',{style:{padding:'70px 20px',textAlign:'center',color:T.faint,fontSize:13}},'Málo historie pro tento graf — nasbírá se.')));
+    };
+  }
   CotHistChart(c,limit){ const self=this,h=this.h,T=this.tok; let s={dates:[],values:[]}; try{s=getCOTNetSeries(c,limit);}catch(e){}
     const vals=s.values||[]; if(vals.length<2) return h('div',{style:{fontSize:11,color:T.faint,padding:'18px 6px',textAlign:'center'}},'Málo COT historie — nasbírá se týdně, nebo importuj v klasické verzi.');
     const W=300,H=84,PL=4,PR=4,PT=8,PB=8; const mn=Math.min(...vals),mx=Math.max(...vals),rng=(mx-mn)||1; const n=vals.length;
@@ -466,36 +500,6 @@ class FXApp extends React.Component{
           h('span',{style:{fontSize:10,fontWeight:700,color:pc,background:pc+'1c',border:'1px solid '+pc+'40',borderRadius:6,padding:'3px 7px',textAlign:'center'}},ps>0?'jestřáb +'+ps:ps<0?'holub '+ps:'neutrál')); })));
   }
 
-  buildLineChart(){ const self=this,h=this.h;
-    this.LineChart=({cur1,cur2,col1,col2,height})=>{
-      const T=self.tok, a=self.series[cur1]||[0,0], b=self.series[cur2]||[0,0], dates=self.dates, n=Math.max(a.length,2);
-      const W=720,H=height||250,PL=10,PR=14,PT=20,PB=30, ymin=-10,ymax=10;
-      const X=i=>PL+(W-PL-PR)*(i/(n-1)), Y=v=>PT+(H-PT-PB)*(1-(v-ymin)/(ymax-ymin));
-      const line=arr=>self.smooth(arr.map((v,i)=>[X(i),Y(v)]));
-      const [hi,setHi]=React.useState(null);
-      const move=e=>{ const r=e.currentTarget.getBoundingClientRect(); const px=(e.clientX-r.left)/r.width*W; let i=Math.round((px-PL)/((W-PL-PR)/(n-1))); i=Math.max(0,Math.min(n-1,i)); setHi(i); };
-      const grid=[10,5,0,-5,-10].map(g=>h('g',{key:g},
-        h('line',{x1:PL,x2:W-PR,y1:Y(g),y2:Y(g),stroke:g===0?'#2a3242':'#161b27',strokeWidth:1,strokeDasharray:g===0?'none':'3 5'}),
-        h('text',{x:W-PR+2,y:Y(g)+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace",textAnchor:'start'},g>0?'+'+g:g)));
-      const series=[{c:cur1,arr:a,col:col1,g:'g1'},{c:cur2,arr:b,col:col2,g:'g2'}];
-      const area=arr=>line(arr)+` L ${X(n-1)} ${Y(ymin)} L ${X(0)} ${Y(ymin)} Z`;
-      return h('div',{style:{position:'relative'}},
-        h('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',style:{display:'block',overflow:'visible'},onMouseMove:move,onMouseLeave:()=>setHi(null)},
-          h('defs',null,
-            series.map(s=>h('linearGradient',{key:s.g,id:'fx'+s.g+cur1+cur2,x1:0,y1:0,x2:0,y2:1},h('stop',{offset:'0%',stopColor:s.col,stopOpacity:.28}),h('stop',{offset:'100%',stopColor:s.col,stopOpacity:0}))),
-            h('filter',{id:'fxglow'+cur1,x:'-20%',y:'-20%',width:'140%',height:'140%'},h('feGaussianBlur',{stdDeviation:3,result:'b'}),h('feMerge',null,h('feMergeNode',{in:'b'}),h('feMergeNode',{in:'SourceGraphic'})))),
-          grid,
-          series.map(s=>h('path',{key:'a'+s.g,d:area(s.arr),fill:`url(#fx${s.g}${cur1}${cur2})`})),
-          series.map(s=>h('path',{key:'l'+s.g,d:line(s.arr),fill:'none',stroke:s.col,strokeWidth:2.4,strokeLinecap:'round',filter:`url(#fxglow${cur1})`})),
-          series.map(s=>h('circle',{key:'e'+s.g,cx:X(n-1),cy:Y(s.arr[s.arr.length-1]),r:3.6,fill:s.col,stroke:'#0b0d13',strokeWidth:2})),
-          hi!=null&&h('g',null,h('line',{x1:X(hi),x2:X(hi),y1:PT,y2:H-PB,stroke:'#3a4459',strokeWidth:1}),series.map(s=>h('circle',{key:'h'+s.g,cx:X(hi),cy:Y(s.arr[hi]!=null?s.arr[hi]:s.arr[s.arr.length-1]),r:4.5,fill:s.col,stroke:'#0b0d13',strokeWidth:2}))),
-          dates.map((d,i)=>(i%Math.max(1,Math.ceil(n/8))===0||i===n-1)&&h('text',{key:'d'+i,x:X(i),y:H-10,fontSize:8.5,fill:T.faint,fontFamily:"'JetBrains Mono',monospace",textAnchor:'middle'},d)).filter(Boolean)),
-        hi!=null&&h('div',{style:{position:'absolute',top:6,left:`calc(${(X(hi)/W)*100}% )`,transform:'translateX(-50%)',pointerEvents:'none'}},
-          h('div',{style:self.card({padding:'7px 10px',borderRadius:9,boxShadow:'0 8px 22px rgba(0,0,0,.5)',minWidth:96})},
-            h('div',{style:self.mono({fontSize:9,color:T.faint,marginBottom:4})},dates[hi]),
-            [[cur1,a,col1],[cur2,b,col2]].map(([c,arr,col])=>h('div',{key:c,style:{display:'flex',justifyContent:'space-between',gap:14,fontSize:11,marginTop:2}},h('span',{style:{color:col,fontWeight:700}},c),h('span',{style:self.mono({color:T.text,fontWeight:600})},self.sgn(arr[hi]!=null?arr[hi]:0)))))));
-    };
-  }
   buildGauge(){ const self=this,h=this.h;
     this.Gauge=({val})=>{ const T=self.tok, R=64, cx=80, cy=80, sw=11;
       const polar=(deg)=>{ const a=(deg-180)*Math.PI/180; return [cx+R*Math.cos(a),cy+R*Math.sin(a)]; };
@@ -529,9 +533,14 @@ class FXApp extends React.Component{
           h('div',{style:{height:18,background:'#0a0d13',border:'1px solid #161b27',borderRadius:6,position:'relative',overflow:'hidden'}},h('div',{style:{position:'absolute',right:0,top:0,bottom:0,width:Math.abs(r.inst)+'%',background:r.inst>=0?T.accent:T.red,opacity:.85,borderRadius:6}}),h('span',{style:self.mono({position:'absolute',left:6,top:2,fontSize:10,fontWeight:600,color:T.text})},(r.inst>0?'+':'')+r.inst)),
           h('div',{style:{height:18,background:'#0a0d13',border:'1px solid #161b27',borderRadius:6,position:'relative',overflow:'hidden'}},h('div',{style:{position:'absolute',left:0,top:0,bottom:0,width:r.retail+'%',background:T.violet,opacity:.85,borderRadius:6}}),h('span',{style:self.mono({position:'absolute',right:6,top:2,fontSize:10,fontWeight:600,color:T.text})},r.retail+'%'))); }));
   }
-  EquityChart(){ const self=this,h=this.h,T=this.tok, eq=this.equity, n=Math.max(eq.length,2); const W=560,H=150,PL=6,PR=6,PT=12,PB=12, mn=Math.min(...eq),mx=Math.max(...eq);
-    const X=i=>PL+(W-PL-PR)*(i/(n-1)), Y=v=>PT+(H-PT-PB)*(1-(v-mn)/(mx-mn||1)); const d=self.smooth(eq.map((v,i)=>[X(i),Y(v)]));
-    return h('svg',{viewBox:`0 0 ${W} ${H}`,width:'100%',style:{display:'block'}},h('defs',null,h('linearGradient',{id:'fxeq',x1:0,y1:0,x2:0,y2:1},h('stop',{offset:'0%',stopColor:T.green,stopOpacity:.26}),h('stop',{offset:'100%',stopColor:T.green,stopOpacity:0}))),h('line',{x1:PL,x2:W-PR,y1:Y(0),y2:Y(0),stroke:'#2a3242',strokeDasharray:'3 5'}),h('path',{d:d+` L ${X(n-1)} ${Y(mn)} L ${X(0)} ${Y(mn)} Z`,fill:'url(#fxeq)'}),h('path',{d:d,fill:'none',stroke:T.green,strokeWidth:2.4,strokeLinecap:'round'}),h('circle',{cx:X(n-1),cy:Y(eq[eq.length-1]),r:3.6,fill:T.green,stroke:'#0b0d13',strokeWidth:2}));
+  EquityChart(){ const self=this,h=this.h,T=this.tok; const eq=this.equity||[0,0]; const meta=this.equityMeta||eq.map(()=>({date:null,pair:null,r:0}));
+    const dates=meta.map(m=>m.date);
+    const labels=meta.map((m,i)=>i===0?'Start':((m.pair||'?')+' · obchod #'+i+' ('+self.sgn(m.r,2)+'R)'));
+    // Max drawdown (od dosavadního maxima) — pro rychlou orientaci pod grafem.
+    let peak=eq[0],dd=0,ddIdx=0; eq.forEach((v,i)=>{ if(v>peak)peak=v; if(peak-v>dd){dd=peak-v;ddIdx=i;} });
+    return h('div',null,
+      h(self.HoverChart,{dates,series:[{name:'Equity',col:T.green,vals:eq}],height:150,mid:0,area:true,fmt:v=>self.sgn(v,1),pointLabels:labels}),
+      dd>0&&h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8}},'Max drawdown: ',h('b',{style:{color:T.red}},'−'+dd.toFixed(2)+'R'),' (obchod #'+ddIdx+')'));
   }
   aSet(k,v){ this.setState(s=>({alertForm:Object.assign({},s.alertForm,{[k]:v})})); }
   saveAlerts(arr){ try{localStorage.setItem('alerts_v1',JSON.stringify(arr));}catch(e){} }
@@ -626,8 +635,8 @@ class FXApp extends React.Component{
     const cdates=Object.keys(ch).sort((a,b)=>new Date(a)-new Date(b)).filter(inWin);
     const cotLS=cur=>{ const lng=[],sht=[]; cdates.forEach(d=>{ const r=ch[d]&&ch[d].raw&&ch[d].raw[cur]; const l=(r&&+r.levLong)||0,s=(r&&+r.levShort)||0,tot=l+s; lng.push(tot?Math.round(l/tot*100):50); sht.push(tot?Math.round(s/tot*100):50); }); return [{name:'Long',col:T.green,vals:lng},{name:'Short',col:T.red,vals:sht}]; };
     const pctFmt=v=>Math.round(v)+'%';
-    const cell=(title,sub,subCol,enough,body)=>h('div',{style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0}},
-      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null),
+    const cell=(title,sub,subCol,enough,body,zoom)=>h('div',{onClick:(enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(enough&&zoom)?'Klikni pro zvětšení':undefined,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,cursor:(enough&&zoom)?'pointer':'default'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),h('div',{style:{display:'flex',alignItems:'center',gap:6}},sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,(enough&&zoom)?h('span',{style:{fontSize:11,color:T.faint}},'⤢'):null)),
       enough?body:h('div',{style:{fontSize:10.5,color:T.faint,padding:'24px 4px',textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
     const rng=['14D','1M','3M','6M','ALL'];
     return h('div',{style:Object.assign(self.card({padding:'14px 16px'}),{order:-2})},
@@ -635,26 +644,10 @@ class FXApp extends React.Component{
         self.ptitle(p.pair+' — grafy','Skóre · Retail · COT '+p.base+' & '+p.quote),
         h('div',{style:{display:'flex',gap:5}},rng.map(r=>{const on=gr===r;return h('button',{key:r,type:'button',onClick:()=>self.setState({gridRange:r}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:7,padding:'4px 9px',fontSize:10,fontWeight:700,cursor:'pointer'})},r);}))),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginTop:8}},
-        cell('Vývoj skóre',self.sgn(sb.score)+' / '+self.sgn(sq.score),T.dim,sdates.length>=2,h(self.HoverChart,{key:'sc'+p.pair+gr,dates:sdates,series:scoreSeries,height:128,yMin:-10,yMax:10,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0})),
-        cell('Retail L/S',rlong.length?('L '+rlong[rlong.length-1]+'% · S '+(100-rlong[rlong.length-1])+'%'):null,T.green,rpts.length>=2,h(self.HoverChart,{key:'rt'+p.pair+gr,dates:rdates,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50})),
-        cell('COT '+p.base+' L/S',(sb.inst>0?'net +':'net ')+sb.inst,sb.inst>=0?T.green:T.red,cdates.length>=2,h(self.HoverChart,{key:'cb'+p.pair+gr,dates:cdates,series:cotLS(p.base),height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50})),
-        cell('COT '+p.quote+' L/S',(sq.inst>0?'net +':'net ')+sq.inst,sq.inst>=0?T.green:T.red,cdates.length>=2,h(self.HoverChart,{key:'cq'+p.pair+gr,dates:cdates,series:cotLS(p.quote),height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50})))); }
-  renderRetailCurve(p){ const self=this,h=this.h,T=this.tok; const pts=this._retailHist||[];
-    const ser=pts.map(pt=>{ const d=pt.pairs&&pt.pairs[p.pair]; let lng; if(d&&isFinite(d.l)) lng=d.l; else { const b=pt.ccy&&pt.ccy[p.base], q=pt.ccy&&pt.ccy[p.quote]; lng=(b!=null&&q!=null)?Math.round((b+(100-q))/2):null; } return lng==null?null:Math.max(0,Math.min(100,lng)); }).filter(v=>v!=null);
-    if(ser.length<2) return h('div',{style:{fontSize:10.5,color:T.faint,margin:'2px 0 12px',lineHeight:1.5}},'📈 Retail Long/Short v čase — sbírá se každých 30 min (zatím '+ser.length+' bod, křivka naskočí během dne).');
-    const W=520,H=92,PL=4,PR=4,PT=10,PB=10,n=ser.length;
-    const X=i=>PL+(W-PL-PR)*(i/(n-1)), Y=v=>PT+(H-PT-PB)*(1-v/100);
-    const dL=self.smooth(ser.map((v,i)=>[X(i),Y(v)]));
-    const dS=self.smooth(ser.map((v,i)=>[X(i),Y(100-v)]));
-    const last=ser[n-1], lastS=100-last;
-    return h('div',{style:{marginBottom:13}},
-      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5}},h('span',{style:{fontSize:10.5,color:T.faint}},'Retail Long vs Short v čase'),h('span',{style:self.mono({fontSize:10,fontWeight:700})},h('span',{style:{color:T.green}},'L '+last+'%'),h('span',{style:{color:T.faint}},' · '),h('span',{style:{color:T.red}},'S '+lastS+'%'))),
-      h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block'}},
-        h('line',{x1:PL,x2:W-PR,y1:Y(50),y2:Y(50),stroke:'#2a3242',strokeDasharray:'3 4'}),
-        h('path',{d:dL,fill:'none',stroke:T.green,strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}),
-        h('path',{d:dS,fill:'none',stroke:T.red,strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}),
-        h('circle',{cx:X(n-1),cy:Y(last),r:3,fill:T.green,stroke:'#0b0d13',strokeWidth:1.5}),
-        h('circle',{cx:X(n-1),cy:Y(lastS),r:3,fill:T.red,stroke:'#0b0d13',strokeWidth:1.5}))); }
+        cell('Vývoj skóre',self.sgn(sb.score)+' / '+self.sgn(sq.score),T.dim,sdates.length>=2,h(self.HoverChart,{key:'sc'+p.pair+gr,dates:sdates,series:scoreSeries,height:128,yMin:-10,yMax:10,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0}),{title:p.pair+' — Vývoj skóre',subtitle:p.base+' vs '+p.quote+' · '+gr,dates:sdates,series:scoreSeries,yMin:-10,yMax:10,mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)}),
+        cell('Retail L/S',rlong.length?('L '+rlong[rlong.length-1]+'% · S '+(100-rlong[rlong.length-1])+'%'):null,T.green,rpts.length>=2,h(self.HoverChart,{key:'rt'+p.pair+gr,dates:rdates,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:p.pair+' — Retail Long/Short',subtitle:'Sentiment v čase · '+gr,dates:rdates,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
+        cell('COT '+p.base+' L/S',(sb.inst>0?'net +':'net ')+sb.inst,sb.inst>=0?T.green:T.red,cdates.length>=2,h(self.HoverChart,{key:'cb'+p.pair+gr,dates:cdates,series:cotLS(p.base),height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:p.base+' — COT Long/Short',subtitle:'Institucionální pozicování · '+gr,dates:cdates,series:cotLS(p.base),yMin:0,yMax:100,mid:50,fmt:pctFmt}),
+        cell('COT '+p.quote+' L/S',(sq.inst>0?'net +':'net ')+sq.inst,sq.inst>=0?T.green:T.red,cdates.length>=2,h(self.HoverChart,{key:'cq'+p.pair+gr,dates:cdates,series:cotLS(p.quote),height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:p.quote+' — COT Long/Short',subtitle:'Institucionální pozicování · '+gr,dates:cdates,series:cotLS(p.quote),yMin:0,yMax:100,mid:50,fmt:pctFmt}))); }
   pairObj(id){ return this.PAIRS.find(p=>p.pair===id)||this.PAIRS[0]; }
   statusColor(s){ const T=this.tok; return s==='conflict'?T.red:s==='upcoming'?T.amber:T.green; }
   statusLabel(s){ return s==='conflict'?'Konflikt':s==='upcoming'?'Přijde dnes':'Potvrzeno'; }
@@ -838,18 +831,70 @@ class FXApp extends React.Component{
         h('div',{style:{marginTop:10}},lab('Poznámka'),h('input',{value:f.notes,onChange:e=>self.jSet('notes',e.target.value),placeholder:'teze, úroveň, plán…',style:inp})),
         h('button',{type:'button',onClick:()=>self.addTrade(),style:{marginTop:12,border:'1px solid '+T.accent,background:'linear-gradient(180deg,#5e7cfb,#4c63d9)',color:'#fff',borderRadius:10,padding:'10px 18px',fontFamily:'inherit',fontSize:13,fontWeight:700,cursor:'pointer'}},'+ Přidat obchod')),
       h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Equity křivka','Kumulativní R'),h('div',{style:{marginTop:6}},this.EquityChart())),
-      h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Poslední obchody'),h('div',{style:{display:'grid',gridTemplateColumns:'62px 78px 56px 116px 56px 28px',gap:8,padding:'8px 0',borderBottom:'1px solid #1b2130',fontSize:9.5,color:T.faint,letterSpacing:'.06em',fontWeight:700}},['DATUM','PÁR','SMĚR','VÝSLEDEK','R',''].map((x,i)=>h('span',{key:i,style:x==='R'?{textAlign:'right'}:null},x))),j.rows.length?j.rows.map((r,i)=>{const win=r.res==='win';return h('div',{key:r.id||i,style:{display:'grid',gridTemplateColumns:'62px 78px 56px 116px 56px 28px',gap:8,alignItems:'center',padding:'10px 0',boxShadow:'0 1px 0 #14182333'}},h('span',{style:self.mono({fontSize:11,color:T.dim})},r.d),h('span',{style:self.mono({fontSize:12,fontWeight:700})},r.pair),h('span',{style:{fontSize:11,fontWeight:700,color:r.dir==='BUY'?T.green:T.red}},r.dir),h('select',{value:r.res==='open'?'open':r.res,onChange:e=>self.setTradeOutcome(r.id,e.target.value),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:7,color:r.res==='open'?T.amber:r.res==='be'?T.accent:r.res==='early'?T.violet:win?T.green:T.red,fontSize:11,fontWeight:700,padding:'4px 6px',cursor:'pointer',fontFamily:'inherit'}},[['open','Otevřený'],['win','Zisk'],['loss','Ztráta'],['be','BE (break-even)'],['early','Zavřeno dřív (mimo plán)']].map(([v,l])=>h('option',{key:v,value:v},l))),h('span',{style:self.mono({fontSize:12.5,fontWeight:700,color:win?T.green:r.res==='loss'?T.red:r.res==='be'?T.accent:r.res==='early'?T.violet:T.dim,textAlign:'right'})},r.res==='be'?'BE':self.sgn(r.r)),h('button',{type:'button',title:'Smazat',onClick:()=>self.delTrade(r.id),style:{border:'none',background:'none',color:T.faint,fontSize:14,cursor:'pointer',padding:0}},'✕'));}):h('div',{style:{fontSize:12,color:T.faint,padding:'14px 0'}},'Zatím žádné obchody — přidej obchod formulářem výše.')));
+      (()=>{
+        const allRows=j.rows||[];
+        const jp=st.jFilterPair||'all', jo=st.jFilterOutcome||'all';
+        const rows=allRows.filter(r=>(jp==='all'||r.pair===jp)&&(jo==='all'||r.res===jo));
+        const cols='58px 66px 48px 74px 70px 70px 54px 122px 118px 58px minmax(140px,1fr) 26px';
+        const outcomeOpts=[['open','Otevřený'],['win','Zisk'],['loss','Ztráta'],['be','BE (break-even)'],['early','Zavřeno dřív (mimo plán)']];
+        const ctxLabel=r=>{ if(r.conv==null&&!r.band) return '—'; const parts=[]; if(r.conv!=null) parts.push('★'+r.conv); if(r.band) parts.push(r.band); if(r.conflict) parts.push('⚠ konflikt'); return parts.join(' · '); };
+        const rowPairs=[...new Set(allRows.map(r=>r.pair))];
+        return h('div',{style:self.card({padding:'18px 20px'})},
+          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:12}},
+            self.ptitle('Všechny obchody',rows.length+' z '+allRows.length),
+            h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},
+              h('select',{value:jp,onChange:e=>self.setState({jFilterPair:e.target.value}),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:8,color:T.text,padding:'7px 10px',fontSize:12,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"}},[h('option',{key:'all',value:'all'},'Všechny páry')].concat(rowPairs.map(p=>h('option',{key:p,value:p},p)))),
+              h('select',{value:jo,onChange:e=>self.setState({jFilterOutcome:e.target.value}),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:8,color:T.text,padding:'7px 10px',fontSize:12,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"}},[['all','Vše']].concat(outcomeOpts).map(([v,l])=>h('option',{key:v,value:v},l))))),
+          h('div',{style:{overflowX:'auto'}},
+            h('div',{style:{minWidth:900}},
+              h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,padding:'8px 0',borderBottom:'1px solid #1b2130',fontSize:9.5,color:T.faint,letterSpacing:'.06em',fontWeight:700}},['DATUM','PÁR','SMĚR','VSTUP','SL','TP','RISK%','KONTEXT','VÝSLEDEK','R','POZNÁMKA',''].map((x,i)=>h('span',{key:i,style:x==='R'?{textAlign:'right'}:null},x))),
+              h('div',{style:{maxHeight:520,overflowY:'auto'}},
+                rows.length?rows.map((r,i)=>{const win=r.res==='win';
+                  return h('div',{key:r.id||i,style:{display:'grid',gridTemplateColumns:cols,gap:8,alignItems:'center',padding:'10px 0',boxShadow:'0 1px 0 #14182333'}},
+                    h('span',{style:self.mono({fontSize:11,color:T.dim})},r.d),
+                    h('span',{style:self.mono({fontSize:12,fontWeight:700})},r.pair),
+                    h('span',{style:{fontSize:11,fontWeight:700,color:r.dir==='BUY'?T.green:T.red}},r.dir),
+                    h('span',{style:self.mono({fontSize:11,color:T.dim})},r.entry||'—'),
+                    h('span',{style:self.mono({fontSize:11,color:T.dim})},r.sl||'—'),
+                    h('span',{style:self.mono({fontSize:11,color:T.dim})},r.tp||'—'),
+                    h('span',{style:self.mono({fontSize:11,color:T.dim})},r.riskPct?r.riskPct+'%':'—'),
+                    h('span',{title:r.conflict?'Otevřeno proti dnešnímu fundamentálnímu konfliktu':'',style:{fontSize:10.5,color:r.conflict?T.red:T.faint}},ctxLabel(r)),
+                    h('select',{value:r.res==='open'?'open':r.res,onChange:e=>self.setTradeOutcome(r.id,e.target.value),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:7,color:r.res==='open'?T.amber:r.res==='be'?T.accent:r.res==='early'?T.violet:win?T.green:T.red,fontSize:11,fontWeight:700,padding:'4px 6px',cursor:'pointer',fontFamily:'inherit'}},outcomeOpts.map(([v,l])=>h('option',{key:v,value:v},l))),
+                    h('span',{style:self.mono({fontSize:12.5,fontWeight:700,color:win?T.green:r.res==='loss'?T.red:r.res==='be'?T.accent:r.res==='early'?T.violet:T.dim,textAlign:'right'})},r.res==='be'?'BE':self.sgn(r.r)),
+                    h('span',{title:r.notes||'',style:{fontSize:11,color:T.dim,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},r.notes||'—'),
+                    h('button',{type:'button',title:'Smazat',onClick:()=>self.delTrade(r.id),style:{border:'none',background:'none',color:T.faint,fontSize:14,cursor:'pointer',padding:0}},'✕'));
+                }):h('div',{style:{fontSize:12,color:T.faint,padding:'14px 0'}},allRows.length?'Žádné obchody neodpovídají filtru.':'Zatím žádné obchody — přidej obchod formulářem výše.')))));
+      })());
   }
   renderCalendar(){ const self=this,h=this.h,T=this.tok,st=this.state; const cal=this._cal||[]; const up=this._up||[];
-    const list=((typeof buildEventWatch==='function')?buildEventWatch(cal,up):up).filter(e=>{const im=impUp(e.impact);return im==='HIGH'||im==='MEDIUM';}).slice(0,80);
+    const WINDOWS={upcoming:{label:'Příštích 14 dní',from:startOfTodayMs(),to:Date.now()+14*86400000},
+      past30:{label:'Posledních 30 dní',from:Date.now()-30*86400000,to:Date.now()+14*86400000},
+      past90:{label:'Posledních 90 dní',from:Date.now()-90*86400000,to:Date.now()+14*86400000},
+      past180:{label:'Posledních 6 měsíců',from:Date.now()-180*86400000,to:Date.now()+14*86400000}};
+    const win=WINDOWS[st.calWindow]||WINDOWS.upcoming;
+    let full=[]; try{ full=mergeEvents(cal,up)||[]; }catch(e){ full=up; }
+    let list=full.filter(e=>{const t=parseEventTime(e.time);if(isNaN(t)||t<win.from||t>win.to)return false;const im=impUp(e.impact);return im==='HIGH'||im==='MEDIUM';});
+    if(st.calCcy!=='all') list=list.filter(e=>ev2ccy(e)===st.calCcy);
+    if(st.calImp==='high') list=list.filter(e=>impUp(e.impact)==='HIGH');
+    if(st.calRes==='released') list=list.filter(e=>e.actual!=null&&String(e.actual).trim()!=='');
+    else if(st.calRes==='pending') list=list.filter(e=>!(e.actual!=null&&String(e.actual).trim()!==''));
+    list=list.sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time)).slice(0,500);
     const ic=i=>i==='HIGH'?T.red:T.amber; const cols='84px 48px minmax(180px,1fr) 64px 78px 78px 78px 86px'; let lastDay=null;
     const surprise=e=>{const a=parseFloat(e.actual),f=parseFloat(e.estimate??e.forecast);if(isNaN(a)||isNaN(f))return null;return a>f?'beat':a<f?'miss':'inline';};
     const sc=s=>s==='beat'?T.green:s==='miss'?T.red:T.faint;
-    return h('div',{style:{maxWidth:1080}},this.renderMacroSnapshot(),h('div',{style:self.card({padding:'20px 22px'})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:6,flexWrap:'wrap'}},self.ptitle('Fundamentální kalendář','Příštích 14 dní · Actual / Forecast / Previous / Surprise'),h('div',{style:{display:'flex',gap:8,alignItems:'center'}},h('span',{style:{fontSize:11,fontWeight:800,color:T.red,background:'rgba(242,96,110,.12)',border:'1px solid rgba(242,96,110,.3)',borderRadius:999,padding:'5px 11px'}},'HIGH '+list.filter(e=>impUp(e.impact)==='HIGH').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.accent,background:'rgba(94,124,251,.1)',border:'1px solid rgba(94,124,251,.28)',borderRadius:999,padding:'5px 11px'}},'EVENTS '+list.length),h('button',{onClick:()=>self.forceLiveCalendarRefresh(),disabled:!!st.calBusy,style:{fontSize:11,fontWeight:800,color:T.text,background:'rgba(94,124,251,.14)',border:'1px solid rgba(94,124,251,.4)',borderRadius:999,padding:'5px 11px',cursor:st.calBusy?'default':'pointer'}},st.calBusy?'⏳ Aktualizuji…':'🔄 Refresh teď'))),
+    const selStyle={background:'#0a0d13',border:'1px solid #1b2130',borderRadius:8,color:T.text,padding:'7px 10px',fontSize:12,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"};
+    return h('div',{style:{maxWidth:1080}},this.renderMacroSnapshot(),h('div',{style:self.card({padding:'20px 22px'})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:6,flexWrap:'wrap'}},self.ptitle('Fundamentální kalendář',win.label+' · Actual / Forecast / Previous / Surprise'),h('div',{style:{display:'flex',gap:8,alignItems:'center'}},h('span',{style:{fontSize:11,fontWeight:800,color:T.red,background:'rgba(242,96,110,.12)',border:'1px solid rgba(242,96,110,.3)',borderRadius:999,padding:'5px 11px'}},'HIGH '+list.filter(e=>impUp(e.impact)==='HIGH').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.accent,background:'rgba(94,124,251,.1)',border:'1px solid rgba(94,124,251,.28)',borderRadius:999,padding:'5px 11px'}},'EVENTS '+list.length),h('button',{onClick:()=>self.forceLiveCalendarRefresh(),disabled:!!st.calBusy,style:{fontSize:11,fontWeight:800,color:T.text,background:'rgba(94,124,251,.14)',border:'1px solid rgba(94,124,251,.4)',borderRadius:999,padding:'5px 11px',cursor:st.calBusy?'default':'pointer'}},st.calBusy?'⏳ Aktualizuji…':'🔄 Refresh teď'))),
+      h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}},
+        h('select',{value:st.calWindow,onChange:e=>self.setState({calWindow:e.target.value}),style:selStyle},Object.entries(WINDOWS).map(([k,v])=>h('option',{key:k,value:k},v.label))),
+        h('select',{value:st.calCcy,onChange:e=>self.setState({calCcy:e.target.value}),style:selStyle},[h('option',{key:'all',value:'all'},'Všechny měny')].concat(this.CUR.map(c=>h('option',{key:c,value:c},c)))),
+        h('select',{value:st.calImp,onChange:e=>self.setState({calImp:e.target.value}),style:selStyle},[['all','HIGH + MEDIUM'],['high','Jen HIGH']].map(([v,l])=>h('option',{key:v,value:v},l))),
+        h('select',{value:st.calRes,onChange:e=>self.setState({calRes:e.target.value}),style:selStyle},[['all','Vše'],['released','Jen s výsledkem'],['pending','Jen čekající']].map(([v,l])=>h('option',{key:v,value:v},l)))),
       st.calMsg&&h('div',{style:{fontSize:11,color:T.dim,marginBottom:8}},st.calMsg),
       h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,padding:'9px 0',borderTop:'1px solid #1b2130',borderBottom:'1px solid #1b2130',fontSize:9.5,fontWeight:700,letterSpacing:'.05em',color:T.faint}},['ČAS','MĚNA','UDÁLOST','IMPACT','ACTUAL','FORECAST','PREVIOUS','SURPRISE'].map((x,i)=>h('span',{key:x,style:i>=4?{textAlign:'right'}:null},x))),
-      list.map((e,i)=>{const dt=new Date(parseEventTime(e.time));const dlabel=dt.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric',weekday:'long'});const dayHdr=dlabel!==lastDay;lastDay=dlabel;const s=surprise(e);
-        return h('div',{key:i},dayHdr&&h('div',{style:self.mono({fontSize:10.5,fontWeight:700,color:T.dim,letterSpacing:'.04em',padding:'13px 0 7px',marginTop:i?4:0})},dlabel),h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,alignItems:'center',padding:'10px 0',boxShadow:'0 1px 0 #14182333'}},h('span',{style:self.mono({fontSize:11.5,color:T.dim})},dt.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})),h('span',{style:self.mono({fontSize:12,fontWeight:700})},ev2ccy(e)),h('span',{style:{fontSize:12.5,color:T.text}},e.event),h('span',{style:{fontSize:9,fontWeight:700,color:ic(impUp(e.impact)),background:ic(impUp(e.impact))+'1c',border:'1px solid '+ic(impUp(e.impact))+'40',borderRadius:5,padding:'3px 7px',justifySelf:'start'}},impUp(e.impact)),h('span',{title:'Klikni pro ruční doplnění Actual',onClick:()=>self.setManualActual(e),style:self.mono({fontSize:12,fontWeight:700,color:e._manual?T.amber:(e.actual?T.text:T.faint),textAlign:'right',cursor:'pointer',textDecoration:'underline dotted'})},(e._manual?'✎ ':'')+(e.actual||'—')),h('span',{style:self.mono({fontSize:12,color:T.dim,textAlign:'right'})},(e.estimate||e.forecast)||'—'),h('span',{style:self.mono({fontSize:12,color:T.faint,textAlign:'right'})},(e.prev||e.previous)||'—'),h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:sc(s),textAlign:'right'})},s?(s==='beat'?'BEAT ▲':s==='miss'?'MISS ▼':'INLINE'):'PENDING')));})));
+      h('div',{style:{maxHeight:720,overflowY:'auto'}},
+        list.length?list.map((e,i)=>{const dt=new Date(parseEventTime(e.time));const dlabel=dt.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric',weekday:'long'});const dayHdr=dlabel!==lastDay;lastDay=dlabel;const s=surprise(e);
+          return h('div',{key:i},dayHdr&&h('div',{style:self.mono({fontSize:10.5,fontWeight:700,color:T.dim,letterSpacing:'.04em',padding:'13px 0 7px',marginTop:i?4:0})},dlabel),h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,alignItems:'center',padding:'10px 0',boxShadow:'0 1px 0 #14182333'}},h('span',{style:self.mono({fontSize:11.5,color:T.dim})},dt.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})),h('span',{style:self.mono({fontSize:12,fontWeight:700})},ev2ccy(e)),h('span',{style:{fontSize:12.5,color:T.text}},e.event),h('span',{style:{fontSize:9,fontWeight:700,color:ic(impUp(e.impact)),background:ic(impUp(e.impact))+'1c',border:'1px solid '+ic(impUp(e.impact))+'40',borderRadius:5,padding:'3px 7px',justifySelf:'start'}},impUp(e.impact)),h('span',{title:'Klikni pro ruční doplnění Actual',onClick:()=>self.setManualActual(e),style:self.mono({fontSize:12,fontWeight:700,color:e._manual?T.amber:(e.actual?T.text:T.faint),textAlign:'right',cursor:'pointer',textDecoration:'underline dotted'})},(e._manual?'✎ ':'')+(e.actual||'—')),h('span',{style:self.mono({fontSize:12,color:T.dim,textAlign:'right'})},(e.estimate||e.forecast)||'—'),h('span',{style:self.mono({fontSize:12,color:T.faint,textAlign:'right'})},(e.prev||e.previous)||'—'),h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:sc(s),textAlign:'right'})},s?(s==='beat'?'BEAT ▲':s==='miss'?'MISS ▼':'INLINE'):'PENDING')));
+        }):h('div',{style:{fontSize:12,color:T.faint,padding:'20px 0'}},'Žádné události neodpovídají filtru.'))));
   }
   renderAIAnalysis(){ const self=this,h=this.h,T=this.tok,st=this.state; const R=st.aiResult; const p=this.pairObj(st.sel)||{};
     const biasC=R&&R.bias==='BULLISH'?T.green:R&&R.bias==='BEARISH'?T.red:T.amber;
@@ -881,13 +926,17 @@ class FXApp extends React.Component{
           Array.isArray(R.risk_warnings)&&R.risk_warnings.length&&sec('Rizika',h('div',null,R.risk_warnings.map((w,i)=>h('div',{key:i,style:{fontSize:12.5,color:T.amber,padding:'3px 0'}},'⚠ '+w)))),
           R.summary&&sec('Shrnutí',h('div',{style:{fontSize:13,color:T.text,lineHeight:1.6}},R.summary)))));
   }
-  renderAICoach(){ const self=this,h=this.h,T=this.tok,st=this.state; const chips=['Které páry dnes neobchodovat?','Top setupy dnes?','Co s mými pozicemi?','Kde je konflikt?'];
+  // **tučné** z markdown odpovědi modelu — bez toho se hvězdičky zobrazovaly doslova.
+  // \n se renderuje sám (bublina má whiteSpace:'pre-wrap'), takže tu stačí jen bold.
+  formatCoachMsg(text){ const h=this.h; const parts=String(text==null?'':text).split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((p,i)=>(p.startsWith('**')&&p.endsWith('**')&&p.length>4)?h('b',{key:i,style:{color:'#eef1f6'}},p.slice(2,-2)):h('span',{key:i},p)); }
+  renderAICoach(){ const self=this,h=this.h,T=this.tok,st=this.state; const chips=['Top setupy dnes?','Rozeber nejbližší velký report','Otočil se dnes někde bias?','Co s mými otevřenými pozicemi?'];
     const send=text=>self.sendCoach(text);
-    return h('div',{style:{maxWidth:860,margin:'0 auto'}},h('div',{style:self.card({padding:0,overflow:'hidden',display:'flex',flexDirection:'column',height:'calc(100vh - 150px)',minHeight:520})},
+    return h('div',{style:{maxWidth:1080,margin:'0 auto'}},h('div',{style:self.card({padding:0,overflow:'hidden',display:'flex',flexDirection:'column',height:'calc(100vh - 150px)',minHeight:520})},
       h('div',{style:{display:'flex',alignItems:'center',gap:12,padding:'15px 20px',borderBottom:'1px solid #1b2130'}},h('div',{style:self.mono({width:38,height:38,borderRadius:11,background:'linear-gradient(150deg,#10131c,#0a0c12)',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13})},'AT'),h('div',{style:{flex:1}},h('div',{style:{fontSize:14,fontWeight:800}},'AI Coach'),h('div',{style:{fontSize:11,color:T.green,display:'flex',alignItems:'center',gap:6}},h('span',{style:{width:6,height:6,borderRadius:50,background:T.green}}),'Vidí tvé živé skóre, COT a pozice')),
         h('select',{value:st.coachPair,onChange:e=>self.setState({coachPair:e.target.value}),title:'Zaměřit na pár',style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'8px 10px',fontSize:12,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"}},[h('option',{key:'',value:''},'Všechny páry')].concat(this.PAIRS.map(p=>h('option',{key:p.pair,value:p.pair},p.pair)))),
         h('button',{type:'button',onClick:()=>self.clearCoach(),title:'Nový chat',style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:9,padding:'8px 11px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer'}},'↺ Nový')),
-      h('div',{style:{flex:1,overflow:'auto',padding:'20px',display:'flex',flexDirection:'column',gap:14}},st.coachMsgs.map((m,i)=>{const me=m.role==='user';return h('div',{key:i,style:{display:'flex',justifyContent:me?'flex-end':'flex-start'}},h('div',{style:{maxWidth:'76%',display:'flex',gap:10,flexDirection:me?'row-reverse':'row',alignItems:'flex-end'}},!me&&h('div',{style:self.mono({width:28,height:28,borderRadius:9,background:'#10131c',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:10,flex:'none',color:T.dim})},'AT'),h('div',{style:{fontSize:13,lineHeight:1.55,padding:'11px 14px',borderRadius:me?'14px 14px 4px 14px':'14px 14px 14px 4px',whiteSpace:'pre-wrap',color:me?'#eaf0ff':T.text,background:me?'linear-gradient(180deg,rgba(94,124,251,.22),rgba(94,124,251,.12))':'linear-gradient(180deg,#0f131c,#0b0e14)',border:'1px solid '+(me?'rgba(94,124,251,.32)':'#1b2130')}},m.text)));}),st.coachBusy&&h('div',{style:{fontSize:12,color:T.faint,paddingLeft:38}},'⏳ Coach přemýšlí…')),
+      h('div',{style:{flex:1,overflow:'auto',padding:'20px',display:'flex',flexDirection:'column',gap:14}},st.coachMsgs.map((m,i)=>{const me=m.role==='user';return h('div',{key:i,style:{display:'flex',justifyContent:me?'flex-end':'flex-start'}},h('div',{style:{maxWidth:me?'76%':780,display:'flex',gap:10,flexDirection:me?'row-reverse':'row',alignItems:'flex-end'}},!me&&h('div',{style:self.mono({width:28,height:28,borderRadius:9,background:'#10131c',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:10,flex:'none',color:T.dim})},'AT'),h('div',{style:{fontSize:13,lineHeight:1.55,padding:'11px 14px',borderRadius:me?'14px 14px 4px 14px':'14px 14px 14px 4px',whiteSpace:'pre-wrap',color:me?'#eaf0ff':T.text,background:me?'linear-gradient(180deg,rgba(94,124,251,.22),rgba(94,124,251,.12))':'linear-gradient(180deg,#0f131c,#0b0e14)',border:'1px solid '+(me?'rgba(94,124,251,.32)':'#1b2130')}},me?m.text:self.formatCoachMsg(m.text))));}),st.coachBusy&&h('div',{style:{fontSize:12,color:T.faint,paddingLeft:38}},'⏳ Coach přemýšlí…')),
       h('div',{style:{padding:'12px 16px',borderTop:'1px solid #1b2130'}},h('div',{style:{display:'flex',gap:7,flexWrap:'wrap',marginBottom:11}},chips.map(c=>h('button',{key:c,type:'button',onClick:()=>send(c),style:{fontSize:11,color:T.dim,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:999,padding:'6px 12px',cursor:'pointer',fontFamily:'inherit'}},c))),h('div',{style:{display:'flex',gap:9}},h('input',{value:st.coachInput,onChange:e=>this.setState({coachInput:e.target.value}),onKeyDown:e=>{if(e.key==='Enter')send(null);},placeholder:'Zeptej se na setup, riziko, korelace…',style:{flex:1,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:11,color:T.text,padding:'12px 14px',fontSize:13,fontFamily:"'Manrope',sans-serif",outline:'none'}}),h('button',{type:'button',disabled:st.coachBusy,onClick:()=>send(null),style:{border:'none',borderRadius:11,padding:'0 18px',fontFamily:'inherit',fontSize:13,fontWeight:800,color:'#06140f',cursor:st.coachBusy?'default':'pointer',opacity:st.coachBusy?.6:1,background:'linear-gradient(180deg,#4be0a8,'+T.green+')'}},'Odeslat')))));
   }
   renderBiasCard(){ const self=this,h=this.h,T=this.tok; const top=this.PAIRS[0]; if(!top) return null; const conf=Math.min(100,Math.round(top.diff/12*100)); const posEntries=Object.entries(this.state.pos).filter(([,s])=>s&&s!=='none'); const dc=top.dir==='BUY'?T.green:T.red;
@@ -1014,9 +1063,10 @@ class FXApp extends React.Component{
     const main=h('main',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column'}},header,
       st.tab==='dashboard'?h('div',{style:{padding:'18px 22px 40px'}},h('div',{className:'fx-grid',style:{display:'grid',gridTemplateColumns:'374px minmax(0,1fr) 350px',gap:16,alignItems:'start'}},leftSection,h('section',{style:{minWidth:0}},this.renderDetail()),h('section',{className:'fx-right',style:{position:'sticky',top:84}},this.renderRight())))
         :h('div',{style:{padding:'18px 22px 48px',animation:'fxfade .3s ease'}},st.tab==='strength'?this.renderStrength():st.tab==='cot'?this.renderCOT():st.tab==='season'?this.renderSeasonality():st.tab==='calendar'?this.renderCalendar():st.tab==='ai'?this.renderAIAnalysis():st.tab==='coach'?this.renderAICoach():st.tab==='journal'?this.renderJournal():st.tab==='settings'?this.renderSettings():null));
-    return h('div',{style:{minHeight:'100vh',display:'flex',background:'radial-gradient(1100px 620px at 80% -10%, rgba(94,124,251,.10), transparent 58%), radial-gradient(900px 520px at 4% 2%, rgba(46,211,160,.055), transparent 54%), #07080c'}},
+    return h('div',{className:'fx-root',style:{minHeight:'100vh',display:'flex',background:'radial-gradient(1100px 620px at 80% -10%, rgba(94,124,251,.10), transparent 58%), radial-gradient(900px 520px at 4% 2%, rgba(46,211,160,.055), transparent 54%), #07080c'}},
       aside,main,
       st.cotModal&&h(self.CotModal,{key:st.cotModal,c:st.cotModal,range:st.cotRange}),
+      st.chartModal&&h(self.ChartModal,Object.assign({key:st.chartModal.title},st.chartModal)),
       !st.loaded&&h('div',{style:{position:'fixed',inset:0,background:'rgba(7,8,12,.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:99,fontSize:14,color:T.dim}},'⏳ Načítám živá data…'));
   }
 }
