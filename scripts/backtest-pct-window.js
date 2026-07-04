@@ -88,11 +88,24 @@ const F = (a) => a.n ? `WR ${String(a.wr).padStart(4)}% PF ${String(a.pf).padSta
 (async () => {
   const base = "https://publicreporting.cftc.gov/resource/" + CFTC_TFF_DATASET + ".json";
   const where = encodeURIComponent("report_date_as_yyyy_mm_dd > '2010-01-01T00:00:00.000'");
-  const r = await fetch(base + "?$where=" + where + "&$order=" + encodeURIComponent("report_date_as_yyyy_mm_dd ASC") + "&$limit=200000&$select=" +
-    encodeURIComponent("report_date_as_yyyy_mm_dd,market_and_exchange_names,contract_market_name,asset_mgr_positions_long,asset_mgr_positions_short,lev_money_positions_long,lev_money_positions_short,asset_mgr_positions_long_all,asset_mgr_positions_short_all,lev_money_positions_long_all,lev_money_positions_short_all"),
-    { signal: AbortSignal.timeout(120000) });
-  if (!r.ok) throw new Error("CFTC HTTP " + r.status);
-  const rows = await r.json();
+  const common = base + "?$where=" + where + "&$order=" + encodeURIComponent("report_date_as_yyyy_mm_dd ASC") + "&$limit=200000";
+  // Dataset má JEN jednu variantu názvů pozičních sloupců (s/bez "_all") — $select s
+  // neexistujícím sloupcem vrací 400. Zkoušíme varianty, poslední záchrana bez $select.
+  const meta = "report_date_as_yyyy_mm_dd,market_and_exchange_names,contract_market_name";
+  const posPlain = "asset_mgr_positions_long,asset_mgr_positions_short,lev_money_positions_long,lev_money_positions_short";
+  const posAll = posPlain.split(",").map((c) => c + "_all").join(",");
+  const attempts = [
+    common + "&$select=" + encodeURIComponent(meta + "," + posPlain),
+    common + "&$select=" + encodeURIComponent(meta + "," + posAll),
+    common,
+  ];
+  let rows = null;
+  for (const url of attempts) {
+    const r = await fetch(url, { signal: AbortSignal.timeout(120000) });
+    if (r.ok) { rows = await r.json(); console.log("CFTC dotaz OK (varianta " + (attempts.indexOf(url) + 1) + "/3)"); break; }
+    console.log("CFTC varianta " + (attempts.indexOf(url) + 1) + " HTTP " + r.status + " — zkouším další");
+  }
+  if (!rows) throw new Error("CFTC: všechny varianty dotazu selhaly");
   const byDate = {};
   for (const row of rows) { const d = String(row.report_date_as_yyyy_mm_dd || "").slice(0, 10); if (d) (byDate[d] = byDate[d] || []).push(row); }
   const weeks = {};
