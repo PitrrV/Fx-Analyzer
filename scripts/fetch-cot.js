@@ -65,9 +65,9 @@ function scoreWeek(rows) {
 }
 
 (async () => {
-  // ~20 měsíců zpět — víc než dost na pokrytí jakékoli mezery v lokální historii,
-  // bez rizika, že odpověď API přesáhne $limit.
-  const cutoff = new Date(Date.now() - 600 * 86400000).toISOString().slice(0, 10);
+  // ~28 měsíců zpět — kryje COT_PCT_WINDOW=104 týdnů v engine.js (percentil pro
+  // forecast/UI čte čistě serverový snapshot) + rezerva, bez rizika překročení $limit.
+  const cutoff = new Date(Date.now() - 850 * 86400000).toISOString().slice(0, 10);
   const base = "https://publicreporting.cftc.gov/resource/" + CFTC_TFF_DATASET + ".json";
   const where = encodeURIComponent("report_date_as_yyyy_mm_dd > '" + cutoff + "T00:00:00.000'");
   const order = encodeURIComponent("report_date_as_yyyy_mm_dd ASC");
