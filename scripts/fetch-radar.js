@@ -174,7 +174,7 @@ function parseJSON(raw){
 async function callGemini(messages, geminiKey){
   const sys = (messages.find(m=>m.role==='system')||{}).content||'';
   const usr = messages.filter(m=>m.role!=='system').map(m=>m.content).join('\n\n');
-  const models = ['gemini-2.5-flash','gemini-2.0-flash','gemini-2.5-flash-lite'];
+  const models = ['gemini-2.5-flash','gemini-2.0-flash','gemini-2.5-flash-lite','gemini-1.5-flash'];
   const body = { contents:[{role:'user',parts:[{text:usr}]}], generationConfig:{temperature:0.3} };
   if(sys) body.system_instruction = {parts:[{text:sys}]};
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
