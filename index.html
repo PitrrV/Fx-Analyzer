@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260704c"></script>
+<script src="engine.js?v=20260706b"></script>
 <script src="sync.js?v=20260704a"></script>
 <style>
 *{box-sizing:border-box}
@@ -315,9 +315,9 @@ class FXApp extends React.Component{
     if(!orKey){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ Chybí OpenRouter API klíč — přidej ho v záložce Nastavení ⚙ (zdarma na openrouter.ai).'}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); return; }
     try{
       const ctx=this.buildCoachContext(t);
-      const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce (mimo strukturovanou odpověď na ekonomický report / konkrétní pár, viz pravidla níže); vždy zmiň invalidaci; jsi mentor ne signální služba.\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY;
+      const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_PERSONA+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB;
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
-      const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:900,temperature:0.4});
+      const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:1400,temperature:0.4});
       const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Coach'};
       const models=[(localStorage.getItem('or_coach_model')||'').trim()||'openrouter/free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free','google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
       let reply='';
@@ -998,9 +998,10 @@ class FXApp extends React.Component{
         if(!fr.length) return null;
         const col=l=>l==='ok'?T.green:l==='warn'?T.amber:T.red;
         const fmt=x=>x.hours==null?'bez dat':x.hours<1?Math.round(x.hours*60)+' min':x.hours<48?x.hours.toFixed(0)+' h':(x.hours/24).toFixed(0)+' dní';
+        const hint={'Ceny':'ECB kurz (Frankfurter) — 1× za pracovní den kolem 16:00 SEČ, o víkendu se nepublikuje. Přes víkend/v pondělí dopoledne je tak zcela normální ukazovat páteční hodnotu.'};
         let dg=null; try{dg=getEngineDiagnostics();}catch(e){}
         return h('div',{style:self.card({padding:'16px 20px',marginBottom:16})},self.ptitle('📡 Stav dat','Stáří zdrojů · zelená čerstvé, jantar pozor, červená zastaralé'),
-          h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:8}},fr.map(x=>h('div',{key:x.label,style:{display:'flex',alignItems:'center',gap:7,fontSize:11.5}},h('span',{style:{width:8,height:8,borderRadius:'50%',background:col(x.level),flex:'none'}}),h('span',{style:{color:T.dim}},x.label),h('b',{style:self.mono({fontSize:11,color:col(x.level),marginLeft:'auto'})},fmt(x))))),
+          h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:8}},fr.map(x=>h('div',{key:x.label,title:hint[x.label]||'',style:{display:'flex',alignItems:'center',gap:7,fontSize:11.5}},h('span',{style:{width:8,height:8,borderRadius:'50%',background:col(x.level),flex:'none'}}),h('span',{style:{color:T.dim}},x.label),h('b',{style:self.mono({fontSize:11,color:col(x.level),marginLeft:'auto'})},fmt(x))))),
           dg&&h('div',{title:'Diagnostika enginu — při rozdílu skóre mezi PC a mobilem porovnej tenhle řádek na obou zařízeních; liší-li se cokoliv z něj, je to příčina',style:self.mono({fontSize:10,color:T.faint,marginTop:11,paddingTop:9,borderTop:'1px solid #161b27',lineHeight:1.6,wordBreak:'break-all'})},
             'DIAG · zdroj '+dg.calSource+' · fund '+dg.fundConf+'% · risk '+(dg.risk>0?'ON':dg.risk<0?'OFF':'0')+'/'+dg.riskMode+' · regime '+dg.regime+' · COT '+dg.cotAsOf+' · CB '+dg.cbRates+' · kal '+dg.ffLen+' ev · COT '+dg.cotWeeks+' t · retail '+dg.sentSrc));
       })(),
