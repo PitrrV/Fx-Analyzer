@@ -1,0 +1,40 @@
+# Ruční kalibrace: jaká délka nahromaděné kalendářní historie (v týdnech) dává
+# nejpřesnější fundamentální skóre? Výsledek se commitne do
+# data/calibration_fundhistory.json (appka ho zatím nečte — jen měřicí nástroj,
+# engine se tímhle nemění). Spouštěj znovu, jak poroste git historie kalendáře —
+# delší okna (13+ týdnů) se postupně stanou testovatelná.
+name: Fund History Calibration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fundhistory-calibration
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # potřebujeme celou git historii data/calendar.json, ne jen poslední commit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Spustit fund-history backtest
+        run: node scripts/backtest-fundhistory.js
+      - name: Commit při změně
+        run: |
+          git config user.name "calibration-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/calibration_fundhistory.json)" ]; then
+            git add data/calibration_fundhistory.json
+            git commit -m "chore: update fund-history calibration [skip ci]"
+            git push
+          else
+            echo "Beze změny."
+          fi
