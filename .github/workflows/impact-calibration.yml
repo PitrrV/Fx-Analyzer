@@ -1,0 +1,39 @@
+# Jednorázová (ruční) kalibrace: má FF impact tag (High/Medium/Low) reálnou
+# predikční hodnotu, nebo engine dnes škáluje LOW stejně jako HIGH zbytečně?
+# Výsledek se commitne do data/calibration_impact.json (appka ho zatím nečte —
+# je to jen měřicí nástroj, engine se tímhle nemění).
+name: Impact Calibration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: impact-calibration
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # potřebujeme celou git historii data/calendar.json, ne jen poslední commit
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Spustit impact backtest
+        run: node scripts/backtest-impact.js
+      - name: Commit při změně
+        run: |
+          git config user.name "calibration-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/calibration_impact.json)" ]; then
+            git add data/calibration_impact.json
+            git commit -m "chore: update impact calibration [skip ci]"
+            git push
+          else
+            echo "Beze změny."
+          fi
