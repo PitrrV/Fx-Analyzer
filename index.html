@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260704c"></script>
+<script src="engine.js?v=20260706a"></script>
 <script src="sync.js?v=20260704a"></script>
 <style>
 *{box-sizing:border-box}
@@ -998,9 +998,10 @@ class FXApp extends React.Component{
         if(!fr.length) return null;
         const col=l=>l==='ok'?T.green:l==='warn'?T.amber:T.red;
         const fmt=x=>x.hours==null?'bez dat':x.hours<1?Math.round(x.hours*60)+' min':x.hours<48?x.hours.toFixed(0)+' h':(x.hours/24).toFixed(0)+' dní';
+        const hint={'Ceny':'ECB kurz (Frankfurter) — 1× za pracovní den kolem 16:00 SEČ, o víkendu se nepublikuje. Přes víkend/v pondělí dopoledne je tak zcela normální ukazovat páteční hodnotu.'};
         let dg=null; try{dg=getEngineDiagnostics();}catch(e){}
         return h('div',{style:self.card({padding:'16px 20px',marginBottom:16})},self.ptitle('📡 Stav dat','Stáří zdrojů · zelená čerstvé, jantar pozor, červená zastaralé'),
-          h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:8}},fr.map(x=>h('div',{key:x.label,style:{display:'flex',alignItems:'center',gap:7,fontSize:11.5}},h('span',{style:{width:8,height:8,borderRadius:'50%',background:col(x.level),flex:'none'}}),h('span',{style:{color:T.dim}},x.label),h('b',{style:self.mono({fontSize:11,color:col(x.level),marginLeft:'auto'})},fmt(x))))),
+          h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:8}},fr.map(x=>h('div',{key:x.label,title:hint[x.label]||'',style:{display:'flex',alignItems:'center',gap:7,fontSize:11.5}},h('span',{style:{width:8,height:8,borderRadius:'50%',background:col(x.level),flex:'none'}}),h('span',{style:{color:T.dim}},x.label),h('b',{style:self.mono({fontSize:11,color:col(x.level),marginLeft:'auto'})},fmt(x))))),
           dg&&h('div',{title:'Diagnostika enginu — při rozdílu skóre mezi PC a mobilem porovnej tenhle řádek na obou zařízeních; liší-li se cokoliv z něj, je to příčina',style:self.mono({fontSize:10,color:T.faint,marginTop:11,paddingTop:9,borderTop:'1px solid #161b27',lineHeight:1.6,wordBreak:'break-all'})},
             'DIAG · zdroj '+dg.calSource+' · fund '+dg.fundConf+'% · risk '+(dg.risk>0?'ON':dg.risk<0?'OFF':'0')+'/'+dg.riskMode+' · regime '+dg.regime+' · COT '+dg.cotAsOf+' · CB '+dg.cbRates+' · kal '+dg.ffLen+' ev · COT '+dg.cotWeeks+' t · retail '+dg.sentSrc));
       })(),

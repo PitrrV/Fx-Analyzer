@@ -2490,7 +2490,13 @@ function getDataFreshness(){
   };
   try{push("Kalendář",localStorage.getItem("action_cal_updated"),6,26);}catch(e){push("Kalendář",null,6,26);}
   try{const m=loadCOTMeta();push("COT",m&&m.asOf,9*24,14*24);}catch(e){push("COT",null,216,336);}
-  push("Ceny",_PRICES&&_PRICES.updated,4,26);
+  // Ceny = ECB referenční kurz (Frankfurter), publikuje se 1×/pracovní den kolem 16:00 SEČ
+  // a vůbec ne o víkendu — v pondělí dopoledne je tak zcela normální, že "updated" ukazuje
+  // ještě páteční hodnotu (~70h stará). Původní práh 4/26h tohle hlásil jako "bad" úplně
+  // každý víkend a pondělní dopoledne, i když pipeline běžela v pořádku (viz GH Actions log:
+  // "Kurzy beze změny, nepřepisuji." — úspěšný běh, ne pád). 30/100h pokryje běžný víkend
+  // i svátek, a pořád odhalí opravdový vícedenní výpadek zdroje.
+  push("Ceny",_PRICES&&_PRICES.updated,30,100);
   try{const o=JSON.parse(localStorage.getItem("oil_wti_v1")||"null");push("Ropa (WTI)",o&&o.ts,6,50);}catch(e){push("Ropa (WTI)",null,6,50);}
   return out;
 }
