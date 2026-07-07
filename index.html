@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="engine.js?v=20260707b"></script>
-<script src="sync.js?v=20260704a"></script>
+<script src="sync.js?v=20260707a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -302,11 +302,24 @@ class FXApp extends React.Component{
   addTrade(){ const f=this.state.jForm; const pair=(f.pair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD'); const now=new Date().toISOString(); const closed=f.outcome&&f.outcome!=='open';
     let aiAnalyses={}; try{aiAnalyses=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){}
     const ctx=captureContext(pair,this.PAIRS,this._scores,this._cal,this._up,aiAnalyses);
-    const t={id:Date.now()+'_'+Math.random().toString(36).slice(2,7),pair:pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:f.rMultiple===''?null:parseFloat(f.rMultiple),notes:f.notes,openedAt:now,closedAt:closed?now:null,ctx:ctx};
+    const t={id:Date.now()+'_'+Math.random().toString(36).slice(2,7),pair:pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:f.rMultiple===''?null:parseFloat(f.rMultiple),notes:f.notes,openedAt:now,closedAt:closed?now:null,updatedAt:now,ctx:ctx};
     let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=[t].concat(arr); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){}
     this.setState(s=>({jForm:Object.assign({},s.jForm,{entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''})})); this.buildJournal(); this.forceUpdate(); }
-  setTradeOutcome(id,outcome){ let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=arr.map(t=>t.id===id?Object.assign({},t,{outcome:outcome,closedAt:outcome!=='open'?(t.closedAt||new Date().toISOString()):null}):t); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){} this.buildJournal(); this.forceUpdate(); }
+  setTradeOutcome(id,outcome){ let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=arr.map(t=>t.id===id?Object.assign({},t,{outcome:outcome,closedAt:outcome!=='open'?(t.closedAt||new Date().toISOString()):null,updatedAt:new Date().toISOString()}):t); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){} this.buildJournal(); this.forceUpdate(); }
   delTrade(id){ let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=arr.filter(t=>t.id!==id); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){} this.buildJournal(); this.forceUpdate(); }
+  jSetRR(id,val){ this.setState(s=>({jEditRR:Object.assign({},s.jEditRR,{[id]:val})})); }
+  // Skutečný R obchodu k jeho zavření (hlavně pro "Zavřeno dřív" — plánovaný a reálně vybraný R se liší).
+  // Commit na blur/Enter, ne na každý úhoz, ať se nekamenuje localStorage a jde napsat i rozepsané "-1.".
+  commitTradeRR(id){
+    const raw=(this.state.jEditRR||{})[id]; if(raw==null) return;
+    const t=raw.trim(), num=t===''?null:parseFloat(t.replace(',','.'));
+    if(t!==''&&isNaN(num)){ this.setState(s=>{const je=Object.assign({},s.jEditRR);delete je[id];return{jEditRR:je};}); return; }
+    let arr=[]; try{arr=loadJournal()||[];}catch(e){}
+    arr=arr.map(tr=>tr.id===id?Object.assign({},tr,{rMultiple:num,updatedAt:new Date().toISOString()}):tr);
+    try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){}
+    this.setState(s=>{const je=Object.assign({},s.jEditRR);delete je[id];return{jEditRR:je};});
+    this.buildJournal(); this.forceUpdate();
+  }
   setKey(k,v){ try{ if(v&&v.trim())localStorage.setItem(k,v.trim()); else localStorage.removeItem(k); }catch(e){} this.forceUpdate(); }
   saveCoach(msgs){ try{localStorage.setItem('fx_coach_chat',JSON.stringify(msgs.slice(-50)));}catch(e){} }
   clearCoach(){ const init=[{role:'coach',text:'Nový chat. Vidím tvoje živá skóre, COT i pozice — ptej se.'}]; this.setState({coachMsgs:init}); this.saveCoach(init); }
@@ -887,7 +900,16 @@ class FXApp extends React.Component{
                     h('span',{style:self.mono({fontSize:11,color:T.dim})},r.riskPct?r.riskPct+'%':'—'),
                     h('span',{title:r.conflict?'Otevřeno proti dnešnímu fundamentálnímu konfliktu':'',style:{fontSize:10.5,color:r.conflict?T.red:T.faint}},ctxLabel(r)),
                     h('select',{value:r.res==='open'?'open':r.res,onChange:e=>self.setTradeOutcome(r.id,e.target.value),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:7,color:r.res==='open'?T.amber:r.res==='be'?T.accent:r.res==='early'?T.violet:win?T.green:T.red,fontSize:11,fontWeight:700,padding:'4px 6px',cursor:'pointer',fontFamily:'inherit'}},outcomeOpts.map(([v,l])=>h('option',{key:v,value:v},l))),
-                    h('span',{style:self.mono({fontSize:12.5,fontWeight:700,color:win?T.green:r.res==='loss'?T.red:r.res==='be'?T.accent:r.res==='early'?T.violet:T.dim,textAlign:'right'})},r.res==='be'?'BE':self.sgn(r.r)),
+                    (r.res==='open'||r.res==='be')
+                      ? h('span',{style:self.mono({fontSize:12.5,fontWeight:700,color:r.res==='be'?T.accent:T.dim,textAlign:'right'})},r.res==='be'?'BE':'—')
+                      : h('input',{type:'text',inputMode:'decimal',
+                          title:'Reálný R z uzavření obchodu (u "Zavřeno dřív" se může lišit od plánu)',
+                          placeholder:'+1.8',
+                          value:(st.jEditRR&&st.jEditRR[r.id]!=null)?st.jEditRR[r.id]:String(r.r),
+                          onChange:e=>self.jSetRR(r.id,e.target.value),
+                          onBlur:()=>self.commitTradeRR(r.id),
+                          onKeyDown:e=>{if(e.key==='Enter')e.target.blur();},
+                          style:Object.assign({},self.mono({fontSize:12.5,fontWeight:700,color:win?T.green:r.res==='loss'?T.red:T.violet}),{textAlign:'right',background:'#0a0d13',border:'1px solid #1b2130',borderRadius:6,padding:'4px 6px',width:'100%',boxSizing:'border-box'})}),
                     h('span',{title:r.notes||'',style:{fontSize:11,color:T.dim,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},r.notes||'—'),
                     h('button',{type:'button',title:'Smazat',onClick:()=>self.delTrade(r.id),style:{border:'none',background:'none',color:T.faint,fontSize:14,cursor:'pointer',padding:0}},'✕'));
                 }):h('div',{style:{fontSize:12,color:T.faint,padding:'14px 0'}},allRows.length?'Žádné obchody neodpovídají filtru.':'Zatím žádné obchody — přidej obchod formulářem výše.')))));

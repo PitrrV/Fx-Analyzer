@@ -22,7 +22,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
 <script src="engine.js?v=20260707b"></script>
-<script src="sync.js?v=20260704a"></script>
+<script src="sync.js?v=20260707a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -1006,7 +1006,7 @@ function JournalTab({data}){
     const now=new Date().toISOString(), closed=f.outcome&&f.outcome!=="open";
     let aiAnalyses={}; try{aiAnalyses=JSON.parse(localStorage.getItem("ai_analyses_v1")||"{}")||{};}catch(e){}
     const ctx=captureContext(f.pair,(data&&data.pairs)||[],(data&&data.scores)||{},(data&&data.cal)||[],(data&&data.upcoming)||[],aiAnalyses);
-    const t={id:Date.now()+"_"+Math.random().toString(36).slice(2,7),pair:f.pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:f.rMultiple===""?null:parseFloat(f.rMultiple),notes:f.notes,openedAt:now,closedAt:closed?now:null,ctx};
+    const t={id:Date.now()+"_"+Math.random().toString(36).slice(2,7),pair:f.pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:f.rMultiple===""?null:parseFloat(f.rMultiple),notes:f.notes,openedAt:now,closedAt:closed?now:null,updatedAt:now,ctx};
     persist([t,...list]);
     setF({...f,entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
   }
