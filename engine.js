@@ -1345,6 +1345,21 @@ function ffConfidence(events){
   return parseFloat((FF_FUND_DAMP+(1-FF_FUND_DAMP)*frac).toFixed(2));
 }
 
+// Pevné okno historie PRO SKÓROVÁNÍ (scoreCurrency/buildForecastV5) — stejné
+// pro každé zařízení bez ohledu na to, jak dlouho si lokálně hromadí v5_ff_hist.
+// Bez tohohle stropu dvě zařízení s různě starou nashromážděnou historií
+// (jedno nové, druhé používané měsíce) počítaly fundamenty/forecast z jinak
+// dlouhého okna a uměly se rozejít až do opačného BUY/SELL závěru pro stejný
+// pár ve stejnou chvíli (viz v5_ff_hist komentář výše). Nepoužívej pro
+// zobrazení/browsing kalendáře (tam historii NEořezávej) — jen pro vstup do
+// skórovacích funkcí. Hodnotu ladíme podle scripts/backtest-fundhistory.js,
+// jak poroste ověřitelná historie.
+const FUND_HIST_WINDOW_WEEKS=80;
+function capEventsWindow(events,weeks){
+  const cutoff=Date.now()-weeks*7*86400000;
+  return (events||[]).filter(e=>{const t=parseEventTime(e.time);return isNaN(t)||t>=cutoff;});
+}
+
 // ── RUČNÍ DOPLNĚNÍ ACTUAL ────────────────────────────────────────────
 // Dočasná náhrada za placená data: uživatel může u eventu bez actual
 // (placeholder/PENDING) zadat hodnotu ručně. Klíčuje se stejně jako

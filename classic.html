@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260707a"></script>
+<script src="engine.js?v=20260707b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sync.js?v=20260704a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2938,6 +2938,7 @@ function App(){
       } else { g_fundConfidence=FF_FUND_DAMP; }
       try{ g_calSource=calSource||"ff-hist"; }catch(e){}
       try{ cal=applyManualActuals(cal); }catch(e){}
+      const calScoring=capEventsWindow(cal,FUND_HIST_WINDOW_WEEKS); // stejné okno pro skórování na každém zařízení — viz engine.js
       setCalData(cal);
 
       // AUTO-UPDATE: CB sazby, CPI, CB Policy stance z kalendáře (bez extra API)
@@ -2959,7 +2960,7 @@ function App(){
       const liveCot=(typeof getLatestCOTScores==='function'&&getLatestCOTScores())||cot;
       const liveSent=(typeof getCanonicalSent==='function'&&getCanonicalSent())||sent;
       const sc={};
-      CURRENCIES.forEach(c=>{sc[c]=scoreCurrency(cal,c,liveCot,liveSent);});
+      CURRENCIES.forEach(c=>{sc[c]=scoreCurrency(calScoring,c,liveCot,liveSent);});
       setScores(sc);
       saveScoreHistory(sc);
       saveEngineSnapshot(sc); // forward log celého enginu (pro backtest komponent)
@@ -2972,7 +2973,7 @@ function App(){
       if(calSource==="finnhub"){ try{ up=await fetchUpcoming14(key); }catch(e){} }
       else { up=deriveUpcomingFromEvents(cal); }
       setUpcoming(up);
-      const fc={};ranked.forEach(p=>{fc[p.pair]=buildForecastV5(p,sc,cal,up);});
+      const fc={};ranked.forEach(p=>{fc[p.pair]=buildForecastV5(p,sc,calScoring,up);});
       setForecasts(fc);
       try{ if(typeof logForecastSnapshot==='function') logForecastSnapshot(fc); }catch(e){}
       setLastUp(new Date());
