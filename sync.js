@@ -40,7 +40,20 @@
   const ffKey=e=>`${(e.country||"").toUpperCase()}|${e.event||""}|${e.time||""}`;
   function mergeArr(key,a,b){
     a=Array.isArray(a)?a:[]; b=Array.isArray(b)?b:[];
-    if(key==="journal"){const m={};[...a,...b].forEach(t=>{if(t&&t.id)m[t.id]=t;});return Object.values(m);}
+    if(key==="journal"){
+      // Slévat podle updatedAt, ne "kdo přišel druhý" — jinak starší cloud kopie
+      // trvale přepisovala čerstvou lokální úpravu (např. změnu výsledku obchodu)
+      // při každém syncu, protože b (cloud) byl v poli vždy za a (lokál).
+      const m={};
+      [...a,...b].forEach(t=>{
+        if(!t||!t.id) return;
+        const prev=m[t.id];
+        if(!prev){ m[t.id]=t; return; }
+        const tu=+(t.updatedAt?Date.parse(t.updatedAt):0)||0, pu=+(prev.updatedAt?Date.parse(prev.updatedAt):0)||0;
+        if(tu>pu) m[t.id]=t; // jen prokazatelně novější (dle updatedAt) přepíše; jinak zůstává dřív viděný (lokál)
+      });
+      return Object.values(m);
+    }
     if(key==="v5_fav_pairs"){return [...new Set([...a,...b].filter(x=>typeof x==="string"&&x))];} // prostá množina symbolů
     const m=new Map();[...a,...b].forEach(e=>{const k=ffKey(e);const p=m.get(k);if(!p||(!p.actual&&e.actual))m.set(k,e);});return [...m.values()]; // v5_ff_hist: dedupe, preferuj s actual
   }

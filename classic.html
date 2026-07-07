@@ -10,7 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="engine.js?v=20260707b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="sync.js?v=20260704a"></script>
+<script src="sync.js?v=20260707a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -2295,7 +2295,7 @@ function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,o
       id:Date.now()+"_"+Math.random().toString(36).slice(2,7),
       pair:f.pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,
       outcome:f.outcome,rMultiple:f.rMultiple===""?null:parseFloat(f.rMultiple),
-      notes:f.notes,openedAt:now,closedAt:closed?now:null,
+      notes:f.notes,openedAt:now,closedAt:closed?now:null,updatedAt:now,
       ctx:captureContext(f.pair,pairs,scores,calData,upcoming,aiAnalyses)
     });
     setF(Object.assign({},f,{entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""}));
@@ -2412,7 +2412,7 @@ function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,o
                     <span style={{fontSize:11,color:oc.col,fontWeight:700,border:"1px solid "+oc.col+"55",borderRadius:4,padding:"1px 7px"}}>{oc.t}</span>
                     {typeof t.rMultiple==="number"&&<span style={{fontSize:12,fontWeight:700,color:t.rMultiple>=0?"#2ed3a0":"#ff4d4d"}}>{t.rMultiple>0?"+":""}{t.rMultiple}R</span>}
                     <span style={{marginLeft:"auto",display:"flex",gap:6,alignItems:"center"}}>
-                      <select value={t.outcome} onChange={function(e){onUpdate(t.id,{outcome:e.target.value,closedAt:e.target.value!=="open"?(t.closedAt||new Date().toISOString()):null});}} style={{background:"#0d1117",border:"1px solid #1d2a36",borderRadius:6,color:"#b7c3d1",fontSize:11,padding:"3px 6px"}}>
+                      <select value={t.outcome} onChange={function(e){onUpdate(t.id,{outcome:e.target.value,closedAt:e.target.value!=="open"?(t.closedAt||new Date().toISOString()):null,updatedAt:new Date().toISOString()});}} style={{background:"#0d1117",border:"1px solid #1d2a36",borderRadius:6,color:"#b7c3d1",fontSize:11,padding:"3px 6px"}}>
                         <option value="open">Otevřený</option><option value="win">Win</option><option value="loss">Loss</option><option value="be">BE</option><option value="early">Zavřeno dřív</option>
                       </select>
                       <span onClick={function(){onDelete(t.id);}} title="Smazat" style={{cursor:"pointer",color:"#4a6a88",padding:"0 4px"}}>✕</span>
