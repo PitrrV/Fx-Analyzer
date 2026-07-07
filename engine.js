@@ -2460,8 +2460,8 @@ function getEngineDiagnostics(){
   try{const r=localStorage.getItem("v5_regime");if(r&&r!=="{}")regime=r;}catch(e){}
   try{const m=loadCOTMeta();cotAsOf=(m&&m.asOf)?String(m.asOf).slice(0,10):"—";}catch(e){}
   const rates=(typeof CENTRAL_BANK_RATES!=="undefined")?CURRENCIES.map(c=>CENTRAL_BANK_RATES[c]).join("/"):"—";
-  let ffLen=0,cotWeeks=0;
-  try{ffLen=(JSON.parse(localStorage.getItem("v5_ff_hist")||"[]")||[]).length;}catch(e){}
+  let ffLen=0,ffWeeks=0,cotWeeks=0;
+  try{const h=JSON.parse(localStorage.getItem("v5_ff_hist")||"[]")||[];ffLen=h.length;ffWeeks=Math.round(ffHistorySpanMonths(h)*4.345);}catch(e){}
   try{cotWeeks=Object.keys(loadCOTHistory()||{}).length;}catch(e){}
   return {
     calSource:g_calSource||"?",
@@ -2474,6 +2474,7 @@ function getEngineDiagnostics(){
     // Vstupy, které rozhodují o shodě PC↔mobil: délka kalendářní historie
     // (sjednocuje cloud sync), počet COT týdnů a zdroj retailu pro skóre.
     ffLen,
+    ffWeeks,
     cotWeeks,
     sentSrc:(typeof getCanonicalSent==="function"&&getCanonicalSent())?"cron":"local",
   };
