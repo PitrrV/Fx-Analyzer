@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260707a"></script>
+<script src="engine.js?v=20260707b"></script>
 <script src="sync.js?v=20260704a"></script>
 <style>
 *{box-sizing:border-box}
@@ -99,6 +99,7 @@ class FXApp extends React.Component{
       if(!cal.length&&fmpKey){ try{ cal=await fetchFMPCalendar(fmpKey,15); calSource='fmp'; }catch(e){} }
       if(!cal.length){ try{ const fr=await fetchFFEventsCached(false); cal=mergeFFHistory(fr); calSource='ff'; }catch(e){ cal=loadFFHistory(); } }
       try{ cal=applyManualActuals(cal); }catch(e){}
+      const calScoring=capEventsWindow(cal,FUND_HIST_WINDOW_WEEKS); // stejné okno pro skórování na každém zařízení — viz engine.js
       if(calSource==='action'||calSource==='fmp'||calSource==='finnhub') g_fundConfidence=1; else g_fundConfidence=ffConfidence(cal);
       try{ g_calSource=calSource||'ff-hist'; }catch(e){}
       try{ const upd=autoUpdateFromCalendar(cal); const list=(upd&&upd.updated)||[]; if(list.some(x=>/CB Sazby|CPI|Policy/i.test(x))){ try{ const prev=JSON.parse(localStorage.getItem('cb_last_auto')||'null')||{}; localStorage.setItem('cb_last_auto',JSON.stringify({items:list,at:new Date().toISOString()})); }catch(e){} } }catch(e){}
@@ -111,7 +112,7 @@ class FXApp extends React.Component{
       try{ const m0=loadCOTMeta(); const age=m0&&m0.asOf?((Date.now()-new Date(m0.asOf).getTime())/86400000):NaN; if(!(age<=4)){ await fetchCOTAuto(); } }catch(e){}
       try{ const rj=await fetchActionRetail(); if(rj&&Array.isArray(rj.points)) this._retailHist=rj.points; }catch(e){}
       const cot=(typeof getLatestCOTScores==='function'&&getLatestCOTScores())||loadCOT(), sent=(typeof getCanonicalSent==='function'&&getCanonicalSent())||loadSentiment();
-      const sc={}; this.CUR.forEach(c=>{ sc[c]=scoreCurrency(cal,c,cot,sent); });
+      const sc={}; this.CUR.forEach(c=>{ sc[c]=scoreCurrency(calScoring,c,cot,sent); });
       try{ if(typeof saveScoreHistory==='function') saveScoreHistory(sc); }catch(e){}
       try{ if(typeof saveScoreDeltaSnapshot==='function') saveScoreDeltaSnapshot(sc); }catch(e){}
       try{ if(typeof saveEngineDailySnapshot==='function') saveEngineDailySnapshot(sc); }catch(e){}
@@ -132,7 +133,7 @@ class FXApp extends React.Component{
         retail:Math.round(sent[c]!=null?sent[c]:50) }; });
       // PAIRS
       const fcLog={};
-      this.PAIRS=ranked.map(p=>{ let status='confirmed',prob=50,fdir=p.dir; try{const ds=getPairDailyState(p,sc,cal,up);status=ds.level==='conflict'?'conflict':ds.level==='upcoming'?'upcoming':'confirmed';}catch(e){} try{const fc=buildForecastV5(p,sc,cal,up)||{};prob=fc.prob||50;fdir=fc.dir||p.dir;fcLog[p.pair]=fc;}catch(e){}
+      this.PAIRS=ranked.map(p=>{ let status='confirmed',prob=50,fdir=p.dir; try{const ds=getPairDailyState(p,sc,cal,up);status=ds.level==='conflict'?'conflict':ds.level==='upcoming'?'upcoming':'confirmed';}catch(e){} try{const fc=buildForecastV5(p,sc,calScoring,up)||{};prob=fc.prob||50;fdir=fc.dir||p.dir;fcLog[p.pair]=fc;}catch(e){}
         return {pair:p.pair,base:p.base,quote:p.quote,dir:p.dir,fdir,diff:+p.diff,conv:Math.min(5,p.conviction||0),prob,status}; });
       try{ if(typeof logForecastSnapshot==='function') logForecastSnapshot(fcLog); }catch(e){}
       if(!this.state.sel&&this.PAIRS[0]) this.state.sel=this.PAIRS[0].pair;
