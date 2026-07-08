@@ -1309,11 +1309,25 @@ const FF_HIST_KEY="v5_ff_hist", FF_CONF_MONTHS=15, FF_STORE_MONTHS=36, FF_HIST_C
 // i při importu víceletého datasetu se stovkami zemí.
 const FF_TRACKED_CC=[...new Set([...Object.values(CURRENCY_COUNTRIES).flat(),...Object.values(INDIRECT_COUNTRIES).flat()])];
 function ffIsTracked(e){const c=(e.country||"").toUpperCase();return FF_TRACKED_CC.some(cc=>c.includes(cc));}
-function ffHistKey(e){return `${(e.country||"").toUpperCase()}|${e.event||""}|${e.time||""}`;}
+// Klíč BEZ přesného času (jen den) — ForexFactory u nadcházejících eventů (typicky
+// centrální banky) čas uměl zpřesnit/posunout těsně před releasem. Klíč s plným
+// časem pak stejnou událost viděl jako dvě různé (stará "tentative" verze zůstala
+// navždy v historii vedle nové) → duplicity v Kalendáři i Denním přehledu, a
+// zobrazený řádek s prázdným actual mohl "vyhrát" nad tím se skutečným výsledkem.
+// Stejný název+měna se ve FF kalendáři v jeden den druhy nekonají, takže zkrácení
+// na den je bezpečné.
+function ffHistKey(e){return `${(e.country||"").toUpperCase()}|${e.event||""}|${String(e.time||"").slice(0,10)}`;}
 function loadFFHistory(){try{const a=JSON.parse(localStorage.getItem(FF_HIST_KEY)||"[]");return Array.isArray(a)?a:[];}catch(e){return[];}}
 function mergeFFHistory(fresh){
   const map=new Map();
-  for(const e of loadFFHistory()) map.set(ffHistKey(e),e);
+  // Stejná "preferuj kompletnější" logika jako u fresh níže — při přechodu na
+  // ffHistKey bez přesného času se tu jednorázově srazí staré duplicitní páry
+  // (jedna verze bez actual, druhá s ním) na jeden záznam, ne naslepo poslední vyhrává.
+  for(const e of loadFFHistory()){
+    const k=ffHistKey(e),prev=map.get(k);
+    if(!prev) map.set(k,e);
+    else if((!prev.actual&&e.actual)||(!prev.estimate&&e.estimate)||(!prev.prev&&e.prev)) map.set(k,{...prev,...e});
+  }
   for(const e of (fresh||[])){
     if(!e||!e.event||!e.time||!ffIsTracked(e)) continue;   // jen sledované měny
     const k=ffHistKey(e),prev=map.get(k);
@@ -2089,7 +2103,9 @@ function mergeEvents(calData,upcoming){
   if(_mergeEventsCache.out&&_mergeEventsCache.a===calData&&_mergeEventsCache.b===upcoming) return _mergeEventsCache.out;
   const map=new Map();
   [...(calData||[]),...(upcoming||[])].forEach(e=>{
-    const k=(e.event||"")+"|"+(e.country||"")+"|"+(e.time||"");
+    // Klíč bez přesného času (den) — viz komentář u ffHistKey; chrání zobrazení,
+    // i kdyby se do cal/up někdy dostaly dvě verze eventu s posunutým časem.
+    const k=(e.event||"")+"|"+(e.country||"")+"|"+String(e.time||"").slice(0,10);
     const prev=map.get(k);
     if(!prev||(!prev.actual&&e.actual)) map.set(k,e);
   });
