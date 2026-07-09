@@ -701,7 +701,17 @@ function cotDateKey(s){
   if(!s) return new Date().toISOString().slice(0,10);
   s=String(s).trim();
   const iso=s.match(/\d{4}-\d{2}-\d{2}/); if(iso) return iso[0];
-  const d=new Date(s); if(!isNaN(d)) return d.toISOString().slice(0,10);
+  const d=new Date(s);
+  if(!isNaN(d)){
+    // new Date("June 30, 2026") parsuje datum v LOKÁLNÍM pásmu prohlížeče a nastaví
+    // lokální Y/M/D přesně podle textu — proto čteme getFullYear/Month/Date (lokální
+    // pole), NE toISOString(). toISOString() by ten okamžik převedlo na UTC a v
+    // pásmu před UTC (např. CEST +2) by půlnoc 30.6. spadla na 29.6. 22:00 UTC →
+    // fantomový záznam o den dřív v COT historii vedle správného ISO záznamu
+    // (viz reálný nález: 23.6 → 29.6 → 30.6 v grafu místo 23.6 → 30.6).
+    const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,"0"),day=String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  }
   return s; // nešlo rozparsovat — nech být (lepší než ztratit záznam)
 }
 // Jednorázová migrace: přepiš staré textové klíče (z proxy fallbacku) na ISO a slij duplicity.
@@ -709,7 +719,15 @@ function migrateCOTHistoryKeys(){
   try{
     const hist=loadCOTHistory(); const out={}; let changed=false;
     for(const k of Object.keys(hist)){
-      const nk=cotDateKey(k); if(nk!==k) changed=true;
+      let nk=cotDateKey(k); if(nk!==k) changed=true;
+      // Úklid starých fantomů z opraveného cotDateKey bugu: CFTC report je VŽDY
+      // "as of" úterý, takže klíč spadající na pondělí je téměř jistě posunutý
+      // o den zpět (viz komentář u cotDateKey) — posuň na úterý a sluč se
+      // skutečným záznamem, ať zmizí duplicitní bod v COT grafu (23.6→29.6→30.6).
+      if(new Date(nk+"T00:00:00Z").getUTCDay()===1){
+        const d=new Date(nk+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+1);
+        nk=d.toISOString().slice(0,10); changed=true;
+      }
       if(!out[nk] || String(hist[k]?.updatedAt||"")>String(out[nk]?.updatedAt||"")) out[nk]=hist[k];
     }
     if(changed){
