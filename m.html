@@ -1010,10 +1010,14 @@ function JournalTab({data}){
     persist([t,...list]);
     setF({...f,entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
   }
-  function del(id){ persist(list.filter(t=>t.id!==id)); }
+  // Smazání = tombstone (deleted:true), NE odebrání z pole — čistý filter by sync
+  // (union-merge s cloudem) zase přitáhl zpátky, protože merge neumí "smazáno",
+  // jen "přidáno/aktualizováno". visible = co se skutečně zobrazuje/počítá.
+  function del(id){ persist(list.map(t=>t.id===id?{...t,deleted:true,updatedAt:new Date().toISOString()}:t)); }
+  const visible=list.filter(t=>!t.deleted);
   const oc={open:"#5e7cfb",win:"#2ed3a0",loss:"#f2606e",be:"#e8ab3f",early:"#9d7bff"};
   const Rval=t=>t.outcome==="be"?0:+(t.rMultiple||0);
-  const closed=list.filter(t=>t.outcome&&t.outcome!=="open"), wins=closed.filter(t=>t.outcome==="win").length, losses=closed.filter(t=>t.outcome==="loss").length, decided=wins+losses;
+  const closed=visible.filter(t=>t.outcome&&t.outcome!=="open"), wins=closed.filter(t=>t.outcome==="win").length, losses=closed.filter(t=>t.outcome==="loss").length, decided=wins+losses;
   const wr=decided?Math.round(wins/decided*100):0, totR=closed.reduce((s,t)=>s+Rval(t),0);
   const hasCtx=closed.some(t=>!!t.ctx);
   const je=hasCtx?{
@@ -1058,8 +1062,8 @@ function JournalTab({data}){
         <input className="fld" value={f.notes} onChange={e=>upd("notes",e.target.value)} placeholder="Poznámka"/>
         <button className="btn" onClick={add}>＋ Přidat obchod</button>
       </div>
-      <div className="card"><div className="between"><span className="muted">Obchodů: <b style={{color:"#e6edf3"}}>{list.length}</b></span><span className="muted">WR <b style={{color:"#2ed3a0"}}>{wr}%</b> · Σ <b style={{color:totR>=0?"#2ed3a0":"#f2606e"}}>{totR>0?"+":""}{totR.toFixed(1)}R</b></span></div></div>
-      {list.map(t=>(
+      <div className="card"><div className="between"><span className="muted">Obchodů: <b style={{color:"#e6edf3"}}>{visible.length}</b></span><span className="muted">WR <b style={{color:"#2ed3a0"}}>{wr}%</b> · Σ <b style={{color:totR>=0?"#2ed3a0":"#f2606e"}}>{totR>0?"+":""}{totR.toFixed(1)}R</b></span></div></div>
+      {visible.map(t=>(
         <div className="card" key={t.id} style={{padding:"10px 12px"}}>
           <div className="between">
             <span className="row" style={{gap:8,flexWrap:"wrap"}}><b>{t.pair}</b><span style={{color:t.dir==="LONG"?"#2ed3a0":"#f2606e",fontSize:12,fontWeight:700}}>{t.dir}</span><span className="chip" style={{color:oc[t.outcome]||"#8b93a3",borderColor:(oc[t.outcome]||"#8b93a3")+"55"}}>{t.outcome}{t.rMultiple!=null?(" "+(t.rMultiple>0?"+":"")+t.rMultiple+"R"):""}</span></span>
@@ -1070,7 +1074,7 @@ function JournalTab({data}){
           <div className="muted" style={{fontSize:9,marginTop:3}}>{(t.openedAt||"").slice(0,10)}</div>
         </div>
       ))}
-      {!list.length&&<div className="card muted">Zatím žádný obchod.</div>}
+      {!visible.length&&<div className="card muted">Zatím žádný obchod.</div>}
     </div>
   );
 }

@@ -2282,6 +2282,7 @@ function SliceBar({label,s}){
   );
 }
 function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,onAdd,onUpdate,onDelete,onImport}){
+  journal=(journal||[]).filter(function(t){return !t.deleted;}); // tombstone z deleteTrade — nezobrazovat/nepočítat/needportovat
   const ALLP=["EURUSD","GBPUSD","USDJPY","USDCHF","USDCAD","AUDUSD","NZDUSD","EURGBP","EURJPY","GBPJPY","AUDJPY","EURAUD","AUDNZD","NZDCAD","CADCHF","AUDCHF","NZDJPY","CADJPY","CHFJPY"];
   const pairOptions=(pairs&&pairs.length?pairs.map(function(p){return p.pair;}):ALLP);
   const [f,setF]=useState({pair:(selected&&selected.pair)||pairOptions[0]||"EURUSD",dir:"LONG",entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
@@ -2833,7 +2834,10 @@ function App(){
   const [journal,setJournal]=useState(loadJournal());
   const addTrade=useCallback(function(t){setJournal(function(prev){var n=[t].concat(prev);saveJournalArr(n);return n;});},[]);
   const updateTrade=useCallback(function(id,patch){setJournal(function(prev){var n=prev.map(function(t){return t.id===id?Object.assign({},t,patch):t;});saveJournalArr(n);return n;});},[]);
-  const deleteTrade=useCallback(function(id){setJournal(function(prev){var n=prev.filter(function(t){return t.id!==id;});saveJournalArr(n);return n;});},[]);
+  // Smazání = tombstone (deleted:true), NE odebrání z pole — čistý filter by sync
+  // (union-merge s cloudem) zase přitáhl zpátky, protože merge neumí "smazáno",
+  // jen "přidáno/aktualizováno" (stejná třída bugu jako revert výsledku obchodu).
+  const deleteTrade=useCallback(function(id){setJournal(function(prev){var n=prev.map(function(t){return t.id===id?Object.assign({},t,{deleted:true,updatedAt:new Date().toISOString()}):t;});saveJournalArr(n);return n;});},[]);
   const importTrades=useCallback(function(arr){setJournal(function(prev){var map={};prev.concat(arr).forEach(function(t){if(t&&t.id)map[t.id]=t;});var n=Object.keys(map).map(function(k){return map[k];});saveJournalArr(n);return n;});},[]);
   const [riskSentimentUI,setRiskSentimentUI]=useState(g_riskSentiment);
   const [riskManual,setRiskManual]=useState(()=>{try{return localStorage.getItem("v5_risk_sent_manual")==="1";}catch(e){return false;}});

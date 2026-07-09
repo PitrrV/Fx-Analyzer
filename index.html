@@ -236,6 +236,7 @@ class FXApp extends React.Component{
   }
   buildJournal(){
     let rows=[]; try{rows=loadJournal()||[];}catch(e){}
+    rows=rows.filter(t=>!t.deleted); // tombstone z delTrade — nezobrazovat/nepočítat
     const Rval=t=>t.outcome==='be'?0:+(t.rMultiple||0);
     const closed=rows.filter(t=>t.outcome&&t.outcome!=='open');
     const wins=closed.filter(t=>t.outcome==='win').length, losses=closed.filter(t=>t.outcome==='loss').length, decided=wins+losses;
@@ -306,7 +307,10 @@ class FXApp extends React.Component{
     let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=[t].concat(arr); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){}
     this.setState(s=>({jForm:Object.assign({},s.jForm,{entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''})})); this.buildJournal(); this.forceUpdate(); }
   setTradeOutcome(id,outcome){ let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=arr.map(t=>t.id===id?Object.assign({},t,{outcome:outcome,closedAt:outcome!=='open'?(t.closedAt||new Date().toISOString()):null,updatedAt:new Date().toISOString()}):t); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){} this.buildJournal(); this.forceUpdate(); }
-  delTrade(id){ let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=arr.filter(t=>t.id!==id); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){} this.buildJournal(); this.forceUpdate(); }
+  // Smazání = tombstone (deleted:true), NE odebrání z pole — čistý filter by sync
+  // (union-merge s cloudem) zase přitáhl zpátky, protože merge neumí "smazáno",
+  // jen "přidáno/aktualizováno" (stejná třída bugu jako revert výsledku obchodu).
+  delTrade(id){ let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=arr.map(t=>t.id===id?Object.assign({},t,{deleted:true,updatedAt:new Date().toISOString()}):t); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){} this.buildJournal(); this.forceUpdate(); }
   jSetRR(id,val){ this.setState(s=>({jEditRR:Object.assign({},s.jEditRR,{[id]:val})})); }
   // Skutečný R obchodu k jeho zavření (hlavně pro "Zavřeno dřív" — plánovaný a reálně vybraný R se liší).
   // Commit na blur/Enter, ne na každý úhoz, ať se nekamenuje localStorage a jde napsat i rozepsané "-1.".
