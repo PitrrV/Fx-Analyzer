@@ -58,8 +58,20 @@
     const m=new Map();[...a,...b].forEach(e=>{const k=ffKey(e);const p=m.get(k);if(!p||(!p.actual&&e.actual))m.set(k,e);});return [...m.values()]; // v5_ff_hist: dedupe, preferuj s actual
   }
   function mergeObj(key,a,b){
-    a=a||{}; b=b||{}; const out={...b,...a}; // lokál (a) přepíše cloud (b)
+    a=a||{}; b=b||{}; let out={...b,...a}; // lokál (a) přepíše cloud (b)
     if(key==="ai_analyses_v1"){ Object.keys(b).forEach(k=>{ if(b[k]&&(!a[k]||(b[k].savedAt||0)>(a[k].savedAt||0))) out[k]=b[k]; }); } // novější savedAt
+    if(key==="cot_hist"&&typeof cotWeekKey==="function"){
+      // Starší cloud kopie mohla mít fantomový klíč z opraveného cotDateKey bugu
+      // (CFTC report je vždy úterý — klíč na pondělí je vždy chyba). Bez týhle
+      // opravy by ho merge pořád dokola tahal zpátky i po lokálním úklidu
+      // (viz migrateCOTHistoryKeys v engine.js — tenhle merge běží dřív než ona).
+      const fixed={};
+      Object.entries(out).forEach(([k,v])=>{
+        const nk=cotWeekKey(k);
+        if(!fixed[nk]||String(v?.updatedAt||"")>String(fixed[nk]?.updatedAt||"")) fixed[nk]=v;
+      });
+      out=fixed;
+    }
     return out;
   }
   // local = toto zařízení, cloud = z DB. Bezpečné slévání bez ztráty historie.

@@ -714,20 +714,27 @@ function cotDateKey(s){
   }
   return s; // nešlo rozparsovat — nech být (lepší než ztratit záznam)
 }
+// CFTC COT je vždy "as of" úterý — cotDateKey() jen normalizuje FORMÁT, tahle navíc
+// opraví klíč spadající na pondělí (fantom z časového posunu, viz cotDateKey výše).
+// Použij VŠUDE, kde se COT historie klíčuje ze syrového zdroje (server cron, live
+// API, cloud sync) — ne jen v jednorázové migraci. Jinak stará chyba v cizích datech
+// (starý serverový soubor, cloud s dřívější verzí) pořád dokola přepisuje lokální
+// úklid při každém dalším merge/syncu a fantom se pořád vrací (viz reálný nález:
+// 23.6→29.6→30.6 v grafu, opravilo se lokálně, ale příští sync/refresh ho vrátil).
+function cotWeekKey(s){
+  const k=cotDateKey(s);
+  if(new Date(k+"T00:00:00Z").getUTCDay()===1){
+    const d=new Date(k+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+1);
+    return d.toISOString().slice(0,10);
+  }
+  return k;
+}
 // Jednorázová migrace: přepiš staré textové klíče (z proxy fallbacku) na ISO a slij duplicity.
 function migrateCOTHistoryKeys(){
   try{
     const hist=loadCOTHistory(); const out={}; let changed=false;
     for(const k of Object.keys(hist)){
-      let nk=cotDateKey(k); if(nk!==k) changed=true;
-      // Úklid starých fantomů z opraveného cotDateKey bugu: CFTC report je VŽDY
-      // "as of" úterý, takže klíč spadající na pondělí je téměř jistě posunutý
-      // o den zpět (viz komentář u cotDateKey) — posuň na úterý a sluč se
-      // skutečným záznamem, ať zmizí duplicitní bod v COT grafu (23.6→29.6→30.6).
-      if(new Date(nk+"T00:00:00Z").getUTCDay()===1){
-        const d=new Date(nk+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+1);
-        nk=d.toISOString().slice(0,10); changed=true;
-      }
+      const nk=cotWeekKey(k); if(nk!==k) changed=true;
       if(!out[nk] || String(hist[k]?.updatedAt||"")>String(out[nk]?.updatedAt||"")) out[nk]=hist[k];
     }
     if(changed){
@@ -739,7 +746,7 @@ function migrateCOTHistoryKeys(){
 }
 function saveCOTSnapshot(scores,meta){
   try{
-    const key=cotDateKey(meta?.asOf);
+    const key=cotWeekKey(meta?.asOf);
     const hist=loadCOTHistory();hist[key]={scores,raw:meta?.raw||{},updatedAt:new Date().toISOString()};
     const keys=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
     localStorage.setItem("cot_hist",JSON.stringify(trimmed));
@@ -760,7 +767,7 @@ async function fetchActionCOTHistory(){
     if(!j||!j.weeks||typeof j.weeks!=="object") return null;
     const hist=loadCOTHistory();
     for(const [date,week] of Object.entries(j.weeks)){
-      const key=cotDateKey(date);
+      const key=cotWeekKey(date);
       // Server (týdenní cron, stejný zdroj pro všechna zařízení) je autoritativní pro
       // každý týden, který má — vždy přepíše lokální kopii (i live-fetchnutou vlastním
       // zařízením), ať PC/mobil/Classic vidí pro daný týden identická čísla. Dřív
@@ -778,7 +785,7 @@ async function fetchActionCOTHistory(){
     // proto čte výhradně tenhle snapshot, identický na všech zařízeních.
     try{
       const srv={};
-      Object.entries(j.weeks).forEach(([d,w])=>{ if(w&&w.scores) srv[cotDateKey(d)]=w.scores; });
+      Object.entries(j.weeks).forEach(([d,w])=>{ if(w&&w.scores) srv[cotWeekKey(d)]=w.scores; });
       const sk=Object.keys(srv).sort().slice(-COT_PCT_WINDOW);
       const srvTrim={}; sk.forEach(k=>srvTrim[k]=srv[k]);
       if(sk.length>=12) localStorage.setItem("cot_pct_server",JSON.stringify(srvTrim));
