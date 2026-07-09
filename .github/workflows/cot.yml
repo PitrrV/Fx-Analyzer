@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: "0 22 * * 5"   # pátek 22:00 UTC — po pátečním CFTC releasu (~15:30 ET)
     - cron: "0 12 * * 6"   # + sobota dopoledne (jistota, kdyby release byl pozdě)
+    # Když pátek padne na americký svátek (např. 4.7.), CFTC report o týden
+    # nezpozdí, ale o pár dní — vyjde v pondělí/úterý. Bez těchhle běhů by na
+    # to appka čekala celý další týden do příštího pátku (viz reálný nález:
+    # COT zaseklé na 23.6., zatímco 30.6. na CFTC už dávno bylo). fetch-cot.js
+    # je idempotentní (commitne jen při změně), takže tyhle běhy navíc nic nekazí.
+    - cron: "0 12 * * 0"   # neděle dopoledne
+    - cron: "0 12 * * 1"   # pondělí dopoledne
+    - cron: "0 22 * * 1"   # pondělí večer
+    - cron: "0 12 * * 2"   # úterý dopoledne — poslední záchranná síť
   workflow_dispatch:        # ruční/API spuštění
 
 permissions:
