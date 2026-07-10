@@ -1123,38 +1123,54 @@ function ico(name,extra){ return (ICO[name]||'').replace('class="ic"','class="ic
    final fallback so something real always renders.
    ============================================================ */
 const FLAG_CC = {USD:'us',EUR:'eu',GBP:'gb',JPY:'jp',AUD:'au',CAD:'ca',CHF:'ch',NZD:'nz'};
-function flagUrl(cc){ return 'https://flagcdn.com/w640/'+cc+'.png'; }
+function flagUrl(cc){ return 'https://flagcdn.com/w1280/'+cc+'.png'; }
 const FINAL_FALLBACK_IMG = flagUrl('us');
-// specific real-world entities — resolved to a real photo via Wikipedia's thumbnail API
+function topicHash(n){ const s=n.hid||n.headline||''; let h=0; for(let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return Math.abs(h); }
+function pickFromPool(pool,n){ return Array.isArray(pool) ? pool[topicHash(n)%pool.length] : pool; }
+// specific real-world entities — a POOL of related Wikipedia pages per entity so the
+// photo varies between articles about the same thing instead of repeating one image
 const ENTITY_TOPICS = [
-  [/\bpowell\b/i,'Jerome Powell'],
-  [/\blagarde\b/i,'Christine Lagarde'],
-  [/\bueda\b/i,'Kazuo Ueda'],
-  [/\bbailey\b/i,'Andrew Bailey (banker)'],
-  [/\b(fomc|federal reserve|\bfed\b)/i,'Federal Reserve'],
-  [/\b(ecb|european central bank)\b/i,'European Central Bank'],
-  [/\b(boe|bank of england)\b/i,'Bank of England'],
-  [/\b(boj|bank of japan)\b/i,'Bank of Japan'],
-  [/\b(snb|swiss national bank)\b/i,'Swiss National Bank'],
-  [/\b(rba|reserve bank of australia)\b/i,'Reserve Bank of Australia'],
-  [/\b(rbnz|reserve bank of new zealand)\b/i,'Reserve Bank of New Zealand'],
-  [/\b(boc|bank of canada)\b/i,'Bank of Canada'],
-  [/\btesla\b/i,'Gigafactory Texas'],
-  [/\bnvidia\b/i,'Nvidia'],
-  [/\bapple\b/i,'Apple Park'],
-  [/\b(gold|zlat|xau)\b/i,'Gold bar'],
-  [/\b(silver|stříbr|xag)\b/i,'Silver'],
-  [/\b(oil|ropa|crude|wti|brent)\b/i,'Oil well'],
-  [/\b(natural gas|\bgas\b|lng|plyn)\b/i,'Natural gas'],
-  [/\b(nasdaq|s&p|dow jones|wall street|\bnyse\b|us100|us500|us30)\b/i,'New York Stock Exchange']
+  [/\bpowell\b/i,['Jerome Powell']],
+  [/\blagarde\b/i,['Christine Lagarde']],
+  [/\bueda\b/i,['Kazuo Ueda']],
+  [/\bbailey\b/i,['Andrew Bailey (banker)']],
+  [/\b(fomc|federal reserve|\bfed\b)/i,['Marriner S. Eccles Federal Reserve Board Building','Jerome Powell','Federal Reserve Bank of New York']],
+  [/\b(ecb|european central bank)\b/i,['Seat of the European Central Bank','Christine Lagarde','Frankfurt']],
+  [/\b(boe|bank of england)\b/i,['Bank of England','City of London','Big Ben']],
+  [/\b(boj|bank of japan)\b/i,['Bank of Japan','Tokyo']],
+  [/\b(snb|swiss national bank)\b/i,['Swiss National Bank','Zürich']],
+  [/\b(rba|reserve bank of australia)\b/i,['Reserve Bank of Australia','Sydney Opera House']],
+  [/\b(rbnz|reserve bank of new zealand)\b/i,['Reserve Bank of New Zealand','Auckland']],
+  [/\b(boc|bank of canada)\b/i,['Bank of Canada','Toronto']],
+  [/\btesla\b/i,['Gigafactory Texas','Tesla Model 3']],
+  [/\bnvidia\b/i,['Nvidia','Graphics processing unit']],
+  [/\bapple\b/i,['Apple Park','IPhone']],
+  [/\b(gold|zlat|xau)\b/i,['Gold bar','Gold mining','Bullion']],
+  [/\b(silver|stříbr|xag)\b/i,['Silver','Bullion']],
+  [/\b(oil|ropa|crude|wti|brent)\b/i,['Oil well','Oil platform','Oil refinery']],
+  [/\b(natural gas|\bgas\b|lng|plyn)\b/i,['Liquefied natural gas','Pipeline transport']],
+  [/\b(nasdaq|s&p|dow jones|wall street|\bnyse\b|us100|us500|us30)\b/i,['New York Stock Exchange','Wall Street','Nasdaq MarketSite']],
+  [/\b(ai|artificial intelligence|umělá inteligence)\b/i,['Data center','Graphics processing unit']]
 ];
-// category-level real photo when no specific entity/currency matched
+// single-currency pools: central bank building, city, banknotes — real topical photos,
+// never a full-bleed flag (a 2:1 flag crammed into the wide card crop looks broken)
+const CUR_TOPICS = {
+  USD:['Marriner S. Eccles Federal Reserve Board Building','Wall Street','United States one-hundred-dollar bill','Federal Reserve Bank of New York'],
+  EUR:['Seat of the European Central Bank','Frankfurt','Euro banknotes'],
+  GBP:['Bank of England','Big Ben','City of London'],
+  JPY:['Bank of Japan','Tokyo','Japanese yen'],
+  CAD:['Bank of Canada','Toronto','Canadian dollar'],
+  AUD:['Reserve Bank of Australia','Sydney Opera House','Australian dollar'],
+  NZD:['Reserve Bank of New Zealand','Auckland','New Zealand dollar'],
+  CHF:['Swiss National Bank','Zürich','Swiss franc']
+};
+// category-level pools when no specific entity/currency matched
 const CAT_TOPIC = {
-  'CENTRÁLNÍ BANKA':'Federal Reserve',
-  'MAKRO':'Wall Street',
-  'POLITIKA':'United Nations Headquarters',
-  'KOMODITY':'Commodity market',
-  'TRH':'New York Stock Exchange'
+  'CENTRÁLNÍ BANKA':['Marriner S. Eccles Federal Reserve Board Building','Seat of the European Central Bank','Bank of England'],
+  'MAKRO':['Wall Street','Financial District, Manhattan','Container ship'],
+  'POLITIKA':['United Nations Headquarters','White House','Palace of Westminster'],
+  'KOMODITY':['Oil well','Gold bar','Wheat'],
+  'TRH':['New York Stock Exchange','Nasdaq MarketSite','Wall Street']
 };
 // literal pair in the headline (e.g. "USDCAD", "USD/CAD") wins — keeps base/quote order for a proper pair composite
 function pickPairFromHeadline(h){
@@ -1176,28 +1192,33 @@ function pickCurrencies(n){
 }
 function articleTopic(n){
   const h=n.headline||'';
-  for(const e of ENTITY_TOPICS) if(e[0].test(h)) return e[1];
-  return CAT_TOPIC[n.cat]||'New York Stock Exchange';
+  for(const e of ENTITY_TOPICS) if(e[0].test(h)) return pickFromPool(e[1],n);
+  const curs=pickCurrencies(n);
+  if(curs.length===1 && CUR_TOPICS[curs[0]]) return pickFromPool(CUR_TOPICS[curs[0]],n);
+  return pickFromPool(CAT_TOPIC[n.cat]||CAT_TOPIC['TRH'],n);
 }
+// Wikipedia summary API returns a ~320px thumbnail — too soft for our wide card.
+// Its thumb URLs embed the size (`/NNNpx-`), so rewrite to 960px for a sharp image.
+function hiResWiki(url){ return (url||'').replace(/\/(\d+)px-/, '/960px-'); }
 async function wikiThumb(title){
   const cache=LS.get('wikiimg_cache',{});
   const rec=cache[title];
-  if(rec && (Date.now()-(rec.t||0))<30*24*3600*1000) return rec.url||'';
+  if(rec && (Date.now()-(rec.t||0))<30*24*3600*1000) return hiResWiki(rec.url||'');
   let url='';
   try{
     const r=await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(title.replace(/ /g,'_')));
-    if(r.ok){ const d=await r.json(); url=(d.thumbnail&&d.thumbnail.source)||(d.originalimage&&d.originalimage.source)||''; }
+    if(r.ok){ const d=await r.json(); url=hiResWiki((d.thumbnail&&d.thumbnail.source)||'')||(d.originalimage&&d.originalimage.source)||''; }
   }catch(e){}
   cache[title]={url,t:Date.now()}; LS.set('wikiimg_cache',cache);
   return url;
 }
-// resolves n.fallbackImages (array of 1-2 flag URLs, or a single topic photo) for every item lacking a real n.image
+// resolves n.fallbackImages (pair -> two flags; otherwise one topical Wikipedia photo) for every item lacking a real n.image
 async function enrichImages(items){
   const need=new Map();
   items.forEach(n=>{
     if(n.image || n.fallbackImages) return;
     const curs=pickCurrencies(n);
-    if(curs.length){ n.fallbackImages=curs.map(c=>flagUrl(FLAG_CC[c])); return; }
+    if(curs.length>=2){ n.fallbackImages=curs.map(c=>flagUrl(FLAG_CC[c])); return; }
     const topic=articleTopic(n);
     n._topic=topic;
     if(!need.has(topic)) need.set(topic, wikiThumb(topic));
@@ -1221,7 +1242,10 @@ function articleImageHTML(n){
       '<img src="'+esc(imgs[1])+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';">'+
       '</div>';
   }
-  return '<img src="'+esc(imgs[0])+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';">'+
+  // Wikimedia errors on thumb sizes above the original — retry at the API's native 320px before the flag
+  const lowRes = imgs[0].indexOf('/960px-')>=0 ? imgs[0].replace('/960px-','/320px-') : FINAL_FALLBACK_IMG;
+  return '<img src="'+esc(imgs[0])+'" alt="" loading="lazy" '+
+    'onerror="this.onerror=function(){this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';};this.src=\''+esc(lowRes)+'\';">'+
     (isWikiFallback?'<span class="art-credit">Foto: Wikimedia Commons</span>':'');
 }
 
