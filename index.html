@@ -300,13 +300,16 @@ class FXApp extends React.Component{
     catch(e){ this.setState({dataMsg:'⚠ COT stažení selhalo: '+(e&&e.message||e)+' — zkus za chvíli (CORS/proxy).'}); } this.setState({cotBusy:false}); }
   async fetchRetailNow(){ this.setState({retailBusy:true,dataMsg:'⏳ Stahuji retail sentiment…'}); try{ const res=await fetchRetailSentiment(); const rs=res&&res.sentData||res; saveSentiment(rs); try{saveRetailSnapshot(rs);}catch(e){} await this.refreshData(); this.setState({dataMsg:'✅ Retail aktualizován · '+((res&&res.method)||'CFTC')}); }catch(e){ try{const d=deriveRetailFromCOTData();saveSentiment(d);saveRetailSnapshot(d);await this.refreshData();}catch(e2){} this.setState({dataMsg:'⚠ Retail auto selhal, použita záloha z COT.'}); } this.setState({retailBusy:false}); }
   jSet(k,v){ this.setState(s=>({jForm:Object.assign({},s.jForm,{[k]:v})})); }
+  // Vynutí znaménko R podle Výsledku (win/loss jsou jednoznačné) — chrání proti
+  // překlepu typu "Ztráta" + R "1" místo "-1", který by equity křivku ukázal obráceně.
+  signR(outcome,num){ if(num==null||isNaN(num)) return num; if(outcome==='win') return Math.abs(num); if(outcome==='loss') return -Math.abs(num); return num; }
   addTrade(){ const f=this.state.jForm; const pair=(f.pair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD'); const now=new Date().toISOString(); const closed=f.outcome&&f.outcome!=='open';
     let aiAnalyses={}; try{aiAnalyses=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){}
     const ctx=captureContext(pair,this.PAIRS,this._scores,this._cal,this._up,aiAnalyses);
-    const t={id:Date.now()+'_'+Math.random().toString(36).slice(2,7),pair:pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:f.rMultiple===''?null:parseFloat(f.rMultiple),notes:f.notes,openedAt:now,closedAt:closed?now:null,updatedAt:now,ctx:ctx};
+    const t={id:Date.now()+'_'+Math.random().toString(36).slice(2,7),pair:pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,outcome:f.outcome,rMultiple:this.signR(f.outcome,f.rMultiple===''?null:parseFloat(f.rMultiple)),notes:f.notes,openedAt:now,closedAt:closed?now:null,updatedAt:now,ctx:ctx};
     let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=[t].concat(arr); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){}
     this.setState(s=>({jForm:Object.assign({},s.jForm,{entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''})})); this.buildJournal(); this.forceUpdate(); }
-  setTradeOutcome(id,outcome){ let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=arr.map(t=>t.id===id?Object.assign({},t,{outcome:outcome,closedAt:outcome!=='open'?(t.closedAt||new Date().toISOString()):null,updatedAt:new Date().toISOString()}):t); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){} this.buildJournal(); this.forceUpdate(); }
+  setTradeOutcome(id,outcome){ let arr=[]; try{arr=loadJournal()||[];}catch(e){} arr=arr.map(t=>t.id===id?Object.assign({},t,{outcome:outcome,rMultiple:this.signR(outcome,t.rMultiple),closedAt:outcome!=='open'?(t.closedAt||new Date().toISOString()):null,updatedAt:new Date().toISOString()}):t); try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){} this.buildJournal(); this.forceUpdate(); }
   // Smazání = tombstone (deleted:true), NE odebrání z pole — čistý filter by sync
   // (union-merge s cloudem) zase přitáhl zpátky, protože merge neumí "smazáno",
   // jen "přidáno/aktualizováno" (stejná třída bugu jako revert výsledku obchodu).
@@ -319,7 +322,7 @@ class FXApp extends React.Component{
     const t=raw.trim(), num=t===''?null:parseFloat(t.replace(',','.'));
     if(t!==''&&isNaN(num)){ this.setState(s=>{const je=Object.assign({},s.jEditRR);delete je[id];return{jEditRR:je};}); return; }
     let arr=[]; try{arr=loadJournal()||[];}catch(e){}
-    arr=arr.map(tr=>tr.id===id?Object.assign({},tr,{rMultiple:num,updatedAt:new Date().toISOString()}):tr);
+    arr=arr.map(tr=>tr.id===id?Object.assign({},tr,{rMultiple:this.signR(tr.outcome,num),updatedAt:new Date().toISOString()}):tr);
     try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){}
     this.setState(s=>{const je=Object.assign({},s.jEditRR);delete je[id];return{jEditRR:je};});
     this.buildJournal(); this.forceUpdate();

@@ -2292,10 +2292,12 @@ function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,o
     if(!f.pair) return;
     const now=new Date().toISOString();
     const closed=f.outcome&&f.outcome!=="open";
+    const rNum=f.rMultiple===""?null:parseFloat(f.rMultiple);
+    const rSigned=(rNum==null||isNaN(rNum))?rNum:(f.outcome==="win"?Math.abs(rNum):f.outcome==="loss"?-Math.abs(rNum):rNum);
     onAdd({
       id:Date.now()+"_"+Math.random().toString(36).slice(2,7),
       pair:f.pair,dir:f.dir,entry:f.entry,sl:f.sl,tp:f.tp,riskPct:f.riskPct,
-      outcome:f.outcome,rMultiple:f.rMultiple===""?null:parseFloat(f.rMultiple),
+      outcome:f.outcome,rMultiple:rSigned,
       notes:f.notes,openedAt:now,closedAt:closed?now:null,updatedAt:now,
       ctx:captureContext(f.pair,pairs,scores,calData,upcoming,aiAnalyses)
     });
