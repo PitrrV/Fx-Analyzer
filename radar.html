@@ -147,11 +147,14 @@
   .fchip:hover{color:var(--txt);border-color:var(--txt-faint)}
   .fchip.on{color:var(--acc-ink);background:var(--acc);border-color:var(--acc);font-weight:600}
 
-  /* ---------- article photo frame (shared by hero + thumbs) — real photo, 16:9, 12px radius, subtle dark overlay ---------- */
-  .artwrap{position:relative;overflow:hidden;background:var(--panel-2);aspect-ratio:16/9}
+  /* ---------- article photo frame (shared by hero + thumbs) — real photo, subtle dark overlay, no filters ---------- */
+  .artwrap{position:relative;overflow:hidden;background:var(--panel-2);height:132px}
   .artwrap img{display:block;width:100%;height:100%;object-fit:cover}
   .artwrap::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.18);pointer-events:none}
   .art-credit{position:absolute;bottom:9px;right:9px;font-family:var(--mono);font-size:8.5px;color:color-mix(in oklch,var(--txt) 70%,transparent);background:color-mix(in oklch,var(--bg) 45%,transparent);padding:2px 7px;border-radius:20px;backdrop-filter:blur(6px)}
+  .dualflag{display:flex;width:100%;height:100%}
+  .dualflag img{width:50%;height:100%;object-fit:cover}
+  .dualflag .div{width:1px;background:color-mix(in oklch,var(--txt) 25%,transparent);flex-shrink:0}
   .art-pill{position:absolute;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.03em;padding:3px 8px;border-radius:20px;backdrop-filter:blur(6px);border:1px solid color-mix(in oklch,var(--txt) 16%,transparent)}
   .art-pill.score{top:9px;right:9px;background:color-mix(in oklch,var(--bg) 55%,transparent);color:var(--txt)}
   .art-pill.score.md{color:var(--imp-md)} .art-pill.score.hi{color:var(--imp-hi)} .art-pill.score.max{color:var(--imp-max)}
@@ -162,12 +165,12 @@
   /* ---------- HERO (top story) ---------- */
   .hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:20px;box-shadow:var(--shadow-lg);animation:cardIn .34s var(--ease) backwards}
   @keyframes cardIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  .hero .artwrap{border-bottom:1px solid var(--line)}
+  .hero .artwrap{border-bottom:1px solid var(--line);height:230px}
   .hero.is-fresh .artwrap{animation:heroFlash 2s var(--ease)}
   @keyframes heroFlash{0%{box-shadow:inset 0 0 0 3px var(--acc)}100%{box-shadow:inset 0 0 0 0 transparent}}
   .hero-body{padding:24px 28px 26px}
   .hero .headline{font-family:var(--display);font-style:italic;font-size:32px;line-height:1.14;font-weight:400;letter-spacing:-.01em;max-width:34ch}
-  @media(max-width:900px){.hero .headline{font-size:24px}.hero-body{padding:18px 18px 20px}}
+  @media(max-width:900px){.hero .artwrap{height:180px}.hero .headline{font-size:24px}.hero-body{padding:18px 18px 20px}}
 
   /* ---------- bento grid of regular dispatches ---------- */
   .bento{column-count:2;column-gap:16px}
@@ -1153,11 +1156,23 @@ const CAT_TOPIC = {
   'KOMODITY':'Commodity market',
   'TRH':'New York Stock Exchange'
 };
-function pickCurrency(n){
-  const h=n.headline||'';
-  for(const c of Object.keys(FLAG_CC)) if(new RegExp('\\b'+c+'\\b','i').test(h)) return c;
-  const a=(n.affects||[]).map(x=>x[0]).find(s=>FLAG_CC[s]);
-  return a||'';
+// literal pair in the headline (e.g. "USDCAD", "USD/CAD") wins — keeps base/quote order for a proper pair composite
+function pickPairFromHeadline(h){
+  h=h||'';
+  for(const p of PAIRS){
+    const b=p.slice(0,3), q=p.slice(3,6);
+    if(new RegExp('\\b'+b+'\\s*[/-]?\\s*'+q+'\\b','i').test(h)) return [b,q];
+  }
+  return null;
+}
+// falls back to whichever 1-2 currencies are actually named/affected, order not guaranteed
+function pickCurrencies(n){
+  const direct=pickPairFromHeadline(n.headline);
+  if(direct) return direct;
+  const h=n.headline||'', found=[];
+  for(const c of Object.keys(FLAG_CC)) if(new RegExp('\\b'+c+'\\b','i').test(h)) found.push(c);
+  if(found.length<2) (n.affects||[]).forEach(a=>{ if(FLAG_CC[a[0]] && found.indexOf(a[0])<0) found.push(a[0]); });
+  return found.slice(0,2);
 }
 function articleTopic(n){
   const h=n.headline||'';
@@ -1176,13 +1191,13 @@ async function wikiThumb(title){
   cache[title]={url,t:Date.now()}; LS.set('wikiimg_cache',cache);
   return url;
 }
-// resolves n.fallbackImage for every item lacking a real n.image from its source, in one batch (dedup by topic)
+// resolves n.fallbackImages (array of 1-2 flag URLs, or a single topic photo) for every item lacking a real n.image
 async function enrichImages(items){
   const need=new Map();
   items.forEach(n=>{
-    if(n.image || n.fallbackImage) return;
-    const cur=pickCurrency(n);
-    if(cur){ n.fallbackImage=flagUrl(FLAG_CC[cur]); return; }
+    if(n.image || n.fallbackImages) return;
+    const curs=pickCurrencies(n);
+    if(curs.length){ n.fallbackImages=curs.map(c=>flagUrl(FLAG_CC[c])); return; }
     const topic=articleTopic(n);
     n._topic=topic;
     if(!need.has(topic)) need.set(topic, wikiThumb(topic));
@@ -1191,14 +1206,22 @@ async function enrichImages(items){
   if(!entries.length) return;
   const urls=await Promise.all(entries.map(e=>e[1]));
   const map={}; entries.forEach((e,i)=>{ map[e[0]]=urls[i]; });
-  items.forEach(n=>{ if(!n.image && !n.fallbackImage && n._topic) n.fallbackImage = map[n._topic] || ''; });
+  items.forEach(n=>{ if(!n.image && !n.fallbackImages && n._topic){ const u=map[n._topic]; n.fallbackImages = u?[u]:[]; } });
 }
 function articleImageHTML(n){
-  const primary = n.image || n.fallbackImage || FINAL_FALLBACK_IMG;
-  const secondary = n.image ? (n.fallbackImage || FINAL_FALLBACK_IMG) : FINAL_FALLBACK_IMG;
-  const isWikiFallback = !n.image && n.fallbackImage && /wikimedia|wikipedia/i.test(n.fallbackImage);
-  return '<img src="'+esc(primary)+'" alt="" loading="lazy" '+
-    'onerror="this.onerror=function(){this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';};this.src=\''+esc(secondary)+'\';">'+
+  if(n.image){
+    return '<img src="'+esc(n.image)+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';">';
+  }
+  const imgs=(n.fallbackImages&&n.fallbackImages.length)?n.fallbackImages:[FINAL_FALLBACK_IMG];
+  const isWikiFallback = imgs.length===1 && /wikimedia|wikipedia/i.test(imgs[0]);
+  if(imgs.length>=2){
+    return '<div class="dualflag">'+
+      '<img src="'+esc(imgs[0])+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';">'+
+      '<span class="div"></span>'+
+      '<img src="'+esc(imgs[1])+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';">'+
+      '</div>';
+  }
+  return '<img src="'+esc(imgs[0])+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';">'+
     (isWikiFallback?'<span class="art-credit">Foto: Wikimedia Commons</span>':'');
 }
 
