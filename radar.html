@@ -147,44 +147,55 @@
   .fchip:hover{color:var(--txt);border-color:var(--txt-faint)}
   .fchip.on{color:var(--acc-ink);background:var(--acc);border-color:var(--acc);font-weight:600}
 
-  /* ---------- article photo frame (shared by hero + thumbs) — real photo, subtle dark overlay, no filters ---------- */
-  .artwrap{position:relative;overflow:hidden;background:var(--panel-2);height:132px}
+  /* ---------- article photo frame (shared by hero + thumbs) — real photo, subtle dark overlay, no filters.
+     Photos sit in a fixed-width side panel (not stretched across the full card) so a portrait/square
+     source photo never gets crammed into an ultra-wide sliver — that's what looked blurry/cropped. ---------- */
+  .artwrap{position:relative;overflow:hidden;background:var(--panel-2)}
   .artwrap img{display:block;width:100%;height:100%;object-fit:cover}
   .artwrap::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.18);pointer-events:none}
-  .art-credit{position:absolute;bottom:9px;right:9px;font-family:var(--mono);font-size:8.5px;color:color-mix(in oklch,var(--txt) 70%,transparent);background:color-mix(in oklch,var(--bg) 45%,transparent);padding:2px 7px;border-radius:20px;backdrop-filter:blur(6px)}
+  .art-credit{position:absolute;bottom:9px;left:9px;font-family:var(--mono);font-size:8.5px;color:color-mix(in oklch,var(--txt) 70%,transparent);background:color-mix(in oklch,var(--bg) 45%,transparent);padding:2px 7px;border-radius:20px;backdrop-filter:blur(6px)}
   .dualflag{display:flex;width:100%;height:100%}
   .dualflag img{width:50%;height:100%;object-fit:cover}
   .dualflag .div{width:1px;background:color-mix(in oklch,var(--txt) 25%,transparent);flex-shrink:0}
   .art-pill{position:absolute;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.03em;padding:3px 8px;border-radius:20px;backdrop-filter:blur(6px);border:1px solid color-mix(in oklch,var(--txt) 16%,transparent)}
-  .art-pill.score{top:9px;right:9px;background:color-mix(in oklch,var(--bg) 55%,transparent);color:var(--txt)}
-  .art-pill.score.md{color:var(--imp-md)} .art-pill.score.hi{color:var(--imp-hi)} .art-pill.score.max{color:var(--imp-max)}
-  .art-pill.age{bottom:9px;left:9px;background:color-mix(in oklch,var(--bg) 55%,transparent);color:var(--txt-dim)}
+  .art-pill.age{bottom:9px;right:9px;background:color-mix(in oklch,var(--bg) 55%,transparent);color:var(--txt-dim)}
   .art-pill.age.fresh{color:var(--acc)}
   .art-pill.lead{top:9px;left:9px;background:var(--acc);color:var(--acc-ink);border-color:transparent;text-transform:uppercase}
 
-  /* ---------- HERO (top story) ---------- */
-  .hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:20px;box-shadow:var(--shadow-lg);animation:cardIn .34s var(--ease) backwards}
+  /* ---------- importance gauge — a solid circle badge next to the text, not a faint pill lost over a photo ---------- */
+  .imp-gauge{position:absolute;top:14px;right:16px;min-width:42px;height:42px;padding:0 5px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px solid var(--line-2);background:var(--bg-2);z-index:2;box-shadow:var(--shadow)}
+  .imp-gauge span{font-weight:800;font-size:15px;line-height:1;font-variant-numeric:tabular-nums;font-family:var(--mono)}
+  .imp-gauge small{font-size:6.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--txt-faint);margin-top:2px;font-weight:800}
+  .imp-gauge.md{border-color:color-mix(in oklch,var(--imp-md) 60%,transparent);background:color-mix(in oklch,var(--imp-md) 12%,var(--bg-2))} .imp-gauge.md span{color:var(--imp-md)}
+  .imp-gauge.hi{border-color:color-mix(in oklch,var(--imp-hi) 60%,transparent);background:color-mix(in oklch,var(--imp-hi) 12%,var(--bg-2))} .imp-gauge.hi span{color:var(--imp-hi)}
+  .imp-gauge.max{border-color:color-mix(in oklch,var(--imp-max) 60%,transparent);background:color-mix(in oklch,var(--imp-max) 14%,var(--bg-2))} .imp-gauge.max span{color:var(--imp-max)}
+  .imp-gauge.lo span{color:var(--txt-dim)}
+  .hero-body .imp-gauge{top:20px;right:24px;min-width:54px;height:54px;border-width:2.5px}
+  .hero-body .imp-gauge span{font-size:20px}
+  .hero-body .imp-gauge small{font-size:7.5px}
+
+  /* ---------- HERO (top story) — photo as a fixed-width side panel, text alongside ---------- */
+  .hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:20px;box-shadow:var(--shadow-lg);animation:cardIn .34s var(--ease) backwards;display:flex;align-items:stretch}
   @keyframes cardIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  .hero .artwrap{border-bottom:1px solid var(--line);height:230px}
+  .hero .artwrap{border-right:1px solid var(--line);width:360px;flex:0 0 360px}
   .hero.is-fresh .artwrap{animation:heroFlash 2s var(--ease)}
   @keyframes heroFlash{0%{box-shadow:inset 0 0 0 3px var(--acc)}100%{box-shadow:inset 0 0 0 0 transparent}}
-  .hero-body{padding:24px 28px 26px}
-  .hero .headline{font-family:var(--display);font-style:italic;font-size:32px;line-height:1.14;font-weight:400;letter-spacing:-.01em;max-width:34ch}
-  @media(max-width:900px){.hero .artwrap{height:180px}.hero .headline{font-size:24px}.hero-body{padding:18px 18px 20px}}
+  .hero-body{padding:24px 92px 26px 28px;position:relative;flex:1;min-width:0}
+  .hero .headline{font-family:var(--display);font-style:italic;font-size:30px;line-height:1.16;font-weight:400;letter-spacing:-.01em}
+  @media(max-width:900px){.hero{flex-direction:column}.hero .artwrap{width:100%;flex:0 0 220px;border-right:none;border-bottom:1px solid var(--line)}.hero .headline{font-size:24px}.hero-body{padding:18px 76px 20px 18px}}
 
-  /* ---------- bento grid of regular dispatches ---------- */
+  /* ---------- bento grid of regular dispatches — same side-panel photo treatment ---------- */
   .bento{column-count:2;column-gap:16px}
   @media(max-width:900px){.bento{column-count:1}}
-  .dispatch{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:16px;break-inside:avoid;transition:border-color .15s,box-shadow .15s,transform .15s;animation:cardIn .32s var(--ease) backwards}
+  .dispatch{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:16px;break-inside:avoid;transition:border-color .15s,box-shadow .15s,transform .15s;animation:cardIn .32s var(--ease) backwards;display:flex;align-items:stretch}
   .dispatch:nth-child(n){animation-delay:calc(var(--i,0)*18ms)}
   .dispatch:hover{border-color:var(--line-2);box-shadow:var(--shadow-lg);transform:translateY(-2px)}
-  .dispatch .artwrap{border-bottom:1px solid var(--line)}
+  .dispatch .artwrap{border-right:1px solid var(--line);width:132px;flex:0 0 132px}
   .dispatch.is-fresh .artwrap{animation:heroFlash 2s var(--ease)}
-  .dispatch.s9 .art-pill.score,.dispatch.s10 .art-pill.score{color:var(--imp-max)}
-  .dispatch.s7 .art-pill.score,.dispatch.s8 .art-pill.score{color:var(--imp-hi)}
   .dispatch.isana{border-color:color-mix(in oklch,var(--acc) 34%,var(--line))}
+  @media(max-width:560px){.dispatch{flex-direction:column}.dispatch .artwrap{width:100%;flex:0 0 160px;border-right:none;border-bottom:1px solid var(--line)}}
 
-  .body{padding:16px 18px 18px;min-width:0}
+  .body{padding:16px 62px 18px 18px;min-width:0;position:relative;flex:1}
   .meta-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:9px;font-family:var(--mono);font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:var(--txt-faint)}
   .meta-line .src{color:var(--txt-dim);font-weight:700}
   .meta-line .sep{opacity:.5}
@@ -1250,11 +1261,13 @@ function articleImageHTML(n){
 }
 
 function artPillsHTML(n, isLead){
-  const sc=n.score||0, cls=scoreCls(sc);
   const fresh=ageMins(n.publishedAt)<=20;
   return (isLead?'<span class="art-pill lead">Hlavní zpráva</span>':'')+
-    '<span class="art-pill score '+cls+'">'+sc+'/10</span>'+
     '<span class="art-pill age'+(fresh?' fresh':'')+'">'+ageText(n.publishedAt)+'</span>';
+}
+function gaugeHTML(n){
+  const sc=n.score||0, cls=scoreCls(sc);
+  return '<div class="imp-gauge '+cls+'" title="důležitost '+sc+'/10"><span>'+sc+'</span><small>imp</small></div>';
 }
 function bodyHTML(n){
   const aff=(n.affects||[]).map(a=>'<span class="chip '+(a[1]||'')+'">'+esc(a[0])+(a[1]==='pos'?' ↑':a[1]==='neg'?' ↓':'')+'</span>').join('');
@@ -1279,13 +1292,13 @@ function bodyHTML(n){
 function heroCardHTML(n){
   const isFresh = n.hid && state.freshIds.has(n.hid);
   return '<div class="hero'+(isFresh?' is-fresh':'')+'"><div class="artwrap">'+articleImageHTML(n)+artPillsHTML(n,true)+'</div>'+
-    '<div class="hero-body">'+bodyHTML(n)+'</div></div>';
+    '<div class="hero-body">'+gaugeHTML(n)+bodyHTML(n)+'</div></div>';
 }
 function cardHTML(n,i){
   const sc=n.score||0;
   const isFresh = n.hid && state.freshIds.has(n.hid);
   return '<div class="dispatch s'+sc+(isAnalysisItem(n)?' isana':'')+(isFresh?' is-fresh':'')+'" style="--i:'+(i||0)+'"><div class="artwrap">'+articleImageHTML(n)+artPillsHTML(n,false)+'</div>'+
-    '<div class="body">'+bodyHTML(n)+'</div></div>';
+    '<div class="body">'+gaugeHTML(n)+bodyHTML(n)+'</div></div>';
 }
 function deskHTML(d){
   if(!d) return '';
