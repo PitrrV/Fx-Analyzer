@@ -1133,17 +1133,26 @@ function genArt(n, W, H){
     }
     s+='<rect x="0" y="'+base.toFixed(1)+'" width="'+W+'" height="'+(H-base).toFixed(1)+'" style="fill:color-mix(in oklch, var(--txt) 12%, transparent)"/>';
   } else if(cat==='MAKRO'){
-    /* rising skyline + climbing trendline overlay — growth data made literal */
-    const cnt=7, gap=W/cnt, base=H*0.92;
+    /* dusk skyline with a soft rising glow — growth read as atmosphere/illustration, not a plotted chart */
+    const skyId='skyM'+seed;
+    s+='<defs><linearGradient id="'+skyId+'" x1="0" y1="0" x2="0" y2="1">'+
+         '<stop offset="0%" style="stop-color:var(--bg-2)"/>'+
+         '<stop offset="100%" style="stop-color:var(--panel-2)"/>'+
+       '</linearGradient></defs>';
+    s+='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="url(#'+skyId+')"/>';
+    const sunX=W*(0.6+rnd()*0.14), sunY=H*0.3;
+    [[0.34,0.24],[0.5,0.15],[0.66,0.07]].forEach(f=>{ s+='<circle cx="'+sunX.toFixed(1)+'" cy="'+sunY.toFixed(1)+'" r="'+(H*f[0]).toFixed(1)+'" style="fill:color-mix(in oklch, var(--acc) '+(f[1]*100).toFixed(0)+'%, transparent)"/>'; });
+    const cnt=7, gap=W/cnt, base=H*0.94;
     for(let i=0;i<cnt;i++){
-      const hh=H*(0.22+ (i/cnt)*0.4 + rnd()*0.1);
-      s+='<rect x="'+(gap*i+gap*0.14).toFixed(1)+'" y="'+(base-hh).toFixed(1)+'" width="'+(gap*0.72).toFixed(1)+'" height="'+hh.toFixed(1)+'" style="fill:color-mix(in oklch, var(--txt) 20%, transparent)"/>';
+      const hh=H*(0.3+ ((i*37)%cnt)/cnt*0.22 + rnd()*0.2);
+      const bx=gap*i+gap*0.14, bw=gap*0.72, by=base-hh;
+      s+='<rect x="'+bx.toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hh.toFixed(1)+'" style="fill:color-mix(in oklch, var(--txt) 26%, var(--panel-2))"/>';
+      const winRows=Math.max(1,Math.floor(hh/(H*0.11)));
+      for(let wr=0; wr<winRows; wr++){
+        if(rnd()>0.5) s+='<rect x="'+(bx+bw*0.26).toFixed(1)+'" y="'+(by+H*0.035+wr*H*0.11).toFixed(1)+'" width="'+(bw*0.48).toFixed(1)+'" height="'+(H*0.022).toFixed(1)+'" rx="1" style="fill:color-mix(in oklch, var(--acc) 55%, transparent)"/>';
+      }
     }
-    let pts=[]; const steps=6;
-    for(let i=0;i<=steps;i++) pts.push([(W/steps)*i, base-(H*0.1)-(i/steps)*H*0.42-rnd()*H*0.06]);
-    const path=pts.map((p,i)=>(i===0?'M':'L')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-    s+='<path d="'+path+'" fill="none" style="stroke:var(--acc)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>';
-    pts.forEach((p,i)=>{ if(i===pts.length-1) s+='<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="4" style="fill:var(--acc)"/>'; });
+    s+='<rect x="0" y="'+base.toFixed(1)+'" width="'+W+'" height="'+(H-base).toFixed(1)+'" style="fill:color-mix(in oklch, var(--txt) 14%, transparent)"/>';
   } else if(cat==='POLITIKA'){
     /* globe with latitude/longitude + two flags either side — geopolitics, not a mood-blob */
     const r=H*0.3;
@@ -1170,14 +1179,21 @@ function genArt(n, W, H){
       }
     }
   } else {
-    /* stock exchange ticker board: grid of quote cells, some lit pos/neg — reads "market", not candles */
-    const cols=6, rows=3, pad=W*0.06, cw=(W-pad*2)/cols, rh=(H*0.72)/rows, topY=H*0.14;
-    s+='<rect x="'+(pad*0.5).toFixed(1)+'" y="'+(topY*0.4).toFixed(1)+'" width="'+(W-pad).toFixed(1)+'" height="'+(rows*rh+topY*0.6).toFixed(1)+'" rx="4" style="fill:var(--bg-2)"/>';
+    /* illustrated ticker sign mounted on posts — a market object/fixture, not a spreadsheet grid */
+    const boardW=W*0.84, boardH=H*0.6, bx=(W-boardW)/2, by=H*0.14;
+    const postW=W*0.03, postH=H*0.22;
+    s+='<rect x="'+(bx+boardW*0.22).toFixed(1)+'" y="'+(by+boardH-2).toFixed(1)+'" width="'+postW.toFixed(1)+'" height="'+postH.toFixed(1)+'" rx="1.5" style="fill:color-mix(in oklch, var(--txt) 26%, transparent)"/>';
+    s+='<rect x="'+(bx+boardW*0.78-postW).toFixed(1)+'" y="'+(by+boardH-2).toFixed(1)+'" width="'+postW.toFixed(1)+'" height="'+postH.toFixed(1)+'" rx="1.5" style="fill:color-mix(in oklch, var(--txt) 26%, transparent)"/>';
+    s+='<rect x="'+bx.toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+boardW.toFixed(1)+'" height="'+boardH.toFixed(1)+'" rx="10" style="fill:var(--bg-2)" stroke="color-mix(in oklch, var(--txt) 20%, transparent)" stroke-width="1.5"/>';
+    const headH=boardH*0.17;
+    s+='<path d="M'+bx.toFixed(1)+' '+(by+headH).toFixed(1)+' V'+(by+10).toFixed(1)+' Q'+bx.toFixed(1)+' '+by.toFixed(1)+' '+(bx+10).toFixed(1)+' '+by.toFixed(1)+' H'+(bx+boardW-10).toFixed(1)+' Q'+(bx+boardW).toFixed(1)+' '+by.toFixed(1)+' '+(bx+boardW).toFixed(1)+' '+(by+10).toFixed(1)+' V'+(by+headH).toFixed(1)+' Z" style="fill:color-mix(in oklch, var(--acc) 22%, var(--bg-2))"/>';
+    for(let i=0;i<5;i++) s+='<rect x="'+(bx+boardW*0.05+i*boardW*0.045).toFixed(1)+'" y="'+(by+headH*0.4).toFixed(1)+'" width="'+(boardW*0.024).toFixed(1)+'" height="'+(headH*0.32).toFixed(1)+'" rx="1" style="fill:color-mix(in oklch, var(--acc) 75%, transparent)"/>';
+    const cols=5, rows=3, pad=boardW*0.06, cw=(boardW-pad*2)/cols, rh=(boardH-headH-boardH*0.08)/rows, top=by+headH+boardH*0.03;
     for(let r=0;r<rows;r++){
       for(let c=0;c<cols;c++){
-        const roll=rnd(); const fill= roll<0.16?'var(--pos)': roll>0.86?'var(--neg)':'color-mix(in oklch, var(--txt) 16%, transparent)';
-        const x=pad+c*cw+cw*0.12, y=topY+r*rh+rh*0.18, ww=cw*0.76, hh=rh*0.42;
-        s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+ww.toFixed(1)+'" height="'+hh.toFixed(1)+'" rx="1.5" style="fill:'+fill+'"/>';
+        const roll=rnd(); const fill= roll<0.18?'var(--pos)': roll>0.84?'var(--neg)':'color-mix(in oklch, var(--txt) 16%, transparent)';
+        const x=bx+pad+c*cw+cw*0.1, y=top+r*rh+rh*0.16, ww=cw*0.8, hh=rh*0.5;
+        s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+ww.toFixed(1)+'" height="'+hh.toFixed(1)+'" rx="3" style="fill:'+fill+'"/>';
       }
     }
   }
