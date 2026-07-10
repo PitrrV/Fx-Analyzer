@@ -1153,15 +1153,41 @@ const ENTITY_TOPICS = [
   [/\b(rba|reserve bank of australia)\b/i,['Reserve Bank of Australia','Sydney Opera House']],
   [/\b(rbnz|reserve bank of new zealand)\b/i,['Reserve Bank of New Zealand','Auckland']],
   [/\b(boc|bank of canada)\b/i,['Bank of Canada','Toronto']],
+  // individual companies frequently named in market headlines — each its own real photo, not a generic chart
   [/\btesla\b/i,['Gigafactory Texas','Tesla Model 3']],
   [/\bnvidia\b/i,['Nvidia','Graphics processing unit']],
   [/\bapple\b/i,['Apple Park','IPhone']],
+  [/\bmicrosoft\b/i,['Microsoft Redmond Campus']],
+  [/\b(alphabet|\bgoogle\b)\b/i,['Googleplex']],
+  [/\b(meta platforms|\bmeta\b|facebook)\b/i,['Meta Platforms']],
+  [/\bamazon\b/i,['Amazon (company)']],
+  [/\bnetflix\b/i,['Netflix']],
+  [/\buber\b/i,['Uber']],
+  [/\bpalantir\b/i,['Palantir Technologies']],
+  [/\bbroadcom\b/i,['Broadcom Inc.']],
+  [/\bqualcomm\b/i,['Qualcomm']],
+  [/\b(intel corp|\bintel\b)/i,['Intel']],
+  [/\b(amd\b|advanced micro devices)/i,['AMD']],
+  [/\bmicron\b/i,['Micron Technology']],
+  [/\b(sk hynix|hynix)\b/i,['SK Hynix']],
+  [/\bsamsung\b/i,['Samsung Electronics']],
+  [/\b(asml)\b/i,['ASML Holding']],
+  [/\b(tsmc|taiwan semiconductor)\b/i,['TSMC']],
+  [/\bwolfspeed\b/i,['Wolfspeed']],
+  [/\bcoinbase\b/i,['Coinbase']],
+  [/\bcircle internet\b/i,['Circle (company)']],
+  [/\bnomura\b/i,['Nomura Holdings']],
+  [/\bboeing\b/i,['Boeing']],
+  [/\b(jpmorgan|jp morgan)\b/i,['JPMorgan Chase']],
+  [/\bgoldman sachs\b/i,['Goldman Sachs']],
+  [/\b(visa inc|\bvisa\b)/i,['Visa Inc.']],
+  [/\bmastercard\b/i,['Mastercard']],
   [/\b(gold|zlat|xau)\b/i,['Gold bar','Gold mining','Bullion']],
   [/\b(silver|stříbr|xag)\b/i,['Silver','Bullion']],
   [/\b(oil|ropa|crude|wti|brent)\b/i,['Oil well','Oil platform','Oil refinery']],
   [/\b(natural gas|\bgas\b|lng|plyn)\b/i,['Liquefied natural gas','Pipeline transport']],
   [/\b(nasdaq|s&p|dow jones|wall street|\bnyse\b|us100|us500|us30)\b/i,['New York Stock Exchange','Wall Street','Nasdaq MarketSite']],
-  [/\b(ai|artificial intelligence|umělá inteligence)\b/i,['Data center','Graphics processing unit']]
+  [/\b(ai\b|artificial intelligence|umělá inteligence)\b/i,['Data center','Graphics processing unit']]
 ];
 // single-currency pools: central bank building, city, banknotes — real topical photos,
 // never a full-bleed flag (a 2:1 flag crammed into the wide card crop looks broken)
@@ -1175,13 +1201,14 @@ const CUR_TOPICS = {
   NZD:['Reserve Bank of New Zealand','Auckland','New Zealand dollar'],
   CHF:['Swiss National Bank','Zürich','Swiss franc']
 };
-// category-level pools when no specific entity/currency matched
+// category-level pools when no specific entity/currency matched — kept large (8+ entries) so
+// generic company/stock headlines (the bulk of a real feed) don't all cycle the same 2-3 photos
 const CAT_TOPIC = {
-  'CENTRÁLNÍ BANKA':['Marriner S. Eccles Federal Reserve Board Building','Seat of the European Central Bank','Bank of England'],
-  'MAKRO':['Wall Street','Financial District, Manhattan','Container ship'],
-  'POLITIKA':['United Nations Headquarters','White House','Palace of Westminster'],
-  'KOMODITY':['Oil well','Gold bar','Wheat'],
-  'TRH':['New York Stock Exchange','Nasdaq MarketSite','Wall Street']
+  'CENTRÁLNÍ BANKA':['Marriner S. Eccles Federal Reserve Board Building','Seat of the European Central Bank','Bank of England','Bank of Japan','Swiss National Bank'],
+  'MAKRO':['Wall Street','Financial District, Manhattan','Container ship','Federal Reserve Bank of New York','Port of Long Beach','Shipping container'],
+  'POLITIKA':['United Nations Headquarters','White House','Palace of Westminster','Kremlin','European Parliament'],
+  'KOMODITY':['Oil well','Gold bar','Wheat','Natural gas','Copper','Oil platform'],
+  'TRH':['New York Stock Exchange','Nasdaq MarketSite','Wall Street','London Stock Exchange','Tokyo Stock Exchange','Frankfurt Stock Exchange','Hong Kong Stock Exchange','Financial District, Manhattan']
 };
 // literal pair in the headline (e.g. "USDCAD", "USD/CAD") wins — keeps base/quote order for a proper pair composite
 function pickPairFromHeadline(h){
@@ -1208,19 +1235,26 @@ function articleTopic(n){
   if(curs.length===1 && CUR_TOPICS[curs[0]]) return pickFromPool(CUR_TOPICS[curs[0]],n);
   return pickFromPool(CAT_TOPIC[n.cat]||CAT_TOPIC['TRH'],n);
 }
-// Wikipedia summary API returns a ~320px thumbnail — too soft for our wide card.
-// Its thumb URLs embed the size (`/NNNpx-`), so rewrite to 960px for a sharp image.
-function hiResWiki(url){ return (url||'').replace(/\/(\d+)px-/, '/960px-'); }
+// The summary REST API only ever returns its own small default thumbnail (~320px, sometimes less),
+// and guessing/rewriting the size out of its URL is unreliable (some thumb URLs don't even encode
+// a width). The MediaWiki action API's `pithumbsize` parameter asks Wikipedia to render the
+// thumbnail at the size we actually need (960px, capped to the source's real resolution — never
+// upscaled/broken), which is what was making these photos look soft/blurry in the wider card.
+// Cache key bumped (_v2) so stale low-res URLs cached by earlier visitors get refetched once.
 async function wikiThumb(title){
-  const cache=LS.get('wikiimg_cache',{});
+  const cache=LS.get('wikiimg_cache_v2',{});
   const rec=cache[title];
-  if(rec && (Date.now()-(rec.t||0))<30*24*3600*1000) return hiResWiki(rec.url||'');
+  if(rec && (Date.now()-(rec.t||0))<30*24*3600*1000) return rec.url||'';
   let url='';
   try{
-    const r=await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(title.replace(/ /g,'_')));
-    if(r.ok){ const d=await r.json(); url=hiResWiki((d.thumbnail&&d.thumbnail.source)||'')||(d.originalimage&&d.originalimage.source)||''; }
+    const r=await fetch('https://en.wikipedia.org/w/api.php?action=query&prop=pageimages&piprop=thumbnail&pithumbsize=960&format=json&origin=*&titles='+encodeURIComponent(title));
+    if(r.ok){
+      const d=await r.json();
+      const pages=d.query&&d.query.pages;
+      if(pages){ const p=Object.values(pages)[0]; url=(p&&p.thumbnail&&p.thumbnail.source)||''; }
+    }
   }catch(e){}
-  cache[title]={url,t:Date.now()}; LS.set('wikiimg_cache',cache);
+  cache[title]={url,t:Date.now()}; LS.set('wikiimg_cache_v2',cache);
   return url;
 }
 // resolves n.fallbackImages (pair -> two flags; otherwise one topical Wikipedia photo) for every item lacking a real n.image
@@ -1253,10 +1287,7 @@ function articleImageHTML(n){
       '<img src="'+esc(imgs[1])+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';">'+
       '</div>';
   }
-  // Wikimedia errors on thumb sizes above the original — retry at the API's native 320px before the flag
-  const lowRes = imgs[0].indexOf('/960px-')>=0 ? imgs[0].replace('/960px-','/320px-') : FINAL_FALLBACK_IMG;
-  return '<img src="'+esc(imgs[0])+'" alt="" loading="lazy" '+
-    'onerror="this.onerror=function(){this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';};this.src=\''+esc(lowRes)+'\';">'+
+  return '<img src="'+esc(imgs[0])+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';">'+
     (isWikiFallback?'<span class="art-credit">Foto: Wikimedia Commons</span>':'');
 }
 
