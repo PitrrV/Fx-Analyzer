@@ -1231,13 +1231,13 @@ function bodyHTML(n){
 }
 function heroCardHTML(n){
   const isFresh = n.hid && state.freshIds.has(n.hid);
-  return '<div class="hero'+(isFresh?' is-fresh':'')+'"><div class="artwrap">'+genArt(n,900,420)+artPillsHTML(n,true)+'</div>'+
+  return '<div class="hero'+(isFresh?' is-fresh':'')+'"><div class="artwrap">'+genArt(n,1120,280)+artPillsHTML(n,true)+'</div>'+
     '<div class="hero-body">'+bodyHTML(n)+'</div></div>';
 }
 function cardHTML(n,i){
   const sc=n.score||0;
   const isFresh = n.hid && state.freshIds.has(n.hid);
-  return '<div class="dispatch s'+sc+(isAnalysisItem(n)?' isana':'')+(isFresh?' is-fresh':'')+'" style="--i:'+(i||0)+'"><div class="artwrap">'+genArt(n,340,190)+artPillsHTML(n,false)+'</div>'+
+  return '<div class="dispatch s'+sc+(isAnalysisItem(n)?' isana':'')+(isFresh?' is-fresh':'')+'" style="--i:'+(i||0)+'"><div class="artwrap">'+genArt(n,540,132)+artPillsHTML(n,false)+'</div>'+
     '<div class="body">'+bodyHTML(n)+'</div></div>';
 }
 function deskHTML(d){
