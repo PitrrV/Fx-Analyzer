@@ -140,7 +140,7 @@ function sharedCount(a,b){ let n=0; a.forEach(x=>{ if(b.has(x)) n++; }); return 
 function clMerge(tkA,enA,tkB,enB){ const jac=jaccard(tkA,tkB); const sh=sharedCount(enA,enB); return (sh>=2 && jac>=0.18) || jac>=0.35; }
 function buildCluster(members){
   const withTier=members.map(m=>Object.assign({_tier:sourceTier(m.source,m.url)},m));
-  const rep=withTier.slice().sort((a,b)=> a._tier-b._tier || (b.score||0)-(a.score||0) || new Date(b.publishedAt||0)-new Date(a.publishedAt||0))[0];
+  const rep=withTier.slice().sort((a,b)=> a._tier-b._tier || (b.score||0)-(a.score||0) || (b.image?1:0)-(a.image?1:0) || new Date(b.publishedAt||0)-new Date(a.publishedAt||0))[0];
   const seen=new Set(), srcs=[];
   withTier.forEach(m=>{ const key=(m.source||'').toLowerCase(); if(key&&!seen.has(key)){ seen.add(key); srcs.push({source:m.source,url:m.url,tier:m._tier,publishedAt:m.publishedAt}); } });
   const first=srcs.slice().sort((a,b)=> new Date(a.publishedAt||0)-new Date(b.publishedAt||0))[0];
@@ -249,6 +249,17 @@ function xmlAttr(block,tag,attr){
   const m = block.match(new RegExp('<'+tag+'[^>]*'+attr+'=["\']([^"\']*)["\']','i'));
   return m ? decodeEntities(m[1]) : '';
 }
+function xmlImage(block){
+  // enclosure/media:content/media:thumbnail cover most feeds; fall back to first <img> in the body HTML
+  let u = xmlAttr(block,'enclosure','url');
+  if(!u || !/^https?:\/\//i.test(u)) u = xmlAttr(block,'media:content','url');
+  if(!u || !/^https?:\/\//i.test(u)) u = xmlAttr(block,'media:thumbnail','url');
+  if(!u || !/^https?:\/\//i.test(u)){
+    const m = block.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if(m) u = m[1];
+  }
+  return /^https?:\/\//i.test(u||'') ? u : '';
+}
 function parseFeedXml(xml, sourceNameFallback){
   const out=[];
   const isAtom = /<feed[\s>]/i.test(xml) && !/<rss[\s>]/i.test(xml);
@@ -260,7 +271,7 @@ function parseFeedXml(xml, sourceNameFallback){
     let link = isAtom ? (xmlAttr(b,'link','href') || xmlTag(b,'link')) : xmlTag(b,'link');
     const pub = xmlTag(b, isAtom?'updated':'pubDate') || xmlTag(b,'pubDate') || xmlTag(b,'published') || '';
     const d = pub ? new Date(pub) : new Date();
-    out.push({ headline: title, url: link, publishedAt: isNaN(d.getTime())? new Date().toISOString() : d.toISOString(), source: chanTitle||sourceNameFallback });
+    out.push({ headline: title, url: link, publishedAt: isNaN(d.getTime())? new Date().toISOString() : d.toISOString(), source: chanTitle||sourceNameFallback, image: xmlImage(b) });
   }
   return out;
 }
@@ -274,7 +285,7 @@ async function fetchRSS(feeds){
       const xml = await r.text();
       const items = parseFeedXml(xml, hostFromUrl(f));
       items.slice(0,10).forEach(it=>out.push({
-        id:'r'+hashStr(it.url||it.headline), provider:'rss', source:it.source, headline:it.headline, url:it.url, isAnalysis:ana, publishedAt:it.publishedAt
+        id:'r'+hashStr(it.url||it.headline), provider:'rss', source:it.source, headline:it.headline, url:it.url, isAnalysis:ana, publishedAt:it.publishedAt, image:it.image||''
       }));
     }catch(e){ console.log('RSS fail', f, e.message); }
   }
@@ -290,6 +301,7 @@ async function fetchFinnhub(finnhubKey){
       const arr = await r.json();
       (Array.isArray(arr)?arr:[]).slice(0,25).forEach(n=>out.push({
         id:'f'+n.id, provider:'finnhub', source:n.source||'Finnhub', headline:n.headline, url:n.url,
+        image: /^https?:\/\//i.test(n.image||'') ? n.image : '',
         publishedAt: n.datetime? new Date(n.datetime*1000).toISOString() : new Date().toISOString()
       }));
     }catch(e){ console.log('Finnhub fail', c, e.message); }

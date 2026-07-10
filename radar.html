@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://www.google.com; connect-src 'self' https://generativelanguage.googleapis.com https://openrouter.ai https://finnhub.io https://api.rss2json.com https://*.github.io https://raw.githubusercontent.com; base-uri 'none'; object-src 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://generativelanguage.googleapis.com https://openrouter.ai https://finnhub.io https://api.rss2json.com https://en.wikipedia.org https://*.github.io https://raw.githubusercontent.com; base-uri 'none'; object-src 'none'" />
 <title>AI Market Radar</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -147,9 +147,11 @@
   .fchip:hover{color:var(--txt);border-color:var(--txt-faint)}
   .fchip.on{color:var(--acc-ink);background:var(--acc);border-color:var(--acc);font-weight:600}
 
-  /* ---------- generated artwork frame (shared by hero + thumbs) ---------- */
-  .artwrap{position:relative;border-radius:var(--r-sm);overflow:hidden;background:var(--panel-2);border:1px solid var(--line)}
-  .artwrap svg{display:block;width:100%;height:100%}
+  /* ---------- article photo frame (shared by hero + thumbs) — real photo, 16:9, 12px radius, subtle dark overlay ---------- */
+  .artwrap{position:relative;overflow:hidden;background:var(--panel-2);aspect-ratio:16/9}
+  .artwrap img{display:block;width:100%;height:100%;object-fit:cover}
+  .artwrap::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.18);pointer-events:none}
+  .art-credit{position:absolute;bottom:9px;right:9px;font-family:var(--mono);font-size:8.5px;color:color-mix(in oklch,var(--txt) 70%,transparent);background:color-mix(in oklch,var(--bg) 45%,transparent);padding:2px 7px;border-radius:20px;backdrop-filter:blur(6px)}
   .art-pill{position:absolute;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.03em;padding:3px 8px;border-radius:20px;backdrop-filter:blur(6px);border:1px solid color-mix(in oklch,var(--txt) 16%,transparent)}
   .art-pill.score{top:9px;right:9px;background:color-mix(in oklch,var(--bg) 55%,transparent);color:var(--txt)}
   .art-pill.score.md{color:var(--imp-md)} .art-pill.score.hi{color:var(--imp-hi)} .art-pill.score.max{color:var(--imp-max)}
@@ -160,12 +162,12 @@
   /* ---------- HERO (top story) ---------- */
   .hero{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:20px;box-shadow:var(--shadow-lg);animation:cardIn .34s var(--ease) backwards}
   @keyframes cardIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  .hero .artwrap{border-radius:0;border:none;border-bottom:1px solid var(--line);height:280px}
+  .hero .artwrap{border-bottom:1px solid var(--line)}
   .hero.is-fresh .artwrap{animation:heroFlash 2s var(--ease)}
   @keyframes heroFlash{0%{box-shadow:inset 0 0 0 3px var(--acc)}100%{box-shadow:inset 0 0 0 0 transparent}}
   .hero-body{padding:24px 28px 26px}
   .hero .headline{font-family:var(--display);font-style:italic;font-size:32px;line-height:1.14;font-weight:400;letter-spacing:-.01em;max-width:34ch}
-  @media(max-width:900px){.hero .artwrap{height:190px}.hero .headline{font-size:24px}.hero-body{padding:18px 18px 20px}}
+  @media(max-width:900px){.hero .headline{font-size:24px}.hero-body{padding:18px 18px 20px}}
 
   /* ---------- bento grid of regular dispatches ---------- */
   .bento{column-count:2;column-gap:16px}
@@ -173,7 +175,7 @@
   .dispatch{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-bottom:16px;break-inside:avoid;transition:border-color .15s,box-shadow .15s,transform .15s;animation:cardIn .32s var(--ease) backwards}
   .dispatch:nth-child(n){animation-delay:calc(var(--i,0)*18ms)}
   .dispatch:hover{border-color:var(--line-2);box-shadow:var(--shadow-lg);transform:translateY(-2px)}
-  .dispatch .artwrap{border-radius:0;border:none;border-bottom:1px solid var(--line);height:132px}
+  .dispatch .artwrap{border-bottom:1px solid var(--line)}
   .dispatch.is-fresh .artwrap{animation:heroFlash 2s var(--ease)}
   .dispatch.s9 .art-pill.score,.dispatch.s10 .art-pill.score{color:var(--imp-max)}
   .dispatch.s7 .art-pill.score,.dispatch.s8 .art-pill.score{color:var(--imp-hi)}
@@ -369,7 +371,6 @@
     .topbar{padding:0 14px}
     .clock{display:none}
     .bento{column-count:1}
-    .hero .artwrap{height:170px}
     .hero .headline{font-size:22px}
   }
   @media(max-width:480px){
@@ -567,7 +568,7 @@ function clMerge(tkA,enA,tkB,enB){ const jac=jaccard(tkA,tkB); const sh=sharedCo
 function buildCluster(members){
   // representative = nejlepší tier, pak nejvyšší skóre, pak nejnovější
   const withTier=members.map(m=>Object.assign({_tier:sourceTier(m.source,m.url)},m));
-  const rep=withTier.slice().sort((a,b)=> a._tier-b._tier || (b.score||0)-(a.score||0) || new Date(b.publishedAt||0)-new Date(a.publishedAt||0))[0];
+  const rep=withTier.slice().sort((a,b)=> a._tier-b._tier || (b.score||0)-(a.score||0) || (b.image?1:0)-(a.image?1:0) || new Date(b.publishedAt||0)-new Date(a.publishedAt||0))[0];
   // unikátní zdroje
   const seen=new Set(), srcs=[];
   withTier.forEach(m=>{ const key=(m.source||'').toLowerCase(); if(key&&!seen.has(key)){ seen.add(key); srcs.push({source:m.source,url:m.url,tier:m._tier,publishedAt:m.publishedAt}); } });
@@ -814,6 +815,7 @@ async function fetchFinnhub(settings){
       const arr=await r.json();
       return (Array.isArray(arr)?arr:[]).slice(0,25).map(n=>({
         id:'f'+n.id, provider:'finnhub', source:n.source||'Finnhub', headline:n.headline, url:n.url,
+        image: /^https?:\/\//i.test(n.image||'') ? n.image : '',
         publishedAt:n.datetime? new Date(n.datetime*1000).toISOString() : new Date().toISOString()
       }));
     }catch(e){ if(!err) err='network/CORS'; return []; }
@@ -833,6 +835,7 @@ async function fetchRSS(settings, force){
       if(r.ok){ const d=await r.json(); const sn=(d.feed&&d.feed.title)||'RSS';
         (d.items||[]).slice(0,10).forEach(it=>out.push({
           id:'r'+hashStr(it.link||it.title||''), provider:'rss', source:sn, headline:it.title, url:it.link, isAnalysis:ana,
+          image: /^https?:\/\//i.test(it.thumbnail||'') ? it.thumbnail : '',
           publishedAt:it.pubDate? new Date(it.pubDate).toISOString() : new Date().toISOString()
         })); }
     }catch(e){}
@@ -1105,101 +1108,98 @@ const ICO = {
 };
 function ico(name,extra){ return (ICO[name]||'').replace('class="ic"','class="ic'+(extra?(' '+extra):'')+'"'); }
 
-/* ---------- generated per-article artwork ----------
-   Deterministic abstract illustration keyed to the article's category —
-   never generic candlesticks. Shape language: central bank -> building
-   with columns, politika -> globe + flags, komodity -> barrel/ingot,
-   makro -> rising skyline + trendline, trh (default) -> stock ticker board. */
-function seedFrom(str){ let h=2166136261; for(let i=0;i<(str||'').length;i++){ h^=str.charCodeAt(i); h=Math.imul(h,16777619); } return h>>>0; }
-function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,a|1); t^=t+Math.imul(t^t>>>7,t|61); return ((t^t>>>14)>>>0)/4294967296; }; }
-function genArt(n, W, H){
-  const rnd=mulberry32(seedFrom(n.headline||n.id||String(Math.random())));
-  const cat=n.cat||'TRH';
-  const pos=(n.affects||[]).filter(a=>a[1]==='pos').length;
-  const neg=(n.affects||[]).filter(a=>a[1]==='neg').length;
-  const cx=W*0.5, cy=H*0.5;
-  const seed=seedFrom(n.headline||n.id||'');
-  let s='<rect x="0" y="0" width="'+W+'" height="'+H+'" style="fill:var(--panel-2)"/>';
-  s+='<defs><pattern id="gA'+seed+'" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(32)"><line x1="0" y1="0" x2="0" y2="7" style="stroke:var(--line)" stroke-width="1"/></pattern></defs>';
-  s+='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="url(#gA'+seed+')" opacity=".5"/>';
-  if(cat==='CENTRÁLNÍ BANKA'){
-    /* neoclassical facade: pediment + colonnade + steps — reads "institution" */
-    const base=H*0.86, cnt=6, colW=W*0.052, gap=(W*0.74)/(cnt-1), startX=W*0.13, roofH=H*0.16;
-    s+='<polygon points="'+(startX-W*0.05).toFixed(1)+','+base.toFixed(1)+' '+cx.toFixed(1)+','+(base-roofH-H*0.14).toFixed(1)+' '+(startX+gap*(cnt-1)+colW+W*0.05).toFixed(1)+','+base.toFixed(1)+'" style="fill:color-mix(in oklch, var(--txt) 20%, transparent)"/>';
-    s+='<rect x="'+(startX-W*0.06).toFixed(1)+'" y="'+(base-6).toFixed(1)+'" width="'+(gap*(cnt-1)+colW+W*0.12).toFixed(1)+'" height="6" style="fill:color-mix(in oklch, var(--txt) 30%, transparent)"/>';
-    for(let i=0;i<cnt;i++){
-      const x=startX+gap*i; const hh=base-(H*0.16+roofH*0.3);
-      s+='<rect x="'+x.toFixed(1)+'" y="'+(base-hh).toFixed(1)+'" width="'+colW.toFixed(1)+'" height="'+hh.toFixed(1)+'" style="fill:'+(i===Math.floor(cnt/2)?'var(--acc)':'color-mix(in oklch, var(--txt) 24%, transparent)')+'"/>';
-    }
-    s+='<rect x="0" y="'+base.toFixed(1)+'" width="'+W+'" height="'+(H-base).toFixed(1)+'" style="fill:color-mix(in oklch, var(--txt) 12%, transparent)"/>';
-  } else if(cat==='MAKRO'){
-    /* dusk skyline with a soft rising glow — growth read as atmosphere/illustration, not a plotted chart */
-    const skyId='skyM'+seed;
-    s+='<defs><linearGradient id="'+skyId+'" x1="0" y1="0" x2="0" y2="1">'+
-         '<stop offset="0%" style="stop-color:var(--bg-2)"/>'+
-         '<stop offset="100%" style="stop-color:var(--panel-2)"/>'+
-       '</linearGradient></defs>';
-    s+='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="url(#'+skyId+')"/>';
-    const sunX=W*(0.6+rnd()*0.14), sunY=H*0.3;
-    [[0.34,0.24],[0.5,0.15],[0.66,0.07]].forEach(f=>{ s+='<circle cx="'+sunX.toFixed(1)+'" cy="'+sunY.toFixed(1)+'" r="'+(H*f[0]).toFixed(1)+'" style="fill:color-mix(in oklch, var(--acc) '+(f[1]*100).toFixed(0)+'%, transparent)"/>'; });
-    const cnt=7, gap=W/cnt, base=H*0.94;
-    for(let i=0;i<cnt;i++){
-      const hh=H*(0.3+ ((i*37)%cnt)/cnt*0.22 + rnd()*0.2);
-      const bx=gap*i+gap*0.14, bw=gap*0.72, by=base-hh;
-      s+='<rect x="'+bx.toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+hh.toFixed(1)+'" style="fill:color-mix(in oklch, var(--txt) 26%, var(--panel-2))"/>';
-      const winRows=Math.max(1,Math.floor(hh/(H*0.11)));
-      for(let wr=0; wr<winRows; wr++){
-        if(rnd()>0.5) s+='<rect x="'+(bx+bw*0.26).toFixed(1)+'" y="'+(by+H*0.035+wr*H*0.11).toFixed(1)+'" width="'+(bw*0.48).toFixed(1)+'" height="'+(H*0.022).toFixed(1)+'" rx="1" style="fill:color-mix(in oklch, var(--acc) 55%, transparent)"/>';
-      }
-    }
-    s+='<rect x="0" y="'+base.toFixed(1)+'" width="'+W+'" height="'+(H-base).toFixed(1)+'" style="fill:color-mix(in oklch, var(--txt) 14%, transparent)"/>';
-  } else if(cat==='POLITIKA'){
-    /* globe with latitude/longitude + two flags either side — geopolitics, not a mood-blob */
-    const r=H*0.3;
-    s+='<circle cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" r="'+r.toFixed(1)+'" style="fill:color-mix(in oklch, var(--txt) 14%, transparent)"/>';
-    s+='<ellipse cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" rx="'+(r*0.42).toFixed(1)+'" ry="'+r.toFixed(1)+'" fill="none" style="stroke:var(--panel-2)" stroke-width="1.6"/>';
-    s+='<ellipse cx="'+cx.toFixed(1)+'" cy="'+cy.toFixed(1)+'" rx="'+r.toFixed(1)+'" ry="'+(r*0.42).toFixed(1)+'" fill="none" style="stroke:var(--panel-2)" stroke-width="1.6"/>';
-    s+='<line x1="'+(cx-r).toFixed(1)+'" y1="'+cy.toFixed(1)+'" x2="'+(cx+r).toFixed(1)+'" y2="'+cy.toFixed(1)+'" style="stroke:var(--panel-2)" stroke-width="1.6"/>';
-    [[cx-r*1.55,'var(--imp-md)'],[cx+r*1.1,'var(--acc)']].forEach(f=>{
-      const fx=f[0], poleH=H*0.62, topY=cy-r*0.95;
-      s+='<line x1="'+fx.toFixed(1)+'" y1="'+(topY+poleH).toFixed(1)+'" x2="'+fx.toFixed(1)+'" y2="'+topY.toFixed(1)+'" style="stroke:color-mix(in oklch, var(--txt) 30%, transparent)" stroke-width="2.4"/>';
-      s+='<polygon points="'+fx.toFixed(1)+','+topY.toFixed(1)+' '+(fx+W*0.11).toFixed(1)+','+(topY+H*0.075).toFixed(1)+' '+fx.toFixed(1)+','+(topY+H*0.15).toFixed(1)+'" style="fill:'+f[1]+'"/>';
-    });
-  } else if(cat==='KOMODITY'){
-    /* alternates barrel vs stacked gold ingots, deterministic per headline */
-    if(rnd()>0.5){
-      const bw=W*0.34, bh=H*0.62, bx=cx-bw/2, by=cy-bh/2;
-      s+='<rect x="'+bx.toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+bh.toFixed(1)+'" rx="'+(bw*0.22).toFixed(1)+'" style="fill:color-mix(in oklch, var(--acc) 34%, var(--panel-2))"/>';
-      [0.22,0.5,0.78].forEach(f=>{ s+='<line x1="'+bx.toFixed(1)+'" y1="'+(by+bh*f).toFixed(1)+'" x2="'+(bx+bw).toFixed(1)+'" y2="'+(by+bh*f).toFixed(1)+'" style="stroke:color-mix(in oklch, var(--txt) 24%, transparent)" stroke-width="3"/>'; });
-    } else {
-      const rows=3, ibw=W*0.3, ibh=H*0.13, gap2=H*0.03;
-      for(let i=0;i<rows;i++){
-        const iw=ibw-(i*W*0.035), by2=H*0.78-i*(ibh+gap2)-ibh;
-        s+='<polygon points="'+(cx-iw/2).toFixed(1)+','+(by2+ibh).toFixed(1)+' '+(cx-iw/2+iw*0.14).toFixed(1)+','+by2.toFixed(1)+' '+(cx+iw/2-iw*0.14).toFixed(1)+','+by2.toFixed(1)+' '+(cx+iw/2).toFixed(1)+','+(by2+ibh).toFixed(1)+'" style="fill:color-mix(in oklch, var(--imp-md) 55%, var(--panel-2))"/>';
-      }
-    }
-  } else {
-    /* illustrated ticker sign mounted on posts — a market object/fixture, not a spreadsheet grid */
-    const boardW=W*0.84, boardH=H*0.6, bx=(W-boardW)/2, by=H*0.14;
-    const postW=W*0.03, postH=H*0.22;
-    s+='<rect x="'+(bx+boardW*0.22).toFixed(1)+'" y="'+(by+boardH-2).toFixed(1)+'" width="'+postW.toFixed(1)+'" height="'+postH.toFixed(1)+'" rx="1.5" style="fill:color-mix(in oklch, var(--txt) 26%, transparent)"/>';
-    s+='<rect x="'+(bx+boardW*0.78-postW).toFixed(1)+'" y="'+(by+boardH-2).toFixed(1)+'" width="'+postW.toFixed(1)+'" height="'+postH.toFixed(1)+'" rx="1.5" style="fill:color-mix(in oklch, var(--txt) 26%, transparent)"/>';
-    s+='<rect x="'+bx.toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+boardW.toFixed(1)+'" height="'+boardH.toFixed(1)+'" rx="10" style="fill:var(--bg-2)" stroke="color-mix(in oklch, var(--txt) 20%, transparent)" stroke-width="1.5"/>';
-    const headH=boardH*0.17;
-    s+='<path d="M'+bx.toFixed(1)+' '+(by+headH).toFixed(1)+' V'+(by+10).toFixed(1)+' Q'+bx.toFixed(1)+' '+by.toFixed(1)+' '+(bx+10).toFixed(1)+' '+by.toFixed(1)+' H'+(bx+boardW-10).toFixed(1)+' Q'+(bx+boardW).toFixed(1)+' '+by.toFixed(1)+' '+(bx+boardW).toFixed(1)+' '+(by+10).toFixed(1)+' V'+(by+headH).toFixed(1)+' Z" style="fill:color-mix(in oklch, var(--acc) 22%, var(--bg-2))"/>';
-    for(let i=0;i<5;i++) s+='<rect x="'+(bx+boardW*0.05+i*boardW*0.045).toFixed(1)+'" y="'+(by+headH*0.4).toFixed(1)+'" width="'+(boardW*0.024).toFixed(1)+'" height="'+(headH*0.32).toFixed(1)+'" rx="1" style="fill:color-mix(in oklch, var(--acc) 75%, transparent)"/>';
-    const cols=5, rows=3, pad=boardW*0.06, cw=(boardW-pad*2)/cols, rh=(boardH-headH-boardH*0.08)/rows, top=by+headH+boardH*0.03;
-    for(let r=0;r<rows;r++){
-      for(let c=0;c<cols;c++){
-        const roll=rnd(); const fill= roll<0.18?'var(--pos)': roll>0.84?'var(--neg)':'color-mix(in oklch, var(--txt) 16%, transparent)';
-        const x=bx+pad+c*cw+cw*0.1, y=top+r*rh+rh*0.16, ww=cw*0.8, hh=rh*0.5;
-        s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+ww.toFixed(1)+'" height="'+hh.toFixed(1)+'" rx="3" style="fill:'+fill+'"/>';
-      }
-    }
-  }
-  for(let i=0;i<Math.min(pos,6);i++) s+='<circle cx="'+(rnd()*W).toFixed(1)+'" cy="'+(rnd()*H*0.86+H*0.06).toFixed(1)+'" r="3" style="fill:var(--pos)" opacity=".9"/>';
-  for(let i=0;i<Math.min(neg,6);i++) s+='<circle cx="'+(rnd()*W).toFixed(1)+'" cy="'+(rnd()*H*0.86+H*0.06).toFixed(1)+'" r="3" style="fill:var(--neg)" opacity=".9"/>';
-  return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid slice">'+s+'</svg>';
+/* ============================================================
+   ARTICLE PHOTOS — real photos only, never abstract/generated art.
+   Priority: (1) the source article's own featured image (Finnhub
+   `image` field / RSS enclosure|media:content|media:thumbnail — see
+   fetchFinnhub/fetchRSS), (2) a specific real-world entity photo
+   (central bank, Powell/Lagarde, commodity, company) resolved from
+   Wikipedia's public thumbnail API and cached, (3) the currency's
+   national flag (flagcdn.com) when the headline/affects name one,
+   (4) a category-level real photo, (5) the US flag as a guaranteed
+   final fallback so something real always renders.
+   ============================================================ */
+const FLAG_CC = {USD:'us',EUR:'eu',GBP:'gb',JPY:'jp',AUD:'au',CAD:'ca',CHF:'ch',NZD:'nz'};
+function flagUrl(cc){ return 'https://flagcdn.com/w640/'+cc+'.png'; }
+const FINAL_FALLBACK_IMG = flagUrl('us');
+// specific real-world entities — resolved to a real photo via Wikipedia's thumbnail API
+const ENTITY_TOPICS = [
+  [/\bpowell\b/i,'Jerome Powell'],
+  [/\blagarde\b/i,'Christine Lagarde'],
+  [/\bueda\b/i,'Kazuo Ueda'],
+  [/\bbailey\b/i,'Andrew Bailey (banker)'],
+  [/\b(fomc|federal reserve|\bfed\b)/i,'Federal Reserve'],
+  [/\b(ecb|european central bank)\b/i,'European Central Bank'],
+  [/\b(boe|bank of england)\b/i,'Bank of England'],
+  [/\b(boj|bank of japan)\b/i,'Bank of Japan'],
+  [/\b(snb|swiss national bank)\b/i,'Swiss National Bank'],
+  [/\b(rba|reserve bank of australia)\b/i,'Reserve Bank of Australia'],
+  [/\b(rbnz|reserve bank of new zealand)\b/i,'Reserve Bank of New Zealand'],
+  [/\b(boc|bank of canada)\b/i,'Bank of Canada'],
+  [/\btesla\b/i,'Gigafactory Texas'],
+  [/\bnvidia\b/i,'Nvidia'],
+  [/\bapple\b/i,'Apple Park'],
+  [/\b(gold|zlat|xau)\b/i,'Gold bar'],
+  [/\b(silver|stříbr|xag)\b/i,'Silver'],
+  [/\b(oil|ropa|crude|wti|brent)\b/i,'Oil well'],
+  [/\b(natural gas|\bgas\b|lng|plyn)\b/i,'Natural gas'],
+  [/\b(nasdaq|s&p|dow jones|wall street|\bnyse\b|us100|us500|us30)\b/i,'New York Stock Exchange']
+];
+// category-level real photo when no specific entity/currency matched
+const CAT_TOPIC = {
+  'CENTRÁLNÍ BANKA':'Federal Reserve',
+  'MAKRO':'Wall Street',
+  'POLITIKA':'United Nations Headquarters',
+  'KOMODITY':'Commodity market',
+  'TRH':'New York Stock Exchange'
+};
+function pickCurrency(n){
+  const h=n.headline||'';
+  for(const c of Object.keys(FLAG_CC)) if(new RegExp('\\b'+c+'\\b','i').test(h)) return c;
+  const a=(n.affects||[]).map(x=>x[0]).find(s=>FLAG_CC[s]);
+  return a||'';
+}
+function articleTopic(n){
+  const h=n.headline||'';
+  for(const e of ENTITY_TOPICS) if(e[0].test(h)) return e[1];
+  return CAT_TOPIC[n.cat]||'New York Stock Exchange';
+}
+async function wikiThumb(title){
+  const cache=LS.get('wikiimg_cache',{});
+  const rec=cache[title];
+  if(rec && (Date.now()-(rec.t||0))<30*24*3600*1000) return rec.url||'';
+  let url='';
+  try{
+    const r=await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(title.replace(/ /g,'_')));
+    if(r.ok){ const d=await r.json(); url=(d.thumbnail&&d.thumbnail.source)||(d.originalimage&&d.originalimage.source)||''; }
+  }catch(e){}
+  cache[title]={url,t:Date.now()}; LS.set('wikiimg_cache',cache);
+  return url;
+}
+// resolves n.fallbackImage for every item lacking a real n.image from its source, in one batch (dedup by topic)
+async function enrichImages(items){
+  const need=new Map();
+  items.forEach(n=>{
+    if(n.image || n.fallbackImage) return;
+    const cur=pickCurrency(n);
+    if(cur){ n.fallbackImage=flagUrl(FLAG_CC[cur]); return; }
+    const topic=articleTopic(n);
+    n._topic=topic;
+    if(!need.has(topic)) need.set(topic, wikiThumb(topic));
+  });
+  const entries=Array.from(need.entries());
+  if(!entries.length) return;
+  const urls=await Promise.all(entries.map(e=>e[1]));
+  const map={}; entries.forEach((e,i)=>{ map[e[0]]=urls[i]; });
+  items.forEach(n=>{ if(!n.image && !n.fallbackImage && n._topic) n.fallbackImage = map[n._topic] || ''; });
+}
+function articleImageHTML(n){
+  const primary = n.image || n.fallbackImage || FINAL_FALLBACK_IMG;
+  const secondary = n.image ? (n.fallbackImage || FINAL_FALLBACK_IMG) : FINAL_FALLBACK_IMG;
+  const isWikiFallback = !n.image && n.fallbackImage && /wikimedia|wikipedia/i.test(n.fallbackImage);
+  return '<img src="'+esc(primary)+'" alt="" loading="lazy" '+
+    'onerror="this.onerror=function(){this.onerror=null;this.src=\''+esc(FINAL_FALLBACK_IMG)+'\';};this.src=\''+esc(secondary)+'\';">'+
+    (isWikiFallback?'<span class="art-credit">Foto: Wikimedia Commons</span>':'');
 }
 
 function artPillsHTML(n, isLead){
@@ -1231,13 +1231,13 @@ function bodyHTML(n){
 }
 function heroCardHTML(n){
   const isFresh = n.hid && state.freshIds.has(n.hid);
-  return '<div class="hero'+(isFresh?' is-fresh':'')+'"><div class="artwrap">'+genArt(n,1120,280)+artPillsHTML(n,true)+'</div>'+
+  return '<div class="hero'+(isFresh?' is-fresh':'')+'"><div class="artwrap">'+articleImageHTML(n)+artPillsHTML(n,true)+'</div>'+
     '<div class="hero-body">'+bodyHTML(n)+'</div></div>';
 }
 function cardHTML(n,i){
   const sc=n.score||0;
   const isFresh = n.hid && state.freshIds.has(n.hid);
-  return '<div class="dispatch s'+sc+(isAnalysisItem(n)?' isana':'')+(isFresh?' is-fresh':'')+'" style="--i:'+(i||0)+'"><div class="artwrap">'+genArt(n,540,132)+artPillsHTML(n,false)+'</div>'+
+  return '<div class="dispatch s'+sc+(isAnalysisItem(n)?' isana':'')+(isFresh?' is-fresh':'')+'" style="--i:'+(i||0)+'"><div class="artwrap">'+articleImageHTML(n)+artPillsHTML(n,false)+'</div>'+
     '<div class="body">'+bodyHTML(n)+'</div></div>';
 }
 function deskHTML(d){
@@ -1579,6 +1579,7 @@ async function refresh(){
     await loadStaticExtrasOnce();
     const r=await runRefresh(state.settings);
     state.news=r.news||[]; state.conns=r.conns||[]; if(r.desk) state.desk=r.desk; state.status=r.status||'mock';
+    try{ await enrichImages(state.news); }catch(e){}
     state.lastError = r.error || '';
     if(state.autoFreeNote){ state.lastError = state.autoFreeNote + (state.lastError? ' · '+state.lastError : ''); state.autoFreeNote=''; }
     const h=heatFromHistory(getHistory()); if(Object.keys(h).some(k=>h[k]!==0)) state.heat=h;
