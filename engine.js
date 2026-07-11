@@ -796,6 +796,19 @@ async function fetchActionCOTHistory(){
       const srvTrim={}; sk.forEach(k=>srvTrim[k]=srv[k]);
       if(sk.length>=12) localStorage.setItem("cot_pct_server",JSON.stringify(srvTrim));
     }catch(e){}
+    // Srovnej i cot_data/cot_meta (scalar sync klíče, "lokál vždy vyhrává" bez
+    // rozlišení server/live — viz KEYS_SCALAR v sync.js). Bez tohohle getCOTLongShort()
+    // fallback, loadCOT() fallback i "stáří dat" watchdog dál četly starou
+    // live-fetchnutou hodnotu, i když cot_hist už byl opravený (viz reálný nález:
+    // PC dál ukazovalo EUR/JPY 100% long z cot_meta i po fixu cot_hist merge).
+    try{
+      const latestKey=Object.keys(j.weeks).sort().at(-1);
+      const latestWeek=latestKey&&j.weeks[latestKey];
+      if(latestWeek&&latestWeek.scores){
+        saveCOT(latestWeek.scores);
+        saveCOTMeta({source:"CFTC oficiální API (server sync)",asOf:cotWeekKey(latestKey),updatedAt:new Date().toISOString(),raw:latestWeek.raw||{},via:"server_sync"});
+      }
+    }catch(e){}
     return j;
   }catch(e){return null;}
 }
@@ -2623,7 +2636,23 @@ async function fetchSeasonality(pair,avKey){
   return data;
 }
 // COT % long/short z posledního snapshotu (syrové počty kontraktů velkých hráčů)
+// Preferuje cot_hist (chráněné src:"server" merge pravidlem v sync.js — viz
+// mergeObj/cot_hist) — cot_meta je scalar sync klíč ("lokál vždy vyhrává", bez
+// rozlišení server/live), takže bez týhle priority mohl zůstat zaseklý na
+// starém live-fetchi z jednoho zařízení i po cloud syncu (reálný nález: PC
+// ukazovalo EUR/JPY 100 % long, server měl 40/60 a 33/67 — cot_hist už tehdy
+// opravený byl, ale getCOTLongShort() dál četl neopravený cot_meta).
 function getCOTLongShort(currency){
+  try{
+    const hist=loadCOTHistory();
+    const keys=Object.keys(hist).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+    const lastKey=keys[keys.length-1];
+    const r0=lastKey&&hist[lastKey]&&hist[lastKey].raw&&hist[lastKey].raw[currency];
+    if(r0){
+      const L=(r0.levLong||0)+(r0.assetLong||0), S=(r0.levShort||0)+(r0.assetShort||0), tot=L+S;
+      if(tot>0) return {long:Math.round(L/tot*100), short:Math.round(S/tot*100), L,S};
+    }
+  }catch(e){}
   try{ const m=loadCOTMeta(); const r=m&&m.raw&&m.raw[currency]; if(!r) return null;
     const L=(r.levLong||0)+(r.assetLong||0), S=(r.levShort||0)+(r.assetShort||0); const tot=L+S;
     if(tot<=0) return null; return {long:Math.round(L/tot*100), short:Math.round(S/tot*100), L,S}; }catch(e){ return null; }
