@@ -240,7 +240,25 @@ function getScoreChangeDetail(currency,days=7){
   }catch(e){return null;}
 }
 
-function loadScoreHistory(){try{return JSON.parse(localStorage.getItem("score_hist")||"{}");}catch(e){return{};}}
+// ── PARSE-CACHE pro velké localStorage klíče ─────────────────────────
+// UI parsuje cot_hist/score_hist/journal/engine_log při každém renderu (PC
+// rendruje každou vteřinu kvůli hodinám) — stovky kB JSON.parse zbytečně.
+// Cache je 100% bezpečná proti stale datům: klíčem je SAMOTNÝ raw string
+// z localStorage — změní-li se (vlastní zápis, sync, druhý tab), reference
+// nesedí a parsuje se znovu. Žádné verzování, žádné invalidační díry.
+const _lsParseCache={};
+function _cachedParse(key,fallback){
+  try{
+    const raw=localStorage.getItem(key);
+    if(raw==null) return fallback();
+    const c=_lsParseCache[key];
+    if(c&&c.raw===raw) return c.val;
+    const val=JSON.parse(raw);
+    _lsParseCache[key]={raw,val};
+    return val;
+  }catch(e){return fallback();}
+}
+function loadScoreHistory(){const v=_cachedParse("score_hist",()=>({}));return (v&&typeof v==="object")?v:{};}
 
 // ── SCORE DELTA 24H (rolling, timestamped — nezávislé na denním score_hist) ──
 // score_hist výše ukládá jen 1 snapshot/den (přepisovaný), takže neumí "hodnotu
@@ -377,7 +395,7 @@ function loadSentiment(){
 function saveSentiment(data){try{localStorage.setItem("sent_data",JSON.stringify(data));}catch(e){}}
 
 // ── RETAIL SENTIMENT HISTORY (pro grafy) ─────────────────────
-function loadRetailHistory(){try{return JSON.parse(localStorage.getItem("retail_hist")||"{}");}catch(e){return{};}}
+function loadRetailHistory(){const v=_cachedParse("retail_hist",()=>({}));return (v&&typeof v==="object")?v:{};}
 function saveRetailSnapshot(sentData){
   try{
     const key=new Date().toISOString().split("T")[0];
@@ -720,7 +738,10 @@ function parseCOTFinancialText(txt){
   if(vals.length<5) throw new Error("COT parser našel jen "+vals.length+" měn. Zdroj změnil formát nebo proxy vrátila nekompletní text.");
   return{scores:{...COT_DEFAULT,...out},raw};
 }
-function loadCOTHistory(){try{return JSON.parse(localStorage.getItem("cot_hist")||"{}");}catch(e){return{};}}
+// Parse-cache (viz _cachedParse): mutátoři (saveCOTSnapshot, fetchActionCOTHistory…)
+// smí vrácený objekt mutovat JEN pokud hned poté volají setItem — to je stávající
+// vzor všech zapisovačů; nový kód ho musí dodržet.
+function loadCOTHistory(){const v=_cachedParse("cot_hist",()=>({}));return (v&&typeof v==="object")?v:{};}
 // Kanonický COT vstup pro scoreCurrency: poslední týden ze SDÍLENÉ historie (cot_hist),
 // do které se mergne server-cron data/cot_hist.json — stejná data na PC/mobilu/Classic.
 // Záměrně NE loadCOT()/"cot_data": to je per-zařízení live snapshot z fetchCOTAuto(),
@@ -2636,7 +2657,7 @@ function saveEngineDailySnapshot(scores){
 function explainScoreChange(currency,current){
   try{
     if(!current) return null;
-    const log=JSON.parse(localStorage.getItem("engine_log")||"{}");
+    const log=_cachedParse("engine_log",()=>({}))||{}; // volá se per měna per render — parse-cache nutná
     const today=new Date().toISOString().split("T")[0];
     const dates=Object.keys(log).sort().filter(d=>d<today);
     if(!dates.length) return null;
@@ -2766,7 +2787,7 @@ function scanOpportunities(pairs,scores,retailLatest,opts){
   return out.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
 }
 
-function loadJournal(){try{return JSON.parse(localStorage.getItem("journal")||"[]");}catch(e){return[];}}
+function loadJournal(){const v=_cachedParse("journal",()=>[]);return Array.isArray(v)?v:[];}
 
 // ── SEASONALITY z reálných měsíčních cen (Alpha Vantage FX_MONTHLY) ──
 async function fetchSeasonality(pair,avKey){
