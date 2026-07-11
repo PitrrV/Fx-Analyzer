@@ -2194,10 +2194,52 @@ function scoreCurrency(events,currency,cotData,sentData){
   try{const r=JSON.parse(localStorage.getItem("v5_regime")||"{}" );regime=r[currency]||"NEUTRAL";}catch(e){}
   const wt=getDynamicWeights(cotPct,regime);
   const riskAdj=getRiskSentimentAdj(currency);
+  // POZN. K VÁHÁM: fund+cot+sent+sea = 1.0 (normalizované váhy); risk/oil jsou
+  // ZÁMĚRNĚ aditivní korekce mimo váhový systém s vlastními stropy (±1.2 / ±2.0)
+  // — nejsou to "další váhy", ale situační přirážky. Není to bug.
+  // POZN. K CB: rozhodnutí centrální banky se záměrně propisuje TŘEMI kanály —
+  // beat/miss překvapení (Interest Rates kategorie ve fundScoreRaw), hladina
+  // sazby (yieldAdj) a trend cyklu (policyAdj). Každý kanál měří jinou vlastnost
+  // téže události; kombinovaný dopad vyhodnotit až na datech z engine_hist.
   const rawTotal=fundScore*wt.fund+cotScore*wt.cot+sentScore*wt.sent+seasonScore*wt.sea+momentumAdj*(MOMENTUM_ENABLED?0.3:0)+riskAdj+oilAdj;
   const total=parseFloat(Math.max(-10,Math.min(10,rawTotal)).toFixed(2));
+  // ── VÁŽENÉ KOMPONENTY (jediné místo pravdy pro rozpad skóre v UI) ──────────
+  // Σ components === score (na 2 des. místa). Fund lišta v UI dřív obsahovala
+  // Policy+Yield (jsou uvnitř fund_score) a zároveň se ukazovaly podruhé zvlášť,
+  // nevážené — Sezóna ±2 vypadala důležitě jako COT ±3, reálně přispívá ×0.02.
+  // Tady se každá složka rozpočítá svým skutečným příspěvkem do totalu:
+  // fundScore=clamp(fundRaw*g+yield+policy) → pokud clamp zasáhl, škáluj tři
+  // vnitřní složky proporcionálně; clamp totalu na ±10 = položka "Ořez".
+  const components=(()=>{
+    const inner=fundScoreRaw*g_fundConfidence+yieldAdj+policyAdj;
+    const fscale=(Math.abs(inner)>1e-9&&Math.abs(fundScore-inner)>1e-9)?fundScore/inner:1;
+    const list=[
+      {key:"fund_data",label:"Fundamenty (kalendář)",value:fundScoreRaw*g_fundConfidence*fscale*wt.fund,raw:parseFloat(fundScoreRaw.toFixed(2)),w:parseFloat((g_fundConfidence*fscale*wt.fund).toFixed(3))},
+      {key:"policy",label:"CB Policy",value:policyAdj*fscale*wt.fund,raw:policyAdj,w:parseFloat((fscale*wt.fund).toFixed(3))},
+      {key:"yield",label:"Real yield",value:yieldAdj*fscale*wt.fund,raw:yieldAdj,w:parseFloat((fscale*wt.fund).toFixed(3))},
+      {key:"cot",label:"COT",value:cotScore*wt.cot,raw:cotScore,w:wt.cot},
+      {key:"sent",label:"Retail",value:sentScore*wt.sent,raw:sentScore,w:wt.sent},
+      {key:"season",label:"Sezónnost",value:seasonScore*wt.sea,raw:seasonScore,w:wt.sea},
+      {key:"oil",label:"Ropa (WTI)",value:oilAdj,raw:oilAdj,w:1},
+      {key:"risk",label:"Risk režim",value:riskAdj,raw:riskAdj,w:1},
+    ];
+    if(MOMENTUM_ENABLED) list.push({key:"momentum",label:"Momentum",value:momentumAdj*0.3,raw:momentumAdj,w:0.3});
+    const sum=list.reduce((a,b)=>a+b.value,0);
+    const clipped=total-parseFloat(sum.toFixed(6));
+    if(Math.abs(clipped)>=0.005) list.push({key:"clip",label:"Ořez na ±10",value:clipped,raw:null,w:null});
+    // Zaokrouhlit na 2 des. místa a zaokrouhlovací zbytek přičíst největší
+    // složce — Σ zobrazených hodnot pak sedí na zobrazený score PŘESNĚ.
+    const out=list.map(c=>({...c,value:parseFloat(c.value.toFixed(2))}));
+    const residual=parseFloat((total-out.reduce((a,b)=>a+b.value,0)).toFixed(2));
+    if(Math.abs(residual)>=0.01&&out.length){
+      const big=out.reduce((a,b)=>Math.abs(b.value)>Math.abs(a.value)?b:a);
+      big.value=parseFloat((big.value+residual).toFixed(2));
+    }
+    return out;
+  })();
   return{
     score:total,
+    components,
     fund_score:fundScore,fund_score_raw:parseFloat(fundScoreRaw.toFixed(2)),yield_adj:yieldAdj,policy_adj:policyAdj,risk_adj:riskAdj,oil_adj:oilAdj,
     cot_score:cotScore,sent_score:sentScore,season_score:seasonScore,
     cot_pct:cotPct,momentum_adj:momentumAdj,weights_used:wt,
@@ -2571,7 +2613,11 @@ function saveEngineDailySnapshot(scores){
     const today=new Date().toISOString().split("T")[0];
     const log=JSON.parse(localStorage.getItem("engine_log")||"{}");
     const snap={};
-    CURRENCIES.forEach(c=>{const s=scores[c]||{};const o={};ENGINE_DAILY_FIELDS.forEach(f=>{o[f]=typeof s[f]==="number"?parseFloat(s[f].toFixed(3)):0;});snap[c]=o;});
+    CURRENCIES.forEach(c=>{const s=scores[c]||{};const o={};ENGINE_DAILY_FIELDS.forEach(f=>{o[f]=typeof s[f]==="number"?parseFloat(s[f].toFixed(3)):0;});
+      // ADITIVNĚ: vážené komponenty pro Δ vysvětlení (explainScoreChange) — syrová
+      // pole výše zůstávají beze změny kvůli classic 🔬 Backtest (runEngineLogBacktest).
+      if(Array.isArray(s.components)) o._comp=Object.fromEntries(s.components.map(x=>[x.key,x.value]));
+      snap[c]=o;});
     log[today]={ts:Date.now(),cur:snap};
     const keys=Object.keys(log).sort().slice(-400);const t={};keys.forEach(k=>t[k]=log[k]);
     localStorage.setItem("engine_log",JSON.stringify(t));
@@ -2589,11 +2635,25 @@ function explainScoreChange(currency,current){
     const prev=log[prevDate]&&log[prevDate].cur&&log[prevDate].cur[currency];
     if(!prev) return null;
     const parts=[];
-    for(const f of ENGINE_DAILY_FIELDS){
-      if(f==="score") continue;
-      const now=typeof current[f]==="number"?current[f]:0;
-      const d=parseFloat((now-(prev[f]||0)).toFixed(2));
-      if(Math.abs(d)>=0.05) parts.push({comp:f,label:ENGINE_DAILY_LABELS[f]||f,delta:d});
+    // Preferuj VÁŽENÉ komponentové delty (snapshot._comp, ukládá se od G3) —
+    // delty pak sčítají na totalDelta a neukazují dvakrát Policy/Yield uvnitř
+    // Fund. Starý snapshot bez _comp → fallback na syrová pole (bez momentum,
+    // dokud je vypnuté — vysvětlovat změnu složkou s nulovou vahou je nesmysl).
+    const curComp=Array.isArray(current.components)?Object.fromEntries(current.components.map(x=>[x.key,x.value])):null;
+    const compLabels=Array.isArray(current.components)?Object.fromEntries(current.components.map(x=>[x.key,x.label])):{};
+    if(curComp&&prev._comp){
+      for(const k of new Set([...Object.keys(curComp),...Object.keys(prev._comp)])){
+        const d=parseFloat(((curComp[k]||0)-(prev._comp[k]||0)).toFixed(2));
+        if(Math.abs(d)>=0.05) parts.push({comp:k,label:compLabels[k]||k,delta:d});
+      }
+    }else{
+      for(const f of ENGINE_DAILY_FIELDS){
+        if(f==="score") continue;
+        if(f==="momentum_adj"&&(typeof MOMENTUM_ENABLED==="undefined"||!MOMENTUM_ENABLED)) continue;
+        const now=typeof current[f]==="number"?current[f]:0;
+        const d=parseFloat((now-(prev[f]||0)).toFixed(2));
+        if(Math.abs(d)>=0.05) parts.push({comp:f,label:ENGINE_DAILY_LABELS[f]||f,delta:d});
+      }
     }
     parts.sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta));
     const totalDelta=parseFloat(((typeof current.score==="number"?current.score:0)-(prev.score||0)).toFixed(2));
