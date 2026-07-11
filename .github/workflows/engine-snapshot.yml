@@ -1,0 +1,37 @@
+name: Engine Snapshot
+
+on:
+  schedule:
+    # Denně po datových cronech (kalendář/ceny/ropa/retail běží přes den,
+    # COT pá/so/ne/po/út). 21:30 UTC po-pá = po US session, data za den kompletní.
+    - cron: "30 21 * * 1-5"
+  workflow_dispatch:        # ruční/API spuštění
+
+permissions:
+  contents: write
+
+concurrency:
+  group: engine-snapshot
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Denní snapshot komponent skóre
+        run: node scripts/snapshot-engine.js
+      - name: Commit při změně
+        run: |
+          git config user.name "engine-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/engine_hist.json)" ]; then
+            git add data/engine_hist.json
+            git commit -m "chore: update engine snapshot [skip ci]"
+            git push
+          else
+            echo "Beze změny."
+          fi
