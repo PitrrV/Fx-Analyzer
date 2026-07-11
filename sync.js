@@ -80,6 +80,9 @@
       [...Object.entries(b),...Object.entries(a)].forEach(([k,v])=>{
         if(!v) return;
         const nk=cotWeekKey(k), prev=fixed[nk];
+        // CFTC report je vždy úterý — ne-úterní klíč je fantom (viz
+        // isValidCOTWeekKey v engine.js); z cloudu se nesmí vracet.
+        if(typeof isValidCOTWeekKey==="function"&&!isValidCOTWeekKey(nk)) return;
         if(!prev){ fixed[nk]=v; return; }
         const prevSrv=prev.src==="server", vSrv=v.src==="server";
         if(vSrv&&!prevSrv){ fixed[nk]=v; return; }

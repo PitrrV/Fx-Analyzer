@@ -789,12 +789,26 @@ function cotWeekKey(s){
   }
   return k;
 }
-// Jednorázová migrace: přepiš staré textové klíče (z proxy fallbacku) na ISO a slij duplicity.
+// CFTC TFF report_date je VŽDY úterý — klíč cot_hist na jiný den je strukturálně
+// vadný (typicky fantom z .htm proxy fallbacku, kde se nepodařilo vyčíst
+// "Positions as of" a asOf spadlo na DNEŠNÍ datum — viz fetchCOTAuto). Fantom
+// se seřadí jako nejnovější týden a otráví všechno, co čte "poslední týden"
+// (getLatestCOTScores → COT skóre, getCOTLongShort → 100% long panely, grafy),
+// server priorita ho nepřepíše (server ten "týden" nemá) a sync ho roznese dál.
+// Vynucuje se na VŠECH vstupních bodech: migrace při načtení (okamžitý lokální
+// úklid), saveCOTSnapshot (nevznikne), fetchActionCOTHistory (nepřežije merge)
+// a sync.js mergeObj (nevrátí se z cloudu).
+function isValidCOTWeekKey(k){
+  return /^\d{4}-\d{2}-\d{2}$/.test(k)&&new Date(k+"T00:00:00Z").getUTCDay()===2;
+}
+// Migrace při každém načtení: přepiš staré textové klíče (z proxy fallbacku) na
+// ISO, slij duplicity a ZAHOĎ ne-úterní fantomové záznamy.
 function migrateCOTHistoryKeys(){
   try{
     const hist=loadCOTHistory(); const out={}; let changed=false;
     for(const k of Object.keys(hist)){
       const nk=cotWeekKey(k); if(nk!==k) changed=true;
+      if(!isValidCOTWeekKey(nk)){ changed=true; continue; } // fantom (ne-úterý) pryč
       if(!out[nk] || String(hist[k]?.updatedAt||"")>String(out[nk]?.updatedAt||"")) out[nk]=hist[k];
     }
     if(changed){
@@ -807,6 +821,10 @@ function migrateCOTHistoryKeys(){
 function saveCOTSnapshot(scores,meta){
   try{
     const key=cotWeekKey(meta?.asOf);
+    // Ne-úterní klíč = nepodařilo se spolehlivě určit datum reportu → do trvalé
+    // historie NEZAPISOVAT (cot_data/cot_meta se uloží dál a server sync je
+    // při dalším načtení srovná; historie musí zůstat čistá).
+    if(!isValidCOTWeekKey(key)){ try{console.warn("saveCOTSnapshot: přeskočen ne-úterní klíč",key);}catch(e){} return; }
     // src:"live" — od zařízení, ne od serverového cronu; fetchActionCOTHistory()/
     // sync.js merge ho smí přepsat serverovou hodnotou, jakmile ta pro týden dorazí.
     const hist=loadCOTHistory();hist[key]={scores,raw:meta?.raw||{},updatedAt:new Date().toISOString(),src:"live"};
@@ -841,7 +859,8 @@ async function fetchActionCOTHistory(){
       // vs správných 40/60 a 33/67 ze serveru — cloud merge dřív řešil jen updatedAt).
       hist[key]={...week,src:"server"};
     }
-    const keys=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);
+    // Fantomové ne-úterní klíče nesmí přežít merge (viz isValidCOTWeekKey).
+    const keys=Object.keys(hist).filter(isValidCOTWeekKey).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);
     const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
     localStorage.setItem("cot_hist",JSON.stringify(trimmed));
     // Kanonický snapshot ČISTĚ serverových týdnů (jen scores) pro percentil:
