@@ -951,7 +951,7 @@ function DashboardCalendarPanel({events,pair,onSetManual}){
       <span>TIME</span><span>CCY</span><span>EVENT</span><span>IMPACT</span><span style={{textAlign:"right"}}>ACTUAL</span><span style={{textAlign:"right"}}>FORECAST</span><span style={{textAlign:"right"}}>PREV</span><span style={{textAlign:"right"}}>SURPRISE</span>
     </div>
     {list.length?list.map((e,i)=><CalendarEventRow key={i} e={e} compact={true} onSetManual={onSetManual}/>) : <div style={{color:"#8b949e",fontSize:13,padding:12}}>Pro {pair?.pair||"vybraný filtr"} teď nejsou dostupné žádné relevantní události. Zkus refresh Finnhub dat.</div>}
-    <div style={{fontSize:10,color:"#4a6a88",marginTop:10,lineHeight:1.45}}>Interpretace: BEAT/MISS je počítaný podle typu události. U unemployment/claims je nižší výsledek bullish, u CPI/sazeb/NFP je vyšší výsledek většinou bullish.</div>
+    <div style={{fontSize:10,color:"#4a6a88",marginTop:10,lineHeight:1.45}}>Interpretace: BEAT/MISS je počítaný podle typu události. U unemployment/claims je nižší výsledek bullish, u CPI/sazeb/NFP je vyšší výsledek většinou bullish. PMI se navíc hodnotí vůči hranici 50 (nad = expanze). US data ovlivňují ve skóre i CAD a CHF (nepřímá relevance, ~45 % váhy) — v tomhle filtru je ale neuvidíš.</div>
   </div>;
 }
 

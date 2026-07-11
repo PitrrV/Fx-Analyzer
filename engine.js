@@ -2438,14 +2438,18 @@ function buildDailySeries(currency,windowDays){
   return {dates,values};
 }
 function getCOTNetSeries(currency,limit=104){
+  // Jen týdny s raw daty (levNet) — dřívější fallback na scores[c] míchal do
+  // JEDNÉ křivky dvě jednotky (net kontrakty/10k vs. skóre −3..+3) a dělal
+  // falešné zuby v historii. Týden bez raw se vynechá (drobná mezera v ose,
+  // ale konzistentní jednotka). Jednotka: net pozice lev. funds ×10 tis. kontraktů.
   const hist=loadCOTHistory();
-  const dates=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-limit);
-  const values=dates.map(d=>{
+  const all=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-limit);
+  const dates=[],values=[];
+  for(const d of all){
     const r=hist[d]?.raw?.[currency];
-    if(r&&Number.isFinite(r.levNet)) return r.levNet/10000;
-    return hist[d]?.scores?.[currency]??0;
-  });
-  return {dates,values};
+    if(r&&Number.isFinite(r.levNet)){ dates.push(d); values.push(r.levNet/10000); }
+  }
+  return {dates,values,unit:"net lev. funds · ×10 tis. kontraktů"};
 }
 function getRetailPairData(pair,sentData={}){
   const bLong=Number(sentData?.[pair.base] ?? 50);
