@@ -27,19 +27,22 @@ const STANDARD_PAIRS=[
 
 const EVENT_RULES=[
   // direction: 1 = vyšší actual než forecast je bullish; -1 = nižší actual je bullish; "pmi" = kombinuje beat/miss + hranici 50
-  {cat:"Interest Rates",keys:["interest rate","rate decision","rate statement","funds rate","policy rate","bank rate","deposit facility rate","refinancing rate","cash rate","overnight rate","main refinancing"],w:3.5,dir:1,cap:3},
-  {cat:"Inflation",keys:["cpi","consumer price index","inflation rate","core inflation","hicp","pce","personal consumption","ppi","producer price"],w:3.0,dir:1,cap:3},
+  // Pozn.: dřívější pole "cap" (per-kategorii strop) se nikde nečetlo — odstraněno.
+  // Případný strop počtu eventů na kategorii vyhodnotit až na datech ze serverového
+  // snapshotu komponent (data/engine_hist.json), ne naslepo.
+  {cat:"Interest Rates",keys:["interest rate","rate decision","rate statement","funds rate","policy rate","bank rate","deposit facility rate","refinancing rate","cash rate","overnight rate","main refinancing"],w:3.5,dir:1},
+  {cat:"Inflation",keys:["cpi","consumer price index","inflation rate","core inflation","hicp","pce","personal consumption","ppi","producer price"],w:3.0,dir:1},
   // Pořadí záměrné: "Labor -Unemployment" MUSÍ být před "Labor +Jobs" — "unemployment"
   // obsahuje jako substring "employment", takže "Unemployment Rate"/"Unemployment Claims"
   // by jinak vždy chytila +Jobs (dir:1) místo správné -Unemployment (dir:-1) a engine by
   // KAŽDÝ pokles nezaměstnanosti (bullish) vykládal jako bearish miss a naopak.
-  {cat:"Labor -Unemployment",keys:["unemployment rate","unemployment claims","unemployment change","jobless claims","initial claims","continuing claims","claimant count"],w:3.0,dir:-1,cap:4},
-  {cat:"Labor +Jobs",keys:["non-farm","nonfarm","payroll","employment change","employment","adp","average hourly earnings","wage","earnings"],w:3.0,dir:1,cap:4},
-  {cat:"GDP",keys:["gdp","gross domestic product"],w:2.2,dir:1,cap:2},
-  {cat:"PMI",keys:["manufacturing pmi","services pmi","service pmi","composite pmi","pmi","purchasing managers","ism manufacturing","ism services"],w:1.8,dir:"pmi",cap:2},
-  {cat:"Retail Sales",keys:["retail sales"],w:1.7,dir:1,cap:2},
-  {cat:"External Balance",keys:["trade balance","current account"],w:1.0,dir:1,cap:1},
-  {cat:"Confidence",keys:["consumer confidence","business confidence","sentiment","zew","ifo"],w:1.0,dir:1,cap:1},
+  {cat:"Labor -Unemployment",keys:["unemployment rate","unemployment claims","unemployment change","jobless claims","initial claims","continuing claims","claimant count"],w:3.0,dir:-1},
+  {cat:"Labor +Jobs",keys:["non-farm","nonfarm","payroll","employment change","employment","adp","average hourly earnings","wage","earnings"],w:3.0,dir:1},
+  {cat:"GDP",keys:["gdp","gross domestic product"],w:2.2,dir:1},
+  {cat:"PMI",keys:["manufacturing pmi","services pmi","service pmi","composite pmi","pmi","purchasing managers","ism manufacturing","ism services"],w:1.8,dir:"pmi"},
+  {cat:"Retail Sales",keys:["retail sales"],w:1.7,dir:1},
+  {cat:"External Balance",keys:["trade balance","current account"],w:1.0,dir:1},
+  {cat:"Confidence",keys:["consumer confidence","business confidence","sentiment","zew","ifo"],w:1.0,dir:1},
 ];
 
 function getEventMeta(name=""){
@@ -147,7 +150,7 @@ try{
 // Zdroj kalendáře pro diagnostiku (nastavuje každý frontend po resolv fallbacků)
 let g_calSource="";
 // Důvěra ve fundamentální data podle délky historie kalendáře.
-// 1 = plná (Finnhub 15 měsíců, ladění s 65% WR). <1 = krátká záloha (ForexFactory
+// 1 = plná (Finnhub 15 měsíců). <1 = krátká záloha (ForexFactory
 // ~3 týdny) → fundamentální tilt z dat se ztlumí, ať pár čerstvých čísel nerozhází
 // celý žebříček a engine se víc opře o stabilní COT/yield/policy.
 let g_fundConfidence=1;
@@ -180,7 +183,7 @@ function parseEventTime(t){
 }
 function evDate(ev){return new Date(parseEventTime(ev&&ev.time));}
 function recency(dateStr){
-  const d=(Date.now()-new Date(dateStr))/86400000;
+  const d=(Date.now()-parseEventTime(dateStr))/86400000; // jednotné UTC parsování (viz parseEventTime)
   return d<=90?1.8:d<=180?1.4:d<=365?1.0:0.7;
 }
 function eventRelevance(currency,ev){
@@ -206,17 +209,56 @@ function saveScoreHistory(scores){
   }catch(e){}
 }
 function getScoreChange(currency,days=7){
+  const d=getScoreChangeDetail(currency,days);
+  return d?d.delta:0;
+}
+// Skutečný kalendářní rozdíl: referenční záznam = nejbližší k (dnes − days dní),
+// tolerance ±3 dny. Dřívější dates[len-1-days] bral 7. ZÁZNAM zpět, ne 7 dní —
+// score_hist má záznam jen za den s otevřenou appkou, takže "7d" chip po pauze
+// tiše pokrýval klidně měsíc. Vrací {delta, spanDays} — UI zobrazí skutečné
+// rozpětí; null = žádný použitelný referenční den (chip se skryje, nelže).
+function getScoreChangeDetail(currency,days=7){
   try{
     const hist=JSON.parse(localStorage.getItem("score_hist")||"{}");
-    const dates=Object.keys(hist).sort();
-    if(dates.length<2) return 0;
-    const cur=hist[dates[dates.length-1]]?.[currency]||0;
-    const past=hist[dates[Math.max(0,dates.length-1-days)]]?.[currency]||0;
-    return parseFloat((cur-past).toFixed(1));
-  }catch(e){return 0;}
+    const dates=Object.keys(hist).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    if(dates.length<2) return null;
+    const curDate=dates[dates.length-1];
+    const cur=hist[curDate]?.[currency];
+    if(typeof cur!=="number") return null;
+    const targetMs=parseEventTime(curDate)-days*86400000;
+    let best=null,bestDiff=Infinity;
+    for(let i=0;i<dates.length-1;i++){
+      const ms=parseEventTime(dates[i]);
+      const dd=Math.abs(ms-targetMs);
+      if(dd<bestDiff){bestDiff=dd;best=dates[i];}
+    }
+    if(!best||bestDiff>3*86400000) return null; // mimo toleranci ±3 dny
+    const past=hist[best]?.[currency];
+    if(typeof past!=="number") return null;
+    const spanDays=Math.round((parseEventTime(curDate)-parseEventTime(best))/86400000);
+    return {delta:parseFloat((cur-past).toFixed(1)),spanDays,from:best,to:curDate};
+  }catch(e){return null;}
 }
 
-function loadScoreHistory(){try{return JSON.parse(localStorage.getItem("score_hist")||"{}");}catch(e){return{};}}
+// ── PARSE-CACHE pro velké localStorage klíče ─────────────────────────
+// UI parsuje cot_hist/score_hist/journal/engine_log při každém renderu (PC
+// rendruje každou vteřinu kvůli hodinám) — stovky kB JSON.parse zbytečně.
+// Cache je 100% bezpečná proti stale datům: klíčem je SAMOTNÝ raw string
+// z localStorage — změní-li se (vlastní zápis, sync, druhý tab), reference
+// nesedí a parsuje se znovu. Žádné verzování, žádné invalidační díry.
+const _lsParseCache={};
+function _cachedParse(key,fallback){
+  try{
+    const raw=localStorage.getItem(key);
+    if(raw==null) return fallback();
+    const c=_lsParseCache[key];
+    if(c&&c.raw===raw) return c.val;
+    const val=JSON.parse(raw);
+    _lsParseCache[key]={raw,val};
+    return val;
+  }catch(e){return fallback();}
+}
+function loadScoreHistory(){const v=_cachedParse("score_hist",()=>({}));return (v&&typeof v==="object")?v:{};}
 
 // ── SCORE DELTA 24H (rolling, timestamped — nezávislé na denním score_hist) ──
 // score_hist výše ukládá jen 1 snapshot/den (přepisovaný), takže neumí "hodnotu
@@ -318,6 +360,21 @@ function svgPolyline(values,w=360,h=120,pad=16){
 }
 function pairBiasScore(p){return Math.round(Math.max(0,Math.min(100,50+(p.dir==="BUY"?p.diff:-p.diff)*3.5)));}
 
+// ── PÁSMA SÍLY DIFF — JEDINÉ MÍSTO PRAVDY ────────────────────────────
+// Orientační heuristika, NE backtestem ověřené pásmo: dřívější claim "diff 2–3
+// = 65% WR" nebyl reprodukován (viz data/calibration.json — COT-diff složka
+// po odstranění look-ahead biasu edge neukazuje; pásma na CELÉM skóre půjde
+// ověřit až z data/engine_hist.json po nasbírání historie komponent).
+// Hranice: diff >= strong je SILNÝ (dřív se UI badge [>=3] a deník [<=3]
+// na přesné hranici 3.0 rozcházely; classic měl navíc vlastní prahy >=5/>=2.5).
+const BAND_THRESHOLDS={weak:2,strong:3};
+const BAND_DISCLAIMER="Orientační pásmo síly rozdílu skóre — neověřená heuristika, kalibrace probíhá.";
+function getDiffBand(diff){
+  if(diff==null||isNaN(diff)) return null;
+  const a=Math.abs(diff);
+  return a<BAND_THRESHOLDS.weak?"slabý":a<BAND_THRESHOLDS.strong?"sweetspot":"silný";
+}
+
 // ── COT & RETAIL SENTIMENT (auto + fallback localStorage) ─────────
 const COT_DEFAULT=Object.fromEntries(CURRENCIES.map(c=>[c,0]));
 const SENT_DEFAULT=Object.fromEntries(CURRENCIES.map(c=>[c,50]));
@@ -338,7 +395,7 @@ function loadSentiment(){
 function saveSentiment(data){try{localStorage.setItem("sent_data",JSON.stringify(data));}catch(e){}}
 
 // ── RETAIL SENTIMENT HISTORY (pro grafy) ─────────────────────
-function loadRetailHistory(){try{return JSON.parse(localStorage.getItem("retail_hist")||"{}");}catch(e){return{};}}
+function loadRetailHistory(){const v=_cachedParse("retail_hist",()=>({}));return (v&&typeof v==="object")?v:{};}
 function saveRetailSnapshot(sentData){
   try{
     const key=new Date().toISOString().split("T")[0];
@@ -681,7 +738,10 @@ function parseCOTFinancialText(txt){
   if(vals.length<5) throw new Error("COT parser našel jen "+vals.length+" měn. Zdroj změnil formát nebo proxy vrátila nekompletní text.");
   return{scores:{...COT_DEFAULT,...out},raw};
 }
-function loadCOTHistory(){try{return JSON.parse(localStorage.getItem("cot_hist")||"{}");}catch(e){return{};}}
+// Parse-cache (viz _cachedParse): mutátoři (saveCOTSnapshot, fetchActionCOTHistory…)
+// smí vrácený objekt mutovat JEN pokud hned poté volají setItem — to je stávající
+// vzor všech zapisovačů; nový kód ho musí dodržet.
+function loadCOTHistory(){const v=_cachedParse("cot_hist",()=>({}));return (v&&typeof v==="object")?v:{};}
 // Kanonický COT vstup pro scoreCurrency: poslední týden ze SDÍLENÉ historie (cot_hist),
 // do které se mergne server-cron data/cot_hist.json — stejná data na PC/mobilu/Classic.
 // Záměrně NE loadCOT()/"cot_data": to je per-zařízení live snapshot z fetchCOTAuto(),
@@ -1297,6 +1357,24 @@ async function fetchTextWithProxies(url){
 }
 const FF_MONTHS_ABBR=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
 function ffWeekParam(d){return FF_MONTHS_ABBR[d.getMonth()]+d.getDate()+"."+d.getFullYear();}
+// Časy na forexfactory.com stránkách jsou v zóně FF session (default US Eastern),
+// NE v UTC — dřívější orazítkování "Z" posouvalo každý backfill event o 4–5 h
+// (a večerní US eventy do špatného dne → duplicity proti správně časovaným cron
+// datům). Převod ET→UTC přes Intl (respektuje DST bez externí knihovny).
+function etToUtcISO(y,mo,day,hh,mm){
+  try{
+    const guess=Date.UTC(y,mo,day,hh,mm,0);
+    const fmt=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false});
+    // offset = jak se guess (braný jako UTC) zobrazí v ET; rozdíl = posun zóny
+    const p=Object.fromEntries(fmt.formatToParts(new Date(guess)).map(x=>[x.type,x.value]));
+    const asET=Date.UTC(+p.year,+p.month-1,+p.day,(+p.hour)%24,+p.minute,0);
+    const offsetMs=guess-asET; // ET je za UTC → offset kladný (4–5 h)
+    return new Date(guess+offsetMs).toISOString().replace(/\.\d{3}Z$/,"Z");
+  }catch(e){
+    // Fallback bez Intl: pevný odhad EST (UTC-5) — pořád lepší než tvářit se jako UTC
+    return new Date(Date.UTC(y,mo,day,hh+5,mm,0)).toISOString().replace(/\.\d{3}Z$/,"Z");
+  }
+}
 function ffImpactFromEl(el){
   if(!el)return"";
   const t=(((el.getAttribute&&el.getAttribute("title"))||"")+" "+(el.className||"")+" "+(el.textContent||"")).toLowerCase();
@@ -1319,9 +1397,11 @@ function parseFFCalendarHTML(html,year){
     if(tm){let h=+tm[1];mn=tm[2];if(tm[3]==="pm"&&h!==12)h+=12;if(tm[3]==="am"&&h===12)h=0;hh=String(h).padStart(2,"0");}
     const impEl=q(".calendar__impact span, .impact span, .calendar__impact");
     const actEl=q(".calendar__actual, .actual"),forEl=q(".calendar__forecast, .forecast"),prevEl=q(".calendar__previous, .previous");
-    const iso=`${year}-${String(cur.mi+1).padStart(2,"0")}-${String(cur.day).padStart(2,"0")}T${hh}:${mn}:00Z`;
-    out.push(normImportEvent({event:ev,currency:ccy,datetime:iso,impact:ffImpactFromEl(impEl),
-      actual:actEl?actEl.textContent.trim():"",forecast:forEl?forEl.textContent.trim():"",previous:prevEl?prevEl.textContent.trim():""}));
+    const iso=etToUtcISO(year,cur.mi,cur.day,+hh,+mn); // FF časy jsou ET, ne UTC
+    const m0=normImportEvent({event:ev,currency:ccy,datetime:iso,impact:ffImpactFromEl(impEl),
+      actual:actEl?actEl.textContent.trim():"",forecast:forEl?forEl.textContent.trim():"",previous:prevEl?prevEl.textContent.trim():""});
+    if(m0) m0._src="ff-backfill"; // marker zdroje — do budoucna jde poznat, odkud záznam je
+    out.push(m0);
   }catch(e){} });
   return out.filter(Boolean);
 }
@@ -1628,7 +1708,7 @@ function getCurrencyMomentum(currency){
     return parseFloat(Math.max(-1,Math.min(1,(diffs.reduce((a,b)=>a+b,0)/diffs.length)*0.35)).toFixed(2));
   }catch(e){return 0;}
 }
-// Momentum byl historicky kvůli bugu vždy 0 → backtest s 65% WR běžel BEZ něj.
+// Momentum byl historicky kvůli bugu vždy 0 → původní ladění vah běželo BEZ něj.
 // Necháváme momentum počítat (loguje se a vyhodnocuje v 🔬 Backtest tabu),
 // ale do živého skóre nepřispívá, dokud ho backtest neověří. Zapneš = true.
 const MOMENTUM_ENABLED=false;
@@ -1853,7 +1933,11 @@ function getAutoUpdateStatus(){
 }
 function getDynamicWeights(cotPct,regime){
   // Audit výsledek: sezónnost při váze 8% škodí výsledkům (+0.6% WR bez ní).
-  // Redukováno na 2%. CB Policy zvýšena. Backtest 2022-2024: WR diff2-3=65.5% PF=2.039.
+  // Redukováno na 2%. CB Policy zvýšena.
+  // POZOR: dřívější claim "Backtest 2022-2024: WR diff2-3=65.5% PF=2.039" NEBYL
+  // reprodukován — serverová kalibrace (data/calibration.json, 2024-2026, po
+  // opravě look-ahead biasu) ukazuje pro COT-diff složku PF<1 napříč gridem.
+  // Plnohodnotné ověření vah celého enginu čeká na data/engine_hist.json.
   // Sweep 2010–2026 (600 hodnocených týdnů, ~11 000 obchodů, 9 definic percentil
   // okna, horizonty 1t/4t, obě poloviny období zvlášť): obchody v týdnech s
   // percentil-extrémem dopadly VŽDY hůř než zbytek (PF 0.74–0.91 vs 0.91–1.06,
@@ -1936,11 +2020,14 @@ function buildForecastV5(pair,scores,calData,upcoming){
   const hoursToNews=getHoursToHighImpact(base,quote,upcoming);
   const newsDiscount=hoursToNews<12?-12:hoursToNews<24?-8:hoursToNews<48?-4:0;
   prob+=newsDiscount;
-  // Faktor 4: COT extreme korekce
+  // Faktor 4: COT extreme korekce — SYMETRICKÁ pro base i quote. Dřívější
+  // asymetrie (base ±7/+3, quote jen −5 bez bonusu) neměla žádné zdůvodnění
+  // v kódu ani datech; princip "bez důkazu žádná asymetrie". Přehodnotit na
+  // datech z data/engine_hist.json.
   const cotPctB=getCOTPercentile(base);const cotPctQ=getCOTPercentile(quote);
   let cotAdj=0;
   if(cotPctB!==null){const d=curDiff>0?1:-1;if(cotPctB>88&&d>0) cotAdj-=7;if(cotPctB<12&&d<0) cotAdj-=7;if(cotPctB>70&&d>0) cotAdj+=3;if(cotPctB<30&&d<0) cotAdj+=3;}
-  if(cotPctQ!==null){const d=curDiff>0?-1:1;if(cotPctQ>88&&d>0) cotAdj-=5;if(cotPctQ<12&&d<0) cotAdj-=5;}
+  if(cotPctQ!==null){const d=curDiff>0?-1:1;if(cotPctQ>88&&d>0) cotAdj-=7;if(cotPctQ<12&&d<0) cotAdj-=7;if(cotPctQ>70&&d>0) cotAdj+=3;if(cotPctQ<30&&d<0) cotAdj+=3;}
   prob+=cotAdj;
   prob=Math.round(Math.max(35,Math.min(75,prob)));
   const dir=combined>0?"BUY":"SELL";
@@ -2092,7 +2179,12 @@ function calcConvictionScore(pair,scores,aiAnalyses){
       if(oilMatchesTrade){stars++;reasons.push("WTI Ropa: "+(oilSt?.direction||"")+" ("+( oilSt?.mom4w?.toFixed(1)||"?")+"% 4t)");}
     }
   }
-  return{stars,reasons};
+  // Faktorů je interně 6 (CB, yield, fundamenty, COT, AI, ropa), ale hvězdičková
+  // škála v UI je všude 0–5 ("X / 5") — CAD pár s plnou konfluencí vracel 6 a
+  // '☆'.repeat(5-6) shazoval render (RangeError v classic). Clamp TADY, v jediném
+  // místě pravdy — reasons zůstávají všechny (tooltip smí vypsat i 6 důvodů);
+  // šestý souhlasný faktor funguje jako pojistka dorovnávající chybějící jiný.
+  return{stars:Math.min(5,stars),reasons};
 }
 
 function scoreCurrency(events,currency,cotData,sentData){
@@ -2110,7 +2202,13 @@ function scoreCurrency(events,currency,cotData,sentData){
     cats[meta.cat]=(cats[meta.cat]||0)+contribution;
     used.push({...ev,dir,w,r,relLabel:rel.label,category:meta.cat,interpretation:meta.dir===-1?"nižší = bullish":meta.dir==="pmi"?"PMI 50 + beat/miss":"vyšší = bullish"});
   }
-  const fundScoreRaw=weight>0?Math.max(-10,Math.min(10,(score/weight)*10)):0;
+  // Shrinkage n/(n+k), k=3: score/weight je vážený průměr směrů ±1 — s jediným
+  // beat eventem by fundScoreRaw saturoval na ±10 ("jedno číslo ≠ celý příběh").
+  // k=3: 1 event → 25 % tiltu, 5 → 63 %, 10 → 77 %, 30+ → >91 % (běžný počet
+  // eventů v 80t okně skóre prakticky nemění). Hodnotu k přehodnotit na datech
+  // z data/engine_hist.json.
+  const nEv=used.length;
+  const fundScoreRaw=weight>0?Math.max(-10,Math.min(10,(score/weight)*10*(nEv/(nEv+3)))):0;
   const yieldAdj=getRealYieldScore(currency);
   const policyAdj=getCBPolicyScore(currency);
   // Ztlum jen data-tilt z kalendáře (fundScoreRaw) dle důvěry v délku historie;
@@ -2126,10 +2224,52 @@ function scoreCurrency(events,currency,cotData,sentData){
   try{const r=JSON.parse(localStorage.getItem("v5_regime")||"{}" );regime=r[currency]||"NEUTRAL";}catch(e){}
   const wt=getDynamicWeights(cotPct,regime);
   const riskAdj=getRiskSentimentAdj(currency);
+  // POZN. K VÁHÁM: fund+cot+sent+sea = 1.0 (normalizované váhy); risk/oil jsou
+  // ZÁMĚRNĚ aditivní korekce mimo váhový systém s vlastními stropy (±1.2 / ±2.0)
+  // — nejsou to "další váhy", ale situační přirážky. Není to bug.
+  // POZN. K CB: rozhodnutí centrální banky se záměrně propisuje TŘEMI kanály —
+  // beat/miss překvapení (Interest Rates kategorie ve fundScoreRaw), hladina
+  // sazby (yieldAdj) a trend cyklu (policyAdj). Každý kanál měří jinou vlastnost
+  // téže události; kombinovaný dopad vyhodnotit až na datech z engine_hist.
   const rawTotal=fundScore*wt.fund+cotScore*wt.cot+sentScore*wt.sent+seasonScore*wt.sea+momentumAdj*(MOMENTUM_ENABLED?0.3:0)+riskAdj+oilAdj;
   const total=parseFloat(Math.max(-10,Math.min(10,rawTotal)).toFixed(2));
+  // ── VÁŽENÉ KOMPONENTY (jediné místo pravdy pro rozpad skóre v UI) ──────────
+  // Σ components === score (na 2 des. místa). Fund lišta v UI dřív obsahovala
+  // Policy+Yield (jsou uvnitř fund_score) a zároveň se ukazovaly podruhé zvlášť,
+  // nevážené — Sezóna ±2 vypadala důležitě jako COT ±3, reálně přispívá ×0.02.
+  // Tady se každá složka rozpočítá svým skutečným příspěvkem do totalu:
+  // fundScore=clamp(fundRaw*g+yield+policy) → pokud clamp zasáhl, škáluj tři
+  // vnitřní složky proporcionálně; clamp totalu na ±10 = položka "Ořez".
+  const components=(()=>{
+    const inner=fundScoreRaw*g_fundConfidence+yieldAdj+policyAdj;
+    const fscale=(Math.abs(inner)>1e-9&&Math.abs(fundScore-inner)>1e-9)?fundScore/inner:1;
+    const list=[
+      {key:"fund_data",label:"Fundamenty (kalendář)",value:fundScoreRaw*g_fundConfidence*fscale*wt.fund,raw:parseFloat(fundScoreRaw.toFixed(2)),w:parseFloat((g_fundConfidence*fscale*wt.fund).toFixed(3))},
+      {key:"policy",label:"CB Policy",value:policyAdj*fscale*wt.fund,raw:policyAdj,w:parseFloat((fscale*wt.fund).toFixed(3))},
+      {key:"yield",label:"Real yield",value:yieldAdj*fscale*wt.fund,raw:yieldAdj,w:parseFloat((fscale*wt.fund).toFixed(3))},
+      {key:"cot",label:"COT",value:cotScore*wt.cot,raw:cotScore,w:wt.cot},
+      {key:"sent",label:"Retail",value:sentScore*wt.sent,raw:sentScore,w:wt.sent},
+      {key:"season",label:"Sezónnost",value:seasonScore*wt.sea,raw:seasonScore,w:wt.sea},
+      {key:"oil",label:"Ropa (WTI)",value:oilAdj,raw:oilAdj,w:1},
+      {key:"risk",label:"Risk režim",value:riskAdj,raw:riskAdj,w:1},
+    ];
+    if(MOMENTUM_ENABLED) list.push({key:"momentum",label:"Momentum",value:momentumAdj*0.3,raw:momentumAdj,w:0.3});
+    const sum=list.reduce((a,b)=>a+b.value,0);
+    const clipped=total-parseFloat(sum.toFixed(6));
+    if(Math.abs(clipped)>=0.005) list.push({key:"clip",label:"Ořez na ±10",value:clipped,raw:null,w:null});
+    // Zaokrouhlit na 2 des. místa a zaokrouhlovací zbytek přičíst největší
+    // složce — Σ zobrazených hodnot pak sedí na zobrazený score PŘESNĚ.
+    const out=list.map(c=>({...c,value:parseFloat(c.value.toFixed(2))}));
+    const residual=parseFloat((total-out.reduce((a,b)=>a+b.value,0)).toFixed(2));
+    if(Math.abs(residual)>=0.01&&out.length){
+      const big=out.reduce((a,b)=>Math.abs(b.value)>Math.abs(a.value)?b:a);
+      big.value=parseFloat((big.value+residual).toFixed(2));
+    }
+    return out;
+  })();
   return{
     score:total,
+    components,
     fund_score:fundScore,fund_score_raw:parseFloat(fundScoreRaw.toFixed(2)),yield_adj:yieldAdj,policy_adj:policyAdj,risk_adj:riskAdj,oil_adj:oilAdj,
     cot_score:cotScore,sent_score:sentScore,season_score:seasonScore,
     cot_pct:cotPct,momentum_adj:momentumAdj,weights_used:wt,
@@ -2156,7 +2296,15 @@ function mergeEvents(calData,upcoming){
     // zapsaným/posunutým časem (různé zdroje = různý formát/pásmo).
     const k=(e.event||"")+"|"+(e.country||"")+"|"+ffDateOnly(e.time);
     const prev=map.get(k);
-    if(!prev||(!prev.actual&&e.actual)) map.set(k,e);
+    // Slévat POLE, ne nahrazovat celý záznam — záznam s actual ale bez estimate
+    // dřív vytlačil verzi s estimate a event pak vypadl ze skórování
+    // (eventDirection potřebuje actual I estimate) i z BEAT/MISS zbarvení.
+    // Field-wise (ne spread) — prázdný string v novějším záznamu nesmí přepsat
+    // vyplněnou hodnotu ve starším. Základ = záznam s actual, díry doplní druhý.
+    if(!prev){ map.set(k,e); return; }
+    const primary=(!prev.actual&&e.actual)?e:prev, secondary=primary===e?prev:e;
+    const fill=(a,b)=>(a!=null&&a!=="")?a:b;
+    map.set(k,{...primary,actual:fill(primary.actual,secondary.actual),estimate:fill(primary.estimate,secondary.estimate),prev:fill(primary.prev,secondary.prev),impact:fill(primary.impact,secondary.impact)});
   });
   const out=[...map.values()];
   _mergeEventsCache={a:calData,b:upcoming,out};
@@ -2220,16 +2368,19 @@ function getImminentHigh(currency,events,from,to){
   }).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
 }
 // Jednotný zdroj pro puntík i Daily Brief — velké přímé události páru.
-// Rozdělené: dnes už proběhlo / dnes ještě přijde / zítra (do +36h) = podtext.
+// Rozdělené: dnes už proběhlo / dnes ještě přijde / zítra = podtext.
 function getPairFundamentalDay(pair,calData,upcoming){
   const ev=mergeEvents(calData,upcoming);
-  const dayStart=startOfTodayMs(), dayEnd=localDayEnd(), now=Date.now(), soon=now+36*3600000;
-  const hi=getImminentHigh(pair.base,ev,dayStart,soon).concat(getImminentHigh(pair.quote,ev,dayStart,soon)).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+  // Bucket "tomorrow" končí koncem ZÍTŘEJŠÍHO dne, ne pevným oknem now+36h —
+  // večer (např. 23:00) staré okno sahalo do pozítří 11:00 a label "📅 Zítra"
+  // ukazoval i pozítřejší eventy. Event z pozítří se prostě objeví, až bude zítra.
+  const dayStart=startOfTodayMs(), dayEnd=localDayEnd(), now=Date.now(), tomorrowEnd=dayEnd+86400000;
+  const hi=getImminentHigh(pair.base,ev,dayStart,tomorrowEnd).concat(getImminentHigh(pair.quote,ev,dayStart,tomorrowEnd)).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
   return {
     hi,
     todayPast:hi.filter(e=>{const t=parseEventTime(e.time);return t>=dayStart&&t<=now;}),
     todayUpcoming:hi.filter(e=>{const t=parseEventTime(e.time);return t>now&&t<=dayEnd&&!e.actual;}),
-    tomorrow:hi.filter(e=>{const t=parseEventTime(e.time);return t>dayEnd&&!e.actual;}),
+    tomorrow:hi.filter(e=>{const t=parseEventTime(e.time);return t>dayEnd&&t<=tomorrowEnd&&!e.actual;}),
   };
 }
 function getPairDailyState(pair,scores,calData,upcoming){
@@ -2359,14 +2510,18 @@ function buildDailySeries(currency,windowDays){
   return {dates,values};
 }
 function getCOTNetSeries(currency,limit=104){
+  // Jen týdny s raw daty (levNet) — dřívější fallback na scores[c] míchal do
+  // JEDNÉ křivky dvě jednotky (net kontrakty/10k vs. skóre −3..+3) a dělal
+  // falešné zuby v historii. Týden bez raw se vynechá (drobná mezera v ose,
+  // ale konzistentní jednotka). Jednotka: net pozice lev. funds ×10 tis. kontraktů.
   const hist=loadCOTHistory();
-  const dates=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-limit);
-  const values=dates.map(d=>{
+  const all=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-limit);
+  const dates=[],values=[];
+  for(const d of all){
     const r=hist[d]?.raw?.[currency];
-    if(r&&Number.isFinite(r.levNet)) return r.levNet/10000;
-    return hist[d]?.scores?.[currency]??0;
-  });
-  return {dates,values};
+    if(r&&Number.isFinite(r.levNet)){ dates.push(d); values.push(r.levNet/10000); }
+  }
+  return {dates,values,unit:"net lev. funds · ×10 tis. kontraktů"};
 }
 function getRetailPairData(pair,sentData={}){
   const bLong=Number(sentData?.[pair.base] ?? 50);
@@ -2488,7 +2643,11 @@ function saveEngineDailySnapshot(scores){
     const today=new Date().toISOString().split("T")[0];
     const log=JSON.parse(localStorage.getItem("engine_log")||"{}");
     const snap={};
-    CURRENCIES.forEach(c=>{const s=scores[c]||{};const o={};ENGINE_DAILY_FIELDS.forEach(f=>{o[f]=typeof s[f]==="number"?parseFloat(s[f].toFixed(3)):0;});snap[c]=o;});
+    CURRENCIES.forEach(c=>{const s=scores[c]||{};const o={};ENGINE_DAILY_FIELDS.forEach(f=>{o[f]=typeof s[f]==="number"?parseFloat(s[f].toFixed(3)):0;});
+      // ADITIVNĚ: vážené komponenty pro Δ vysvětlení (explainScoreChange) — syrová
+      // pole výše zůstávají beze změny kvůli classic 🔬 Backtest (runEngineLogBacktest).
+      if(Array.isArray(s.components)) o._comp=Object.fromEntries(s.components.map(x=>[x.key,x.value]));
+      snap[c]=o;});
     log[today]={ts:Date.now(),cur:snap};
     const keys=Object.keys(log).sort().slice(-400);const t={};keys.forEach(k=>t[k]=log[k]);
     localStorage.setItem("engine_log",JSON.stringify(t));
@@ -2498,7 +2657,7 @@ function saveEngineDailySnapshot(scores){
 function explainScoreChange(currency,current){
   try{
     if(!current) return null;
-    const log=JSON.parse(localStorage.getItem("engine_log")||"{}");
+    const log=_cachedParse("engine_log",()=>({}))||{}; // volá se per měna per render — parse-cache nutná
     const today=new Date().toISOString().split("T")[0];
     const dates=Object.keys(log).sort().filter(d=>d<today);
     if(!dates.length) return null;
@@ -2506,11 +2665,25 @@ function explainScoreChange(currency,current){
     const prev=log[prevDate]&&log[prevDate].cur&&log[prevDate].cur[currency];
     if(!prev) return null;
     const parts=[];
-    for(const f of ENGINE_DAILY_FIELDS){
-      if(f==="score") continue;
-      const now=typeof current[f]==="number"?current[f]:0;
-      const d=parseFloat((now-(prev[f]||0)).toFixed(2));
-      if(Math.abs(d)>=0.05) parts.push({comp:f,label:ENGINE_DAILY_LABELS[f]||f,delta:d});
+    // Preferuj VÁŽENÉ komponentové delty (snapshot._comp, ukládá se od G3) —
+    // delty pak sčítají na totalDelta a neukazují dvakrát Policy/Yield uvnitř
+    // Fund. Starý snapshot bez _comp → fallback na syrová pole (bez momentum,
+    // dokud je vypnuté — vysvětlovat změnu složkou s nulovou vahou je nesmysl).
+    const curComp=Array.isArray(current.components)?Object.fromEntries(current.components.map(x=>[x.key,x.value])):null;
+    const compLabels=Array.isArray(current.components)?Object.fromEntries(current.components.map(x=>[x.key,x.label])):{};
+    if(curComp&&prev._comp){
+      for(const k of new Set([...Object.keys(curComp),...Object.keys(prev._comp)])){
+        const d=parseFloat(((curComp[k]||0)-(prev._comp[k]||0)).toFixed(2));
+        if(Math.abs(d)>=0.05) parts.push({comp:k,label:compLabels[k]||k,delta:d});
+      }
+    }else{
+      for(const f of ENGINE_DAILY_FIELDS){
+        if(f==="score") continue;
+        if(f==="momentum_adj"&&(typeof MOMENTUM_ENABLED==="undefined"||!MOMENTUM_ENABLED)) continue;
+        const now=typeof current[f]==="number"?current[f]:0;
+        const d=parseFloat((now-(prev[f]||0)).toFixed(2));
+        if(Math.abs(d)>=0.05) parts.push({comp:f,label:ENGINE_DAILY_LABELS[f]||f,delta:d});
+      }
     }
     parts.sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta));
     const totalDelta=parseFloat(((typeof current.score==="number"?current.score:0)-(prev.score||0)).toFixed(2));
@@ -2614,7 +2787,7 @@ function scanOpportunities(pairs,scores,retailLatest,opts){
   return out.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
 }
 
-function loadJournal(){try{return JSON.parse(localStorage.getItem("journal")||"[]");}catch(e){return[];}}
+function loadJournal(){const v=_cachedParse("journal",()=>[]);return Array.isArray(v)?v:[];}
 
 // ── SEASONALITY z reálných měsíčních cen (Alpha Vantage FX_MONTHLY) ──
 async function fetchSeasonality(pair,avKey){
@@ -2796,7 +2969,7 @@ CO NEPROZRAZOVAT (obchodní know-how appky — uživatele to nemusí zajímat a 
 const COACH_KB=`KNOWLEDGE BASE MODULŮ APPKY (uč z tohohle, ne z obecných znalostí o tradingu):
 
 SKÓRE MĚNY (Bias Score, −10 až +10, tab "Síla měn" i Dashboard)
-Souhrnné číslo za měnu; kladné = fundamentálně silná, záporné = slabá. Vzniká váženou kombinací fundamentů z kalendáře, COT pozicování, retail sentimentu, sezónnosti, CB politiky, reálného výnosu, rizika a (jen CAD/USD) ropy — přesné váhy appka nezveřejňuje, doladily se backtestem a časem se mohou upravit. Přepočítá se při každém refreshi, ale reálně se hýbe hlavně po nových datech. Je to náklon, ne predikce — samo o sobě neříká nic o riziku obchodu, na to slouží Conviction a Denní brief. Rozdíl skóre dvou měn (diff) určuje bias páru; appka ho pásmuje na slabý/sweetspot/silný, protože ne každý rozdíl je stejně důležitý.
+Souhrnné číslo za měnu; kladné = fundamentálně silná, záporné = slabá. Vzniká váženou kombinací fundamentů z kalendáře, COT pozicování, retail sentimentu, sezónnosti, CB politiky, reálného výnosu, rizika a (jen CAD/USD) ropy — přesné váhy appka nezveřejňuje, doladily se backtestem a časem se mohou upravit. Přepočítá se při každém refreshi, ale reálně se hýbe hlavně po nových datech. Je to náklon, ne predikce — samo o sobě neříká nic o riziku obchodu, na to slouží Conviction a Denní brief. Rozdíl skóre dvou měn (diff) určuje bias páru; appka ho pásmuje na slabý/sweetspot/silný. DŮLEŽITÉ: pásma jsou orientační heuristika, NE backtestem ověřené kategorie — pokud se uživatel ptá na spolehlivost pásem nebo na "65% win rate", řekni na rovinu, že dřívější číslo se v aktuální kalibraci nepotvrdilo, ověřování celého enginu probíhá, a odkaž na vlastní statistiky uživatele v Trading deníku (panel Ověření edge).
 
 FUNDAMENTÁLNÍ SKÓRE (součást skóre měny)
 Vzniká z kalendáře: každá zveřejněná zpráva se vyhodnotí jako beat/miss vůči odhadu a promítne se do skóre podle typu dat (sazby a inflace váží citelně víc než např. důvěra spotřebitelů). Nedávné zprávy váží víc, staré postupně vyprchávají. Real yield a CB politika se počítají odděleně ze sazeb/CPI, ne z kalendářních překvapení — proto může být fundamentální skóre slabé, ale celkové skóre měny silné díky vysokému reálnému výnosu, nebo naopak.

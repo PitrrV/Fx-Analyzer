@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260711b"></script>
+<script src="engine.js?v=20260711c"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sync.js?v=20260711a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -469,7 +469,9 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note,isFav,
   const f=forecast||{};
   const probColor=f.prob>=65?"#2ed3a0":f.prob<=35?"#ff5470":"#d29922";
   const statusColor=(dailyState&&dailyState.color)||ac;
-  const band=p.diff>=5?{l:"SILNÝ",c:"#2ed3a0",bg:"rgba(46,211,160,.12)"}:p.diff>=2.5?{l:"STŘEDNÍ",c:"#d29922",bg:"rgba(210,153,34,.12)"}:{l:"SLABÝ",c:"#8b93a3",bg:"rgba(139,147,163,.1)"};
+  // Jednotné prahy s PC/mobilem (dřív tu byly vlastní >=5/>=2.5) — viz BAND_THRESHOLDS v engine.js
+  const bandName=(typeof getDiffBand==="function")?getDiffBand(p.diff):null;
+  const band=bandName==="silný"?{l:"SILNÝ",c:"#2ed3a0",bg:"rgba(46,211,160,.12)"}:bandName==="sweetspot"?{l:"SWEETSPOT",c:"#d29922",bg:"rgba(210,153,34,.12)"}:{l:"SLABÝ",c:"#8b93a3",bg:"rgba(139,147,163,.1)"};
   const mono={fontFamily:"'JetBrains Mono',monospace"};
   // Samostatný 24h Δ ukazatel páru — žádný vliv na p.diff/skóre/rank.
   let d24=null;
@@ -522,7 +524,13 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note,isFav,
 function ScoreBreakdown({currency,scores}){
   const s=scores[currency];if(!s) return null;
   const oilSt=getOilStatus();
-  const items=[
+  // Vážené příspěvky ze scoreCurrency().components — Σ řádků sedí přesně na
+  // celkové skóre v hlavičce (dřív se ukazovaly nevážené hodnoty a Fundamenty
+  // v sobě skrytě nesly Policy+Yield podruhé). Fallback na stará syrová pole,
+  // dokud components nedorazí.
+  const items=Array.isArray(s.components)&&s.components.length
+    ? s.components.filter(x=>x.value!==0).sort((a,b)=>Math.abs(b.value)-Math.abs(a.value)).map(x=>({label:x.label,value:x.value,max:2}))
+    : [
     {label:"Fundamenty (data)",value:s.fund_score,max:10},
     ...(s.yield_adj!==undefined?[{label:"Real yield diff",value:s.yield_adj,max:1.5}]:[]),
     ...(s.policy_adj!==undefined&&s.policy_adj!==0?[{label:`CB politika (${CB_POLICY_DATA[currency]?.label||""})`,value:s.policy_adj,max:1.5}]:[]),
@@ -531,7 +539,6 @@ function ScoreBreakdown({currency,scores}){
     ...(MOMENTUM_ENABLED&&s.momentum_adj&&s.momentum_adj!==0?[{label:"Score momentum",value:parseFloat((s.momentum_adj*0.3).toFixed(2)),max:1}]:[]),
     {label:"Retail sentiment",value:s.sent_score,max:2},
     {label:"Seasonalita (2%)",value:s.season_score,max:2},
-    // Ropa — pouze pro CAD a USD
     ...((currency==="CAD"||currency==="USD")&&s.oil_adj!==undefined&&s.oil_adj!==0
       ?[{label:`WTI Ropa ${oilSt?oilSt.price.toFixed(1)+"$/bbl":""}`,value:s.oil_adj,max:2}]:[]),
   ];
@@ -891,6 +898,27 @@ function getSurpriseInfo(ev){
   if(dir<0) return {label:"MISS",color:"#ff4d4d",bg:"rgba(255,77,77,.12)",bias:"bearish pro měnu"};
   return {label:"INLINE",color:"#d29922",bg:"rgba(210,153,34,.12)",bias:"v souladu s odhadem"};
 }
+// Živý stav COT-diff kalibrace místo dřívějšího natvrdo zapsaného
+// "Backtest 2018-2024: diff 2-3 → WR 65% PF 2.0" — ten aktuální data
+// nereprodukují (viz data/calibration.json, po opravě look-ahead biasu).
+// Ukazuje skutečný výsledek: nejlepší robustní buňku (PF>1 v obou
+// polovinách období), nebo poctivé "bez edge".
+function CalibrationBadge(){
+  const [cal,setCal]=useState(null);
+  useEffect(()=>{let live=true;
+    fetch("data/calibration.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"})
+      .then(r=>r.ok?r.json():null).then(j=>{if(live)setCal(j);}).catch(()=>{});
+    return ()=>{live=false;};
+  },[]);
+  if(!cal||!Array.isArray(cal.grid)) return <span style={{color:"#8b949e"}}>⏳ kalibrace COT-diff…</span>;
+  const when=(cal.updated||"").slice(0,10);
+  const robust=cal.grid.filter(g=>g.robust);
+  if(robust.length){
+    const b=robust.slice().sort((a,x)=>(x.pf||0)-(a.pf||0))[0];
+    return <span title={"COT-diff složka samostatně; celý engine se kalibruje z data/engine_hist.json. Přepočet "+when} style={{color:"#d29922",cursor:"help"}}>⚡ COT-diff kalibrace: |diff|≥{b.diff}, {b.horizon}t → WR {b.wr}% PF {b.pf} (robustní, {when})</span>;
+  }
+  return <span title={"Žádná kombinace prahu a horizontu nemá PF>1 v obou polovinách období (vstup až po publikaci reportu). Pásma SLABÝ/SWEETSPOT/SILNÝ ber jako orientační heuristiku. Přepočet "+when} style={{color:"#8b949e",cursor:"help"}}>ℹ COT-diff sám o sobě aktuálně edge neukazuje ({when}) — pásma jsou heuristika</span>;
+}
 function CalendarEventRow({e,compact=false,onSetManual}){
   const dt=evDate(e);
   const cur=getEventCurrency(e);
@@ -928,7 +956,7 @@ function DashboardCalendarPanel({events,pair,onSetManual}){
       <span>TIME</span><span>CCY</span><span>EVENT</span><span>IMPACT</span><span style={{textAlign:"right"}}>ACTUAL</span><span style={{textAlign:"right"}}>FORECAST</span><span style={{textAlign:"right"}}>PREV</span><span style={{textAlign:"right"}}>SURPRISE</span>
     </div>
     {list.length?list.map((e,i)=><CalendarEventRow key={i} e={e} compact={true} onSetManual={onSetManual}/>) : <div style={{color:"#8b949e",fontSize:13,padding:12}}>Pro {pair?.pair||"vybraný filtr"} teď nejsou dostupné žádné relevantní události. Zkus refresh Finnhub dat.</div>}
-    <div style={{fontSize:10,color:"#4a6a88",marginTop:10,lineHeight:1.45}}>Interpretace: BEAT/MISS je počítaný podle typu události. U unemployment/claims je nižší výsledek bullish, u CPI/sazeb/NFP je vyšší výsledek většinou bullish.</div>
+    <div style={{fontSize:10,color:"#4a6a88",marginTop:10,lineHeight:1.45}}>Interpretace: BEAT/MISS je počítaný podle typu události. U unemployment/claims je nižší výsledek bullish, u CPI/sazeb/NFP je vyšší výsledek většinou bullish. PMI se navíc hodnotí vůči hranici 50 (nad = expanze). US data ovlivňují ve skóre i CAD a CHF (nepřímá relevance, ~45 % váhy) — v tomhle filtru je ale neuvidíš.</div>
   </div>;
 }
 
@@ -1375,7 +1403,7 @@ function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},cal
     <NotesCard pair={pair} note={notes[pair.pair]} onSave={onNote}/>
     {isCADpair&&<OilPanel pair={pair}/>}
     <COTRetailPairPanel pair={pair} cotMeta={cotMeta||{}} cotData={cotData||{}} sentData={sentData||{}}/>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 330px",gap:14}}><div className="pro-card" style={{padding:16}}><div className="pro-panel-title">Score komponenty</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10}}>{[{label:"Fundamenty",value:((scores[pair.base]?.fund_score||0)-(scores[pair.quote]?.fund_score||0)),max:10},{label:"CB Policy",value:((scores[pair.base]?.policy_adj||0)-(scores[pair.quote]?.policy_adj||0)),max:3},{label:"Real Yield",value:((scores[pair.base]?.yield_adj||0)-(scores[pair.quote]?.yield_adj||0)),max:3},{label:"COT",value:((scores[pair.base]?.cot_score||0)-(scores[pair.quote]?.cot_score||0)),max:6},{label:"Sentiment",value:((scores[pair.base]?.sent_score||0)-(scores[pair.quote]?.sent_score||0)),max:4},{label:"Sezónnost",value:((scores[pair.base]?.season_score||0)-(scores[pair.quote]?.season_score||0)),max:4}].map(x=>{const col=x.value>0?"#2ed3a0":x.value<0?"#ff4d4d":"#d29922";return <div key={x.label} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:"#cbd6e2",marginBottom:8}}>{x.label}</div><div style={{fontSize:24,fontWeight:1000,color:col}}>{x.value>0?"+":""}{x.value.toFixed(1)}</div><div style={{fontSize:11,color:col,marginTop:5}}>{x.value>1?"Bullish":x.value<-1?"Bearish":"Neutral"}</div><div style={{height:4,background:"#1b232d",borderRadius:4,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,Math.abs(x.value)/x.max*100)+"%",background:col,borderRadius:4}}/></div></div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginTop:14,borderTop:"1px solid #1b2a35",paddingTop:14,fontSize:12,color:"#8b949e",textAlign:"center"}}><div>Spread<br/><b style={{color:"#e6edf3"}}>0.7</b></div><div>Volatilita (D)<br/><b style={{color:"#e6edf3"}}>0.42%</b></div><div>ATR (14)<br/><b style={{color:"#e6edf3"}}>0.0065</b></div><div>Liquidity<br/><b className="green">HIGH</b></div><div>Trend<br/><b style={{color:ac}}>{pair.dir==="BUY"?"Bullish":"Bearish"}</b></div><div>Risk<br/><b className="orange">Medium</b></div></div></div><AIAnalysisStatusPanel pair={pair} aiAnalyses={aiAnalyses}/></div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 330px",gap:14}}><div className="pro-card" style={{padding:16}}><div className="pro-panel-title">Score komponenty (vážené · base − quote)</div><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>{(()=>{const cb=scores[pair.base]?.components||[],cq=scores[pair.quote]?.components||[];const keys=[...new Set([...cb.map(x=>x.key),...cq.map(x=>x.key)])];const list=keys.map(k=>{const b=cb.find(x=>x.key===k),q=cq.find(x=>x.key===k);return {label:(b||q).label,value:parseFloat((((b&&b.value)||0)-((q&&q.value)||0)).toFixed(2)),max:2};}).filter(x=>x.value!==0).sort((a,b)=>Math.abs(b.value)-Math.abs(a.value));return list.length?list:[{label:"Fundamenty",value:((scores[pair.base]?.fund_score||0)-(scores[pair.quote]?.fund_score||0)),max:10},{label:"COT",value:((scores[pair.base]?.cot_score||0)-(scores[pair.quote]?.cot_score||0)),max:6}];})().map(x=>{const col=x.value>0?"#2ed3a0":x.value<0?"#ff4d4d":"#d29922";return <div key={x.label} style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12,textAlign:"center"}}><div style={{fontSize:11,color:"#cbd6e2",marginBottom:8}}>{x.label}</div><div style={{fontSize:24,fontWeight:1000,color:col}}>{x.value>0?"+":""}{x.value.toFixed(1)}</div><div style={{fontSize:11,color:col,marginTop:5}}>{x.value>1?"Bullish":x.value<-1?"Bearish":"Neutral"}</div><div style={{height:4,background:"#1b232d",borderRadius:4,marginTop:10,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(100,Math.abs(x.value)/x.max*100)+"%",background:col,borderRadius:4}}/></div></div>})}</div><div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:10,marginTop:14,borderTop:"1px solid #1b2a35",paddingTop:14,fontSize:12,color:"#8b949e",textAlign:"center"}}><div>Spread<br/><b style={{color:"#e6edf3"}}>0.7</b></div><div>Volatilita (D)<br/><b style={{color:"#e6edf3"}}>0.42%</b></div><div>ATR (14)<br/><b style={{color:"#e6edf3"}}>0.0065</b></div><div>Liquidity<br/><b className="green">HIGH</b></div><div>Trend<br/><b style={{color:ac}}>{pair.dir==="BUY"?"Bullish":"Bearish"}</b></div><div>Risk<br/><b className="orange">Medium</b></div></div></div><AIAnalysisStatusPanel pair={pair} aiAnalyses={aiAnalyses}/></div>
   </div>;
 }
 // ── CALENDAR ─────────────────────────────────────────────
@@ -2244,7 +2272,7 @@ const PAIR_LIST_TYPE={EURUSD:"white",USDJPY:"white",GBPUSD:"white",AUDUSD:"grey"
 function captureContext(pairSym,pairs,scores,calData,upcoming,aiAnalyses){
   const p=(pairs||[]).find(function(x){return x.pair===pairSym;})||null;
   const diff=p?p.diff:null;
-  const band=diff==null?null:(Math.abs(diff)<2?"slabý":(Math.abs(diff)<=3?"sweetspot":"silný"));
+  const band=(typeof getDiffBand==="function")?getDiffBand(diff):null; // jednotná hranice — viz BAND_THRESHOLDS v engine.js
   let dailyLevel="none",flip=false,cbdi=null,cbStage=null;
   try{ if(p) dailyLevel=getPairDailyState(p,scores,calData,upcoming).level; }catch(e){}
   try{ flip=isPairFlipped(pairSym); }catch(e){}
@@ -2540,7 +2568,10 @@ function runCOTBacktest(usdValue,cotHist,pctMap,opts){
         const crowded=(pb!=null&&(pb>=88||pb<=12))||(pq!=null&&(pq>=88||pq<=12));
         if(crowded) continue;
       }
-      const t0=Date.parse(d+"T00:00:00Z");
+      // Vstup až po publikaci reportu (report_date=úterý, publikace pátek ~15:30 ET,
+      // první obchodovatelný denní fix = pondělí) — stejná oprava look-ahead biasu
+      // jako scripts/backtest-cot.js (ENTRY_LAG_DAYS).
+      const t0=Date.parse(d+"T00:00:00Z")+6*86400000;
       const p0=btPairPrice(usdValue,pr.base,pr.quote,t0);
       const p1=btPairPrice(usdValue,pr.base,pr.quote,t0+horizonMs);
       if(p0==null||p1==null) continue;
@@ -3153,7 +3184,7 @@ function App(){
 
       <div style={{background:"#0d1117",borderBottom:"1px solid #30363d",padding:"7px 16px",fontSize:11,color:"#8b949e"}}>
         V5 Engine: Fundamenty · CB Policy cycle · Real Yield · COT (CFTC) · Retail (MyFxBook) · Sezónnost 2%
-        {" · "}<span style={{color:"#d29922"}}>⚡ Backtest 2018-2024: diff 2-3 → WR 65% PF 2.0</span>
+        {" · "}<CalibrationBadge/>
         {" · "}<span style={{color:"#ff4d4d"}}>⚠ USDCHF/USDCAD nízká přesnost enginu</span>
       </div>
 

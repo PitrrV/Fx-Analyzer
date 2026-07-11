@@ -91,12 +91,20 @@ function aggregate(trades) {
     avg: parseFloat((trades.reduce((a, b) => a + b.ret, 0) / n).toFixed(3)) };
 }
 // Jádro: COT historie × páry → forward výnos ve směru COT diffu. Identické s runCOTBacktest() v classic.html.
-function runCOTBacktest(series, weeks, pctMap, { horizonWeeks, diffThreshold, avoidExtremes }) {
+// VSTUP AŽ PO PUBLIKACI: report_date je úterý, ale CFTC report vychází až v pátek
+// ~15:30 ET — a páteční ECB fix (16:00 SEČ, zdroj cen Frankfurter) proběhne DŘÍV
+// než publikace. První reálně obchodovatelná cena je tedy pondělní fix → vstup
+// report_date+6 dní. Dřívější t0=report_date byl 3–6denní look-ahead bias
+// (obchodovalo se za ceny z doby, kdy data ještě nebyla veřejná) a výsledkům
+// systematicky pomáhal.
+const ENTRY_LAG_DAYS = 6;
+function runCOTBacktest(series, weeks, pctMap, { horizonWeeks, diffThreshold, avoidExtremes, dateFilter }) {
   const dates = Object.keys(weeks).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
   const horizonMs = horizonWeeks * 7 * 86400000;
   const trades = []; const byPair = {};
   for (const pr of STANDARD_PAIRS) {
     for (const d of dates) {
+      if (dateFilter && !dateFilter(d)) continue;
       const sc = weeks[d]?.scores; if (!sc) continue;
       const diff = (sc[pr.base] ?? 0) - (sc[pr.quote] ?? 0);
       if (Math.abs(diff) < diffThreshold) continue;
@@ -105,7 +113,7 @@ function runCOTBacktest(series, weeks, pctMap, { horizonWeeks, diffThreshold, av
         const crowded = (pb != null && (pb >= 88 || pb <= 12)) || (pq != null && (pq >= 88 || pq <= 12));
         if (crowded) continue;
       }
-      const t0 = Date.parse(d + "T00:00:00Z");
+      const t0 = Date.parse(d + "T00:00:00Z") + ENTRY_LAG_DAYS * 86400000;
       const p0 = pairPrice(series, pr.base, pr.quote, t0);
       const p1 = pairPrice(series, pr.base, pr.quote, t0 + horizonMs);
       if (p0 == null || p1 == null) continue;
@@ -144,7 +152,7 @@ function runMaturityTest(series, weeks, pctMap) {
         const pctBase = pctMap[pr.base]?.[d], pctQuote = pctMap[pr.quote]?.[d];
         const bucket = classifyMaturity(diff, pctBase, pctQuote);
         if (!bucket) continue;
-        const t0 = Date.parse(d + "T00:00:00Z");
+        const t0 = Date.parse(d + "T00:00:00Z") + ENTRY_LAG_DAYS * 86400000; // vstup až po publikaci — viz runCOTBacktest
         const p0 = pairPrice(series, pr.base, pr.quote, t0);
         const p1 = pairPrice(series, pr.base, pr.quote, t0 + horizonMs);
         if (p0 == null || p1 == null) continue;
@@ -189,10 +197,20 @@ function runMomentumTest(series, dateFrom, dateTo) {
 function runSweep(series, weeks) {
   const dates = Object.keys(weeks).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
   const pctMap = buildPercentiles(weeks, dates);
+  // Out-of-sample kontrola: chronologické poloviny. 120 týdnů je málo na klasický
+  // 70/30 split (test okno by nemělo vypovídací hodnotu), 50/50 aspoň testuje
+  // stabilitu v čase. Kritérium "má pásmo edge": PF>1 v OBOU polovinách při n>=30.
+  const midDate = dates[Math.floor(dates.length / 2)];
+  const inHalf1 = (d) => d < midDate, inHalf2 = (d) => d >= midDate;
   const grid = [];
   for (const h of BT_HORIZONS) for (const df of BT_DIFFS) {
     const r = runCOTBacktest(series, weeks, pctMap, { horizonWeeks: h, diffThreshold: df, avoidExtremes: false });
-    grid.push({ horizon: h, diff: df, n: r.n, wr: r.wr, pf: r.pf, avg: r.avg });
+    const r1 = runCOTBacktest(series, weeks, pctMap, { horizonWeeks: h, diffThreshold: df, avoidExtremes: false, dateFilter: inHalf1 });
+    const r2 = runCOTBacktest(series, weeks, pctMap, { horizonWeeks: h, diffThreshold: df, avoidExtremes: false, dateFilter: inHalf2 });
+    grid.push({ horizon: h, diff: df, n: r.n, wr: r.wr, pf: r.pf, avg: r.avg,
+      half1: { n: r1.n, wr: r1.wr, pf: r1.pf, avg: r1.avg },
+      half2: { n: r2.n, wr: r2.wr, pf: r2.pf, avg: r2.avg },
+      robust: r1.n >= BT_MIN_TRADES && r2.n >= BT_MIN_TRADES && r1.pf != null && r2.pf != null && isFinite(r1.pf) && isFinite(r2.pf) && r1.pf > 1 && r2.pf > 1 });
   }
   const valid = grid.filter((g) => g.n >= BT_MIN_TRADES && g.pf != null && isFinite(g.pf));
   const best = valid.slice().sort((a, b) => b.pf - a.pf)[0] || grid.slice().sort((a, b) => b.n - a.n)[0];
@@ -203,7 +221,7 @@ function runSweep(series, weeks) {
     extremeCompare = { off: aggregate(off.trades || (function () { const t = []; Object.values(off.byPair).forEach((a) => t.push(...a)); return t; })()), on: aggregate((function () { const t = []; Object.values(on.byPair).forEach((a) => t.push(...a)); return t; })()) };
     byPairBest = Object.fromEntries(Object.entries(off.byPair).map(([p, trades]) => [p, aggregate(trades)]).sort((a, b) => (b[1].pf || 0) - (a[1].pf || 0)));
   }
-  return { grid, best, extremeCompare, byPairBest, pctMap, weeksUsed: dates.length, dateFrom: dates[0], dateTo: dates.at(-1) };
+  return { grid, best, extremeCompare, byPairBest, pctMap, weeksUsed: dates.length, dateFrom: dates[0], dateTo: dates.at(-1), splitAt: midDate };
 }
 
 (async () => {
@@ -236,6 +254,8 @@ function runSweep(series, weeks) {
   const out = {
     updated: new Date().toISOString(),
     source: "Frankfurter (ECB) denní kurzy × CFTC TFF COT historie",
+    entryLag: "publication+nextFix (report_date+" + ENTRY_LAG_DAYS + "d) — bez look-ahead biasu",
+    splitAt: res.splitAt,
     dateFrom: res.dateFrom, dateTo: res.dateTo, weeksUsed: res.weeksUsed, pairsUsed: STANDARD_PAIRS.length,
     grid: res.grid, best: res.best, extremeCompare: res.extremeCompare, byPairBest: res.byPairBest,
     maturityTest: maturity,
