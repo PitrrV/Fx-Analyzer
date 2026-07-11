@@ -103,7 +103,7 @@ const PAIR_LIST_TYPE={EURUSD:"white",USDJPY:"white",GBPUSD:"white",AUDUSD:"grey"
 function captureContext(pairSym,pairs,scores,calData,upcoming,aiAnalyses){
   const p=(pairs||[]).find(x=>x.pair===pairSym)||null;
   const diff=p?p.diff:null;
-  const band=diff==null?null:(Math.abs(diff)<2?"slabý":(Math.abs(diff)<=3?"sweetspot":"silný"));
+  const band=(typeof getDiffBand==="function")?getDiffBand(diff):null; // jednotná hranice — viz BAND_THRESHOLDS v engine.js
   let dailyLevel="none",flip=false,cbdi=null,cbStage=null;
   try{ if(p) dailyLevel=getPairDailyState(p,scores,calData,upcoming).level; }catch(e){}
   try{ flip=isPairFlipped(pairSym); }catch(e){}

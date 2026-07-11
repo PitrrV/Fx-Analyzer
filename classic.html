@@ -469,7 +469,9 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note,isFav,
   const f=forecast||{};
   const probColor=f.prob>=65?"#2ed3a0":f.prob<=35?"#ff5470":"#d29922";
   const statusColor=(dailyState&&dailyState.color)||ac;
-  const band=p.diff>=5?{l:"SILNÝ",c:"#2ed3a0",bg:"rgba(46,211,160,.12)"}:p.diff>=2.5?{l:"STŘEDNÍ",c:"#d29922",bg:"rgba(210,153,34,.12)"}:{l:"SLABÝ",c:"#8b93a3",bg:"rgba(139,147,163,.1)"};
+  // Jednotné prahy s PC/mobilem (dřív tu byly vlastní >=5/>=2.5) — viz BAND_THRESHOLDS v engine.js
+  const bandName=(typeof getDiffBand==="function")?getDiffBand(p.diff):null;
+  const band=bandName==="silný"?{l:"SILNÝ",c:"#2ed3a0",bg:"rgba(46,211,160,.12)"}:bandName==="sweetspot"?{l:"SWEETSPOT",c:"#d29922",bg:"rgba(210,153,34,.12)"}:{l:"SLABÝ",c:"#8b93a3",bg:"rgba(139,147,163,.1)"};
   const mono={fontFamily:"'JetBrains Mono',monospace"};
   // Samostatný 24h Δ ukazatel páru — žádný vliv na p.diff/skóre/rank.
   let d24=null;
@@ -890,6 +892,27 @@ function getSurpriseInfo(ev){
   if(dir>0) return {label:"BEAT",color:"#2ed3a0",bg:"rgba(46,211,160,.12)",bias:"bullish pro měnu"};
   if(dir<0) return {label:"MISS",color:"#ff4d4d",bg:"rgba(255,77,77,.12)",bias:"bearish pro měnu"};
   return {label:"INLINE",color:"#d29922",bg:"rgba(210,153,34,.12)",bias:"v souladu s odhadem"};
+}
+// Živý stav COT-diff kalibrace místo dřívějšího natvrdo zapsaného
+// "Backtest 2018-2024: diff 2-3 → WR 65% PF 2.0" — ten aktuální data
+// nereprodukují (viz data/calibration.json, po opravě look-ahead biasu).
+// Ukazuje skutečný výsledek: nejlepší robustní buňku (PF>1 v obou
+// polovinách období), nebo poctivé "bez edge".
+function CalibrationBadge(){
+  const [cal,setCal]=useState(null);
+  useEffect(()=>{let live=true;
+    fetch("data/calibration.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"})
+      .then(r=>r.ok?r.json():null).then(j=>{if(live)setCal(j);}).catch(()=>{});
+    return ()=>{live=false;};
+  },[]);
+  if(!cal||!Array.isArray(cal.grid)) return <span style={{color:"#8b949e"}}>⏳ kalibrace COT-diff…</span>;
+  const when=(cal.updated||"").slice(0,10);
+  const robust=cal.grid.filter(g=>g.robust);
+  if(robust.length){
+    const b=robust.slice().sort((a,x)=>(x.pf||0)-(a.pf||0))[0];
+    return <span title={"COT-diff složka samostatně; celý engine se kalibruje z data/engine_hist.json. Přepočet "+when} style={{color:"#d29922",cursor:"help"}}>⚡ COT-diff kalibrace: |diff|≥{b.diff}, {b.horizon}t → WR {b.wr}% PF {b.pf} (robustní, {when})</span>;
+  }
+  return <span title={"Žádná kombinace prahu a horizontu nemá PF>1 v obou polovinách období (vstup až po publikaci reportu). Pásma SLABÝ/SWEETSPOT/SILNÝ ber jako orientační heuristiku. Přepočet "+when} style={{color:"#8b949e",cursor:"help"}}>ℹ COT-diff sám o sobě aktuálně edge neukazuje ({when}) — pásma jsou heuristika</span>;
 }
 function CalendarEventRow({e,compact=false,onSetManual}){
   const dt=evDate(e);
@@ -2244,7 +2267,7 @@ const PAIR_LIST_TYPE={EURUSD:"white",USDJPY:"white",GBPUSD:"white",AUDUSD:"grey"
 function captureContext(pairSym,pairs,scores,calData,upcoming,aiAnalyses){
   const p=(pairs||[]).find(function(x){return x.pair===pairSym;})||null;
   const diff=p?p.diff:null;
-  const band=diff==null?null:(Math.abs(diff)<2?"slabý":(Math.abs(diff)<=3?"sweetspot":"silný"));
+  const band=(typeof getDiffBand==="function")?getDiffBand(diff):null; // jednotná hranice — viz BAND_THRESHOLDS v engine.js
   let dailyLevel="none",flip=false,cbdi=null,cbStage=null;
   try{ if(p) dailyLevel=getPairDailyState(p,scores,calData,upcoming).level; }catch(e){}
   try{ flip=isPairFlipped(pairSym); }catch(e){}
@@ -3156,7 +3179,7 @@ function App(){
 
       <div style={{background:"#0d1117",borderBottom:"1px solid #30363d",padding:"7px 16px",fontSize:11,color:"#8b949e"}}>
         V5 Engine: Fundamenty · CB Policy cycle · Real Yield · COT (CFTC) · Retail (MyFxBook) · Sezónnost 2%
-        {" · "}<span style={{color:"#d29922"}}>⚡ Backtest 2018-2024: diff 2-3 → WR 65% PF 2.0</span>
+        {" · "}<CalibrationBadge/>
         {" · "}<span style={{color:"#ff4d4d"}}>⚠ USDCHF/USDCAD nízká přesnost enginu</span>
       </div>
 

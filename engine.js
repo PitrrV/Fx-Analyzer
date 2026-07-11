@@ -150,7 +150,7 @@ try{
 // Zdroj kalendáře pro diagnostiku (nastavuje každý frontend po resolv fallbacků)
 let g_calSource="";
 // Důvěra ve fundamentální data podle délky historie kalendáře.
-// 1 = plná (Finnhub 15 měsíců, ladění s 65% WR). <1 = krátká záloha (ForexFactory
+// 1 = plná (Finnhub 15 měsíců). <1 = krátká záloha (ForexFactory
 // ~3 týdny) → fundamentální tilt z dat se ztlumí, ať pár čerstvých čísel nerozhází
 // celý žebříček a engine se víc opře o stabilní COT/yield/policy.
 let g_fundConfidence=1;
@@ -341,6 +341,21 @@ function svgPolyline(values,w=360,h=120,pad=16){
   }).join(" ");
 }
 function pairBiasScore(p){return Math.round(Math.max(0,Math.min(100,50+(p.dir==="BUY"?p.diff:-p.diff)*3.5)));}
+
+// ── PÁSMA SÍLY DIFF — JEDINÉ MÍSTO PRAVDY ────────────────────────────
+// Orientační heuristika, NE backtestem ověřené pásmo: dřívější claim "diff 2–3
+// = 65% WR" nebyl reprodukován (viz data/calibration.json — COT-diff složka
+// po odstranění look-ahead biasu edge neukazuje; pásma na CELÉM skóre půjde
+// ověřit až z data/engine_hist.json po nasbírání historie komponent).
+// Hranice: diff >= strong je SILNÝ (dřív se UI badge [>=3] a deník [<=3]
+// na přesné hranici 3.0 rozcházely; classic měl navíc vlastní prahy >=5/>=2.5).
+const BAND_THRESHOLDS={weak:2,strong:3};
+const BAND_DISCLAIMER="Orientační pásmo síly rozdílu skóre — neověřená heuristika, kalibrace probíhá.";
+function getDiffBand(diff){
+  if(diff==null||isNaN(diff)) return null;
+  const a=Math.abs(diff);
+  return a<BAND_THRESHOLDS.weak?"slabý":a<BAND_THRESHOLDS.strong?"sweetspot":"silný";
+}
 
 // ── COT & RETAIL SENTIMENT (auto + fallback localStorage) ─────────
 const COT_DEFAULT=Object.fromEntries(CURRENCIES.map(c=>[c,0]));
@@ -1672,7 +1687,7 @@ function getCurrencyMomentum(currency){
     return parseFloat(Math.max(-1,Math.min(1,(diffs.reduce((a,b)=>a+b,0)/diffs.length)*0.35)).toFixed(2));
   }catch(e){return 0;}
 }
-// Momentum byl historicky kvůli bugu vždy 0 → backtest s 65% WR běžel BEZ něj.
+// Momentum byl historicky kvůli bugu vždy 0 → původní ladění vah běželo BEZ něj.
 // Necháváme momentum počítat (loguje se a vyhodnocuje v 🔬 Backtest tabu),
 // ale do živého skóre nepřispívá, dokud ho backtest neověří. Zapneš = true.
 const MOMENTUM_ENABLED=false;
@@ -1897,7 +1912,11 @@ function getAutoUpdateStatus(){
 }
 function getDynamicWeights(cotPct,regime){
   // Audit výsledek: sezónnost při váze 8% škodí výsledkům (+0.6% WR bez ní).
-  // Redukováno na 2%. CB Policy zvýšena. Backtest 2022-2024: WR diff2-3=65.5% PF=2.039.
+  // Redukováno na 2%. CB Policy zvýšena.
+  // POZOR: dřívější claim "Backtest 2022-2024: WR diff2-3=65.5% PF=2.039" NEBYL
+  // reprodukován — serverová kalibrace (data/calibration.json, 2024-2026, po
+  // opravě look-ahead biasu) ukazuje pro COT-diff složku PF<1 napříč gridem.
+  // Plnohodnotné ověření vah celého enginu čeká na data/engine_hist.json.
   // Sweep 2010–2026 (600 hodnocených týdnů, ~11 000 obchodů, 9 definic percentil
   // okna, horizonty 1t/4t, obě poloviny období zvlášť): obchody v týdnech s
   // percentil-extrémem dopadly VŽDY hůř než zbytek (PF 0.74–0.91 vs 0.91–1.06,
@@ -2856,7 +2875,7 @@ CO NEPROZRAZOVAT (obchodní know-how appky — uživatele to nemusí zajímat a 
 const COACH_KB=`KNOWLEDGE BASE MODULŮ APPKY (uč z tohohle, ne z obecných znalostí o tradingu):
 
 SKÓRE MĚNY (Bias Score, −10 až +10, tab "Síla měn" i Dashboard)
-Souhrnné číslo za měnu; kladné = fundamentálně silná, záporné = slabá. Vzniká váženou kombinací fundamentů z kalendáře, COT pozicování, retail sentimentu, sezónnosti, CB politiky, reálného výnosu, rizika a (jen CAD/USD) ropy — přesné váhy appka nezveřejňuje, doladily se backtestem a časem se mohou upravit. Přepočítá se při každém refreshi, ale reálně se hýbe hlavně po nových datech. Je to náklon, ne predikce — samo o sobě neříká nic o riziku obchodu, na to slouží Conviction a Denní brief. Rozdíl skóre dvou měn (diff) určuje bias páru; appka ho pásmuje na slabý/sweetspot/silný, protože ne každý rozdíl je stejně důležitý.
+Souhrnné číslo za měnu; kladné = fundamentálně silná, záporné = slabá. Vzniká váženou kombinací fundamentů z kalendáře, COT pozicování, retail sentimentu, sezónnosti, CB politiky, reálného výnosu, rizika a (jen CAD/USD) ropy — přesné váhy appka nezveřejňuje, doladily se backtestem a časem se mohou upravit. Přepočítá se při každém refreshi, ale reálně se hýbe hlavně po nových datech. Je to náklon, ne predikce — samo o sobě neříká nic o riziku obchodu, na to slouží Conviction a Denní brief. Rozdíl skóre dvou měn (diff) určuje bias páru; appka ho pásmuje na slabý/sweetspot/silný. DŮLEŽITÉ: pásma jsou orientační heuristika, NE backtestem ověřené kategorie — pokud se uživatel ptá na spolehlivost pásem nebo na "65% win rate", řekni na rovinu, že dřívější číslo se v aktuální kalibraci nepotvrdilo, ověřování celého enginu probíhá, a odkaž na vlastní statistiky uživatele v Trading deníku (panel Ověření edge).
 
 FUNDAMENTÁLNÍ SKÓRE (součást skóre měny)
 Vzniká z kalendáře: každá zveřejněná zpráva se vyhodnotí jako beat/miss vůči odhadu a promítne se do skóre podle typu dat (sazby a inflace váží citelně víc než např. důvěra spotřebitelů). Nedávné zprávy váží víc, staré postupně vyprchávají. Real yield a CB politika se počítají odděleně ze sazeb/CPI, ne z kalendářních překvapení — proto může být fundamentální skóre slabé, ale celkové skóre měny silné díky vysokému reálnému výnosu, nebo naopak.
