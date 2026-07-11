@@ -1999,11 +1999,14 @@ function buildForecastV5(pair,scores,calData,upcoming){
   const hoursToNews=getHoursToHighImpact(base,quote,upcoming);
   const newsDiscount=hoursToNews<12?-12:hoursToNews<24?-8:hoursToNews<48?-4:0;
   prob+=newsDiscount;
-  // Faktor 4: COT extreme korekce
+  // Faktor 4: COT extreme korekce — SYMETRICKÁ pro base i quote. Dřívější
+  // asymetrie (base ±7/+3, quote jen −5 bez bonusu) neměla žádné zdůvodnění
+  // v kódu ani datech; princip "bez důkazu žádná asymetrie". Přehodnotit na
+  // datech z data/engine_hist.json.
   const cotPctB=getCOTPercentile(base);const cotPctQ=getCOTPercentile(quote);
   let cotAdj=0;
   if(cotPctB!==null){const d=curDiff>0?1:-1;if(cotPctB>88&&d>0) cotAdj-=7;if(cotPctB<12&&d<0) cotAdj-=7;if(cotPctB>70&&d>0) cotAdj+=3;if(cotPctB<30&&d<0) cotAdj+=3;}
-  if(cotPctQ!==null){const d=curDiff>0?-1:1;if(cotPctQ>88&&d>0) cotAdj-=5;if(cotPctQ<12&&d<0) cotAdj-=5;}
+  if(cotPctQ!==null){const d=curDiff>0?-1:1;if(cotPctQ>88&&d>0) cotAdj-=7;if(cotPctQ<12&&d<0) cotAdj-=7;if(cotPctQ>70&&d>0) cotAdj+=3;if(cotPctQ<30&&d<0) cotAdj+=3;}
   prob+=cotAdj;
   prob=Math.round(Math.max(35,Math.min(75,prob)));
   const dir=combined>0?"BUY":"SELL";
@@ -2178,7 +2181,13 @@ function scoreCurrency(events,currency,cotData,sentData){
     cats[meta.cat]=(cats[meta.cat]||0)+contribution;
     used.push({...ev,dir,w,r,relLabel:rel.label,category:meta.cat,interpretation:meta.dir===-1?"nižší = bullish":meta.dir==="pmi"?"PMI 50 + beat/miss":"vyšší = bullish"});
   }
-  const fundScoreRaw=weight>0?Math.max(-10,Math.min(10,(score/weight)*10)):0;
+  // Shrinkage n/(n+k), k=3: score/weight je vážený průměr směrů ±1 — s jediným
+  // beat eventem by fundScoreRaw saturoval na ±10 ("jedno číslo ≠ celý příběh").
+  // k=3: 1 event → 25 % tiltu, 5 → 63 %, 10 → 77 %, 30+ → >91 % (běžný počet
+  // eventů v 80t okně skóre prakticky nemění). Hodnotu k přehodnotit na datech
+  // z data/engine_hist.json.
+  const nEv=used.length;
+  const fundScoreRaw=weight>0?Math.max(-10,Math.min(10,(score/weight)*10*(nEv/(nEv+3)))):0;
   const yieldAdj=getRealYieldScore(currency);
   const policyAdj=getCBPolicyScore(currency);
   // Ztlum jen data-tilt z kalendáře (fundScoreRaw) dle důvěry v délku historie;
