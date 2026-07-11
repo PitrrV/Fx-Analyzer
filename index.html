@@ -134,7 +134,9 @@ class FXApp extends React.Component{
         retail:Math.round(sent[c]!=null?sent[c]:50) }; });
       // PAIRS
       const fcLog={};
-      this.PAIRS=ranked.map(p=>{ let status='confirmed',prob=50,fdir=p.dir; try{const ds=getPairDailyState(p,sc,cal,up);status=ds.level==='conflict'?'conflict':ds.level==='upcoming'?'upcoming':'confirmed';}catch(e){} try{const fc=buildForecastV5(p,sc,calScoring,up)||{};prob=fc.prob||50;fdir=fc.dir||p.dir;fcLog[p.pair]=fc;}catch(e){}
+      // Plné rozlišení stavů z getPairDailyState (conflict/confirm/upcoming/done/tomorrow/none)
+      // — dřívější redukce na 3 stavy ukazovala "Potvrzeno" i pro páry úplně bez dat.
+      this.PAIRS=ranked.map(p=>{ let status='none',prob=50,fdir=p.dir; try{const ds=getPairDailyState(p,sc,cal,up);status=ds.level||'none';}catch(e){} try{const fc=buildForecastV5(p,sc,calScoring,up)||{};prob=fc.prob||50;fdir=fc.dir||p.dir;fcLog[p.pair]=fc;}catch(e){}
         return {pair:p.pair,base:p.base,quote:p.quote,dir:p.dir,fdir,diff:+p.diff,conv:Math.min(5,p.conviction||0),prob,status}; });
       try{ if(typeof logForecastSnapshot==='function') logForecastSnapshot(fcLog); }catch(e){}
       if(!this.state.sel&&this.PAIRS[0]) this.state.sel=this.PAIRS[0].pair;
@@ -697,8 +699,10 @@ class FXApp extends React.Component{
         cell('COT '+p.base+' L/S',(sb.inst>0?'net +':'net ')+sb.inst,sb.inst>=0?T.green:T.red,cdates.length>=2,h(self.HoverChart,{key:'cb'+p.pair+gr,dates:cdates,series:cotLS(p.base),height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:p.base+' — COT Long/Short',subtitle:'Institucionální pozicování · '+gr,dates:cdates,series:cotLS(p.base),yMin:0,yMax:100,mid:50,fmt:pctFmt}),
         cell('COT '+p.quote+' L/S',(sq.inst>0?'net +':'net ')+sq.inst,sq.inst>=0?T.green:T.red,cdates.length>=2,h(self.HoverChart,{key:'cq'+p.pair+gr,dates:cdates,series:cotLS(p.quote),height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:p.quote+' — COT Long/Short',subtitle:'Institucionální pozicování · '+gr,dates:cdates,series:cotLS(p.quote),yMin:0,yMax:100,mid:50,fmt:pctFmt}))); }
   pairObj(id){ return this.PAIRS.find(p=>p.pair===id)||this.PAIRS[0]; }
-  statusColor(s){ const T=this.tok; return s==='conflict'?T.red:s==='upcoming'?T.amber:T.green; }
-  statusLabel(s){ return s==='conflict'?'Konflikt':s==='upcoming'?'Přijde dnes':'Potvrzeno'; }
+  // Plná sada stavů dle getPairDailyState — texty 1:1 s classic (žádná nová logika).
+  // "Potvrzeno" jen při skutečné shodě dnešních dat s biasem (level==='confirm').
+  statusColor(s){ const T=this.tok; return s==='conflict'?T.red:s==='upcoming'?T.amber:s==='tomorrow'?T.amber:s==='done'?'#58a6ff':s==='confirm'?T.green:T.faint; }
+  statusLabel(s){ return s==='conflict'?'Konflikt':s==='upcoming'?'Přijde dnes':s==='tomorrow'?'Zítra data':s==='done'?'Dnes proběhlo':s==='confirm'?'Potvrzeno':'Bez fundamentů'; }
   today(){ return new Date().toLocaleDateString('cs-CZ',{day:'numeric',month:'long',year:'numeric'}); }
 
   renderDetail(){ const self=this,h=this.h,T=this.tok, p=this.pairObj(this.state.sel); if(!p) return null;
