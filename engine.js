@@ -2092,7 +2092,12 @@ function calcConvictionScore(pair,scores,aiAnalyses){
       if(oilMatchesTrade){stars++;reasons.push("WTI Ropa: "+(oilSt?.direction||"")+" ("+( oilSt?.mom4w?.toFixed(1)||"?")+"% 4t)");}
     }
   }
-  return{stars,reasons};
+  // Faktorů je interně 6 (CB, yield, fundamenty, COT, AI, ropa), ale hvězdičková
+  // škála v UI je všude 0–5 ("X / 5") — CAD pár s plnou konfluencí vracel 6 a
+  // '☆'.repeat(5-6) shazoval render (RangeError v classic). Clamp TADY, v jediném
+  // místě pravdy — reasons zůstávají všechny (tooltip smí vypsat i 6 důvodů);
+  // šestý souhlasný faktor funguje jako pojistka dorovnávající chybějící jiný.
+  return{stars:Math.min(5,stars),reasons};
 }
 
 function scoreCurrency(events,currency,cotData,sentData){
