@@ -27,19 +27,22 @@ const STANDARD_PAIRS=[
 
 const EVENT_RULES=[
   // direction: 1 = vyšší actual než forecast je bullish; -1 = nižší actual je bullish; "pmi" = kombinuje beat/miss + hranici 50
-  {cat:"Interest Rates",keys:["interest rate","rate decision","rate statement","funds rate","policy rate","bank rate","deposit facility rate","refinancing rate","cash rate","overnight rate","main refinancing"],w:3.5,dir:1,cap:3},
-  {cat:"Inflation",keys:["cpi","consumer price index","inflation rate","core inflation","hicp","pce","personal consumption","ppi","producer price"],w:3.0,dir:1,cap:3},
+  // Pozn.: dřívější pole "cap" (per-kategorii strop) se nikde nečetlo — odstraněno.
+  // Případný strop počtu eventů na kategorii vyhodnotit až na datech ze serverového
+  // snapshotu komponent (data/engine_hist.json), ne naslepo.
+  {cat:"Interest Rates",keys:["interest rate","rate decision","rate statement","funds rate","policy rate","bank rate","deposit facility rate","refinancing rate","cash rate","overnight rate","main refinancing"],w:3.5,dir:1},
+  {cat:"Inflation",keys:["cpi","consumer price index","inflation rate","core inflation","hicp","pce","personal consumption","ppi","producer price"],w:3.0,dir:1},
   // Pořadí záměrné: "Labor -Unemployment" MUSÍ být před "Labor +Jobs" — "unemployment"
   // obsahuje jako substring "employment", takže "Unemployment Rate"/"Unemployment Claims"
   // by jinak vždy chytila +Jobs (dir:1) místo správné -Unemployment (dir:-1) a engine by
   // KAŽDÝ pokles nezaměstnanosti (bullish) vykládal jako bearish miss a naopak.
-  {cat:"Labor -Unemployment",keys:["unemployment rate","unemployment claims","unemployment change","jobless claims","initial claims","continuing claims","claimant count"],w:3.0,dir:-1,cap:4},
-  {cat:"Labor +Jobs",keys:["non-farm","nonfarm","payroll","employment change","employment","adp","average hourly earnings","wage","earnings"],w:3.0,dir:1,cap:4},
-  {cat:"GDP",keys:["gdp","gross domestic product"],w:2.2,dir:1,cap:2},
-  {cat:"PMI",keys:["manufacturing pmi","services pmi","service pmi","composite pmi","pmi","purchasing managers","ism manufacturing","ism services"],w:1.8,dir:"pmi",cap:2},
-  {cat:"Retail Sales",keys:["retail sales"],w:1.7,dir:1,cap:2},
-  {cat:"External Balance",keys:["trade balance","current account"],w:1.0,dir:1,cap:1},
-  {cat:"Confidence",keys:["consumer confidence","business confidence","sentiment","zew","ifo"],w:1.0,dir:1,cap:1},
+  {cat:"Labor -Unemployment",keys:["unemployment rate","unemployment claims","unemployment change","jobless claims","initial claims","continuing claims","claimant count"],w:3.0,dir:-1},
+  {cat:"Labor +Jobs",keys:["non-farm","nonfarm","payroll","employment change","employment","adp","average hourly earnings","wage","earnings"],w:3.0,dir:1},
+  {cat:"GDP",keys:["gdp","gross domestic product"],w:2.2,dir:1},
+  {cat:"PMI",keys:["manufacturing pmi","services pmi","service pmi","composite pmi","pmi","purchasing managers","ism manufacturing","ism services"],w:1.8,dir:"pmi"},
+  {cat:"Retail Sales",keys:["retail sales"],w:1.7,dir:1},
+  {cat:"External Balance",keys:["trade balance","current account"],w:1.0,dir:1},
+  {cat:"Confidence",keys:["consumer confidence","business confidence","sentiment","zew","ifo"],w:1.0,dir:1},
 ];
 
 function getEventMeta(name=""){
@@ -180,7 +183,7 @@ function parseEventTime(t){
 }
 function evDate(ev){return new Date(parseEventTime(ev&&ev.time));}
 function recency(dateStr){
-  const d=(Date.now()-new Date(dateStr))/86400000;
+  const d=(Date.now()-parseEventTime(dateStr))/86400000; // jednotné UTC parsování (viz parseEventTime)
   return d<=90?1.8:d<=180?1.4:d<=365?1.0:0.7;
 }
 function eventRelevance(currency,ev){
@@ -206,14 +209,35 @@ function saveScoreHistory(scores){
   }catch(e){}
 }
 function getScoreChange(currency,days=7){
+  const d=getScoreChangeDetail(currency,days);
+  return d?d.delta:0;
+}
+// Skutečný kalendářní rozdíl: referenční záznam = nejbližší k (dnes − days dní),
+// tolerance ±3 dny. Dřívější dates[len-1-days] bral 7. ZÁZNAM zpět, ne 7 dní —
+// score_hist má záznam jen za den s otevřenou appkou, takže "7d" chip po pauze
+// tiše pokrýval klidně měsíc. Vrací {delta, spanDays} — UI zobrazí skutečné
+// rozpětí; null = žádný použitelný referenční den (chip se skryje, nelže).
+function getScoreChangeDetail(currency,days=7){
   try{
     const hist=JSON.parse(localStorage.getItem("score_hist")||"{}");
-    const dates=Object.keys(hist).sort();
-    if(dates.length<2) return 0;
-    const cur=hist[dates[dates.length-1]]?.[currency]||0;
-    const past=hist[dates[Math.max(0,dates.length-1-days)]]?.[currency]||0;
-    return parseFloat((cur-past).toFixed(1));
-  }catch(e){return 0;}
+    const dates=Object.keys(hist).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    if(dates.length<2) return null;
+    const curDate=dates[dates.length-1];
+    const cur=hist[curDate]?.[currency];
+    if(typeof cur!=="number") return null;
+    const targetMs=parseEventTime(curDate)-days*86400000;
+    let best=null,bestDiff=Infinity;
+    for(let i=0;i<dates.length-1;i++){
+      const ms=parseEventTime(dates[i]);
+      const dd=Math.abs(ms-targetMs);
+      if(dd<bestDiff){bestDiff=dd;best=dates[i];}
+    }
+    if(!best||bestDiff>3*86400000) return null; // mimo toleranci ±3 dny
+    const past=hist[best]?.[currency];
+    if(typeof past!=="number") return null;
+    const spanDays=Math.round((parseEventTime(curDate)-parseEventTime(best))/86400000);
+    return {delta:parseFloat((cur-past).toFixed(1)),spanDays,from:best,to:curDate};
+  }catch(e){return null;}
 }
 
 function loadScoreHistory(){try{return JSON.parse(localStorage.getItem("score_hist")||"{}");}catch(e){return{};}}
@@ -1297,6 +1321,24 @@ async function fetchTextWithProxies(url){
 }
 const FF_MONTHS_ABBR=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
 function ffWeekParam(d){return FF_MONTHS_ABBR[d.getMonth()]+d.getDate()+"."+d.getFullYear();}
+// Časy na forexfactory.com stránkách jsou v zóně FF session (default US Eastern),
+// NE v UTC — dřívější orazítkování "Z" posouvalo každý backfill event o 4–5 h
+// (a večerní US eventy do špatného dne → duplicity proti správně časovaným cron
+// datům). Převod ET→UTC přes Intl (respektuje DST bez externí knihovny).
+function etToUtcISO(y,mo,day,hh,mm){
+  try{
+    const guess=Date.UTC(y,mo,day,hh,mm,0);
+    const fmt=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false});
+    // offset = jak se guess (braný jako UTC) zobrazí v ET; rozdíl = posun zóny
+    const p=Object.fromEntries(fmt.formatToParts(new Date(guess)).map(x=>[x.type,x.value]));
+    const asET=Date.UTC(+p.year,+p.month-1,+p.day,(+p.hour)%24,+p.minute,0);
+    const offsetMs=guess-asET; // ET je za UTC → offset kladný (4–5 h)
+    return new Date(guess+offsetMs).toISOString().replace(/\.\d{3}Z$/,"Z");
+  }catch(e){
+    // Fallback bez Intl: pevný odhad EST (UTC-5) — pořád lepší než tvářit se jako UTC
+    return new Date(Date.UTC(y,mo,day,hh+5,mm,0)).toISOString().replace(/\.\d{3}Z$/,"Z");
+  }
+}
 function ffImpactFromEl(el){
   if(!el)return"";
   const t=(((el.getAttribute&&el.getAttribute("title"))||"")+" "+(el.className||"")+" "+(el.textContent||"")).toLowerCase();
@@ -1319,9 +1361,11 @@ function parseFFCalendarHTML(html,year){
     if(tm){let h=+tm[1];mn=tm[2];if(tm[3]==="pm"&&h!==12)h+=12;if(tm[3]==="am"&&h===12)h=0;hh=String(h).padStart(2,"0");}
     const impEl=q(".calendar__impact span, .impact span, .calendar__impact");
     const actEl=q(".calendar__actual, .actual"),forEl=q(".calendar__forecast, .forecast"),prevEl=q(".calendar__previous, .previous");
-    const iso=`${year}-${String(cur.mi+1).padStart(2,"0")}-${String(cur.day).padStart(2,"0")}T${hh}:${mn}:00Z`;
-    out.push(normImportEvent({event:ev,currency:ccy,datetime:iso,impact:ffImpactFromEl(impEl),
-      actual:actEl?actEl.textContent.trim():"",forecast:forEl?forEl.textContent.trim():"",previous:prevEl?prevEl.textContent.trim():""}));
+    const iso=etToUtcISO(year,cur.mi,cur.day,+hh,+mn); // FF časy jsou ET, ne UTC
+    const m0=normImportEvent({event:ev,currency:ccy,datetime:iso,impact:ffImpactFromEl(impEl),
+      actual:actEl?actEl.textContent.trim():"",forecast:forEl?forEl.textContent.trim():"",previous:prevEl?prevEl.textContent.trim():""});
+    if(m0) m0._src="ff-backfill"; // marker zdroje — do budoucna jde poznat, odkud záznam je
+    out.push(m0);
   }catch(e){} });
   return out.filter(Boolean);
 }
@@ -2161,7 +2205,15 @@ function mergeEvents(calData,upcoming){
     // zapsaným/posunutým časem (různé zdroje = různý formát/pásmo).
     const k=(e.event||"")+"|"+(e.country||"")+"|"+ffDateOnly(e.time);
     const prev=map.get(k);
-    if(!prev||(!prev.actual&&e.actual)) map.set(k,e);
+    // Slévat POLE, ne nahrazovat celý záznam — záznam s actual ale bez estimate
+    // dřív vytlačil verzi s estimate a event pak vypadl ze skórování
+    // (eventDirection potřebuje actual I estimate) i z BEAT/MISS zbarvení.
+    // Field-wise (ne spread) — prázdný string v novějším záznamu nesmí přepsat
+    // vyplněnou hodnotu ve starším. Základ = záznam s actual, díry doplní druhý.
+    if(!prev){ map.set(k,e); return; }
+    const primary=(!prev.actual&&e.actual)?e:prev, secondary=primary===e?prev:e;
+    const fill=(a,b)=>(a!=null&&a!=="")?a:b;
+    map.set(k,{...primary,actual:fill(primary.actual,secondary.actual),estimate:fill(primary.estimate,secondary.estimate),prev:fill(primary.prev,secondary.prev),impact:fill(primary.impact,secondary.impact)});
   });
   const out=[...map.values()];
   _mergeEventsCache={a:calData,b:upcoming,out};
@@ -2225,16 +2277,19 @@ function getImminentHigh(currency,events,from,to){
   }).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
 }
 // Jednotný zdroj pro puntík i Daily Brief — velké přímé události páru.
-// Rozdělené: dnes už proběhlo / dnes ještě přijde / zítra (do +36h) = podtext.
+// Rozdělené: dnes už proběhlo / dnes ještě přijde / zítra = podtext.
 function getPairFundamentalDay(pair,calData,upcoming){
   const ev=mergeEvents(calData,upcoming);
-  const dayStart=startOfTodayMs(), dayEnd=localDayEnd(), now=Date.now(), soon=now+36*3600000;
-  const hi=getImminentHigh(pair.base,ev,dayStart,soon).concat(getImminentHigh(pair.quote,ev,dayStart,soon)).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
+  // Bucket "tomorrow" končí koncem ZÍTŘEJŠÍHO dne, ne pevným oknem now+36h —
+  // večer (např. 23:00) staré okno sahalo do pozítří 11:00 a label "📅 Zítra"
+  // ukazoval i pozítřejší eventy. Event z pozítří se prostě objeví, až bude zítra.
+  const dayStart=startOfTodayMs(), dayEnd=localDayEnd(), now=Date.now(), tomorrowEnd=dayEnd+86400000;
+  const hi=getImminentHigh(pair.base,ev,dayStart,tomorrowEnd).concat(getImminentHigh(pair.quote,ev,dayStart,tomorrowEnd)).sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time));
   return {
     hi,
     todayPast:hi.filter(e=>{const t=parseEventTime(e.time);return t>=dayStart&&t<=now;}),
     todayUpcoming:hi.filter(e=>{const t=parseEventTime(e.time);return t>now&&t<=dayEnd&&!e.actual;}),
-    tomorrow:hi.filter(e=>{const t=parseEventTime(e.time);return t>dayEnd&&!e.actual;}),
+    tomorrow:hi.filter(e=>{const t=parseEventTime(e.time);return t>dayEnd&&t<=tomorrowEnd&&!e.actual;}),
   };
 }
 function getPairDailyState(pair,scores,calData,upcoming){

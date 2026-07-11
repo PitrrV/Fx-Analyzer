@@ -127,6 +127,7 @@ class FXApp extends React.Component{
         cotPct:(()=>{try{return getCOTPercentile(c);}catch(e){return 50;}})()||50,
         cotPctDelta:(()=>{try{return getCOTPercentileChange(c);}catch(e){return null;}})(),
         chg7:(()=>{try{return getScoreChange(c,7);}catch(e){return 0;}})()||0,
+        chg7d:(()=>{try{return (typeof getScoreChangeDetail==='function')?getScoreChangeDetail(c,7):null;}catch(e){return null;}})(),
         cb:(typeof CB_POLICY_DATA!=='undefined'&&CB_POLICY_DATA[c]&&CB_POLICY_DATA[c].label)||'—',
         inst:Math.round(Math.max(-100,Math.min(100,(cot[c]||0)*12))),
         cotLong:(()=>{try{const ls=getCOTLongShort(c);return ls?ls.long:null;}catch(e){return null;}})(),
@@ -569,7 +570,7 @@ class FXApp extends React.Component{
         h('div',{style:{position:'relative',height:26,background:'#0a0d13',border:'1px solid #161b27',borderRadius:7}},
           h('div',{style:{position:'absolute',left:'50%',top:0,bottom:0,width:1,background:'#2a3242'}}),
           h('div',{style:{position:'absolute',top:3,bottom:3,borderRadius:5,left:pos?'50%':`calc(50% - ${w}%)`,width:w+'%',background:`linear-gradient(90deg,${pos?col+'30':col},${pos?col:col+'30'})`,boxShadow:`0 0 14px ${col}55`}})),
-        h('div',{style:{textAlign:'right',display:'flex',flexDirection:'column',alignItems:'flex-end'}},h('span',{style:self.mono({fontSize:14,fontWeight:700,color:col})},self.sgn(r.score)),h('span',{style:self.mono({fontSize:9,color:r.chg7>=0?T.green:T.red})},(r.chg7>=0?'▲':'▼')+' '+Math.abs(r.chg7).toFixed(1)))); }));
+        h('div',{style:{textAlign:'right',display:'flex',flexDirection:'column',alignItems:'flex-end'}},h('span',{style:self.mono({fontSize:14,fontWeight:700,color:col})},self.sgn(r.score)),r.chg7d?h('span',{style:self.mono({fontSize:9,color:r.chg7d.delta>=0?T.green:T.red})},(r.chg7d.delta>=0?'▲':'▼')+' '+Math.abs(r.chg7d.delta).toFixed(1)+' '+r.chg7d.spanDays+'d'):null)); }));
   }
   DivergeChart(){ const self=this,h=this.h,T=this.tok; const rows=this.CUR.map(c=>Object.assign({c},this.D[c]));
     return h('div',{style:{display:'flex',flexDirection:'column',gap:7}},
@@ -830,7 +831,7 @@ class FXApp extends React.Component{
         return h('div',{title:'Rozklad změny skóre od posledního zapsaného dne — odpověď na „vyšlo číslo a skóre se (ne)hnulo, proč?"',style:{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap',marginBottom:12,padding:'8px 10px',borderRadius:9,background:dcol+'14',border:'1px solid '+dcol+'40'}},
           h('span',{style:self.mono({fontSize:13,fontWeight:800,color:dcol,whiteSpace:'nowrap'})},'Δ '+(ex.totalDelta>0?'+':'')+ex.totalDelta.toFixed(2)),
           h('span',{style:{fontSize:10.5,color:T.dim,lineHeight:1.4}},'od '+ex.since.slice(5)+(ex.parts.length?' · '+ex.parts.slice(0,3).map(p=>p.label+' '+(p.delta>0?'+':'')+p.delta.toFixed(2)).join(' · '):' — žádná složka se znatelně nehnula')));})(),h('div',{style:{display:'flex',flexDirection:'column',gap:5}},parts.map(([l,v])=>h('div',{key:l,style:{display:'grid',gridTemplateColumns:'52px 1fr 38px',alignItems:'center',gap:8}},h('span',{style:{fontSize:10,color:T.dim}},l),h('div',{style:{height:5,background:'#0a0d13',borderRadius:3,position:'relative',overflow:'hidden'}},h('div',{style:{position:'absolute',left:'50%',top:0,bottom:0,width:1,background:'#2a3242'}}),h('div',{style:{position:'absolute',top:0,bottom:0,height:'100%',left:v>=0?'50%':(50-Math.abs(v)/3*50)+'%',width:Math.min(50,Math.abs(v)/3*50)+'%',background:self.scol(v),borderRadius:2}})),h('span',{style:self.mono({fontSize:10,color:self.scol(v),textAlign:'right'})},self.sgn(v))))),
-      h('div',{style:{display:'flex',justifyContent:'space-between',marginTop:12,paddingTop:10,borderTop:'1px solid #161b27',fontSize:10.5,color:T.dim}},h('span',null,'COT '+d.cotPct+'p'),h('span',{style:{color:d.chg7>=0?T.green:T.red}},(d.chg7>=0?'▲ +':'▼ ')+Math.abs(d.chg7).toFixed(1)+' 7d')));})));
+      h('div',{style:{display:'flex',justifyContent:'space-between',marginTop:12,paddingTop:10,borderTop:'1px solid #161b27',fontSize:10.5,color:T.dim}},h('span',null,'COT '+d.cotPct+'p'),d.chg7d?h('span',{title:'Změna skóre od '+(d.chg7d.from||''),style:{color:d.chg7d.delta>=0?T.green:T.red}},(d.chg7d.delta>=0?'▲ +':'▼ ')+Math.abs(d.chg7d.delta).toFixed(1)+' '+d.chg7d.spanDays+'d'):h('span',{style:{color:T.faint}},'— bez reference')));})));
   }
   renderCOT(){ const self=this,h=this.h,T=this.tok,st=this.state;
     let cotMeta={},histN=0; try{cotMeta=loadCOTMeta()||{};}catch(e){} try{histN=Object.keys(loadCOTHistory()||{}).length;}catch(e){}
