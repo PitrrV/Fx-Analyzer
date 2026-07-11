@@ -31,6 +31,9 @@ jobs:
           if [ -n "$(git status --porcelain data/engine_hist.json)" ]; then
             git add data/engine_hist.json
             git commit -m "chore: update engine snapshot [skip ci]"
+            # rebase před push — jiný datový cron mohl mezitím commitnout na main
+            # (reálný nález: první běh spadl na souběhu s kalibračním cronem)
+            git pull --rebase origin main
             git push
           else
             echo "Beze změny."
