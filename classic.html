@@ -2540,7 +2540,10 @@ function runCOTBacktest(usdValue,cotHist,pctMap,opts){
         const crowded=(pb!=null&&(pb>=88||pb<=12))||(pq!=null&&(pq>=88||pq<=12));
         if(crowded) continue;
       }
-      const t0=Date.parse(d+"T00:00:00Z");
+      // Vstup až po publikaci reportu (report_date=úterý, publikace pátek ~15:30 ET,
+      // první obchodovatelný denní fix = pondělí) — stejná oprava look-ahead biasu
+      // jako scripts/backtest-cot.js (ENTRY_LAG_DAYS).
+      const t0=Date.parse(d+"T00:00:00Z")+6*86400000;
       const p0=btPairPrice(usdValue,pr.base,pr.quote,t0);
       const p1=btPairPrice(usdValue,pr.base,pr.quote,t0+horizonMs);
       if(p0==null||p1==null) continue;
