@@ -747,7 +747,9 @@ function migrateCOTHistoryKeys(){
 function saveCOTSnapshot(scores,meta){
   try{
     const key=cotWeekKey(meta?.asOf);
-    const hist=loadCOTHistory();hist[key]={scores,raw:meta?.raw||{},updatedAt:new Date().toISOString()};
+    // src:"live" — od zařízení, ne od serverového cronu; fetchActionCOTHistory()/
+    // sync.js merge ho smí přepsat serverovou hodnotou, jakmile ta pro týden dorazí.
+    const hist=loadCOTHistory();hist[key]={scores,raw:meta?.raw||{},updatedAt:new Date().toISOString(),src:"live"};
     const keys=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
     localStorage.setItem("cot_hist",JSON.stringify(trimmed));
   }catch(e){}
@@ -773,7 +775,11 @@ async function fetchActionCOTHistory(){
       // zařízením), ať PC/mobil/Classic vidí pro daný týden identická čísla. Dřív
       // rozhodoval "kdo má novější updatedAt", což při vlastním live-fetchi na jednom
       // zařízení natrvalo rozjelo hodnoty mezi zařízeními (viz PC vs mobil skóre).
-      hist[key]=week;
+      // src:"server" — značka pro sync.js: i po cloud slití musí serverová hodnota
+      // vždy vyhrát nad live-fetchnutou kopií z libovolného zařízení, jinak se stará/
+      // odlišná lokální hodnota může přes cloud vrátit zpátky (viz PC EUR/JPY 100% long
+      // vs správných 40/60 a 33/67 ze serveru — cloud merge dřív řešil jen updatedAt).
+      hist[key]={...week,src:"server"};
     }
     const keys=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);
     const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);

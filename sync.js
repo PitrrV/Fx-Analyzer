@@ -65,10 +65,26 @@
       // (CFTC report je vždy úterý — klíč na pondělí je vždy chyba). Bez týhle
       // opravy by ho merge pořád dokola tahal zpátky i po lokálním úklidu
       // (viz migrateCOTHistoryKeys v engine.js — tenhle merge běží dřív než ona).
+      //
+      // Server (src:"server", z fetchActionCOTHistory) MUSÍ vyhrát nad live-fetchnutou
+      // kopií (src:"live"/chybí) bez ohledu na updatedAt — jinak starší/odlišná živá
+      // hodnota z jednoho zařízení přežije v cloudu a přes sync přepíše správná
+      // serverová data na druhém zařízení (viz reálný nález: PC ukazoval EUR/JPY COT
+      // long/short 100/0, server měl 40/60 a 33/67 — cloud merge tehdy řešil jen
+      // "kdo má novější updatedAt", ne odkud data jsou). updatedAt rozhoduje jen mezi
+      // dvěma záznamy STEJNÉ třídy (oba server, nebo oba live/neoznačené).
+      // POZOR: musí se iterovat přes a i b ZVLÁŠŤ, ne přes už sloučený `out` výše —
+      // ten pro shodné raw klíče v a i b už zahodil b (řádek "let out={...b,...a}"),
+      // takže by server hodnota z cloudu nikdy nedostala šanci se vůbec porovnat.
       const fixed={};
-      Object.entries(out).forEach(([k,v])=>{
-        const nk=cotWeekKey(k);
-        if(!fixed[nk]||String(v?.updatedAt||"")>String(fixed[nk]?.updatedAt||"")) fixed[nk]=v;
+      [...Object.entries(b),...Object.entries(a)].forEach(([k,v])=>{
+        if(!v) return;
+        const nk=cotWeekKey(k), prev=fixed[nk];
+        if(!prev){ fixed[nk]=v; return; }
+        const prevSrv=prev.src==="server", vSrv=v.src==="server";
+        if(vSrv&&!prevSrv){ fixed[nk]=v; return; }
+        if(prevSrv&&!vSrv){ return; }
+        if(String(v.updatedAt||"")>=String(prev.updatedAt||"")) fixed[nk]=v;
       });
       out=fixed;
     }
