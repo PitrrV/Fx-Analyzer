@@ -1,0 +1,51 @@
+{
+ "updated": "2026-07-12T11:03:06.592Z",
+ "window": {
+  "from": "2026-05-15",
+  "to": "2026-08-01"
+ },
+ "counts": {
+  "liveEvents": 1104,
+  "backfillEvents": 0,
+  "matched": 0,
+  "liveOnly": 1104,
+  "backfillOnly": 0,
+  "scoreableMatched": 0
+ },
+ "mismatches": {
+  "actual": 0,
+  "forecast": 0,
+  "previous": 0,
+  "impact": 0,
+  "timeShiftOver1min": 0,
+  "actualOnScoreable": 0
+ },
+ "rates": {
+  "matchedPct": 0,
+  "actualRevisionPct": 0,
+  "actualRevisionOnScoreablePct": 0
+ },
+ "samples": {
+  "actual": [],
+  "forecast": [],
+  "timeShift": [],
+  "liveOnly": [
+   "MPC Member Greene Speaks|GBP|2026-05-31",
+   "FOMC Member Waller Speaks|USD|2026-05-31",
+   "Bank Holiday|NZD|2026-05-31",
+   "Capital Spending q/y|JPY|2026-05-31",
+   "Final Manufacturing PMI|JPY|2026-06-01",
+   "FOMC Member Powell Speaks|USD|2026-06-01",
+   "MI Inflation Gauge m/m|AUD|2026-06-01",
+   "ANZ Job Advertisements m/m|AUD|2026-06-01",
+   "RatingDog Manufacturing PMI|CNY|2026-06-01",
+   "German Retail Sales m/m|EUR|2026-06-01",
+   "Nationwide HPI m/m|GBP|2026-06-01",
+   "Commodity Prices y/y|AUD|2026-06-01",
+   "Retail Sales y/y|CHF|2026-06-01",
+   "GDP q/q|CHF|2026-06-01",
+   "Spanish Manufacturing PMI|EUR|2026-06-01"
+  ],
+  "backfillOnly": []
+ }
+}
