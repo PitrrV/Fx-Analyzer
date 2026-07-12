@@ -1,16 +1,16 @@
 {
- "updated": "2026-07-12T11:03:06.592Z",
+ "updated": "2026-07-12T14:03:22.431Z",
  "window": {
   "from": "2026-05-15",
   "to": "2026-08-01"
  },
  "counts": {
   "liveEvents": 1104,
-  "backfillEvents": 0,
-  "matched": 0,
-  "liveOnly": 1104,
+  "backfillEvents": 793,
+  "matched": 793,
+  "liveOnly": 311,
   "backfillOnly": 0,
-  "scoreableMatched": 0
+  "scoreableMatched": 490
  },
  "mismatches": {
   "actual": 0,
@@ -21,7 +21,7 @@
   "actualOnScoreable": 0
  },
  "rates": {
-  "matchedPct": 0,
+  "matchedPct": 71.8,
   "actualRevisionPct": 0,
   "actualRevisionOnScoreablePct": 0
  },
@@ -30,21 +30,21 @@
   "forecast": [],
   "timeShift": [],
   "liveOnly": [
-   "MPC Member Greene Speaks|GBP|2026-05-31",
-   "FOMC Member Waller Speaks|USD|2026-05-31",
-   "Bank Holiday|NZD|2026-05-31",
-   "Capital Spending q/y|JPY|2026-05-31",
-   "Final Manufacturing PMI|JPY|2026-06-01",
-   "FOMC Member Powell Speaks|USD|2026-06-01",
-   "MI Inflation Gauge m/m|AUD|2026-06-01",
-   "ANZ Job Advertisements m/m|AUD|2026-06-01",
-   "RatingDog Manufacturing PMI|CNY|2026-06-01",
-   "German Retail Sales m/m|EUR|2026-06-01",
-   "Nationwide HPI m/m|GBP|2026-06-01",
-   "Commodity Prices y/y|AUD|2026-06-01",
-   "Retail Sales y/y|CHF|2026-06-01",
-   "GDP q/q|CHF|2026-06-01",
-   "Spanish Manufacturing PMI|EUR|2026-06-01"
+   "BusinessNZ Services Index|NZD|2026-07-12",
+   "M2 Money Supply y/y|CNY|2026-07-13",
+   "New Loans|CNY|2026-07-13",
+   "FOMC Member Bowman Speaks|USD|2026-07-13",
+   "FOMC Member Waller Speaks|USD|2026-07-13",
+   "MPC Member Pill Speaks|GBP|2026-07-13",
+   "Federal Budget Balance|USD|2026-07-13",
+   "NZIER Business Confidence|NZD|2026-07-13",
+   "Visitor Arrivals m/m|NZD|2026-07-13",
+   "BRC Retail Sales Monitor y/y|GBP|2026-07-13",
+   "Westpac Consumer Sentiment|AUD|2026-07-14",
+   "NAB Business Confidence|AUD|2026-07-14",
+   "Trade Balance|CNY|2026-07-14",
+   "USD-Denominated Trade Balance|CNY|2026-07-14",
+   "Revised Industrial Production m/m|JPY|2026-07-14"
   ],
   "backfillOnly": []
  }
