@@ -825,9 +825,16 @@ function saveCOTSnapshot(scores,meta){
     // historie NEZAPISOVAT (cot_data/cot_meta se uloží dál a server sync je
     // při dalším načtení srovná; historie musí zůstat čistá).
     if(!isValidCOTWeekKey(key)){ try{console.warn("saveCOTSnapshot: přeskočen ne-úterní klíč",key);}catch(e){} return; }
+    const hist=loadCOTHistory();
+    // Server je pro svůj týden autoritativní — živý fetch ho NIKDY nepřepisuje.
+    // Reálný nález: vadný .htm fallback parse (levShort=0 → "100 % long") s PLATNÝM
+    // úterním datem přepisoval dobrý serverový záznam každých 5 minut (auto-refresh)
+    // a panely se pořád vracely na 100 % — server to při načtení uzdravil a smyčka
+    // jela dál. Live smí jen doplnit týden, který server ještě nemá.
+    if(hist[key]&&hist[key].src==="server"){ try{console.log("saveCOTSnapshot: týden",key,"drží server, live nepřepisuje");}catch(e){} return; }
     // src:"live" — od zařízení, ne od serverového cronu; fetchActionCOTHistory()/
     // sync.js merge ho smí přepsat serverovou hodnotou, jakmile ta pro týden dorazí.
-    const hist=loadCOTHistory();hist[key]={scores,raw:meta?.raw||{},updatedAt:new Date().toISOString(),src:"live"};
+    hist[key]={scores,raw:meta?.raw||{},updatedAt:new Date().toISOString(),src:"live"};
     const keys=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
     localStorage.setItem("cot_hist",JSON.stringify(trimmed));
   }catch(e){}
@@ -954,6 +961,19 @@ async function fetchCOTViaAPI(){
   raw.USD={market:"syntetický USD koš",note:"opačný průměr dostupných non-USD COT měn",score:out.USD,flow:flows.length?Math.round(-flows.reduce((a,b)=>a+b,0)/flows.length):0,extreme:{level:"SYNTH",label:"syntetický koš",color:"#8b949e"}};
   return{scores:{...COT_DEFAULT,...out},raw,asOf};
 }
+// Kontrola věrohodnosti syrových COT dat: reálné TFF pozicování NIKDY nemá
+// většinu měn ~100 % na jedné straně (historicky max ~82 % NZD). Když .htm
+// fallback parse přečte špatné sloupce (změna formátu stránky), typicky vyjde
+// levShort=0 → "100 % long" u řady měn najednou — to je parse chyba, ne trh.
+function cotRawLooksDegenerate(raw){
+  let bad=0;
+  for(const c of Object.keys(raw||{})){
+    const r=raw[c]; if(!r||c==="USD") continue;
+    const L=(r.levLong||0),S=(r.levShort||0),t=L+S;
+    if(t>0&&(L/t>=0.97||S/t>=0.97)) bad++;
+  }
+  return bad>=3;
+}
 async function fetchCOTAuto(){
   try{
     const api=await fetchCOTViaAPI();
@@ -966,6 +986,7 @@ async function fetchCOTAuto(){
       const url="https://www.cftc.gov/dea/futures/financial_lf.htm";
       const txt=await fetchTextWithFallback(url);
       const parsed=parseCOTFinancialText(txt);
+      if(cotRawLooksDegenerate(parsed.raw)) throw new Error("COT .htm parse vrátil degenerovaná data (~100 % na jedné straně u více měn) — formát stránky se změnil, data zahazuji");
       const asOf=(txt.match(/Positions as of\s+([^\n<]+)/i)||[])[1]?.trim()||new Date().toISOString().split("T")[0];
       const meta={source:url+" (fallback)",asOf,updatedAt:new Date().toISOString(),raw:parsed.raw,via:"proxy_text",apiError:String(apiErr?.message||apiErr)};
       saveCOT(parsed.scores);saveCOTMeta(meta);saveCOTSnapshot(parsed.scores,meta);

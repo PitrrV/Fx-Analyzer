@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260711d"></script>
+<script src="engine.js?v=20260711e"></script>
 <script src="sync.js?v=20260711d"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -1224,11 +1224,13 @@ function MApp(){
       // Cloud sync při startu (když přihlášen) → slije data z cloudu, pak načti
       if(window.Sync&&window.Sync.ready){ try{ const s=await window.Sync.session(); if(s) await window.Sync.syncNow(); }catch(e){} }
       load();
-      // COT na pozadí, když je starší než ~4 dny (tiché při selhání)
+      // Živý COT fetch jen když je i SERVEROVÁ historie stará (>9 dní) a max 1× za
+      // 6 h — stejná logika jako PC (viz komentář v index.html refreshData).
       try{
-        const m=loadCOTMeta();
-        const age=m&&m.asOf?((Date.now()-new Date(m.asOf).getTime())/86400000):NaN;
-        if(!(age<=4)){ await fetchCOTAuto(); load(); }
+        const wk=Object.keys(loadCOTHistory()).filter(k=>typeof isValidCOTWeekKey==="function"?isValidCOTWeekKey(k):true).sort().pop();
+        const age=wk?((Date.now()-new Date(wk+"T00:00:00Z").getTime())/86400000):NaN;
+        const lastTry=+(localStorage.getItem("cot_auto_try_ts")||0);
+        if(!(age<=9)&&(Date.now()-lastTry)>6*3600000){ try{localStorage.setItem("cot_auto_try_ts",String(Date.now()));}catch(e2){} await fetchCOTAuto(); load(); }
       }catch(e){}
     })();
   },[load]);
