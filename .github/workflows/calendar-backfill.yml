@@ -1,0 +1,45 @@
+name: Calendar Backfill
+
+on:
+  workflow_dispatch:        # jen ruční/API — jednorázový backfill, ne cron
+    inputs:
+      max_weeks:
+        description: "Max týdnů v tomto běhu (šetrnost k FF)"
+        required: false
+        default: "70"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: calendar-backfill
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # validace potřebuje celou git historii data/calendar.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Backfill FF týdnů (resumable, s rozestupy)
+        env:
+          MAX_WEEKS: ${{ github.event.inputs.max_weeks || '70' }}
+        run: node scripts/backfill-calendar.js
+      - name: Validace proti live snapshotům
+        run: node scripts/validate-calendar-hist.js
+      - name: Commit výsledků
+        run: |
+          git config user.name "backfill-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/calendar_hist.json data/calendar_hist_validation.json)" ]; then
+            git add data/calendar_hist.json data/calendar_hist_validation.json
+            git commit -m "chore: calendar backfill + validation [skip ci]"
+            git pull --rebase origin main
+            git push
+          else
+            echo "Beze změny."
+          fi
