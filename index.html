@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260711d"></script>
+<script src="engine.js?v=20260711e"></script>
 <script src="sync.js?v=20260711d"></script>
 <style>
 *{box-sizing:border-box}
@@ -108,8 +108,14 @@ class FXApp extends React.Component{
       try{ await fetchActionPrices(); }catch(e){}
       try{ applyAutoRiskSentiment(); }catch(e){}
       try{ await fetchActionCOTHistory(); }catch(e){}
-      // COT na pozadí když staré
-      try{ const m0=loadCOTMeta(); const age=m0&&m0.asOf?((Date.now()-new Date(m0.asOf).getTime())/86400000):NaN; if(!(age<=4)){ await fetchCOTAuto(); } }catch(e){}
+      // Živý COT fetch jen když je i SERVEROVÁ historie stará (>9 dní; týdenní report
+      // + sváteční zpoždění) a max 1× za 6 h. Dřívější práh 4 dny od asOf spouštěl
+      // live fetch každý 5min refresh od soboty do úterý — a vadný .htm fallback
+      // pak pořád dokola přepisoval dobrá data (viz saveCOTSnapshot/cotRawLooksDegenerate).
+      try{ const wk=Object.keys(loadCOTHistory()).filter(k=>typeof isValidCOTWeekKey==='function'?isValidCOTWeekKey(k):true).sort().pop();
+        const age=wk?((Date.now()-new Date(wk+'T00:00:00Z').getTime())/86400000):NaN;
+        const lastTry=+(localStorage.getItem('cot_auto_try_ts')||0);
+        if(!(age<=9)&&(Date.now()-lastTry)>6*3600000){ try{localStorage.setItem('cot_auto_try_ts',String(Date.now()));}catch(e2){} await fetchCOTAuto(); } }catch(e){}
       try{ const rj=await fetchActionRetail(); if(rj&&Array.isArray(rj.points)) this._retailHist=rj.points; }catch(e){}
       const cot=(typeof getLatestCOTScores==='function'&&getLatestCOTScores())||loadCOT(), sent=(typeof getCanonicalSent==='function'&&getCanonicalSent())||loadSentiment();
       const sc={}; this.CUR.forEach(c=>{ sc[c]=scoreCurrency(calScoring,c,cot,sent); });
