@@ -1,0 +1,36 @@
+name: Replay Backtest
+
+on:
+  workflow_dispatch:        # jen ruční/API spuštění — měřicí nástroj, ne cron
+
+permissions:
+  contents: write
+
+concurrency:
+  group: replay-backtest
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # replay potřebuje CELOU git historii data/*.json snapshotů
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Historical replay celého enginu
+        run: node scripts/backtest-replay.js
+      - name: Commit výsledku
+        run: |
+          git config user.name "replay-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/calibration_replay.json)" ]; then
+            git add data/calibration_replay.json
+            git commit -m "chore: update replay backtest [skip ci]"
+            git pull --rebase origin main
+            git push
+          else
+            echo "Beze změny."
+          fi
