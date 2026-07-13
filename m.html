@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260711e"></script>
+<script src="engine.js?v=20260713a"></script>
 <script src="sync.js?v=20260711d"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -563,6 +563,22 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
                   {cf.mom!=null&&<div className="mono" style={{fontSize:11,fontWeight:700,color:cf.mom>=0?"#2ed3a0":"#f2606e"}}>{"5d "+(cf.mom>=0?"+":"")+cf.mom+"%"}</div>}
                 </div>
               </div>
+            </div>
+          );
+        })()}
+        {(()=>{ let rp=null; try{rp=getRangePosition(p.pair,10);}catch(e){}
+          if(!rp) return null;
+          const zoneLbl={low:"spodní část rozpětí",mid:"střed rozpětí",high:"horní část rozpětí"}[rp.zone];
+          return (
+            <div className="card">
+              <div className="between" style={{marginBottom:9}}>
+                <span style={{fontSize:10.5,fontWeight:800,letterSpacing:".04em",color:"var(--dim)"}}>POZICE V 10D ROZPĚTÍ</span>
+                <span className="mono" style={{fontSize:11,fontWeight:700}}>{Math.round(rp.rp*100)+"% · "+zoneLbl}</span>
+              </div>
+              <div style={{position:"relative",height:6,borderRadius:3,background:"#1b2130"}}>
+                <div style={{position:"absolute",top:-4,left:"calc("+(rp.rp*100)+"% - 6px)",width:12,height:14,borderRadius:4,background:"var(--accent)",border:"2px solid #0b0e15"}}/>
+              </div>
+              <div className="muted" style={{fontSize:10.5,marginTop:8,lineHeight:1.4}}>Kde je cena mezi 10denním minimem a maximem — orientační údaj, neovlivňuje skóre ani diferenciál.</div>
             </div>
           );
         })()}

@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260711e"></script>
+<script src="engine.js?v=20260713a"></script>
 <script src="sync.js?v=20260711d"></script>
 <style>
 *{box-sizing:border-box}
@@ -763,6 +763,16 @@ class FXApp extends React.Component{
             h('div',{style:{textAlign:'right'}},
               lp!=null?h('div',{style:self.mono({fontSize:14,fontWeight:700,color:T.text})},lp.toFixed(p.pair.includes('JPY')?3:5)):null,
               cf.mom!=null?h('div',{style:self.mono({fontSize:11,fontWeight:700,color:cf.mom>=0?T.green:T.red})},'5d '+(cf.mom>=0?'+':'')+cf.mom+'%'):null))); })(),
+      (()=>{ let rp=null; try{rp=getRangePosition(p.pair,10);}catch(e){}
+        if(!rp) return null;
+        const zoneLbl={low:'spodní část rozpětí',mid:'střed rozpětí',high:'horní část rozpětí'}[rp.zone];
+        return h('div',{style:self.card({padding:'11px 16px'})},
+          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:9}},
+            h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:T.dim}},'POZICE V 10D ROZPĚTÍ'),
+            h('span',{style:self.mono({fontSize:11,fontWeight:700,color:T.text})},Math.round(rp.rp*100)+'% · '+zoneLbl)),
+          h('div',{style:{position:'relative',height:6,borderRadius:3,background:'#1b2130'}},
+            h('div',{style:{position:'absolute',top:-4,left:'calc('+(rp.rp*100)+'% - 6px)',width:12,height:14,borderRadius:4,background:T.accent,border:'2px solid #0b0e15'}})),
+          h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,lineHeight:1.4}},'Kde je cena mezi 10denním minimem a maximem — orientační údaj, neovlivňuje skóre ani diferenciál.')); })(),
       isCAD&&this.renderOilPanel(p),
       this.renderPairCharts(p),
       h('div',{style:self.card({padding:'14px 18px',background:verdict.bg,borderColor:verdict.c+'33',borderLeft:'3px solid '+verdict.c})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:11,flexWrap:'wrap'}},h('div',{style:{display:'flex',alignItems:'center',gap:10}},h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:verdict.c,background:verdict.c+'1c',border:'1px solid '+verdict.c+'44',borderRadius:7,padding:'4px 10px'}},verdict.t),h('span',{style:{fontSize:13,fontWeight:600,color:T.text}},verdict.msg)),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:verdict.c})},okN+'/'+fac.length+' faktorů')),h('div',{style:{display:'flex',gap:7,flexWrap:'wrap'}},fac.map(f=>h('span',{key:f.l,title:f.d,style:{display:'inline-flex',alignItems:'center',gap:5,fontSize:10.5,fontWeight:600,padding:'4px 9px',borderRadius:6,background:f.ok?'rgba(46,211,160,.1)':'rgba(120,130,150,.08)',border:'1px solid '+(f.ok?'rgba(46,211,160,.28)':'#222a39'),color:f.ok?T.green:T.faint}},h('span',null,f.ok?'✓':'○'),f.l)))),
