@@ -2644,6 +2644,24 @@ function getBiasConfirmation(pair,dir,days=5){
   if((isBuy&&down)||(!isBuy&&up)) return {state:"diverges",mom:m,days};
   return {state:"flat",mom:m,days};
 }
+// Range Position — čistě INFORMAČNÍ ukazatel (žádný vliv na skóre/diff/bias).
+// Pozice aktuální ceny páru v jejím N-denním high/low rozpětí, 0 = na dně, 1 = na vrcholu.
+function getRangePosition(pair,days=10){
+  const p=_pxPair(pair); if(!p||!_PRICES||!Array.isArray(_PRICES.hist)||_PRICES.hist.length<2) return null;
+  const h=_PRICES.hist;
+  const start=Math.max(0,h.length-days);
+  let mn=Infinity,mx=-Infinity,last=null;
+  for(let i=start;i<h.length;i++){
+    const px=_pxFrom(h[i].rates,p); if(px==null) continue;
+    if(px<mn) mn=px;
+    if(px>mx) mx=px;
+    last=px;
+  }
+  if(last==null||!(mx>mn)) return null;
+  const rp=(last-mn)/(mx-mn);
+  const zone=rp<=0.33?"low":rp>=0.67?"high":"mid";
+  return {rp:parseFloat(rp.toFixed(3)),zone,min:mn,max:mx,days};
+}
 
 // ── AUTO RISK SENTIMENT (nahrazuje zapomenutý ruční přepínač) ─────────
 // Risk-on/off z cenové akce klasických barometrů AUDJPY/NZDJPY za ~5 dní.
