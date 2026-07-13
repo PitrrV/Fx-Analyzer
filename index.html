@@ -755,6 +755,8 @@ class FXApp extends React.Component{
           flat:{c:T.amber,ic:'•',t:'Trh bez směru',m:'Cena stojí — bias zatím bez potvrzení trhem.'},
           unknown:{c:T.faint,ic:'…',t:'Cenová data nabíhají',m:'Momentum se počítá z denní historie (naskočí během pár dní).'}};
         const v=map[cf.state]||map.unknown;
+        const disc=cf.state==='confirms'?'📊 Historická data (776 dní): „POTVRZUJE" často odpovídá technicky nevýhodné (breakout) zóně — porovnej s panelem Pozice v rozpětí níže.'
+          :cf.state==='diverges'?'📊 Historická data (776 dní): „DIVERGUJE" často odpovídá výhodnější (pullback) vstupní zóně — porovnej s panelem Pozice v rozpětí níže.':null;
         return h('div',{style:self.card({padding:'12px 16px',borderColor:v.c+'33',borderLeft:'3px solid '+v.c})},
           h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}},
             h('div',{style:{display:'flex',alignItems:'center',gap:10,minWidth:0}},
@@ -762,7 +764,8 @@ class FXApp extends React.Component{
               h('span',{style:{fontSize:12.5,color:T.dim}},v.m)),
             h('div',{style:{textAlign:'right'}},
               lp!=null?h('div',{style:self.mono({fontSize:14,fontWeight:700,color:T.text})},lp.toFixed(p.pair.includes('JPY')?3:5)):null,
-              cf.mom!=null?h('div',{style:self.mono({fontSize:11,fontWeight:700,color:cf.mom>=0?T.green:T.red})},'5d '+(cf.mom>=0?'+':'')+cf.mom+'%'):null))); })(),
+              cf.mom!=null?h('div',{style:self.mono({fontSize:11,fontWeight:700,color:cf.mom>=0?T.green:T.red})},'5d '+(cf.mom>=0?'+':'')+cf.mom+'%'):null)),
+          disc?h('div',{style:{fontSize:10.5,color:T.faint,marginTop:9,paddingTop:9,borderTop:'1px solid #ffffff12',lineHeight:1.4}},disc):null); })(),
       (()=>{ let rp=null; try{rp=getRangePosition(p.pair,10);}catch(e){}
         if(!rp) return null;
         const zoneLbl={low:'spodní část rozpětí',mid:'střed rozpětí',high:'horní část rozpětí'}[rp.zone];

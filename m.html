@@ -551,6 +551,8 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
             flat:{c:"#e8ab3f",ic:"•",t:"Trh bez směru",m:"Cena stojí — bias zatím bez potvrzení trhem."},
             unknown:{c:"#5a6273",ic:"…",t:"Cenová data nabíhají",m:"Momentum z denní historie naskočí během pár dní."}};
           const v=map[cf.state]||map.unknown;
+          const disc=cf.state==="confirms"?'📊 Historická data (776 dní): „POTVRZUJE" často odpovídá technicky nevýhodné (breakout) zóně — porovnej s panelem Pozice v rozpětí níže.'
+            :cf.state==="diverges"?'📊 Historická data (776 dní): „DIVERGUJE" často odpovídá výhodnější (pullback) vstupní zóně — porovnej s panelem Pozice v rozpětí níže.':null;
           return (
             <div className="card" style={{borderColor:v.c+"33",borderLeft:"3px solid "+v.c}}>
               <div className="between" style={{gap:10,flexWrap:"wrap"}}>
@@ -563,6 +565,7 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
                   {cf.mom!=null&&<div className="mono" style={{fontSize:11,fontWeight:700,color:cf.mom>=0?"#2ed3a0":"#f2606e"}}>{"5d "+(cf.mom>=0?"+":"")+cf.mom+"%"}</div>}
                 </div>
               </div>
+              {disc&&<div className="muted" style={{fontSize:10.5,marginTop:9,paddingTop:9,borderTop:"1px solid #ffffff12",lineHeight:1.4}}>{disc}</div>}
             </div>
           );
         })()}
