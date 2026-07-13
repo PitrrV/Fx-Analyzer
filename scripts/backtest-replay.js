@@ -170,9 +170,13 @@ function makeReplayDate(nowMs) {
     const calScoring = E.capEventsWindow(events, E.FUND_HIST_WINDOW_WEEKS);
     const cotScores = E.getLatestCOTScores() || E.loadCOT();
     const sent = sentData || E.loadSentiment();
-    const sc = {};
-    for (const c of E.CURRENCIES) sc[c] = E.scoreCurrency(calScoring, c, cotScores, sent).score;
-    days.push({ d: dayIso, sc, sentLive: !!sentData, oilSrc: oilObj ? (oilObj.date === dayIso ? "fred" : "snap") : "none" });
+    const sc = {}, comp = {};
+    for (const c of E.CURRENCIES) {
+      const s = E.scoreCurrency(calScoring, c, cotScores, sent);
+      sc[c] = s.score;
+      comp[c] = Object.fromEntries((s.components || []).map((x) => [x.key, x.value])); // pro atribuci po komponentách
+    }
+    days.push({ d: dayIso, sc, comp, sentLive: !!sentData, oilSrc: oilObj ? (oilObj.date === dayIso ? "fred" : "snap") : "none" });
     if (days.length % 60 === 0) console.log("…", dayIso, "(", days.length, "dní )");
   }
   console.log("Rekonstruováno dní:", days.length);
@@ -222,7 +226,11 @@ function makeReplayDate(nowMs) {
     ],
     grid,
     flags: { sentLiveFrom, days: days.length },
-    dailyScores: days.map((d) => ({ d: d.d, sc: d.sc })),
+    // per-den skóre + KOMPONENTY (atribuce) a použitá cenová řada (Frankfurter) —
+    // umožňuje navazující analýzy (atribuce, technické filtry) offline nad tímto
+    // souborem, se stejnou point-in-time disciplínou, bez opakování replaye.
+    dailyScores: days.map((d) => ({ d: d.d, sc: d.sc, comp: d.comp })),
+    prices: { days: pxDays, rates: pxHist.map((p) => p.rates) },
   };
   fs.writeFileSync(path.join(ROOT, "data/calibration_replay.json"), JSON.stringify(out));
   console.log("Grid (full | h1 | h2):");
