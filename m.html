@@ -93,7 +93,7 @@ function pairDelta24h(p){
   const color=a<0.5?"#8b93a3":a<1.5?(d>0?"#7fe0bf":"#f29aa3"):(d>0?"#2ed3a0":"#f2606e");
   return {d,arrow,color,label:arrow+" "+(d>0?"+":"")+d.toFixed(1)};
 }
-function impactColor(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"#f2606e";if(i.includes("medium")||i==="2")return"#e8ab3f";return"#5a6273";}
+function impactColor(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"#f2606e";if(i.includes("medium")||i==="2")return"#e8ab3f";if(i.includes("low")||i==="1")return"#e3d21f";return"#5a6273";}
 function impactLabel(imp){const i=String(imp||"").toLowerCase();if(i.includes("high")||i==="3")return"HIGH";if(i.includes("medium")||i==="2")return"MED";if(i.includes("low")||i==="1")return"LOW";return"—";}
 function evFlag(ev){const c=String(ev.country||ev.currency||"").toUpperCase();return COUNTRY_FLAGS[c]||"🏳️";}
 function fmtDT(t){const d=new Date(parseEventTime(t));if(isNaN(d))return"";return d.toLocaleString("cs-CZ",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});}
@@ -743,8 +743,8 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
 function CalendarTab({data,onRefreshLive,liveLoading,onSetManual,msg}){
   if(!data) return null;
   // Dnešní den (vč. už proběhlých) + 14 dní dopředu — stejné jako PC dashboard
-  // Jen HIGH+MEDIUM dopad — sjednoceno s PC verzí (LOW eventy jsou jen šum)
-  const evs=buildEventWatch(data.cal,data.upcoming).filter(e=>{const im=impactLabel(e.impact);return im==="HIGH"||im==="MED";}).slice(0,80);
+  // HIGH + MEDIUM + LOW (žlutá FF kategorie) — sjednoceno s PC verzí
+  const evs=buildEventWatch(data.cal,data.upcoming).slice(0,80);
   const todayStr=new Date().toLocaleDateString("cs-CZ",{day:"2-digit",month:"2-digit"});
   return (
     <div>

@@ -883,7 +883,7 @@ function getImpactInfo(ev){
   const w=getWeight(ev.event||"");
   if(raw.includes("high")||raw==="3"||w>=2.5) return {label:"HIGH",color:"#ff4d4d",bg:"rgba(255,77,77,.12)"};
   if(raw.includes("medium")||raw==="2"||w>=1.5) return {label:"MED",color:"#d29922",bg:"rgba(210,153,34,.12)"};
-  return {label:"LOW",color:"#2ed3a0",bg:"rgba(46,211,160,.10)"};
+  return {label:"LOW",color:"#e3d21f",bg:"rgba(227,210,31,.10)"};
 }
 function getSurpriseInfo(ev){
   const actual=ev.actual;
@@ -1408,18 +1408,20 @@ function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},cal
 }
 // ── CALENDAR ─────────────────────────────────────────────
 function CalendarPanel({events,onRefreshLive,liveLoading,onSetManual,msg}){
-  // Jen HIGH+MEDIUM dopad — sjednoceno s PC verzí (LOW eventy jsou jen šum)
-  const all=(events||[]).filter(e=>{const im=getImpactInfo(e).label;return im==="HIGH"||im==="MED";}).sort((a,b)=>new Date(a.time)-new Date(b.time));
+  // HIGH + MEDIUM + LOW (žlutá FF kategorie) — hlavní kalendářní tab ukazuje vše
+  const all=(events||[]).slice().sort((a,b)=>new Date(a.time)-new Date(b.time));
   const refreshBtn=<button onClick={onRefreshLive} disabled={!!liveLoading} className="pro-btn" style={{fontSize:11,padding:"5px 9px"}}>{liveLoading?"⏳ Aktualizuji…":"🔄 Refresh teď"}</button>;
   if(!all.length) return <div className="pro-card" style={{padding:18,color:"#8b949e",fontSize:13}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:msg?8:0}}><span>Kalendář zatím nemá data. Zadej Finnhub API klíč a spusť Refresh.</span>{refreshBtn}</div>
     {msg&&<div style={{fontSize:11,color:"#8b949e"}}>{msg}</div>}
   </div>;
   const highCount=all.filter(e=>getImpactInfo(e).label==="HIGH").length;
+  const medCount=all.filter(e=>getImpactInfo(e).label==="MED").length;
+  const lowCount=all.filter(e=>getImpactInfo(e).label==="LOW").length;
   return <div className="pro-card" style={{padding:18}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:12,flexWrap:"wrap"}}>
       <div><div className="pro-panel-title" style={{margin:0}}>Fundamentální kalendář</div><div style={{fontSize:11,color:"#8b949e",marginTop:3}}>Actual · Forecast · Previous · Surprise · bias impact</div></div>
-      <div style={{display:"flex",gap:8,fontSize:11,alignItems:"center"}}><span style={{background:"rgba(255,77,77,.12)",border:"1px solid rgba(255,77,77,.3)",color:"#ff4d4d",borderRadius:999,padding:"5px 9px",fontWeight:900}}>HIGH {highCount}</span><span style={{background:"rgba(88,166,255,.10)",border:"1px solid rgba(88,166,255,.25)",color:"#7d95ff",borderRadius:999,padding:"5px 9px",fontWeight:900}}>EVENTS {all.length}</span>{refreshBtn}</div>
+      <div style={{display:"flex",gap:8,fontSize:11,alignItems:"center",flexWrap:"wrap"}}><span style={{background:"rgba(255,77,77,.12)",border:"1px solid rgba(255,77,77,.3)",color:"#ff4d4d",borderRadius:999,padding:"5px 9px",fontWeight:900}}>HIGH {highCount}</span><span style={{background:"rgba(210,153,34,.12)",border:"1px solid rgba(210,153,34,.3)",color:"#d29922",borderRadius:999,padding:"5px 9px",fontWeight:900}}>MED {medCount}</span><span style={{background:"rgba(227,210,31,.12)",border:"1px solid rgba(227,210,31,.3)",color:"#e3d21f",borderRadius:999,padding:"5px 9px",fontWeight:900}}>LOW {lowCount}</span><span style={{background:"rgba(88,166,255,.10)",border:"1px solid rgba(88,166,255,.25)",color:"#7d95ff",borderRadius:999,padding:"5px 9px",fontWeight:900}}>EVENTS {all.length}</span>{refreshBtn}</div>
     </div>
     {msg&&<div style={{fontSize:11,color:"#8b949e",marginBottom:8}}>{msg}</div>}
     <div style={{display:"grid",gridTemplateColumns:"88px 58px minmax(230px,1fr) 70px 82px 82px 82px 90px",gap:8,padding:"8px 0",borderTop:"1px solid #1b2a35",borderBottom:"1px solid #1b2a35",fontSize:10,color:"#8b949e",fontWeight:900,letterSpacing:".04em"}}>
@@ -3286,7 +3288,7 @@ function App(){
 
         {tab==="calendar"&&(
           <div style={{maxWidth:700}}>
-            <div style={{fontSize:11,color:"#8b949e",marginBottom:14}}>Příštích 14 dní · HIGH & MEDIUM impact</div>
+            <div style={{fontSize:11,color:"#8b949e",marginBottom:14}}>Příštích 14 dní · HIGH / MEDIUM / LOW impact</div>
             <CalendarPanel events={upcoming} onRefreshLive={refreshCalendarLive} liveLoading={calLiveLoading} onSetManual={setManualActual} msg={calMsg}/>
           </div>
         )}
