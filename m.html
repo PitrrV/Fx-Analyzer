@@ -203,8 +203,6 @@ function PairCard({p,f,daily,onTap,isFav,onToggleFav}){
   const isCAD=p.base==='CAD'||p.quote==='CAD';
   let oilSt=null; if(isCAD){ try{oilSt=getOilStatus();}catch(e){} }
   const d24=pairDelta24h(p);
-  let px1=null; try{px1=getPriceMomentum(p.pair,1);}catch(e){}
-  const pxc=px1==null?null:px1>0.03?"#2ed3a0":px1<-0.03?"#f2606e":"#8b93a3";
   return (
     <div className="card" onClick={onTap} style={{borderColor:buy?"#1f5c34":"#5c2626"}}>
       <div className="between">
@@ -226,8 +224,7 @@ function PairCard({p,f,daily,onTap,isFav,onToggleFav}){
         </div>
         <div className="row" style={{gap:6}}>
           {oilSt&&<span className="chip" style={{color:oilSt.color,borderColor:oilSt.color+"55"}}>🛢 ${oilSt.price.toFixed(1)}</span>}
-          {d24&&<span className="chip" title="Změna skóre páru za posledních ~24h" style={{color:d24.color,borderColor:d24.color+"55"}}>{d24.label}</span>}
-          {px1!=null&&<span className="chip" title="Dnešní reakce trhu (změna ceny od posledního denního záznamu)" style={{color:pxc,borderColor:pxc+"55"}}>{"px "+(px1>0?"+":"")+px1.toFixed(2)+"%"}</span>}
+          {d24&&<span title="Změna skóre páru (rozdíl base−quote) za posledních ~24h" style={{display:"inline-flex",alignItems:"center",gap:4,fontFamily:"'JetBrains Mono',monospace",fontSize:12.5,fontWeight:800,letterSpacing:".02em",color:d24.color,background:d24.color+"22",border:"1.5px solid "+d24.color+"66",borderRadius:7,padding:"4px 9px"}}><span style={{fontSize:14}}>{d24.arrow}</span>{(d24.d>0?"+":"")+d24.d.toFixed(1)}</span>}
           <span className="chip">{p.base} {fmtNum(p.s1)}</span>
           <span className="chip">{p.quote} {fmtNum(p.s2)}</span>
         </div>
@@ -377,6 +374,10 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
   const [pos,setPos]=useState(()=>{try{return getPosition(p.pair);}catch(e){return"none";}});
   const [note,setNote]=useState(()=>{try{return (loadNotes()||{})[p.pair]||"";}catch(e){return"";}});
   const [zoom,setZoom]=useState(null);
+  const [scMode,setScMode]=useState("dual");
+  const scToggle=<div onClick={e=>e.stopPropagation()} style={{display:"flex",gap:3}}>{["dual","diff"].map(m=>{const on=scMode===m;return (
+    <button key={m} onClick={e=>{e.stopPropagation();setScMode(m);}} style={{border:"1px solid "+(on?"#e3d21f88":"#1b2130"),background:on?"rgba(227,210,31,.14)":"#0c0f16",color:on?"#f0e79a":"var(--faint)",borderRadius:6,padding:"2px 6px",fontSize:8.5,fontWeight:700}}>{m==="dual"?"2 měny":"Rozdíl"}</button>
+  );})}</div>;
   function changePos(s){const ns=pos===s?"none":s;setPos(ns);try{setPosition(p.pair,ns);}catch(e){}}
   function changeNote(v){setNote(v);try{const n=loadNotes()||{};if(v.trim())n[p.pair]=v;else delete n[p.pair];localStorage.setItem("pair_notes",JSON.stringify(n));}catch(e){}}
   // Confluence verdikt (shoda nezávislých faktorů)
@@ -591,9 +592,12 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
           const rpts=(retailHist||[]).slice(-lim);
           const rl=rpts.map(pt=>{ const d=pt.pairs&&pt.pairs[p.pair]; if(d&&isFinite(d.l)) return d.l; const b=pt.ccy&&pt.ccy[p.base],q=pt.ccy&&pt.ccy[p.quote]; return (b!=null&&q!=null)?Math.round((b+(100-q))/2):50; });
           const cb=cotLSseriesM(p.base,lim),cq=cotLSseriesM(p.quote,lim);
+          const scDual=[{name:p.base,color:"#5e7cfb",vals:bS.values||[]},{name:p.quote,color:"#9d7bff",vals:qS.values||[]}];
+          const scDiff=[{name:p.base+"−"+p.quote,color:"#e3d21f",vals:(bS.values||[]).map((v,i)=>+(((+(v||0))-(+((qS.values||[])[i]||0))).toFixed(2)))}];
+          const scVariants={dual:{series:scDual,yMin:null,yMax:null},diff:{series:scDiff,yMin:null,yMax:null}};
           const cells=[
             {key:"sc",title:"Vývoj skóre",sub:p.base+" vs "+p.quote,dates:bS.dates,mid:0,fmt:v=>(v>0?"+":"")+v.toFixed(1),
-              series:[{name:p.base,color:"#5e7cfb",vals:bS.values||[]},{name:p.quote,color:"#9d7bff",vals:qS.values||[]}]},
+              series:scVariants[scMode].series,variants:scVariants},
             {key:"rt",title:"Retail L/S",sub:"dav long vs short (70%+ = kontrariánsky)",dates:null,yMin:0,yMax:100,mid:50,fmt:v=>Math.round(v)+"%",
               series:[{name:"Long",color:"#2ed3a0",vals:rl},{name:"Short",color:"#f2606e",vals:rl.map(v=>100-v)}]},
             {key:"cb",title:"COT "+p.base+" L/S",sub:"smart money long vs short",dates:cb.dates,yMin:0,yMax:100,mid:50,fmt:v=>Math.round(v)+"%",
@@ -608,7 +612,7 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9}}>
                 {cells.map(c=>(
                   <div key={c.key} onClick={()=>setZoom(c)} style={{background:"var(--inp)",border:"1px solid #161b27",borderRadius:11,padding:"9px 10px",cursor:"pointer"}}>
-                    <div className="between" style={{marginBottom:6}}><span style={{fontSize:10.5,fontWeight:800,color:"var(--dim)"}}>{c.title}</span><span style={{fontSize:13,color:"var(--faint)"}}>⤢</span></div>
+                    <div className="between" style={{marginBottom:6}}><span style={{fontSize:10.5,fontWeight:800,color:"var(--dim)"}}>{c.title}</span>{c.key==="sc"?scToggle:<span style={{fontSize:13,color:"var(--faint)"}}>⤢</span>}</div>
                     <BigChart series={c.series} dates={c.dates} height={62} yMin={c.yMin} yMax={c.yMax} mid={c.mid} fmt={c.fmt}/>
                   </div>
                 ))}
@@ -620,10 +624,10 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
           <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:560,background:"#0f1218",border:"1px solid #27304a",borderRadius:16,padding:"16px 16px 14px"}}>
             <div className="between" style={{marginBottom:4}}>
               <div><div style={{fontWeight:800,fontSize:15}}>{zoom.title}</div><div className="muted" style={{fontSize:11}}>{zoom.sub} · táhni prstem po grafu</div></div>
-              <button onClick={()=>setZoom(null)} style={{width:34,height:34,borderRadius:9,border:"1px solid #2a3242",background:"#161b27",color:"var(--dim)",fontSize:18,cursor:"pointer"}}>×</button>
+              <div className="row" style={{gap:8}}>{zoom.variants&&scToggle}<button onClick={()=>setZoom(null)} style={{width:34,height:34,borderRadius:9,border:"1px solid #2a3242",background:"#161b27",color:"var(--dim)",fontSize:18,cursor:"pointer"}}>×</button></div>
             </div>
             <div style={{height:1,background:"#161b27",margin:"10px 0"}}/>
-            <BigChart series={zoom.series} dates={zoom.dates} height={250} yMin={zoom.yMin} yMax={zoom.yMax} mid={zoom.mid} fmt={zoom.fmt} big={true}/>
+            <BigChart series={zoom.variants?zoom.variants[scMode].series:zoom.series} dates={zoom.dates} height={250} yMin={zoom.variants?zoom.variants[scMode].yMin:zoom.yMin} yMax={zoom.variants?zoom.variants[scMode].yMax:zoom.yMax} mid={zoom.mid} fmt={zoom.fmt} big={true}/>
           </div>
         </div>}
       </div>
