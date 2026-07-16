@@ -622,8 +622,8 @@ class FXApp extends React.Component{
     const diff=(sb.score||0)-(sq.score||0), NEUTRAL=0.3;
     const bandPF=(type,e)=>{ const bands=type==='SHORT'?[[0.5,0.65,1.19],[0.65,0.8,1.37],[0.8,1.01,2.45]]:[[0.2,0.35,1.66],[0.35,0.5,1.39],[0.5,0.65,1.64]];
       const b=bands.find(([lo,hi])=>e>=lo&&e<hi)||bands[bands.length-1]; return b[2]; };
-    if(rp.rp>=0.8&&er.er>0.5){ if(diff<-NEUTRAL) return null; return {type:'SHORT',rp:rp.rp,er:er.er,diff,pf:bandPF('SHORT',er.er)}; }
-    if(rp.rp<=0.2&&er.er>=0.2&&er.er<0.65){ if(diff>NEUTRAL) return null; return {type:'LONG',rp:rp.rp,er:er.er,diff,pf:bandPF('LONG',er.er)}; }
+    if(rp.rp>=0.8&&er.er>0.5){ if(diff<-NEUTRAL) return null; return {type:'SHORT',rp:rp.rp,er:er.er,diff,pf:bandPF('SHORT',er.er),fundBucket:diff>NEUTRAL?'proti':'neutral'}; }
+    if(rp.rp<=0.2&&er.er>=0.2&&er.er<0.65){ if(diff>NEUTRAL) return null; return {type:'LONG',rp:rp.rp,er:er.er,diff,pf:bandPF('LONG',er.er),fundBucket:diff<-NEUTRAL?'proti':'neutral'}; }
     return null;
   }
   agoTxt(ts){ if(!ts) return ''; const m=Math.round((Date.now()-ts)/60000); if(m<60) return 'před '+m+' min'; const hh=Math.floor(m/60); return hh<24?('před '+hh+' h'):('před '+Math.floor(hh/24)+' dny'); }
@@ -768,9 +768,12 @@ class FXApp extends React.Component{
             self.ptitle('RP + ER — exhaustion signál','Technický fade + kontrola fundamentu'),
             h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:verdict.c,background:sig?verdict.c+'1c':'#0c0f16',border:'1px solid '+(sig?verdict.c+'44':'#232b3d'),borderRadius:7,padding:'5px 12px',whiteSpace:'nowrap'}},verdict.t)),
           h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}},rpBar||h('div'),erBar||h('div',{style:{fontSize:10.5,color:T.faint}},'Málo cenové historie pro ER.')),
-          sig?h('div',{style:{display:'flex',alignItems:'center',gap:10,background:verdict.c+'16',border:'1px solid '+verdict.c+'44',borderRadius:10,padding:'11px 14px',marginTop:14}},
+          sig?(()=>{ const priceTxt=sig.type==='SHORT'?('Cena je na vrcholu 10d rozpětí a dostala se tam hladce (ER '+sig.er.toFixed(2)+') — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). '):('Cena je na dně 10d rozpětí s přiměřeným ER ('+sig.er.toFixed(2)+', ne chaos, ne panika) — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). ');
+            const isProti=sig.fundBucket==='proti';
+            const fundTxt=isProti?('Fundament jde aktivně proti tomuhle pohybu ('+self.sgn(sig.diff)+') — nejsilnější kombinace'):('Fundament je neutrální ('+self.sgn(sig.diff)+'), nekazí ani nepotvrzuje');
+            return h('div',{style:{display:'flex',alignItems:'center',gap:10,background:verdict.c+'16',border:'1px solid '+verdict.c+'44',borderRadius:10,padding:'11px 14px',marginTop:14}},
             h('span',{style:{fontSize:16,flex:'none'}},'🎯'),
-            h('span',{style:{fontSize:13,fontWeight:700,color:T.text,lineHeight:1.5}},sig.type==='SHORT'?('Cena je na vrcholu 10d rozpětí a dostala se tam hladce (ER '+sig.er.toFixed(2)+') — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). Fundament tomu neodporuje ('+self.sgn(sig.diff)+') → '):('Cena je na dně 10d rozpětí s přiměřeným ER ('+sig.er.toFixed(2)+', ne chaos, ne panika) — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). Fundament tomu neodporuje ('+self.sgn(sig.diff)+') → '),h('b',{style:{color:verdict.c}},'POTVRZENO.'))):
+            h('span',{style:{fontSize:13,fontWeight:700,color:T.text,lineHeight:1.5}},priceTxt,fundTxt,isProti?h('span',{style:{marginLeft:7,fontSize:9.5,fontWeight:800,letterSpacing:'.05em',color:verdict.c,background:verdict.c+'22',border:'1px solid '+verdict.c+'55',borderRadius:6,padding:'2px 7px',verticalAlign:'middle'}},'⚡ SILNĚJŠÍ'):null,' → ',h('b',{style:{color:verdict.c}},'POTVRZENO.'))); })():
             h('div',{style:{fontSize:11,color:T.dim,marginTop:14,lineHeight:1.5,paddingTop:12,borderTop:'1px solid #ffffff0f'}},'RP/ER nejsou v žádné zóně, nebo fundament silně souhlasí se směrem chase — v tom případě signál nesvítí (historicky nejhorší kombinace, PF~0.9). Čistě informační, neovlivňuje skóre ani diferenciál.')); })(),
       isCAD&&this.renderOilPanel(p),
       this.renderPairCharts(p),
