@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260713a"></script>
+<script src="engine.js?v=20260716a"></script>
 <script src="sync.js?v=20260711d"></script>
 <style>
 *{box-sizing:border-box}
@@ -60,7 +60,7 @@ class FXApp extends React.Component{
   constructor(p){
     super(p);
     const h=React.createElement; this.h=h;
-    this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', alerts:(()=>{try{return JSON.parse(localStorage.getItem('alerts_v1')||'[]')||[];}catch(e){return [];}})(), alertForm:{dir:'above',price:'',note:''}, alertMsg:'', seasPair:'', seasData:null, seasBusy:false, seasErr:'' };
+    this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'' };
     this.CUR=(typeof CURRENCIES!=='undefined')?CURRENCIES:['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
     this.NAMES=(typeof NAMES!=='undefined')?NAMES:{};
     this.D={}; this.PAIRS=[]; this.series={}; this.dates=[]; this.daily=[]; this.cbdi=50; this.PRICES={};
@@ -69,9 +69,9 @@ class FXApp extends React.Component{
     this.smooth=(pts)=>{ if(pts.length<2) return pts.length?`M ${pts[0][0]} ${pts[0][1]}`:''; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=0;i<pts.length-1;i++){ const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2; const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6,c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6; d+=` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2[0]} ${p2[1]}`; } return d; };
     this.buildGauge(); this.buildCotModal(); this.buildHoverChart(); this.buildChartModal();
   }
-  componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000); this._pxT=setInterval(()=>this.fetchAlertPrices(),60000); setTimeout(()=>this.fetchAlertPrices(),2500); try{document.addEventListener('visibilitychange',()=>{ if(!document.hidden) this.fetchAlertPrices(); });}catch(e){}
+  componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000);
     if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s){ this._didInitSync=true; window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); } }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(!s){ this._didInitSync=false; return; } if(event==='SIGNED_IN'&&!this._didInitSync){ this._didInitSync=true; this.doSync(false); } }); } }
-  componentWillUnmount(){ clearInterval(this._t); clearInterval(this._clk); clearInterval(this._pxT); }
+  componentWillUnmount(){ clearInterval(this._t); clearInterval(this._clk); }
   async doSync(reload){ this.setState({syncBusy:true,syncMsg:'⏳ Synchronizuji…'});
     try{ const st=await window.Sync.syncNow(); this.setState({syncMsg:`✅ Sloučeno: ${st.events} událostí · ${st.cotWeeks} COT týdnů · ${st.trades} obchodů · ${st.keys} klíčů`+(reload?' — obnovuji…':'')}); if(reload){ setTimeout(()=>location.reload(),1000); } else { this.refreshData(); } }
     catch(e){ this.setState({syncMsg:'⚠ '+(e&&e.message||e)}); } this.setState({syncBusy:false}); }
@@ -607,62 +607,21 @@ class FXApp extends React.Component{
       h(self.HoverChart,{dates,series:[{name:'Equity',col:T.green,vals:eq}],height:150,mid:0,area:true,fmt:v=>self.sgn(v,1),pointLabels:labels}),
       dd>0&&h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8}},'Max drawdown: ',h('b',{style:{color:T.red}},'−'+dd.toFixed(2)+'R'),' (obchod #'+ddIdx+')'));
   }
-  aSet(k,v){ this.setState(s=>({alertForm:Object.assign({},s.alertForm,{[k]:v})})); }
-  saveAlerts(arr){ try{localStorage.setItem('alerts_v1',JSON.stringify(arr));}catch(e){} }
-  addAlert(pair){ const f=this.state.alertForm||{}; const price=parseFloat(String(f.price||'').replace(',','.'));
-    if(!pair||!isFinite(price)){ this.setState({alertMsg:'Zadej platnou cílovou cenu.'}); return; }
-    try{ if(window.Notification&&Notification.permission==='default') Notification.requestPermission(); }catch(e){}
-    try{ if(this._ac&&this._ac.state==='suspended') this._ac.resume(); }catch(e){}
-    const a={id:Date.now()+'_'+Math.random().toString(36).slice(2,6),pair:pair,dir:f.dir||'above',price:price,note:(f.note||'').trim(),status:'active',createdAt:Date.now()};
-    const arr=[a].concat(this.state.alerts||[]); this.setState({alerts:arr,alertForm:{dir:'above',price:'',note:''},alertMsg:''}); this.saveAlerts(arr); this.fetchAlertPrices(); }
-  removeAlert(id){ const arr=(this.state.alerts||[]).filter(a=>a.id!==id); this.setState({alerts:arr}); this.saveAlerts(arr); }
-  playAlertSound(name){ try{
-    if(localStorage.getItem('alert_sound_on')==='0') return;
-    const snd=name||localStorage.getItem('alert_sound')||'zvonek'; if(snd==='none') return;
-    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
-    const ac=this._ac||(this._ac=new AC()); if(ac.state==='suspended') ac.resume();
-    const beep=(freq,start,dur,type,vol)=>{ const o=ac.createOscillator(),g=ac.createGain(); o.type=type||'sine'; o.frequency.value=freq; o.connect(g); g.connect(ac.destination); const t0=ac.currentTime+start; g.gain.setValueAtTime(0.0001,t0); g.gain.exponentialRampToValueAtTime(vol||0.32,t0+0.012); g.gain.exponentialRampToValueAtTime(0.0001,t0+dur); o.start(t0); o.stop(t0+dur+0.03); };
-    if(snd==='zvonek'){ beep(880,0,0.55); beep(1320,0,0.55,'sine',0.18); beep(1760,0.18,0.5,'sine',0.12); }
-    else if(snd==='ping'){ beep(1245,0,0.22); }
-    else if(snd==='cinkot'){ beep(1568,0,0.14); beep(2093,0.13,0.22); }
-    else if(snd==='beep'){ beep(440,0,0.16,'square',0.2); beep(440,0.22,0.16,'square',0.2); }
-    else { beep(1000,0,0.2); }
-  }catch(e){} }
-  fireAlert(a,cur){ this.playAlertSound();
-    try{ if(window.Notification&&Notification.permission==='granted') new Notification('🔔 '+a.pair+' '+(a.dir==='above'?'≥':'≤')+' '+a.price,{body:(a.note?a.note+' · ':'')+'nyní '+cur}); }catch(e){} }
-  checkAlerts(){ const px=this._livePx||{}; let changed=false;
-    const arr=(this.state.alerts||[]).map(a=>{ if(a.status!=='active') return a; const cur=px[a.pair]; if(cur==null) return a;
-      const hit=a.dir==='above'? cur>=a.price : cur<=a.price;
-      if(hit){ changed=true; this.fireAlert(a,cur); return Object.assign({},a,{status:'triggered',triggeredAt:Date.now(),hitPrice:cur}); } return a; });
-    if(changed){ this.setState({alerts:arr}); this.saveAlerts(arr); } }
-  async fetchAlertPrices(){ const active=(this.state.alerts||[]).filter(a=>a.status==='active'); if(!active.length) return;
-    const pairs=[...new Set(active.map(a=>a.pair))]; const key=(localStorage.getItem('td_key')||'').trim();
-    if(!key){ if(this.state.alertMsg!=='nokey'){ /* keep silent flag */ } this._noKey=true; this.forceUpdate(); return; } this._noKey=false;
-    const sym=pairs.map(p=>p.slice(0,3)+'/'+p.slice(3,6)).join(',');
-    try{ const r=await fetch('https://api.twelvedata.com/price?symbol='+encodeURIComponent(sym)+'&apikey='+encodeURIComponent(key)); const d=await r.json();
-      const px=Object.assign({},this._livePx||{});
-      if(pairs.length===1){ if(d&&d.price) px[pairs[0]]=parseFloat(d.price); }
-      else { pairs.forEach(p=>{ const k=p.slice(0,3)+'/'+p.slice(3,6); if(d&&d[k]&&d[k].price) px[p]=parseFloat(d[k].price); }); }
-      this._livePx=px; this.checkAlerts(); this.forceUpdate();
-    }catch(e){} }
-  renderAlertForm(p){ const self=this,h=this.h,T=this.tok; const f=this.state.alertForm||{dir:'above',price:'',note:''};
-    const dirBtn=(val,label,col)=>{ const on=(f.dir||'above')===val; return h('button',{type:'button',onClick:()=>self.aSet('dir',val),style:{flex:1,border:'1px solid '+(on?col:'#232b3d'),background:on?col+'1f':'#0b0e15',color:on?col:T.dim,borderRadius:10,padding:'9px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,cursor:'pointer'}},label); };
-    return h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('🔔 Přidat alert — '+p.pair,'Upozornění na cenu'),
-      h('div',{style:{display:'flex',gap:8,marginTop:6,marginBottom:10}},dirBtn('above','▲ Nad cenou',T.green),dirBtn('below','▼ Pod cenou',T.red)),
-      h('div',{style:{display:'flex',gap:8,marginBottom:10}},
-        h('input',{type:'text',inputMode:'decimal',value:f.price,placeholder:'Cílová cena (např. 1.0900)',onChange:e=>self.aSet('price',e.target.value),style:{flex:1,boxSizing:'border-box',background:'#0b0e15',border:'1px solid #2a3346',borderRadius:9,color:T.text,padding:'10px 12px',fontSize:14,fontFamily:"'JetBrains Mono',monospace"}}),
-        h('button',{type:'button',onClick:()=>self.addAlert(p.pair),style:{border:'1px solid '+T.accent,background:'linear-gradient(180deg,#5e7cfb,#4c63d9)',color:'#fff',borderRadius:9,padding:'10px 18px',fontFamily:'inherit',fontSize:13,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}},'+ Přidat')),
-      h('input',{type:'text',value:f.note,placeholder:'Poznámka (volitelně)',onChange:e=>self.aSet('note',e.target.value),style:{width:'100%',boxSizing:'border-box',background:'#0b0e15',border:'1px solid #232b3d',borderRadius:9,color:T.text,padding:'9px 12px',fontSize:12.5,fontFamily:'inherit'}}),
-      this.state.alertMsg&&h('div',{style:{fontSize:11,color:T.amber,marginTop:8}},this.state.alertMsg),
-      this._noKey&&h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,lineHeight:1.5}},'Hlídání cen se spustí po vložení free Twelve Data klíče v Nastavení ⚙.')); }
-  renderAlertsPanel(){ const self=this,h=this.h,T=this.tok; const alerts=this.state.alerts||[]; const px=this._livePx||{}; const act=alerts.filter(a=>a.status==='active').length;
-    return h('div',{style:self.card({padding:'16px 18px'})},
-      h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:alerts.length?10:0}},self.ptitle('🔔 Alerty',act+' aktivních'),act?h('button',{type:'button',onClick:()=>self.fetchAlertPrices(),title:'Zkontrolovat ceny',style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:7,padding:'4px 9px',fontSize:11,cursor:'pointer'}},'↻'):''),
-      alerts.length?h('div',{style:{display:'flex',flexDirection:'column',gap:8}},alerts.slice(0,14).map(a=>{ const trig=a.status==='triggered'; const col=a.dir==='above'?T.green:T.red; const cur=px[a.pair];
-        return h('div',{key:a.id,style:{background:'#0a0d13',border:'1px solid '+(trig?T.amber+'55':'#161b27'),borderLeft:'3px solid '+(trig?T.amber:col),borderRadius:10,padding:'9px 11px'}},
-          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}},h('span',{style:self.mono({fontSize:12.5,fontWeight:800})},a.pair),h('span',{style:self.mono({fontSize:11.5,fontWeight:800,color:trig?T.amber:col})},(a.dir==='above'?'≥ ':'≤ ')+a.price)),
-          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:3}},h('span',{style:self.mono({fontSize:10,color:T.faint})},trig?('✓ spuštěno'+(a.hitPrice!=null?(' @ '+a.hitPrice):'')):(cur!=null?('nyní '+cur):'čeká na cenu')),h('button',{type:'button',onClick:()=>self.removeAlert(a.id),style:{border:0,background:'transparent',color:T.faint,fontSize:15,cursor:'pointer',lineHeight:1,padding:'0 2px'}},'×')),
-          a.note&&h('div',{style:{fontSize:11,color:T.dim,fontStyle:'italic',marginTop:4}},'„'+a.note+'"')); })):h('div',{style:{fontSize:11.5,color:T.faint}},'Zatím žádné alerty. Přidej je u páru v jeho detailu.')); }
+  getRPERSignal(p,sb,sq){
+    // RP+ER "exhaustion fade" — technický signál (žádná nová data, jen cena) +
+    // fundament jako kontrola "je pohyb vysvětlený, nebo podezřelý". Backtest
+    // (28 párů, 2024-05→2026-07, point-in-time, half-split+tercily ověřeno):
+    // SHORT (RP≥80%,ER>0.5) PF 1.45; LONG (RP≤20%,ER 0.20-0.65) PF 1.55.
+    // Trojkombinace s fundamentem (dnešní nález): fade funguje LÍP, když fundament
+    // NESOUHLASÍ se směrem chase (souhlas PF~0.90 — nejhorší, proti PF~1.9-2.2) —
+    // proto se "souhlasící" bucket vůbec nezobrazuje (svítí jen potvrzené).
+    let rp=null,er=null; try{rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);}catch(e){}
+    if(!rp||!er) return null;
+    const diff=(sb.score||0)-(sq.score||0), NEUTRAL=0.3;
+    if(rp.rp>=0.8&&er.er>0.5){ if(diff<-NEUTRAL) return null; return {type:'SHORT',rp:rp.rp,er:er.er,diff}; }
+    if(rp.rp<=0.2&&er.er>=0.2&&er.er<0.65){ if(diff>NEUTRAL) return null; return {type:'LONG',rp:rp.rp,er:er.er,diff}; }
+    return null;
+  }
   agoTxt(ts){ if(!ts) return ''; const m=Math.round((Date.now()-ts)/60000); if(m<60) return 'před '+m+' min'; const hh=Math.floor(m/60); return hh<24?('před '+hh+' h'):('před '+Math.floor(hh/24)+' dny'); }
   flipInfo(pairId){ return (this._flips||[]).find(f=>f.pair===pairId)||null; }
   flipBanner(p){ const self=this,h=this.h,T=this.tok; const f=this.flipInfo(p.pair); if(!f) return null;
@@ -780,16 +739,32 @@ class FXApp extends React.Component{
               lp!=null?h('div',{style:self.mono({fontSize:14,fontWeight:700,color:T.text})},lp.toFixed(p.pair.includes('JPY')?3:5)):null,
               cf.mom!=null?h('div',{style:self.mono({fontSize:11,fontWeight:700,color:cf.mom>=0?T.green:T.red})},'5d '+(cf.mom>=0?'+':'')+cf.mom+'%'):null)),
           disc?h('div',{style:{fontSize:10.5,color:T.faint,marginTop:9,paddingTop:9,borderTop:'1px solid #ffffff12',lineHeight:1.4}},disc):null); })(),
-      (()=>{ let rp=null; try{rp=getRangePosition(p.pair,10);}catch(e){}
-        if(!rp) return null;
-        const zoneLbl={low:'spodní část rozpětí',mid:'střed rozpětí',high:'horní část rozpětí'}[rp.zone];
-        return h('div',{style:self.card({padding:'11px 16px'})},
-          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:9}},
-            h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:T.dim}},'POZICE V 10D ROZPĚTÍ'),
-            h('span',{style:self.mono({fontSize:11,fontWeight:700,color:T.text})},Math.round(rp.rp*100)+'% · '+zoneLbl)),
-          h('div',{style:{position:'relative',height:6,borderRadius:3,background:'#1b2130'}},
-            h('div',{style:{position:'absolute',top:-4,left:'calc('+(rp.rp*100)+'% - 6px)',width:12,height:14,borderRadius:4,background:T.accent,border:'2px solid #0b0e15'}})),
-          h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,lineHeight:1.4}},'Kde je cena mezi 10denním minimem a maximem — orientační údaj, neovlivňuje skóre ani diferenciál.')); })(),
+      (()=>{ let rp=null,er=null; try{rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);}catch(e){}
+        if(!rp&&!er) return null;
+        const sig=self.getRPERSignal(p,sb,sq);
+        const verdict=sig?(sig.type==='SHORT'?{t:'SILNÝ SHORT',c:T.red,bg:'rgba(242,96,110,.07)'}:{t:'SILNÝ LONG',c:T.green,bg:'rgba(46,211,160,.07)'}):{t:'ŽÁDNÝ SIGNÁL',c:T.faint,bg:'transparent'};
+        const rpZoneLbl=rp?({low:'dno rozpětí',mid:'střed rozpětí',high:'vrchol rozpětí'}[rp.zone]):null;
+        const erLbl=er==null?null:(er.er<0.2?'chaos / cikcak':er.er<0.35?'slabé':er.er<0.5?'sleduj':er.er<0.65?'aktivní zóna':'silné, přímočaré');
+        const rpBar=rp&&h('div',null,
+          h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:8}},h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:T.dim}},'RP · POZICE V ROZPĚTÍ'),h('span',{style:self.mono({fontSize:12,fontWeight:800,color:T.text})},Math.round(rp.rp*100)+'%')),
+          h('div',{style:{position:'relative',height:10,borderRadius:5,background:'#1b2130'}},
+            h('div',{style:{position:'absolute',left:0,top:0,bottom:0,width:'20%',background:T.green+'1a',borderRadius:'5px 0 0 5px'}}),
+            h('div',{style:{position:'absolute',right:0,top:0,bottom:0,width:'20%',background:T.red+'1a',borderRadius:'0 5px 5px 0'}}),
+            h('div',{style:{position:'absolute',top:-3,left:'calc('+(rp.rp*100)+'% - 7px)',width:14,height:16,borderRadius:5,background:T.accent,border:'2px solid #0b0e15'}})),
+          h('div',{style:{fontSize:10,color:T.faint,marginTop:7}},rpZoneLbl+' · 10 dní'));
+        const erBar=er&&h('div',null,
+          h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:8}},h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:T.dim}},'ER · EFFICIENCY RATIO'),h('span',{style:self.mono({fontSize:12,fontWeight:800,color:T.text})},er.er.toFixed(2))),
+          h('div',{style:{position:'relative',height:10,borderRadius:5,background:'#1b2130'}},
+            h('div',{style:{position:'absolute',left:'20%',top:0,bottom:0,width:'45%',background:T.yellow+'14'}}),
+            [0.2,0.5,0.65].map(t=>h('div',{key:t,style:{position:'absolute',left:(t*100)+'%',top:0,bottom:0,width:1,background:'#3a4256'}})),
+            h('div',{style:{position:'absolute',top:-3,left:'calc('+(er.er*100)+'% - 7px)',width:14,height:16,borderRadius:5,background:T.yellow,border:'2px solid #0b0e15'}})),
+          h('div',{style:{fontSize:10,color:T.faint,marginTop:7}},erLbl+' · 10 dní'));
+        return h('div',{style:self.card({padding:'18px 20px',background:verdict.bg,borderColor:sig?verdict.c+'33':'#1b2130',borderLeft:sig?'3px solid '+verdict.c:'1px solid #1b2130'})},
+          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:16,flexWrap:'wrap'}},
+            self.ptitle('RP + ER — exhaustion signál','Technický fade + kontrola fundamentu'),
+            h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:verdict.c,background:sig?verdict.c+'1c':'#0c0f16',border:'1px solid '+(sig?verdict.c+'44':'#232b3d'),borderRadius:7,padding:'5px 12px',whiteSpace:'nowrap'}},verdict.t)),
+          h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}},rpBar||h('div'),erBar||h('div',{style:{fontSize:10.5,color:T.faint}},'Málo cenové historie pro ER.')),
+          h('div',{style:{fontSize:10.5,color:T.faint,marginTop:14,lineHeight:1.45,paddingTop:12,borderTop:'1px solid #ffffff0f'}},sig?(sig.type==='SHORT'?('Cena je na vrcholu 10d rozpětí a dostala se tam hladce (ER '+sig.er.toFixed(2)+') — historicky fade zóna (PF 1.45 na backtestu). Fundament tomu neodporuje ('+self.sgn(sig.diff)+') → potvrzeno.'):('Cena je na dně 10d rozpětí s přiměřeným ER ('+sig.er.toFixed(2)+', ne chaos, ne panika) — historicky fade zóna (PF 1.55 na backtestu). Fundament tomu neodporuje ('+self.sgn(sig.diff)+') → potvrzeno.')):'RP/ER nejsou v žádné zóně, nebo fundament silně souhlasí se směrem chase — v tom případě signál nesvítí (historicky nejhorší kombinace, PF~0.9). Čistě informační, neovlivňuje skóre ani diferenciál.')); })(),
       isCAD&&this.renderOilPanel(p),
       this.renderPairCharts(p),
       h('div',{style:self.card({padding:'14px 18px',background:verdict.bg,borderColor:verdict.c+'33',borderLeft:'3px solid '+verdict.c})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:11,flexWrap:'wrap'}},h('div',{style:{display:'flex',alignItems:'center',gap:10}},h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:verdict.c,background:verdict.c+'1c',border:'1px solid '+verdict.c+'44',borderRadius:7,padding:'4px 10px'}},verdict.t),h('span',{style:{fontSize:13,fontWeight:600,color:T.text}},verdict.msg)),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:verdict.c})},okN+'/'+fac.length+' faktorů')),h('div',{style:{display:'flex',gap:7,flexWrap:'wrap'}},fac.map(f=>h('span',{key:f.l,title:f.d,style:{display:'inline-flex',alignItems:'center',gap:5,fontSize:10.5,fontWeight:600,padding:'4px 9px',borderRadius:6,background:f.ok?'rgba(46,211,160,.1)':'rgba(120,130,150,.08)',border:'1px solid '+(f.ok?'rgba(46,211,160,.28)':'#222a39'),color:f.ok?T.green:T.faint}},h('span',null,f.ok?'✓':'○'),f.l)))),
@@ -806,7 +781,6 @@ class FXApp extends React.Component{
           ai.entry_setup&&h('div',{style:{fontSize:12,color:T.dim,lineHeight:1.55,marginTop:kl.length?10:0}},h('b',{style:{color:T.accent}},'Entry: '),(ai.entry_setup.entry_zone||'—'),h('span',{style:{margin:'0 8px',color:'#2a3242'}},'·'),h('b',{style:{color:T.red}},'Invalidace: '),(ai.entry_setup.invalidation||ai.entry_setup.stop_loss||'—')));
       })(),
       h('div',{style:self.card({padding:'16px 18px'})},h('div',{style:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap'}},self.ptitle('Daily Brief — '+p.pair,briefMsg),h('div',{style:{display:'flex',gap:6}},['LONG','SHORT','none'].map(s=>{const on=pos===s,col=s==='LONG'?T.green:s==='SHORT'?T.red:T.faint;return h('button',{key:s,type:'button',onClick:()=>self.setPos(p.pair,s),style:{border:'1px solid '+(on?col:'#232b3d'),background:on?col+'1f':'#0c0f16',color:on?col:T.dim,borderRadius:9,padding:'7px 13px',fontFamily:'inherit',fontSize:11.5,fontWeight:700,cursor:'pointer'}},s==='none'?'Zavřít':s);}))),dailyForPair.length?h('div',{style:{display:'flex',flexDirection:'column',gap:2,marginTop:4}},dailyForPair.map((d,i)=>{const ic=d.imp==='HIGH'?T.red:d.imp==='MEDIUM'?T.amber:T.yellow;const ins=dInsight(d);return h('div',{key:i,style:{display:'flex',alignItems:'flex-start',gap:11,padding:'9px 0',boxShadow:i<dailyForPair.length-1?'0 1px 0 #14182333':'none'}},h('span',{style:self.mono({fontSize:11,color:T.dim,width:42,marginTop:1})},d.t),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,width:34,marginTop:1})},d.ccy),h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontSize:12.5,color:T.text}},d.ev),ins&&h('div',{style:{fontSize:11,color:ins.col,marginTop:3,lineHeight:1.45}},ins.txt)),h('span',{style:{fontSize:9,fontWeight:700,color:ic,background:ic+'1c',border:'1px solid '+ic+'40',borderRadius:5,padding:'3px 7px'}},d.imp));})):h('div',{style:{fontSize:12,color:T.faint,marginTop:4}},'Žádné plánované události pro '+p.base+' ani '+p.quote+' dnes.')),
-      this.renderAlertForm(p),
       h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Moje poznámka — '+p.pair),h('textarea',{value:this.state.notes[p.pair]||'',onChange:e=>self.setNote(p.pair,e.target.value),placeholder:'Tvoje teze, klíčové úrovně, plán vstupu…',style:{minHeight:70,resize:'vertical',width:'100%',background:'#0a0d13',border:'1px solid #1b2130',borderRadius:10,color:T.text,padding:'11px 13px',fontSize:12.5,fontFamily:"'Manrope',sans-serif",lineHeight:1.55,outline:'none'}})),
       h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Komponenty skóre','Vážené příspěvky (base − quote) · Σ = skóre diferenciál'),h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:9}},comps.map(x=>{const col=self.scol(x.v);return h('div',{key:x.l,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'12px 10px',textAlign:'center'}},h('div',{style:{fontSize:10,color:T.dim,marginBottom:8,minHeight:24}},x.l),h('div',{style:self.mono({fontSize:20,fontWeight:700,color:col})},self.sgn(x.v,2)),h('div',{style:{height:3,background:'#161b27',borderRadius:3,marginTop:10,overflow:'hidden'}},h('div',{style:{height:'100%',width:Math.min(100,Math.abs(x.v)/x.m*100)+'%',background:col,borderRadius:3}})));}))),
       h('div',{style:Object.assign(self.card({padding:'16px 18px'}),{order:-1})},(()=>{
@@ -867,7 +841,7 @@ class FXApp extends React.Component{
           upc.length?h('div',{style:{display:'flex',flexDirection:'column',gap:6}},upc.map(p=>h('div',{key:p.pair,style:{display:'flex',alignItems:'center',gap:8,fontSize:11.5}},h('span',{style:{width:7,height:7,borderRadius:'50%',background:T.amber,flex:'none'}}),h('b',{style:self.mono({fontSize:12})},p.pair),h('span',{style:{color:T.dim}},'dnes velký event — bias zatím nepotvrzený')))):null);
       })(),
       h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Dnešní přehled','Fundamenty s dopadem na bias · '+this.today()),this.daily.length?h('div',{style:{display:'flex',flexDirection:'column',gap:2}},this.daily.map((d,i)=>h('div',{key:i,style:{display:'flex',alignItems:'center',gap:11,padding:'10px 0',boxShadow:i<this.daily.length-1?'0 1px 0 #14182333':'none'}},h('span',{style:self.mono({fontSize:11,color:T.dim,width:42})},d.t),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:T.text,width:34})},d.ccy),h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontSize:12,fontWeight:600,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},d.ev),d.note&&h('div',{style:{fontSize:10,color:T.faint}},d.note)),h('span',{style:{fontSize:9,fontWeight:700,letterSpacing:'.06em',color:imp(d.imp),background:imp(d.imp)+'1c',border:'1px solid '+imp(d.imp)+'40',borderRadius:5,padding:'3px 7px'}},d.imp)))):h('div',{style:{fontSize:12,color:T.faint}},'Dnes žádné velké události.')),
-      h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Síla měn','Ranking −10 … +10'),h('div',{style:{display:'flex',flexDirection:'column',gap:6}},rows.map(r=>{const pos=r.score>=0,col=pos?T.green:T.red,w=Math.abs(r.score)/10*100;return h('div',{key:r.c,style:{display:'grid',gridTemplateColumns:'40px 1fr 42px',alignItems:'center',gap:9}},h('span',{style:self.mono({fontSize:11.5,fontWeight:700})},r.c),h('div',{style:{height:8,background:'#0a0d13',border:'1px solid #161b27',borderRadius:5,overflow:'hidden'}},h('div',{style:{height:'100%',width:w+'%',background:col,opacity:.9,borderRadius:5}})),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:col,textAlign:'right'})},self.sgn(r.score)));}))),this.renderAlertsPanel());
+      h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Síla měn','Ranking −10 … +10'),h('div',{style:{display:'flex',flexDirection:'column',gap:6}},rows.map(r=>{const pos=r.score>=0,col=pos?T.green:T.red,w=Math.abs(r.score)/10*100;return h('div',{key:r.c,style:{display:'grid',gridTemplateColumns:'40px 1fr 42px',alignItems:'center',gap:9}},h('span',{style:self.mono({fontSize:11.5,fontWeight:700})},r.c),h('div',{style:{height:8,background:'#0a0d13',border:'1px solid #161b27',borderRadius:5,overflow:'hidden'}},h('div',{style:{height:'100%',width:w+'%',background:col,opacity:.9,borderRadius:5}})),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:col,textAlign:'right'})},self.sgn(r.score)));}))));
   }
   renderStrength(){ const self=this,h=this.h,T=this.tok;
     return h('div',{style:{display:'flex',flexDirection:'column',gap:16,maxWidth:1080}},h('div',{style:self.card({padding:'20px 22px'})},self.ptitle('Ranking síly měn','Skóre = fundamenty + CB policy + real yield + COT + retail + sezónnost'),h('div',{style:{marginTop:6}},this.StrengthChart())),
@@ -1124,21 +1098,7 @@ class FXApp extends React.Component{
             keyInput('fh','Finnhub API key'),
             lab('Alpha Vantage klíč','ceny ropy'),
             keyInput('av','Alpha Vantage key'),
-            lab('📈 Twelve Data klíč','✓ ZDARMA — pro cenové alerty'),
-            h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:6,lineHeight:1.5}},'twelvedata.com → Sign up → API Key (free 800 dotazů/den, stačí na alerty)'),
-            keyInput('td_key','Twelve Data API key'),
             h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8}},'Klíč ulož kliknutím mimo políčko. Pokročilé (CB sazby, CPI, import historie) je v ',h('a',{href:'classic.html',style:{color:T.accent}},'klasické verzi'),'.')); })()),
-      h('div',{style:self.card({padding:'18px 22px',marginTop:14})},
-        self.ptitle('🔔 Alerty','Zvuk upozornění na cenu'),
-        (()=>{ const sndOn=localStorage.getItem('alert_sound_on')!=='0'; const cur=localStorage.getItem('alert_sound')||'zvonek';
-          const opts=[['zvonek','Zvonek (jemný)'],['ping','Ping'],['cinkot','Cinkot'],['beep','Beep'],['none','Žádný']];
-          return h('div',null,
-            h('label',{style:{fontSize:11,color:T.dim,display:'block',marginBottom:4}},'Zvuk alertu'),
-            h('div',{style:{display:'flex',gap:8,alignItems:'center'}},
-              h('select',{defaultValue:cur,onChange:e=>{try{localStorage.setItem('alert_sound',e.target.value);}catch(x){} self.playAlertSound(e.target.value);},style:Object.assign({},fld,{cursor:'pointer',flex:1})},opts.map(([v,l])=>h('option',{key:v,value:v},l))),
-              h('button',{type:'button',onClick:()=>self.playAlertSound(),style:{border:'1px solid #2a3346',background:'#0c0f16',color:'#cdd6ff',borderRadius:9,padding:'10px 14px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}},'▶ Test'),
-              h('button',{type:'button',onClick:()=>{try{localStorage.setItem('alert_sound_on',sndOn?'0':'1');}catch(x){} self.forceUpdate();},style:{border:'1px solid '+(sndOn?'rgba(46,211,160,.4)':'#2a3346'),background:sndOn?'rgba(46,211,160,.12)':'#0c0f16',color:sndOn?T.green:T.dim,borderRadius:9,padding:'10px 14px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}},sndOn?'🔊 Zap':'🔈 Vyp')),
-            h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,lineHeight:1.5}},'Alerty se hlídají, dokud máš appku otevřenou. Cílovou cenu zadáš u páru v Dashboardu; aktivní alerty vidíš vpravo pod Sílou měn.')); })()),
       h('div',{style:self.card({padding:'18px 22px',marginTop:14})},
         self.ptitle('Data & zdroje','Stav fundamentálního enginu'),
         h('div',{style:{fontSize:12.5,color:T.dim,lineHeight:1.7}},
@@ -1164,9 +1124,10 @@ class FXApp extends React.Component{
     const pairCard=p=>{const buy=p.dir==='BUY',dc=buy?T.green:T.red,sel=st.sel===p.pair,sb=this.D[p.base],sq=this.D[p.quote];const bandName=(typeof getDiffBand==='function')?getDiffBand(p.diff):null;const band=bandName==='silný'?['SILNÝ',T.green,'rgba(46,211,160,.12)']:bandName==='sweetspot'?['SWEETSPOT',T.accent,'rgba(94,124,251,.12)']:['SLABÝ',T.faint,'rgba(120,130,150,.1)'];const ext=sb.cotPct>=85||sb.cotPct<=15;
       const isCADrow=p.base==='CAD'||p.quote==='CAD';
       const d24=self.pairDelta24h(p,sb,sq);const isFav=st.favs.has(p.pair);
+      let rpEr=null; try{rpEr=self.getRPERSignal(p,sb,sq);}catch(e){}
       return h('button',{key:p.pair,type:'button',onClick:()=>this.setState({sel:p.pair}),onMouseEnter:()=>this.setState({hoverFav:p.pair}),onMouseLeave:()=>this.setState({hoverFav:null}),style:{display:'block',width:'100%',textAlign:'left',border:'1px solid '+(sel?T.accent:'#191e2b'),background:sel?'linear-gradient(180deg,rgba(94,124,251,.12),rgba(11,13,19,.7))':'linear-gradient(180deg,#0d1017,#0a0c12)',borderRadius:13,padding:'12px 13px',marginBottom:8,cursor:'pointer',fontFamily:'inherit',boxShadow:sel?'0 0 0 1px '+T.accent+'40,0 10px 26px rgba(94,124,251,.12)':'none'}},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}},h('div',{style:{display:'flex',alignItems:'center',gap:9}},h('span',{style:{width:7,height:7,borderRadius:'50%',background:this.statusColor(p.status),boxShadow:'0 0 9px '+this.statusColor(p.status)}}),h('span',{style:self.mono({fontWeight:700,fontSize:14,letterSpacing:'.01em',color:'#eef1f6'})},p.pair),self.flipInfo(p.pair)&&h('span',{title:'Bias se nedávno otočil — viz detail',style:{fontSize:12,fontWeight:800,color:T.amber,marginLeft:'-2px'}},'⚡'),h('span',{style:{color:T.amber,fontSize:10,letterSpacing:'.5px'}},'★'.repeat(p.conv)+'☆'.repeat(5-p.conv))),h('div',{style:{display:'flex',alignItems:'center',gap:5}},h('span',{title:isFav?'Odebrat z oblíbených':'Přidat do oblíbených',role:'button',onClick:e=>{e.stopPropagation();self.toggleFav(p.pair);},style:{fontSize:14,cursor:'pointer',color:isFav?'#f0b429':(st.hoverFav===p.pair?'rgba(240,180,41,0.45)':'transparent'),userSelect:'none',lineHeight:1,transition:'color .15s'}},isFav?'★':'☆'),h('span',{style:self.mono({fontWeight:700,fontSize:10.5,letterSpacing:'.06em',color:dc,background:buy?'rgba(46,211,160,.1)':'rgba(242,96,110,.1)',border:'1px solid '+(buy?'rgba(46,211,160,.28)':'rgba(242,96,110,.28)'),borderRadius:6,padding:'2px 7px'})},p.dir))),
-        h('div',{style:{display:'flex',alignItems:'baseline',gap:10,marginTop:11}},h('span',{style:self.mono({fontSize:23,fontWeight:700,color:dc,lineHeight:1})},(buy?'+':'−')+p.diff.toFixed(1)),h('span',{title:(typeof BAND_DISCLAIMER!=='undefined')?BAND_DISCLAIMER:'',style:{fontSize:9,fontWeight:700,letterSpacing:'.1em',color:band[1],background:band[2],borderRadius:5,padding:'3px 7px',cursor:'help'}},band[0]),isCADrow&&oilSt&&h('span',{title:'WTI ropa '+oilSt.direction+' · 4t '+(oilSt.mom4w>0?'+':'')+oilSt.mom4w+'%',style:self.mono({fontSize:9,fontWeight:700,letterSpacing:'.04em',color:oilSt.color,background:oilSt.color+'1c',border:'1px solid '+oilSt.color+'44',borderRadius:5,padding:'3px 7px'})},'🛢 $'+oilSt.price.toFixed(1)),d24&&h('span',{title:'Změna skóre páru (rozdíl base−quote) za posledních ~24h',style:self.mono({display:'inline-flex',alignItems:'center',gap:4,fontSize:12.5,fontWeight:800,letterSpacing:'.02em',color:d24.color,background:d24.color+'22',border:'1.5px solid '+d24.color+'66',borderRadius:7,padding:'4px 9px'})},h('span',{style:{fontSize:14}},d24.arrow),(d24.d>0?'+':'')+d24.d.toFixed(1)),h('span',{style:self.mono({marginLeft:'auto',fontSize:11,color:T.dim})},p.prob+'%')),
+        h('div',{style:{display:'flex',alignItems:'baseline',gap:10,marginTop:11}},h('span',{style:self.mono({fontSize:23,fontWeight:700,color:dc,lineHeight:1})},(buy?'+':'−')+p.diff.toFixed(1)),h('span',{title:(typeof BAND_DISCLAIMER!=='undefined')?BAND_DISCLAIMER:'',style:{fontSize:9,fontWeight:700,letterSpacing:'.1em',color:band[1],background:band[2],borderRadius:5,padding:'3px 7px',cursor:'help'}},band[0]),isCADrow&&oilSt&&h('span',{title:'WTI ropa '+oilSt.direction+' · 4t '+(oilSt.mom4w>0?'+':'')+oilSt.mom4w+'%',style:self.mono({fontSize:9,fontWeight:700,letterSpacing:'.04em',color:oilSt.color,background:oilSt.color+'1c',border:'1px solid '+oilSt.color+'44',borderRadius:5,padding:'3px 7px'})},'🛢 $'+oilSt.price.toFixed(1)),d24&&h('span',{title:'Změna skóre páru (rozdíl base−quote) za posledních ~24h',style:self.mono({display:'inline-flex',alignItems:'center',gap:4,fontSize:12.5,fontWeight:800,letterSpacing:'.02em',color:d24.color,background:d24.color+'22',border:'1.5px solid '+d24.color+'66',borderRadius:7,padding:'4px 9px'})},h('span',{style:{fontSize:14}},d24.arrow),(d24.d>0?'+':'')+d24.d.toFixed(1)),rpEr&&h('span',{title:'RP+ER exhaustion signál — potvrzeno technikou i fundamentem, viz detail páru',style:self.mono({display:'inline-flex',alignItems:'center',gap:4,fontSize:11.5,fontWeight:800,letterSpacing:'.02em',color:rpEr.type==='SHORT'?T.red:T.green,background:(rpEr.type==='SHORT'?T.red:T.green)+'22',border:'1.5px solid '+(rpEr.type==='SHORT'?T.red:T.green)+'66',borderRadius:7,padding:'4px 9px'})},rpEr.type==='SHORT'?'⇩':'⇧','SILNÝ '+rpEr.type),h('span',{style:self.mono({marginLeft:'auto',fontSize:11,color:T.dim})},p.prob+'%')),
         h('div',{style:{display:'flex',gap:13,marginTop:10,fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:'#6b7384'}},h('span',null,p.base+' ',h('b',{style:{color:self.scol(sb.score),fontWeight:600}},self.sgn(sb.score))),h('span',null,p.quote+' ',h('b',{style:{color:self.scol(sq.score),fontWeight:600}},self.sgn(sq.score))),h('span',{style:{marginLeft:'auto'}},'COT ',h('b',{style:{color:ext?T.amber:T.dim,fontWeight:600}},sb.cotPct+'p'))));};
     const leftSection=h('section',{className:'fx-left',style:self.card({padding:'16px 15px',position:'sticky',top:84,maxHeight:'calc(100vh - 104px)',display:'flex',flexDirection:'column'})},
       h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:13}},h('div',null,h('div',{style:{fontSize:14,fontWeight:800,letterSpacing:'-.01em'}},'Měnové páry'),h('div',{style:self.mono({fontSize:10.5,color:T.faint,marginTop:2})},'Seřazeno dle síly signálu')),h('span',{style:self.mono({fontSize:11,color:T.dim,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:8,padding:'4px 9px'})},this.PAIRS.length+' párů')),

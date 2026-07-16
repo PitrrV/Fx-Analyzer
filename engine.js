@@ -2662,6 +2662,27 @@ function getRangePosition(pair,days=10){
   const zone=rp<=0.33?"low":rp>=0.67?"high":"mid";
   return {rp:parseFloat(rp.toFixed(3)),zone,min:mn,max:mx,days};
 }
+// Efficiency Ratio (Kaufman) — čistě INFORMAČNÍ, doplněk k RP. Poměr "kolik cena
+// skutečně urazila" (start→cíl vzdušnou čarou) ku "kolik celkem našlapala" (součet
+// denních výkyvů). ~1 = hladký přímočarý pohyb, ~0 = rozkolísaný chaos beze směru.
+// Backtest (2024-05 → 2026-07, 28 párů, point-in-time, half-split ověřeno):
+// RP≥80%+ER>0.5 → fade (SHORT) PF 1.45; RP≤20%+ER 0.20-0.65 → fade (LONG) PF 1.55.
+function getEfficiencyRatio(pair,days=10){
+  const p=_pxPair(pair); if(!p||!_PRICES||!Array.isArray(_PRICES.hist)||_PRICES.hist.length<days+1) return null;
+  const h=_PRICES.hist;
+  const startIdx=h.length-1-days; if(startIdx<0) return null;
+  const p0=_pxFrom(h[startIdx].rates,p), p1=_pxFrom(h[h.length-1].rates,p);
+  if(p0==null||p1==null) return null;
+  let sumAbs=0;
+  for(let i=startIdx+1;i<h.length;i++){
+    const a=_pxFrom(h[i-1].rates,p), b=_pxFrom(h[i].rates,p);
+    if(a==null||b==null) continue;
+    sumAbs+=Math.abs(b-a);
+  }
+  if(sumAbs===0) return null;
+  const er=Math.abs(p1-p0)/sumAbs;
+  return {er:parseFloat(er.toFixed(3)),days};
+}
 
 // ── AUTO RISK SENTIMENT (nahrazuje zapomenutý ruční přepínač) ─────────
 // Risk-on/off z cenové akce klasických barometrů AUDJPY/NZDJPY za ~5 dní.
