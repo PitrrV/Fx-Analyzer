@@ -610,16 +610,20 @@ class FXApp extends React.Component{
   getRPERSignal(p,sb,sq){
     // RP+ER "exhaustion fade" — technický signál (žádná nová data, jen cena) +
     // fundament jako kontrola "je pohyb vysvětlený, nebo podezřelý". Backtest
-    // (28 párů, 2024-05→2026-07, point-in-time, half-split+tercily ověřeno):
-    // SHORT (RP≥80%,ER>0.5) PF 1.45; LONG (RP≤20%,ER 0.20-0.65) PF 1.55.
+    // (28 párů, 2024-05→2026-07, point-in-time, half-split+tercily ověřeno), PF
+    // roste uvnitř zóny s ER — proto se nepoužívá jedno pooled číslo, ale pásmo:
+    // SHORT (RP≥80%): ER .50-.65→PF1.19 · .65-.80→PF1.37 · .80-1.01→PF2.45
+    // LONG  (RP≤20%): ER .20-.35→PF1.66 · .35-.50→PF1.39 · .50-.65→PF1.64
     // Trojkombinace s fundamentem (dnešní nález): fade funguje LÍP, když fundament
     // NESOUHLASÍ se směrem chase (souhlas PF~0.90 — nejhorší, proti PF~1.9-2.2) —
     // proto se "souhlasící" bucket vůbec nezobrazuje (svítí jen potvrzené).
     let rp=null,er=null; try{rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);}catch(e){}
     if(!rp||!er) return null;
     const diff=(sb.score||0)-(sq.score||0), NEUTRAL=0.3;
-    if(rp.rp>=0.8&&er.er>0.5){ if(diff<-NEUTRAL) return null; return {type:'SHORT',rp:rp.rp,er:er.er,diff}; }
-    if(rp.rp<=0.2&&er.er>=0.2&&er.er<0.65){ if(diff>NEUTRAL) return null; return {type:'LONG',rp:rp.rp,er:er.er,diff}; }
+    const bandPF=(type,e)=>{ const bands=type==='SHORT'?[[0.5,0.65,1.19],[0.65,0.8,1.37],[0.8,1.01,2.45]]:[[0.2,0.35,1.66],[0.35,0.5,1.39],[0.5,0.65,1.64]];
+      const b=bands.find(([lo,hi])=>e>=lo&&e<hi)||bands[bands.length-1]; return b[2]; };
+    if(rp.rp>=0.8&&er.er>0.5){ if(diff<-NEUTRAL) return null; return {type:'SHORT',rp:rp.rp,er:er.er,diff,pf:bandPF('SHORT',er.er)}; }
+    if(rp.rp<=0.2&&er.er>=0.2&&er.er<0.65){ if(diff>NEUTRAL) return null; return {type:'LONG',rp:rp.rp,er:er.er,diff,pf:bandPF('LONG',er.er)}; }
     return null;
   }
   agoTxt(ts){ if(!ts) return ''; const m=Math.round((Date.now()-ts)/60000); if(m<60) return 'před '+m+' min'; const hh=Math.floor(m/60); return hh<24?('před '+hh+' h'):('před '+Math.floor(hh/24)+' dny'); }
@@ -766,7 +770,7 @@ class FXApp extends React.Component{
           h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}},rpBar||h('div'),erBar||h('div',{style:{fontSize:10.5,color:T.faint}},'Málo cenové historie pro ER.')),
           sig?h('div',{style:{display:'flex',alignItems:'center',gap:10,background:verdict.c+'16',border:'1px solid '+verdict.c+'44',borderRadius:10,padding:'11px 14px',marginTop:14}},
             h('span',{style:{fontSize:16,flex:'none'}},'🎯'),
-            h('span',{style:{fontSize:13,fontWeight:700,color:T.text,lineHeight:1.5}},sig.type==='SHORT'?('Cena je na vrcholu 10d rozpětí a dostala se tam hladce (ER '+sig.er.toFixed(2)+') — historicky fade zóna (PF 1.45 na backtestu). Fundament tomu neodporuje ('+self.sgn(sig.diff)+') → '):('Cena je na dně 10d rozpětí s přiměřeným ER ('+sig.er.toFixed(2)+', ne chaos, ne panika) — historicky fade zóna (PF 1.55 na backtestu). Fundament tomu neodporuje ('+self.sgn(sig.diff)+') → '),h('b',{style:{color:verdict.c}},'POTVRZENO.'))):
+            h('span',{style:{fontSize:13,fontWeight:700,color:T.text,lineHeight:1.5}},sig.type==='SHORT'?('Cena je na vrcholu 10d rozpětí a dostala se tam hladce (ER '+sig.er.toFixed(2)+') — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). Fundament tomu neodporuje ('+self.sgn(sig.diff)+') → '):('Cena je na dně 10d rozpětí s přiměřeným ER ('+sig.er.toFixed(2)+', ne chaos, ne panika) — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). Fundament tomu neodporuje ('+self.sgn(sig.diff)+') → '),h('b',{style:{color:verdict.c}},'POTVRZENO.'))):
             h('div',{style:{fontSize:11,color:T.dim,marginTop:14,lineHeight:1.5,paddingTop:12,borderTop:'1px solid #ffffff0f'}},'RP/ER nejsou v žádné zóně, nebo fundament silně souhlasí se směrem chase — v tom případě signál nesvítí (historicky nejhorší kombinace, PF~0.9). Čistě informační, neovlivňuje skóre ani diferenciál.')); })(),
       isCAD&&this.renderOilPanel(p),
       this.renderPairCharts(p),
