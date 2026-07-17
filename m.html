@@ -1039,7 +1039,9 @@ function JournalTab({data}){
   // (union-merge s cloudem) zase přitáhl zpátky, protože merge neumí "smazáno",
   // jen "přidáno/aktualizováno". visible = co se skutečně zobrazuje/počítá.
   function del(id){ persist(list.map(t=>t.id===id?{...t,deleted:true,updatedAt:new Date().toISOString()}:t)); }
-  const visible=list.filter(t=>!t.deleted);
+  // Explicitní řazení nejnovější-první — pole ze storage NENÍ garantovaně v tomhle
+  // pořadí po cloud mergi (viz stejná oprava v index.html buildJournal()).
+  const visible=list.filter(t=>!t.deleted).slice().sort((a,b)=>(Date.parse(b.openedAt||0)||0)-(Date.parse(a.openedAt||0)||0));
   const oc={open:"#5e7cfb",win:"#2ed3a0",loss:"#f2606e",be:"#e8ab3f",early:"#9d7bff"};
   const Rval=t=>t.outcome==="be"?0:+(t.rMultiple||0);
   const closed=visible.filter(t=>t.outcome&&t.outcome!=="open"), wins=closed.filter(t=>t.outcome==="win").length, losses=closed.filter(t=>t.outcome==="loss").length, decided=wins+losses;

@@ -250,6 +250,13 @@ class FXApp extends React.Component{
   buildJournal(){
     let rows=[]; try{rows=loadJournal()||[];}catch(e){}
     rows=rows.filter(t=>!t.deleted); // tombstone z delTrade — nezobrazovat/nepočítat
+    // Explicitní řazení nejnovější-první podle data otevření — POLE ze storage
+    // NENÍ garantovaně v tomhle pořadí (cloud merge v sync.js dělá Object.values()
+    // z merge mapy, ne chronologické řazení). Dřív to fungovalo náhodou, protože
+    // nový obchod se lokálně přidával na začátek pole — po plném cloud re-mergi
+    // (např. po obnově účtu) se pořadí rozhodilo a equity křivka (níže, .reverse())
+    // i seznam obchodů pak neseděly se skutečností.
+    rows=rows.slice().sort((a,b)=>(Date.parse(b.openedAt||0)||0)-(Date.parse(a.openedAt||0)||0));
     const Rval=t=>t.outcome==='be'?0:+(t.rMultiple||0);
     const closed=rows.filter(t=>t.outcome&&t.outcome!=='open');
     const wins=closed.filter(t=>t.outcome==='win').length, losses=closed.filter(t=>t.outcome==='loss').length, decided=wins+losses;
