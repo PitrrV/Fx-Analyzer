@@ -2313,6 +2313,9 @@ function SliceBar({label,s}){
 }
 function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,onAdd,onUpdate,onDelete,onImport}){
   journal=(journal||[]).filter(function(t){return !t.deleted;}); // tombstone z deleteTrade — nezobrazovat/nepočítat/needportovat
+  // Explicitní řazení nejnovější-první — pole ze storage NENÍ garantovaně v tomhle
+  // pořadí po cloud mergi (viz stejná oprava v index.html buildJournal()).
+  journal=journal.slice().sort(function(a,b){return (Date.parse(b.openedAt||0)||0)-(Date.parse(a.openedAt||0)||0);});
   const ALLP=["EURUSD","GBPUSD","USDJPY","USDCHF","USDCAD","AUDUSD","NZDUSD","EURGBP","EURJPY","GBPJPY","AUDJPY","EURAUD","AUDNZD","NZDCAD","CADCHF","AUDCHF","NZDJPY","CADJPY","CHFJPY"];
   const pairOptions=(pairs&&pairs.length?pairs.map(function(p){return p.pair;}):ALLP);
   const [f,setF]=useState({pair:(selected&&selected.pair)||pairOptions[0]||"EURUSD",dir:"LONG",entry:"",sl:"",tp:"",riskPct:"",outcome:"open",rMultiple:"",notes:""});
