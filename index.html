@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260716a"></script>
+<script src="engine.js?v=20260717a"></script>
 <script src="sync.js?v=20260711d"></script>
 <style>
 *{box-sizing:border-box}
@@ -349,7 +349,7 @@ class FXApp extends React.Component{
     if(!orKey){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ Chybí OpenRouter API klíč — přidej ho v záložce Nastavení ⚙ (zdarma na openrouter.ai).'}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); return; }
     try{
       const ctx=this.buildCoachContext(t);
-      const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_PERSONA+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB;
+      const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_TEACHING_PRINCIPLES+'\n\n'+COACH_PERSONA+'\n\n'+COACH_GUARDRAILS+'\n\n'+COACH_PERSONALIZATION+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB;
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
       const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:1400,temperature:0.4});
       const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Coach'};
@@ -381,15 +381,46 @@ class FXApp extends React.Component{
     const cb={}; this.CUR.forEach(c=>{ const r=(typeof CENTRAL_BANK_RATES!=='undefined'?CENTRAL_BANK_RATES[c]:null); const p=(typeof CB_POLICY_DATA!=='undefined'?CB_POLICY_DATA[c]:null); cb[c]={rate:r,policy:p&&p.label}; });
     // Zaměřený pár: pokud uživatel napíše symbol páru přímo do zprávy (např. "EURCAD"),
     // vezme se ten; jinak padne zpět na vybraný pár z dropdownu "Zaměřit na pár".
-    let focusPairDossier=null;
+    let focusPairDossier=null,focusPair=null;
     try{
       const msg=(focusText||'').toUpperCase();
       const found=this.PAIRS.find(p=>msg.includes(p.pair));
-      const focusPair=(found&&found.pair)||this.state.coachPair||null;
+      focusPair=(found&&found.pair)||this.state.coachPair||null;
       if(focusPair){ let aiAnalyses={}; try{aiAnalyses=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){}
         focusPairDossier=buildPairDossier(focusPair,this._scores,this._cal,this._up,aiAnalyses); }
     }catch(e){}
-    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',centralBanks:cb,currencyScores:sc,topPairs:top,econEvents:econEvents,focusPairDossier:focusPairDossier}; }
+    // Personalizace (COACH_PERSONALIZATION): posílá se jen agregát z panelu
+    // "Ověření edge" (ne syrové obchody), a jen buckety s dost obchody na to,
+    // aby nešlo o šum — malý vzorek by Coach stejně musel zlehčovat.
+    let journalEdgeSummary=null;
+    try{
+      const je=this.journalEdge;
+      if(je&&je.hasCtx){
+        const pick=(label,st)=>(st&&st.n>=3)?{label,n:st.n,wr:st.wr,pf:st.pf==null?null:+st.pf.toFixed(2),avgR:st.avgR==null?null:+st.avgR.toFixed(2)}:null;
+        journalEdgeSummary=[
+          pick('conviction 3-5★',je.byConvHi),pick('conviction 0-2★',je.byConvLo),
+          pick('pásmo sweetspot',je.bandSweet),pick('pásmo silný',je.bandStrong),pick('pásmo slabý',je.bandWeak),
+          pick('whitelist pár',je.listWhite),pick('greylist pár',je.listGrey),pick('blacklist pár',je.listBlack),
+          pick('obchod proti dennímu konfliktu',je.vsConflict),pick('obchod bez konfliktu',je.vsClear),
+        ].filter(Boolean);
+        if(!journalEdgeSummary.length) journalEdgeSummary=null;
+      }
+    }catch(e){}
+    // Otevřené pozice se živým (ne snapshot) kontextem páru — stejně jak s nimi
+    // dnes pracuje Denní brief.
+    let openPositions=[];
+    try{
+      const posMap=this.state.pos||{};
+      Object.keys(posMap).forEach(pair=>{
+        const side=posMap[pair];
+        if(side!=='LONG'&&side!=='SHORT') return;
+        const p=this.PAIRS.find(x=>x.pair===pair);
+        openPositions.push({pair,side,diff:p?+p.diff.toFixed(2):null,dir:p?p.dir:null,band:(p&&typeof getDiffBand==='function')?getDiffBand(p.diff):null});
+      });
+    }catch(e){}
+    let pairNote=null; try{ if(focusPair&&this.state.notes&&this.state.notes[focusPair]) pairNote=this.state.notes[focusPair]; }catch(e){}
+    let riskSentiment='NEUTRÁLNÍ'; try{ riskSentiment=g_riskSentiment>0?'RISK-ON':g_riskSentiment<0?'RISK-OFF':'NEUTRÁLNÍ'; }catch(e){}
+    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',riskSentiment,centralBanks:cb,currencyScores:sc,topPairs:top,econEvents:econEvents,focusPairDossier:focusPairDossier,pairNote:pairNote,journalEdge:journalEdgeSummary,openPositions:openPositions}; }
   async runVision(){ const file=this._aiFile; if(!file){ this.setState({aiErr:'Nejprve nahrej screenshot grafu.'}); return; }
     const orKey=(localStorage.getItem('or_key')||'').trim(); if(!orKey){ this.setState({aiErr:'Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).'}); return; }
     this.setState({aiBusy:true,aiErr:'',aiResult:null});
