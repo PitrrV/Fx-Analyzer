@@ -12,9 +12,9 @@
   catch(e){ console.warn("Supabase init selhal:",e); }
 
   // localStorage klíče k synchronizaci
-  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","oanda_token","oanda_env","cot_data","cot_meta","sent_data","positions_ts"];
+  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","or_coach_model","oanda_token","oanda_env","cot_data","cot_meta","sent_data","positions_ts"];
   const KEYS_ARR=["v5_ff_hist","journal","v5_fav_pairs"];                               // pole → sloučit
-  const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","positions","bias_state","engine_log"]; // objekty → sloučit
+  const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","positions","bias_state","engine_log","forecast_log","v5_cb_rates"]; // objekty → sloučit
   // TRANSIENT klíče se NIKDY nesynchronizují — a stripTransient() je navíc aktivně
   // odstraňuje ze slitých dat (applyLocal by jinak zapsal i staré kopie z cloudu
   // zpátky do zařízení a při push by se vracely do cloudu donekonečna):
