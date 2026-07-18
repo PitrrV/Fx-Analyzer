@@ -487,7 +487,7 @@ function isAnalysisItem(n){ return !!(n && (n.isAnalysis || ANALYSIS_HEAD_RE.tes
 // COT/pozice velkých hráčů — analytické články o CFTC "Commitment of Traders" datech
 // (např. "EUR net short je na historickém maximu"). Detekce podle klíčových slov v titulku,
 // funguje na libovolný zdroj (RSS analýzy i Finnhub), žádný nový fetch navíc.
-const COT_RE = /\b(COT report|commitment of traders|CFTC data|net long|net short|speculative position\w*|speculators?\s+(are|remain|turn(ed)?|hold|holding)|large speculators|positioning report|leveraged funds|CFTC positioning)\b/i;
+const COT_RE = /\b(COT report|commitment of traders|CFTC (data|report|positioning)|net long|net short|crowded (shorts?|longs?)|speculative position\w*|speculators?\s+(are|remain|turn(ed)?|hold|holding)|large speculators|positioning report|leveraged funds)\b/i;
 function isCotItem(n){ return !!(n && COT_RE.test(n.headline||'')); }
 
 const SCORE_RULES = [
