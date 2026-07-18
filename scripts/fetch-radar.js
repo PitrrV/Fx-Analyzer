@@ -32,6 +32,9 @@ const DEFAULT_RSS = [
   'https://www.fxstreet.com/rss/analysis',
   'https://www.dailyforex.com/rss/technicalanalysis.xml',
   'https://www.dailyforex.com/rss/fundamentalanalysis.xml',
+  // DailyFX — pravidelně publikuje výhledy na fundamenty (Fed/sazby) i rozbory COT/pozicování
+  // velkých hráčů (badge COT v radar.html je detekuje podle titulku). URL nešlo ověřit naživo.
+  'https://www.dailyfx.com/feeds/all',
   // geopolitika, co hýbe měnami
   'https://www.aljazeera.com/xml/rss/all.xml'
 ];
