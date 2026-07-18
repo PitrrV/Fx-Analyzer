@@ -199,9 +199,10 @@
   .meta-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:9px;font-family:var(--mono);font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:var(--txt-faint)}
   .meta-line .src{color:var(--txt-dim);font-weight:700}
   .meta-line .sep{opacity:.5}
-  .meta-line .cbflag,.meta-line .anaflag{border:1px solid color-mix(in oklch,var(--imp-md) 40%,transparent);border-radius:3px;padding:0 4px;margin-left:4px}
+  .meta-line .cbflag,.meta-line .anaflag,.meta-line .cotflag{border:1px solid color-mix(in oklch,var(--imp-md) 40%,transparent);border-radius:3px;padding:0 4px;margin-left:4px}
   .meta-line .cbflag{color:var(--imp-md)}
   .meta-line .anaflag{color:var(--acc);border-color:color-mix(in oklch,var(--acc) 40%,transparent)}
+  .meta-line .cotflag{color:var(--pos);border-color:color-mix(in oklch,var(--pos) 40%,transparent)}
   .meta-line .datefull{margin-left:auto;white-space:nowrap}
   .milestoneflag{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:4px 8px;border-radius:var(--r-xs);margin:-3px 0 9px;color:var(--imp-max);background:color-mix(in oklch,var(--imp-max) 12%,transparent);border:1px solid color-mix(in oklch,var(--imp-max) 34%,transparent)}
   .milestoneflag svg{width:11px;height:11px;flex-shrink:0}
@@ -462,6 +463,10 @@ const DEFAULT_RSS = [
   'https://www.fxstreet.com/rss/analysis',
   'https://www.dailyforex.com/rss/technicalanalysis.xml',
   'https://www.dailyforex.com/rss/fundamentalanalysis.xml',
+  // DailyFX — pravidelně publikuje výhledy na fundamenty (Fed/sazby) i rozbory COT/pozicování
+  // velkých hráčů (badge COT výše je detekuje podle titulku). URL nešlo z tohoto prostředí
+  // naživo ověřit; při chybě se zdroj bezpečně vynechá stejně jako kterýkoli jiný RSS feed.
+  'https://www.dailyfx.com/feeds/all',
   // geopolitika, co hýbe měnami
   'https://www.aljazeera.com/xml/rss/all.xml'
 ];
@@ -479,6 +484,11 @@ const CB_FEEDS = [
 const ANALYSIS_FEED_RE = /analysis|analytic|dailyfx|technicalanalysis|fundamentalanalysis|outlook|forecast/i;
 const ANALYSIS_HEAD_RE = /\b(forecast|outlook|technical analysis|analysis|prognóz\w*|výhled\w*|analýz\w*|chart|levels|support|resistance|price prediction|weekly|setup)\b/i;
 function isAnalysisItem(n){ return !!(n && (n.isAnalysis || ANALYSIS_HEAD_RE.test(n.headline||''))); }
+// COT/pozice velkých hráčů — analytické články o CFTC "Commitment of Traders" datech
+// (např. "EUR net short je na historickém maximu"). Detekce podle klíčových slov v titulku,
+// funguje na libovolný zdroj (RSS analýzy i Finnhub), žádný nový fetch navíc.
+const COT_RE = /\b(COT report|commitment of traders|CFTC data|net long|net short|speculative position\w*|speculators?\s+(are|remain|turn(ed)?|hold|holding)|large speculators|positioning report|leveraged funds|CFTC positioning)\b/i;
+function isCotItem(n){ return !!(n && COT_RE.test(n.headline||'')); }
 
 const SCORE_RULES = [
   [/\b(FOMC|rate decision|interest rate|úrokov\w*|sazb\w*|rate cut|rate hike)\b/i, 9],
@@ -1114,7 +1124,7 @@ const state = {
   loading:false,
   spoken:new Set(),
   freshIds:new Set(),
-  filter:{q:'',cat:'',inst:'',min:0,today:false,ana:false},
+  filter:{q:'',cat:'',inst:'',min:0,today:false,ana:false,cot:false},
   repTab:'asia',
   histSel:null,
   reports: LS.get('session_reports',{}),
@@ -1400,7 +1410,8 @@ function bodyHTML(n){
   const srcCount=(n.srcCount>1)?'<span class="srccount" title="Stejnou událost hlásí více zdrojů">'+n.srcCount+' zdroje</span>':'';
   const prov=n.provider?'<span class="tier" title="Odkud zpráva přišla">'+(n.provider==='finnhub'?'Finnhub':n.provider==='cb'?'Oficiální zdroj':'RSS')+'</span>':'';
   const ana=isAnalysisItem(n)?'<span class="anaflag" title="Analytický článek / výhled (přehled nad grafem)">ANA</span>':'';
-  return '<div class="meta-line"><span class="src">'+esc(n.source)+'</span><span class="sep">·</span><span>'+esc(n.cat)+(n.cb?' <span class="cbflag">CB</span>':'')+ana+'</span>'+credBadge+tierBadge+srcCount+prov+
+  const cot=isCotItem(n)?'<span class="cotflag" title="Analýza pozic velkých hráčů (COT/CFTC)">COT</span>':'';
+  return '<div class="meta-line"><span class="src">'+esc(n.source)+'</span><span class="sep">·</span><span>'+esc(n.cat)+(n.cb?' <span class="cbflag">CB</span>':'')+ana+cot+'</span>'+credBadge+tierBadge+srcCount+prov+
     '<span class="datefull">'+esc(formatDateTime(n.publishedAt))+'</span></div>'+
     milestoneBadgeHTML(n)+
     '<div class="headline">'+head+'</div>'+orig+
@@ -1443,6 +1454,7 @@ function filterList(){
     if(f.inst && !(n.affects||[]).some(a=>a[0]===f.inst)) return false;
     if(f.today && !isTodayIso(n.publishedAt)) return false;
     if(f.ana && !isAnalysisItem(n)) return false;
+    if(f.cot && !isCotItem(n)) return false;
     return true;
   });
 }
@@ -1462,7 +1474,8 @@ function toolbarHTML(){
     '<select id="f-inst"><option value="">Všechny instrumenty</option>'+opt(INSTRUMENTS,f.inst)+'</select>'+
     '<select id="f-min"><option value="0"'+(f.min===0?' selected':'')+'>Důležitost 0+</option><option value="5"'+(f.min===5?' selected':'')+'>5+</option><option value="7"'+(f.min===7?' selected':'')+'>7+ (jen klíčové)</option></select>'+
     '<button class="fchip'+(f.today?' on':'')+'" id="f-today">Jen dnešní</button>'+
-    '<button class="fchip'+(f.ana?' on':'')+'" id="f-ana" title="Jen analytické články / výhledy">Jen analýzy</button></div>';
+    '<button class="fchip'+(f.ana?' on':'')+'" id="f-ana" title="Jen analytické články / výhledy">Jen analýzy</button>'+
+    '<button class="fchip'+(f.cot?' on':'')+'" id="f-cot" title="Jen analýzy pozic velkých hráčů (COT/CFTC)">Jen COT</button></div>';
 }
 function heatMiniHTML(k,v){
   const pct=Math.min(100,Math.abs(v)/10*100);
@@ -1809,6 +1822,7 @@ function bindView(){
     const min=$('#f-min'); if(min) min.onchange=()=>{ state.filter.min=Number(min.value); repaintFeedList(); };
     const today=$('#f-today'); if(today) today.onclick=()=>{ state.filter.today=!state.filter.today; today.classList.toggle('on',state.filter.today); repaintFeedList(); };
     const ana=$('#f-ana'); if(ana) ana.onclick=()=>{ state.filter.ana=!state.filter.ana; ana.classList.toggle('on',state.filter.ana); repaintFeedList(); };
+    const cot=$('#f-cot'); if(cot) cot.onclick=()=>{ state.filter.cot=!state.filter.cot; cot.classList.toggle('on',state.filter.cot); repaintFeedList(); };
   }
   if(state.tab==='conn'){}
   if(state.tab==='hist'){ $$('[data-hist]').forEach(b=> b.onclick=()=>{ const c=b.getAttribute('data-hist'); state.histSel = state.histSel===c?null:c; repaintMain(); }); }
