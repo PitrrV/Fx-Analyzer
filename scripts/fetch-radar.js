@@ -355,12 +355,24 @@ async function fetchCBFeeds(){
   }
   return out;
 }
+// Oficiální CB zprávy a analytické/COT články vycházejí mnohem řidčeji než agenturní drát
+// (Investing.com/MarketWatch/Al Jazeera chrlí zprávy každou chvíli). Čistě chronologický ořez
+// je proto systematicky vyřazoval z výsledného poolu, i když se stáhly v pořádku. Tahle funkce
+// jim garantuje minimální počet míst před doplněním zbytku podle času.
+function pickWithQuota(all, cbQuota, anaQuota, total){
+  const byRecency=(a,b)=> new Date(b.publishedAt||0)-new Date(a.publishedAt||0);
+  const sorted=all.slice().sort(byRecency);
+  const cbPick = sorted.filter(n=>n.provider==='cb').slice(0,cbQuota);
+  const anaPick = sorted.filter(n=>n.provider!=='cb' && n.isAnalysis).slice(0,anaQuota);
+  const pickedIds = new Set(cbPick.concat(anaPick).map(n=>n.id));
+  const rest = sorted.filter(n=>!pickedIds.has(n.id));
+  return cbPick.concat(anaPick).concat(rest).slice(0,total).sort(byRecency);
+}
 async function fetchRawNews(finnhubKey){
   const [fh, rss, cb] = await Promise.all([fetchFinnhub(finnhubKey), fetchRSS(DEFAULT_RSS), fetchCBFeeds()]);
   let all = fh.concat(rss).concat(cb).filter(n=>n.headline && !isCryptoOnly(n.headline)); // krypto-only zprávy ven (zaměření na měny)
   all = clusterize(all);
-  all.sort((a,b)=> new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
-  return all.slice(0,28);
+  return pickWithQuota(all, 6, 6, 28);
 }
 
 /* ============================================================
@@ -432,7 +444,7 @@ async function updateSessionReports(hist, geminiKey){
   let raw;
   try{ raw = await fetchRawNews(finnhubKey); }catch(e){ raw = []; }
   if(!raw.length){ console.error('Žádné zprávy nenačteny — nepřepisuju feed.'); process.exit(1); }
-  raw = raw.slice(0, MAX_ITEMS);
+  raw = pickWithQuota(raw, 4, 4, MAX_ITEMS);
 
   const prevFeed = readJSON('data/radar_feed.json', null);
   const cache = pruneCache(readJSON('data/radar_cache.json', {}));
