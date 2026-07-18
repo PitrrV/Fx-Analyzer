@@ -24,6 +24,8 @@ jobs:
         env:
           GEMINI_KEY: ${{ secrets.RADAR_GEMINI_KEY }}
           FINNHUB_KEY: ${{ secrets.RADAR_FINNHUB_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.RADAR_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.RADAR_TELEGRAM_CHAT_ID }}
         run: node scripts/fetch-radar.js
       - name: Commit při změně
         run: |
