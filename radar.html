@@ -463,10 +463,14 @@ const DEFAULT_RSS = [
   'https://www.fxstreet.com/rss/analysis',
   'https://www.dailyforex.com/rss/technicalanalysis.xml',
   'https://www.dailyforex.com/rss/fundamentalanalysis.xml',
-  // DailyFX — pravidelně publikuje výhledy na fundamenty (Fed/sazby) i rozbory COT/pozicování
-  // velkých hráčů (badge COT výše je detekuje podle titulku). URL nešlo z tohoto prostředí
-  // naživo ověřit; při chybě se zdroj bezpečně vynechá stejně jako kterýkoli jiný RSS feed.
-  'https://www.dailyfx.com/feeds/all',
+  // ActionForex — denní/týdenní výhledy na páry (EUR/USD, USD/JPY…), ověřeno naživo přes
+  // GitHub Actions runner: 20 položek, nejnovější ~12 h stará. (dailyfx.com/feeds/all, který
+  // tu byl dřív, se stejným způsobem ověřil jako mrtvý — HTTP 200, ale 0 položek — nahrazeno.)
+  'https://www.actionforex.com/feed/',
+  // MarketPulse (OANDA) — jediný ověřený zdroj, co pokrývá i indexy/akcie (Nasdaq, jednotlivé
+  // tituly), ne jen FX páry. Nižší objem (~2 čerstvé položky/den), ale doplňuje mezeru, kterou
+  // FXStreet/DailyForex/ActionForex nepokrývají.
+  'https://www.marketpulse.com/feed/',
   // geopolitika, co hýbe měnami
   'https://www.aljazeera.com/xml/rss/all.xml'
 ];
@@ -481,7 +485,7 @@ const CB_FEEDS = [
   {name:'Bank of England', url:'https://www.bankofengland.co.uk/rss/news'}
 ];
 // Feedy, jejichž URL značí ANALÝZU (analytické články, ne breaking)
-const ANALYSIS_FEED_RE = /analysis|analytic|dailyfx|technicalanalysis|fundamentalanalysis|outlook|forecast/i;
+const ANALYSIS_FEED_RE = /analysis|analytic|dailyfx|actionforex|marketpulse|technicalanalysis|fundamentalanalysis|outlook|forecast/i;
 const ANALYSIS_HEAD_RE = /\b(forecast|outlook|technical analysis|analysis|prognóz\w*|výhled\w*|analýz\w*|chart|levels|support|resistance|price prediction|weekly|setup)\b/i;
 function isAnalysisItem(n){ return !!(n && (n.isAnalysis || ANALYSIS_HEAD_RE.test(n.headline||''))); }
 // COT/pozice velkých hráčů — analytické články o CFTC "Commitment of Traders" datech
@@ -597,7 +601,7 @@ function dedupe(items){
 const SOURCE_TIERS = {
   'reuters':1,'bloomberg':1,'associated press':1,'apnews':1,' ap ':1,'wall street journal':1,'wsj':1,'financial times':1,'ft.com':1,
   'federal reserve':1,'european central bank':1,'ecb':1,'bank of england':1,'cnbc':1,
-  'marketwatch':2,'investing':2,'fxstreet':2,'forexlive':2,'forex factory':2,'forexfactory':2,'yahoo':2,'business insider':2,'barron':2,'the economist':2,'guardian':2,'dailyfx':2,'kitco':2,'tradingview':2,
+  'marketwatch':2,'investing':2,'fxstreet':2,'forexlive':2,'forex factory':2,'forexfactory':2,'yahoo':2,'business insider':2,'barron':2,'the economist':2,'guardian':2,'dailyfx':2,'actionforex':2,'marketpulse':2,'kitco':2,'tradingview':2,
   'twitter':3,'x (twitter)':3,'reddit':3,'seeking alpha':3,'seekingalpha':3,'zerohedge':3,'telegram':3,'blog':3
 };
 function sourceTier(name,url){
