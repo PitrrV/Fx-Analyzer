@@ -78,6 +78,7 @@ const SYSTEM_ANALYST = 'Jsi finanční analytik aplikace AI Market Radar. NIKDY 
 const HIST_DAYS = 30;
 const CACHE_DAYS = 14;
 const MAX_ITEMS = 18; // víc než klientských 14 — server platí AI jen jednou pro všechny
+const TELEGRAM_ALERT_SCORE = 8; // notifikace jde jen pro Tier 1 zdroj NEBO skóre >= tohle
 
 /* ============================================================
    PORTOVÁNO Z radar.html — musí se chovat identicky jako klient
@@ -437,6 +438,31 @@ async function updateSessionReports(hist, geminiKey){
 }
 
 /* ============================================================
+   TELEGRAM ALERTY — jen pro Tier 1 zdroj (Reuters/Bloomberg/CB…) nebo skóre
+   >= TELEGRAM_ALERT_SCORE. Bez secrets tiše nic nedělá (stejný vzor jako
+   GEMINI_KEY/FINNHUB_KEY výše). Posílá se jen za položky nové v tomhle běhu
+   (toAnalyze) — cache už zajišťuje, že se stejná zpráva znovu nepošle.
+   ============================================================ */
+function escapeTgHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+async function sendTelegramMessage(token, chatId, text){
+  try{
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: false })
+    });
+    if(!r.ok) console.log('Telegram send fail', r.status, await r.text());
+  }catch(e){ console.log('Telegram send error', e.message); }
+}
+async function sendTelegramAlerts(items, token, chatId){
+  for(const n of items){
+    const label = n.provider==='cb' ? '🏛 Oficiální zdroj' : (n.bestTier===1 ? '⭐ Tier 1' : '🔥 Vysoké skóre');
+    const text = `${label} · skóre ${n.score}\n<b>${escapeTgHtml(n.cs || n.headline)}</b>\n${escapeTgHtml(n.source)}${n.url ? '\n' + n.url : ''}`;
+    await sendTelegramMessage(token, chatId, text);
+  }
+}
+
+/* ============================================================
    MAIN
    ============================================================ */
 (async () => {
@@ -499,6 +525,14 @@ async function updateSessionReports(hist, geminiKey){
   }
   writeJSON('data/radar_cache.json', cache);
   analyzed.sort((a,b)=> (b.score||0)-(a.score||0) || new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
+
+  const tgToken = (process.env.TELEGRAM_BOT_TOKEN||'').trim();
+  const tgChat = (process.env.TELEGRAM_CHAT_ID||'').trim();
+  if(tgToken && tgChat){
+    const newHids = new Set(toAnalyze.map(it=>it.hid));
+    const toNotify = analyzed.filter(n=> newHids.has(n.hid) && (n.bestTier===1 || (n.score||0)>=TELEGRAM_ALERT_SCORE));
+    if(toNotify.length) await sendTelegramAlerts(toNotify, tgToken, tgChat);
+  }
 
   // Desk + souvislosti stojí AI volání navíc → generuj jen když přibyly nové zprávy,
   // jinak drž předchozí (server běží 1×, ne N-klientů, takže i toto je levné, ale zbytečné volání šetříme).
