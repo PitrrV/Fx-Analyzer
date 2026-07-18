@@ -203,6 +203,8 @@
   .meta-line .cbflag{color:var(--imp-md)}
   .meta-line .anaflag{color:var(--acc);border-color:color-mix(in oklch,var(--acc) 40%,transparent)}
   .meta-line .datefull{margin-left:auto;white-space:nowrap}
+  .milestoneflag{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:4px 8px;border-radius:var(--r-xs);margin:-3px 0 9px;color:var(--imp-max);background:color-mix(in oklch,var(--imp-max) 12%,transparent);border:1px solid color-mix(in oklch,var(--imp-max) 34%,transparent)}
+  .milestoneflag svg{width:11px;height:11px;flex-shrink:0}
   .badge{font-size:9px;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:var(--r-xs);font-weight:700;font-family:var(--mono)}
   .cred{font-size:9px;letter-spacing:.03em;padding:3px 7px;border-radius:var(--r-xs);font-weight:700;display:inline-flex;align-items:center;gap:4px;font-family:var(--mono)}
   .cred .dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
@@ -271,6 +273,22 @@
   .rep-item .h{font-family:var(--display);font-style:italic;font-size:14.5px;line-height:1.4;color:var(--txt-dim)}
   .rep-item .h a{color:var(--txt)} .rep-item .h a:hover{color:var(--acc)}
   @media(max-width:760px){.ed-grid{grid-template-columns:1fr}.ed-top{align-items:flex-start;flex-direction:column}.ed-stamp{white-space:normal}.ed-title{font-size:22px}}
+
+  /* ---------- Výhledy (kalendář & Fed) ---------- */
+  .out-subhead{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--txt-dim);margin:20px 0 10px;display:flex;align-items:center;gap:7px;font-family:var(--mono)}
+  .cal-list{display:flex;flex-direction:column;gap:7px}
+  .cal-row{display:flex;gap:12px;align-items:flex-start;padding:11px 13px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-sm)}
+  .cal-date{font-size:11px;color:var(--txt-faint);font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:2px;min-width:78px;font-weight:600;font-family:var(--mono)}
+  .cal-cur{display:inline-block;color:var(--txt);font-weight:700;background:var(--panel-2);border:1px solid var(--line-2);border-radius:3px;padding:0 5px;font-family:var(--mono);font-size:10.5px;margin-right:7px}
+  .cal-body{flex:1;min-width:0}
+  .cal-title{font-size:13.5px;line-height:1.4;color:var(--txt-dim);font-weight:600}
+  .impact-hi{font-size:8.5px;font-weight:800;letter-spacing:.05em;color:var(--imp-max);border:1px solid color-mix(in oklch,var(--imp-max) 40%,transparent);border-radius:3px;padding:1px 4px;margin-left:4px;font-family:var(--mono);vertical-align:middle}
+  .cal-nums{display:flex;gap:14px;margin-top:5px;font-size:11px;color:var(--txt-faint);font-family:var(--mono)}
+  .cal-nums b{color:var(--txt-dim);font-weight:700}
+  .surprise{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:3px 7px;border-radius:var(--r-xs);margin-left:8px}
+  .surprise.beat{color:var(--pos);background:color-mix(in oklch,var(--pos) 13%,transparent);border:1px solid color-mix(in oklch,var(--pos) 34%,transparent)}
+  .surprise.miss{color:var(--neg);background:color-mix(in oklch,var(--neg) 13%,transparent);border:1px solid color-mix(in oklch,var(--neg) 34%,transparent)}
+  .surprise.inline{color:var(--txt-faint);background:color-mix(in oklch,var(--txt-faint) 10%,transparent);border:1px solid var(--line-2)}
 
   /* ---------- rail ---------- */
   .rail h3{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--txt-dim);margin-bottom:14px;display:flex;align-items:center;gap:7px;font-family:var(--mono)}
@@ -447,6 +465,16 @@ const DEFAULT_RSS = [
   // geopolitika, co hýbe měnami
   'https://www.aljazeera.com/xml/rss/all.xml'
 ];
+// Oficiální zdroje centrálních bank — DOPLŇKOVĚ vedle Finnhubu/RSS výše (fetchRawNews je stahuje
+// navíc, ne místo nich). SOURCE_TIERS už tyhle instituce řadí jako Tier 1 podle jména; tady se jen
+// doplňují skutečné feed URL. Adresy nešlo z tohoto prostředí naživo ověřit (bez přístupu k
+// internetu) — pokud se některá časem změní, fetch prostě vrátí 0 položek stejně bezpečně jako u
+// kteréhokoli jiného RSS zdroje výše, appka se tím nezasekne. Jde jednotlivě vypnout v Nastavení.
+const CB_FEEDS = [
+  {name:'Federal Reserve (Fed)', url:'https://www.federalreserve.gov/feeds/press_all.xml'},
+  {name:'ECB', url:'https://www.ecb.europa.eu/rss/press.html'},
+  {name:'Bank of England', url:'https://www.bankofengland.co.uk/rss/news'}
+];
 // Feedy, jejichž URL značí ANALÝZU (analytické články, ne breaking)
 const ANALYSIS_FEED_RE = /analysis|analytic|dailyfx|technicalanalysis|fundamentalanalysis|outlook|forecast/i;
 const ANALYSIS_HEAD_RE = /\b(forecast|outlook|technical analysis|analysis|prognóz\w*|výhled\w*|analýz\w*|chart|levels|support|resistance|price prediction|weekly|setup)\b/i;
@@ -475,6 +503,29 @@ function quickAffects(h){
   h=h||'';
   const map={USD:/\b(usd|dollar|dolar|fed|wall street|treasury)\b/i,EUR:/\b(eur|euro|ecb|eurozone|eurozón)\b/i,GBP:/\b(gbp|pound|sterling|libra|boe)\b/i,JPY:/\b(jpy|yen|jen|boj)\b/i,AUD:/\b(aud|aussie)\b/i,CAD:/\b(cad|loonie|canada|kanad)\b/i,CHF:/\b(chf|franc|frank|swiss|švýc)\b/i,NZD:/\b(nzd|kiwi)\b/i,Gold:/\b(gold|zlat|xau)\b/i,Oil:/\b(oil|ropa|crude|wti|brent)\b/i,US100:/\b(nasdaq|us100)\b/i,US500:/\b(s&p|sp500|us500)\b/i};
   const out=[]; Object.keys(map).forEach(k=>{ if(map[k].test(h)) out.push([k]); }); return out.slice(0,5);
+}
+// "Milníkové" zprávy — rekordy/historická maxima/opakující se trendy/psychologické úrovně.
+// MILESTONE_TYPES musí sedět s hodnotami, které appka umí zobrazit badge pro (viz milestoneBadgeHTML).
+const MILESTONE_TYPES = ['record_high','record_low','since_year','streak','psych_level'];
+const MILESTONE_RE = [
+  [/\b(record high|all-time high|historick[éý] maxim|nejvýš\w* v historii|nejvyšší v historii)\b/i, 'record_high'],
+  [/\b(record low|all-time low|historick[éý] minim|nejníž\w* v historii|nejnižší v historii)\b/i, 'record_low'],
+  [/\b(highest since|nejvyšší od (roku )?\d{4}|nejvíc od (roku )?\d{4})\b/i, 'record_high'],
+  [/\b(lowest since|nejnižší od (roku )?\d{4}|nejmíň od (roku )?\d{4})\b/i, 'record_low'],
+  [/\b(\d+(st|nd|rd|th)|[a-zá-ž]+[íý])\s+(consecutive|straight|in a row|měsíc[e]? v řadě|za sebou)\b/i, 'streak'],
+  [/\b(third|fourth|fifth|třetí|čtvrtý|pátý|šestý)\s+\w*\s*(month|week|quarter|měsíc|týden|čtvrtlet\w*)\s*(in a row|straight|v řadě|po sobě)?\b/i, 'streak'],
+  [/\b(breaks?|breaches?|crosses?|prolomil\w*|překonal\w*|proráží)\s*(above|below|přes|pod)?\s*\$?\d[\d,.]*\s*(k|mark|level|hranic\w*|úrove\w*)?\b/i, 'psych_level']
+];
+function quickMilestone(h){
+  h=h||'';
+  for(const r of MILESTONE_RE){ if(r[0].test(h)) return r[1]; }
+  return '';
+}
+function milestoneBadgeHTML(n){
+  const m=n.milestone;
+  if(!m || MILESTONE_TYPES.indexOf(m)<0) return '';
+  const label={record_high:'REKORDNÍ MAXIMUM',record_low:'REKORDNÍ MINIMUM',since_year:'NEJVÍC OD',streak:'OPAKOVANÝ TREND',psych_level:'KLÍČOVÁ ÚROVEŇ'}[m]||'MILNÍK';
+  return '<span class="milestoneflag" title="Milníková zpráva: '+esc(label)+'">'+ico('spark')+esc(label)+'</span>';
 }
 // --- heuristiky pro režim bez AI klíče (reálná data, žádný mock) ---
 function topItems(items,n){ return items.slice().sort((a,b)=> (b.score||0)-(a.score||0) || new Date(b.publishedAt||0)-new Date(a.publishedAt||0)).slice(0,n); }
@@ -782,9 +833,13 @@ async function analyzeBatch(items, settings){
 '[{"i":1,"cs":"český překlad titulku","cat":"MAKRO|CENTRÁLNÍ BANKA|POLITIKA|KOMODITY|TRH","cb":true,'+
 '"ai":"1-2 věty interpretace dopadu, bez doporučení",'+
 '"story":"1 věta: do jakého širšího příběhu zpráva zapadá",'+
-'"affects":[["SYMBOL","pos"]],"score":5}]\n'+
+'"affects":[["SYMBOL","pos"]],"score":5,"milestone":""}]\n'+
 '"cs" = výstižný český překlad titulku (zachovej čísla a názvy). '+
 'SYMBOL jen z: '+INSTRUMENTS.join(',')+'. score 1-10: 10=Fed sazby/CPI/NFP, 7-8=důležitý projev/data, 3-4=běžná zpráva. '+
+'"milestone" = POUZE pokud titulek JEDNOZNAČNĚ popisuje mimořádnou/rekordní událost, jinak prázdný string "". Hodnoty: '+
+'"record_high" (nové historické/víceleté maximum), "record_low" (nové historické/víceleté minimum), '+
+'"since_year" (nejvyšší/nejnižší od konkrétního roku), "streak" (vícenásobné opakování trendu, např. "třetí měsíc v řadě"), '+
+'"psych_level" (překročení kulaté/psychologické cenové hranice, např. "poprvé nad 100 000"). NEVYMÝŠLEJ SI milestone, pokud to titulek jasně netvrdí. '+
 'Pokud samotný titulek na spolehlivou interpretaci nestačí (chybí kontext), vrať "ai":"" a "story":"" a "affects":[] — NEVYMÝŠLEJ si dopad ani souvislosti, které z titulku neplynou.\nZprávy:\n'+list;
   const arr = parseJSON(await callAI([{role:'system',content:SYSTEM_ANALYST},{role:'user',content:prompt}],settings));
   if(!Array.isArray(arr)) throw new Error('BAD_BATCH');
@@ -817,7 +872,7 @@ async function generateSessionReport(items, sessionLabel, settings){
 }
 
 /* ---------- data sources ---------- */
-let SRC_DIAG={ran:false,fh:{n:0,err:''},rss:{n:0,err:''}};
+let SRC_DIAG={ran:false,fh:{n:0,err:''},rss:{n:0,err:''},cb:{n:0,err:''}};
 async function fetchFinnhub(settings){
   if(!settings.finnhubKey){ SRC_DIAG.fh={n:0,err:'no-key'}; return []; }
   const cats=['general','forex'], out=[]; let err='';
@@ -857,13 +912,34 @@ async function fetchRSS(settings, force){
   SRC_DIAG.rss={n:out.length,err:''};
   return out;
 }
+// Oficiální tiskové zprávy Fedu/ECB/BoE — vyšší důvěryhodnost (SOURCE_TIERS je řadí Tier 1),
+// stahuje se DOPLŇKOVĚ vedle Finnhubu/RSS výše, nikdy místo nich. Jde vypnout v Nastavení
+// (state.settings.sources[jméno]===false); selhání jednoho feedu nijak neovlivní ostatní zdroje.
+async function fetchCBFeeds(settings){
+  const active = CB_FEEDS.filter(f=> !(settings.sources && settings.sources[f.name]===false));
+  if(!active.length){ SRC_DIAG.cb={n:0,err:'off'}; return []; }
+  const out=[];
+  for(const f of active){
+    try{
+      const r=await fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(f.url));
+      if(r.ok){ const d=await r.json();
+        (d.items||[]).slice(0,10).forEach(it=>out.push({
+          id:'cb'+hashStr(it.link||it.title||''), provider:'cb', source:f.name, headline:it.title, url:it.link,
+          image: /^https?:\/\//i.test(it.thumbnail||'') ? it.thumbnail : '',
+          publishedAt:it.pubDate? new Date(it.pubDate).toISOString() : new Date().toISOString()
+        })); }
+    }catch(e){}
+  }
+  SRC_DIAG.cb={n:out.length, err: out.length?'':'prázdná odpověď (zkontroluj feed URL v Nastavení)'};
+  return out;
+}
 async function fetchRawNews(settings){
   // Finnhub (pokud je klíč) = hlavní zdroj se skutečnými médii → lepší tiering i slučování.
-  // RSS běží navíc kvůli křížovému potvrzení (stejná zpráva z víc zdrojů → „Ověřeno").
+  // RSS + oficiální CB feedy běží navíc kvůli křížovému potvrzení (stejná zpráva z víc zdrojů → „Ověřeno").
   SRC_DIAG.ran=true;
   const userRss = !!(settings.rssFeeds||'').trim();
-  const arr = await Promise.all([fetchFinnhub(settings), fetchRSS(settings, userRss?null:DEFAULT_RSS)]);
-  let all=arr[0].concat(arr[1]).filter(n=>n.headline && !isCryptoOnly(n.headline)); // krypto-only zprávy ven (zaměření na měny)
+  const arr = await Promise.all([fetchFinnhub(settings), fetchRSS(settings, userRss?null:DEFAULT_RSS), fetchCBFeeds(settings)]);
+  let all=arr[0].concat(arr[1]).concat(arr[2]).filter(n=>n.headline && !isCryptoOnly(n.headline)); // krypto-only zprávy ven (zaměření na měny)
   all=clusterize(all);
   all.sort((a,b)=> new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
   return all.slice(0,28);
@@ -906,6 +982,13 @@ async function loadStaticExtrasOnce(){
     const r=await fetch('data/radar_reports.json?h='+Math.floor(Date.now()/1800000),{cache:'no-store'});
     if(r.ok){ const d=await r.json(); if(d&&typeof d==='object'){ state.reports=Object.assign({},d,state.reports); LS.set('session_reports',state.reports); } }
   }catch(e){}
+  // Ekonomický kalendář (konsensus/forecast/actual) — existující sdílený zdroj, plní ho
+  // scripts/fetch-calendar.js (GitHub Action, ~15 min) do data/calendar.json. Tab „Výhledy" ho
+  // jen čte, žádný nový scraping/fetch se nepřidává.
+  try{
+    const r=await fetch('data/calendar.json?h='+Math.floor(Date.now()/1800000),{cache:'no-store'});
+    if(r.ok){ const d=await r.json(); if(d&&Array.isArray(d.events)) state.calendar=d.events; }
+  }catch(e){}
 }
 
 /* ---------- refresh pipeline ---------- */
@@ -945,7 +1028,7 @@ async function runRefresh(settings){
     const items = raw.map(it=>{ const qc=quickCat(it.headline); return Object.assign({},it,{
       hid:hashStr(normHeadline(it.headline)), cat:qc[0], cb:qc[1],
       ai:aiMsg,
-      story:'', affects:quickAffects(it.headline), score:clampScore(scoreFloor(it.headline)||3)
+      story:'', affects:quickAffects(it.headline), score:clampScore(scoreFloor(it.headline)||3), milestone:quickMilestone(it.headline)
     }); });
     items.sort((a,b)=> b.score-a.score || new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
     mergeHistory(items);
@@ -973,6 +1056,7 @@ async function runRefresh(settings){
           story: a.story || '',
           affects: Array.isArray(a.affects)? a.affects.filter(p=>Array.isArray(p)&&INSTRUMENTS.indexOf(p[0])>=0) : [],
           score: clampScore(Math.max(Number(a.score)||0, scoreFloor(it.headline))),
+          milestone: MILESTONE_TYPES.indexOf(a.milestone)>=0 ? a.milestone : quickMilestone(it.headline),
           analyzedAt: new Date().toISOString()
         };
         cache[it.hid]=rec;
@@ -985,7 +1069,7 @@ async function runRefresh(settings){
       const items = raw.map(it=>{ const key=hashStr(normHeadline(it.headline));
         if(cache[key]) return Object.assign({},it,{hid:key},cache[key]);
         const qc=quickCat(it.headline);
-        return Object.assign({},it,{ hid:key, cat:qc[0], cb:qc[1], cs:'', ai:'AI dočasně nedostupná na tomto zařízení — zobrazen titulek bez interpretace.', story:'', affects:quickAffects(it.headline), score:clampScore(scoreFloor(it.headline)||3) });
+        return Object.assign({},it,{ hid:key, cat:qc[0], cb:qc[1], cs:'', ai:'AI dočasně nedostupná na tomto zařízení — zobrazen titulek bez interpretace.', story:'', affects:quickAffects(it.headline), score:clampScore(scoreFloor(it.headline)||3), milestone:quickMilestone(it.headline) });
       });
       items.sort((a,b)=> b.score-a.score || new Date(b.publishedAt||0)-new Date(a.publishedAt||0));
       mergeHistory(items);
@@ -1035,7 +1119,10 @@ const state = {
   histSel:null,
   reports: LS.get('session_reports',{}),
   repLoading:'',
-  heat:(function(){ const h=heatFromHistory(getHistory()); return Object.keys(h).some(k=>h[k]!==0)?h:{USD:5,EUR:-4,GBP:-1,JPY:3,AUD:-3,CAD:-2,CHF:1,NZD:-2}; })()
+  heat:(function(){ const h=heatFromHistory(getHistory()); return Object.keys(h).some(k=>h[k]!==0)?h:{USD:5,EUR:-4,GBP:-1,JPY:3,AUD:-3,CAD:-2,CHF:1,NZD:-2}; })(),
+  calendar:[],
+  surpriseComments: LS.get('surprise_comments',{}),
+  surpriseLoading:''
 };
 state.settings.squawkMin = Number(state.settings.squawkMin)||8;
 let refreshTimer=null, freshTimer=null;
@@ -1047,6 +1134,7 @@ function repKey(sessionId){ return new Date().toISOString().slice(0,10)+'|'+sess
 const TABS=[
   ['feed','Feed','Živý newsfeed'],
   ['conn','Souvislosti','Napříč více zprávami'],
+  ['out','Výhledy','Sazby & kalendář'],
   ['hist','Historie',HISTORY_DAYS+'denní mediální obraz'],
   ['rep','Reporty','Podle obchodních seancí'],
   ['set','Nastavení','Zdroje & API klíče']
@@ -1310,10 +1398,11 @@ function bodyHTML(n){
   const credBadge='<span class="cred '+cr.cls+'" title="Důvěryhodnost: '+esc(cr.label)+'"><span class="dot"></span>'+esc(cr.label)+'</span>';
   const tierBadge='<span class="tier t'+tier+'" title="Úroveň zdroje (Tier 1 = Reuters/Bloomberg/ČB)">Tier '+tier+'</span>';
   const srcCount=(n.srcCount>1)?'<span class="srccount" title="Stejnou událost hlásí více zdrojů">'+n.srcCount+' zdroje</span>':'';
-  const prov=n.provider?'<span class="tier" title="Odkud zpráva přišla">'+(n.provider==='finnhub'?'Finnhub':'RSS')+'</span>':'';
+  const prov=n.provider?'<span class="tier" title="Odkud zpráva přišla">'+(n.provider==='finnhub'?'Finnhub':n.provider==='cb'?'Oficiální zdroj':'RSS')+'</span>':'';
   const ana=isAnalysisItem(n)?'<span class="anaflag" title="Analytický článek / výhled (přehled nad grafem)">ANA</span>':'';
   return '<div class="meta-line"><span class="src">'+esc(n.source)+'</span><span class="sep">·</span><span>'+esc(n.cat)+(n.cb?' <span class="cbflag">CB</span>':'')+ana+'</span>'+credBadge+tierBadge+srcCount+prov+
     '<span class="datefull">'+esc(formatDateTime(n.publishedAt))+'</span></div>'+
+    milestoneBadgeHTML(n)+
     '<div class="headline">'+head+'</div>'+orig+
     sourceRowHTML(n)+clusterSrcsHTML(n)+
     '<div class="ai-block"><div class="ai-label">'+ico('spark')+'AI komentář</div><div class="ai-text">'+esc(n.ai)+'</div>'+
@@ -1463,6 +1552,108 @@ function histHTML(){
     (history.length?'':'<div class="notice">'+ico('info')+'<span>Historie se plní automaticky z načtených zpráv. Pozitivní/negativní mediální obraz se počítá jen u zpráv s AI analýzou (OpenRouter/Gemini klíč) — bez klíče se ukládají titulky, ale bez směru dopadu. Zatím prázdné: zkus „Obnovit zprávy".</span></div>')+
     '<div class="medal-grid">'+grid+'</div>'+detail+'</div>';
 }
+/* ============================================================
+   VÝHLEDY — čte existující sdílený ekonomický kalendář (data/calendar.json,
+   plní scripts/fetch-calendar.js), žádný nový scraping. Fed „očekávání" je
+   tržní konsensus z kalendáře (ForexFactory), NE CME FedWatch pravděpodobnost
+   hold/hike/cut — to by vyžadovalo placená data z Fed Funds futures a je to
+   tu jen zmíněné jako možné budoucí rozšíření, ne závislost.
+   ============================================================ */
+function parseNumLike(s){
+  if(s==null) return null;
+  s=String(s).trim(); if(!s) return null;
+  const neg = /^-/.test(s);
+  let v = s.replace(/[,%()$]/g,'').replace(/^-/,'');
+  let mult=1;
+  if(/[kK]$/.test(v)){ mult=1e3; v=v.slice(0,-1); }
+  else if(/[mM]$/.test(v)){ mult=1e6; v=v.slice(0,-1); }
+  else if(/[bB]$/.test(v)){ mult=1e9; v=v.slice(0,-1); }
+  const n=parseFloat(v);
+  if(isNaN(n)) return null;
+  return (neg?-1:1)*n*mult;
+}
+function classifySurprise(actual, forecast){
+  const a=parseNumLike(actual), f=parseNumLike(forecast);
+  if(a===null || f===null) return null;
+  if(Math.abs(a-f) < Math.max(Math.abs(f)*0.001, 0.0005)) return 'inline';
+  return a>f ? 'beat' : 'miss';
+}
+function fedRateSnapshot(){
+  const events=state.calendar.filter(e=> e.country==='USD' && /^federal funds rate$/i.test((e.title||'').trim()));
+  const now=Date.now();
+  const decided=events.filter(e=>e.actual).sort((a,b)=> new Date(b.date)-new Date(a.date))[0];
+  const upcoming=events.filter(e=> new Date(e.date).getTime()>=now).sort((a,b)=> new Date(a.date)-new Date(b.date))[0];
+  return { current: decided?decided.actual:'', next: upcoming||null };
+}
+function upcomingCalEvents(days){
+  const now=Date.now(), until=now+days*24*3600*1000;
+  return state.calendar.filter(e=>{ const t=new Date(e.date).getTime(); return t>=now && t<=until && (e.impact==='High'||e.impact==='Medium'); })
+    .sort((a,b)=> new Date(a.date)-new Date(b.date)).slice(0,25);
+}
+function recentReleasedEvents(days){
+  const now=Date.now(), since=now-days*24*3600*1000;
+  return state.calendar.filter(e=>{ const t=new Date(e.date).getTime(); return t>=since && t<=now && e.actual && e.impact==='High'; })
+    .sort((a,b)=> new Date(b.date)-new Date(a.date)).slice(0,20);
+}
+function surpriseKey(e){ return e.title+'|'+e.country+'|'+e.date; }
+async function generateSurpriseComment(e, settings){
+  const prompt='Jsi FX analytik. Ekonomická událost „'+e.title+'" ('+e.country+') zveřejnila skutečnou hodnotu '+e.actual+' oproti konsenzu/odhadu '+(e.forecast||'neuveden')+' (předchozí: '+(e.previous||'neuvedena')+'). '+
+    'Napiš JEDNU až DVĚ věty česky: co to znamená pro danou měnu a proč. Bez obchodních doporučení (žádné vstupy/cíle/SL/TP). Vrať POUZE JSON: {"comment":"…"}';
+  const o=parseJSON(await callAI([{role:'system',content:SYSTEM_ANALYST},{role:'user',content:prompt}],settings));
+  return (o&&o.comment)?String(o.comment):'';
+}
+function calRowHTML(e, released){
+  const surprise = e.actual? classifySurprise(e.actual, e.forecast) : null;
+  const surpBadge = surprise? '<span class="surprise '+surprise+'">'+(surprise==='beat'?'NAD KONSENZEM':surprise==='miss'?'POD KONSENZEM':'V LINII')+'</span>' : '';
+  const key=surpriseKey(e), saved=state.surpriseComments[key];
+  let aiBit='';
+  if(released && e.actual){
+    if(state.surpriseLoading===key) aiBit='<div class="ai-text" style="margin-top:8px"><span class="spin"></span> generuji komentář…</div>';
+    else if(saved && saved.comment) aiBit='<div class="ai-text" style="margin-top:8px;color:var(--txt)">'+esc(saved.comment)+'</div>';
+    else if(state.settings.apiKey || state.settings.geminiKey) aiBit='<div style="margin-top:8px"><button class="btn ghost" data-genrise="'+esc(key)+'" style="padding:5px 10px;font-size:11px">'+ico('spark')+'AI komentář</button></div>';
+  }
+  return '<div class="cal-row"><div class="cal-date">'+esc(formatDateTime(e.date))+'</div>'+
+    '<div class="cal-cur">'+esc(e.country)+'</div>'+
+    '<div class="cal-body"><div class="cal-title">'+esc(e.title)+(e.impact==='High'?' <span class="impact-hi">HIGH</span>':'')+'</div>'+
+    '<div class="cal-nums"><span>Forecast: <b>'+esc(e.forecast||'—')+'</b></span><span>Previous: <b>'+esc(e.previous||'—')+'</b></span>'+(e.actual?'<span>Actual: <b>'+esc(e.actual)+'</b></span>':'')+surpBadge+'</div>'+
+    aiBit+'</div></div>';
+}
+function outHTML(){
+  const fed=fedRateSnapshot();
+  const upcoming=upcomingCalEvents(10);
+  const released=recentReleasedEvents(4);
+  const hasCal=state.calendar.length>0;
+  const fedCard='<div class="editorial" style="margin-bottom:20px"><div class="ed-top"><div class="ed-kicker">'+ico('spark')+'Fed — tržní očekávání</div></div>'+
+    '<div class="ed-title" style="font-size:22px">Aktuální sazba: '+(fed.current?esc(fed.current):'neznámá')+'</div>'+
+    (fed.next
+      ? '<div class="ed-summary">Další zasedání FOMC: '+esc(formatDateTime(fed.next.date))+(fed.next.forecast?' · trh (konsensus ForexFactory) očekává: '+esc(fed.next.forecast):' · konsensus ještě nebyl zveřejněn')+'</div>'
+      : '<div class="ed-summary">V načteném okně kalendáře (~6 týdnů zpět, 2 týdny dopředu) není žádné nadcházející zasedání FOMC.</div>')+
+    '<p style="font-size:11.5px;color:var(--txt-faint);margin-top:10px;line-height:1.6">Tržní konsensus z ekonomického kalendáře (ForexFactory) — NE pravděpodobnostní rozpad hold/hike/cut jako u CME FedWatch. Ten by vyžadoval placená data z Fed Funds futures (CME FedWatch API od 25 $/měs.) a zatím není implementován; možné budoucí rozšíření.</p></div>';
+  const upcomingList=upcoming.length? upcoming.map(e=>calRowHTML(e)).join('') : '<div class="empty">'+ico('empty')+'<div>V nejbližších 10 dnech nejsou žádné High/Medium impact události.</div></div>';
+  const releasedList=released.length? released.map(e=>calRowHTML(e,true)).join('') : '<div class="empty">'+ico('empty')+'<div>Za poslední 4 dny nejsou žádné zveřejněné High impact hodnoty.</div></div>';
+  return '<div class="col" style="grid-column:1/-1"><div class="sec-head"><h2>Výhledy</h2><span class="meta">'+(hasCal?state.calendar.length+' událostí v kalendáři':'kalendář se načítá…')+'</span></div>'+
+    (hasCal?'':'<div class="notice">'+ico('info')+'<span>Kalendář (data/calendar.json, plní ho existující server cron) se ještě nenačetl nebo je prázdný — zkus za chvíli obnovit.</span></div>')+
+    fedCard+
+    '<div class="sec-head" style="margin-bottom:14px;border:none;padding:0"><h3 class="out-subhead">Nadcházející High/Medium impact (10 dní)</h3></div>'+
+    '<div class="cal-list" style="margin-bottom:26px">'+upcomingList+'</div>'+
+    '<div class="sec-head" style="margin-bottom:14px;border:none;padding:0"><h3 class="out-subhead">Právě zveřejněno (4 dny) — beat/miss vs. konsensus</h3></div>'+
+    '<div class="cal-list">'+releasedList+'</div>'+
+    '</div>';
+}
+async function genSurpriseComment(key){
+  if(state.surpriseLoading) return;
+  if(!(state.settings.apiKey || state.settings.geminiKey)){ alert('Pro AI komentář vlož OpenRouter nebo Gemini klíč v Nastavení.'); return; }
+  const e=state.calendar.find(x=>surpriseKey(x)===key);
+  if(!e) return;
+  state.surpriseLoading=key; if(state.tab==='out') repaintMain();
+  try{
+    const c=await generateSurpriseComment(e, state.settings);
+    if(c){ state.surpriseComments[key]={comment:c, generatedAt:new Date().toISOString()}; LS.set('surprise_comments', state.surpriseComments); }
+    else alert('AI nevrátila komentář, zkus to znovu.');
+  }catch(err){ alert('Generování komentáře selhalo: '+err.message); }
+  state.surpriseLoading='';
+  if(state.tab==='out') repaintMain();
+}
 const SESSIONS=[['asia','Asia',0,8],['europe','Londýn',8,13],['us','New York',13,18],['allday','Celý den',0,24]];
 function repHTML(){
   const cur=SESSIONS.find(x=>x[0]===state.repTab)||SESSIONS[0];
@@ -1499,6 +1690,7 @@ function repHTML(){
 function setHTML(){
   const s=state.settings;
   const sources=SOURCES.map(src=>{ const on=s.sources&&s.sources[src]===false?false:true; return '<div class="toggle'+(on?' on':'')+'" data-src="'+esc(src)+'"><div class="sw"><i></i></div>'+esc(src)+'</div>'; }).join('');
+  const cbSources=CB_FEEDS.map(f=>{ const on=s.sources&&s.sources[f.name]===false?false:true; return '<div class="toggle'+(on?' on':'')+'" data-src="'+esc(f.name)+'"><div class="sw"><i></i></div>'+esc(f.name)+'</div>'; }).join('');
   const modelOpt=(v,l)=>'<option value="'+v+'"'+((s.model||'openai/gpt-4o-mini')===v?' selected':'')+'>'+l+'</option>';
   const intOpt=(v,l)=>'<option value="'+v+'"'+((s.interval||5)===v?' selected':'')+'>'+l+'</option>';
   const maxOpt=(v,l)=>'<option value="'+v+'"'+((s.maxItems||14)===v?' selected':'')+'>'+l+'</option>';
@@ -1516,6 +1708,7 @@ function setHTML(){
     '<div class="field"><label>RSS feedy (zdroj zpráv + analýzy)</label><textarea id="set-rssFeeds" placeholder="Nech PRÁZDNÉ → načte se automaticky ověřená sada níže. Nebo sem dej vlastní URL (jeden na řádek).">'+esc(s.rssFeeds||'')+'</textarea><div class="btn-row" style="margin-top:6px"><button class="btn ghost" id="set-rssDefaults" style="padding:7px 12px;font-size:11px">Vložit doporučené zdroje</button></div><div class="hint"><b>Nemusíš nic zadávat ručně</b> — když je pole prázdné, načte se automaticky ověřená sada: zprávy (ForexLive, FXStreet, Investing, MarketWatch) + <b>analýzy/výhledy</b> (FXStreet Analysis, DailyForex Technical &amp; Fundamental) + geopolitika (Al Jazeera). Tlačítko výše ti je předvyplní, ať je vidíš a můžeš upravit. Analytické články mají odznak ANA. rss2json (CORS), max 8 feedů.</div></div>'+
     '<div class="field"><label>Max. zpráv k analýze / refresh</label><select id="set-maxItems">'+maxOpt(8,'8 (nejlevnější)')+maxOpt(14,'14 (doporučeno)')+maxOpt(20,'20')+'</select><div class="hint">Analyzuje se dávkově v jednom AI volání. Známé titulky se berou z cache.</div></div>'+
     '<div class="field"><label>Sledované zdroje (vizuální filtr)</label><div class="src-grid">'+sources+'</div></div>'+
+    '<div class="field"><label>Oficiální zdroje centrálních bank — Tier 1</label><div class="src-grid">'+cbSources+'</div><div class="hint">Tiskové zprávy přímo z Fedu/ECB/BoE, stahují se navíc vedle Finnhubu a RSS výše — SOURCE_TIERS je řadí jako nejdůvěryhodnější (Tier 1). Vypnutím se pro tebe daný zdroj přestane stahovat v klientském fallbacku (sdílený feed ze serveru je stahuje vždy pro všechny).</div></div>'+
     '<div class="field"><label>Interval obnovení</label><select id="set-interval">'+intOpt(1,'každou 1 minutu')+intOpt(5,'každých 5 minut')+intOpt(15,'každých 15 minut')+intOpt(0,'jen ručně')+'</select></div>'+
     '<div class="field"><label>Audio squawk — práh hlasitého čtení</label><select id="set-squawkMin">'+sqOpt(7,'skóre 7+ (víc zpráv)')+sqOpt(8,'skóre 8+ (doporučeno)')+sqOpt(9,'skóre 9+ (jen klíčové)')+'</select><div class="hint">Když je squawk zapnutý (tlačítko v hlavičce), hlas přečte nově příchozí zprávy s tímhle skóre a výš. Po otevření/zapnutí se backlog nečte — jen nové. <button class="btn ghost" id="set-squawkTest" style="padding:5px 10px;font-size:11px;margin-top:6px">'+ico('soundOn')+'Test hlasu</button></div></div>'+
     '<div class="btn-row"><button class="btn" id="set-save">Uložit nastavení</button><button class="btn ghost" id="set-refresh">'+ico('refresh')+'Obnovit zprávy teď</button><button class="btn ghost" id="set-clear">'+ico('trash')+'Vymazat historii &amp; cache</button><span class="saved" id="set-saved" style="display:none">'+ico('check')+'uloženo</span></div>'+
@@ -1526,6 +1719,7 @@ function viewHTML(){
   switch(state.tab){
     case 'feed': return feedHTML();
     case 'conn': return connHTML();
+    case 'out':  return outHTML();
     case 'hist': return histHTML();
     case 'rep':  return repHTML();
     case 'set':  return setHTML();
@@ -1618,6 +1812,7 @@ function bindView(){
   }
   if(state.tab==='conn'){}
   if(state.tab==='hist'){ $$('[data-hist]').forEach(b=> b.onclick=()=>{ const c=b.getAttribute('data-hist'); state.histSel = state.histSel===c?null:c; repaintMain(); }); }
+  if(state.tab==='out'){ $$('[data-genrise]').forEach(b=> b.onclick=()=> genSurpriseComment(b.getAttribute('data-genrise'))); }
   if(state.tab==='rep'){
     $$('[data-rep]').forEach(b=> b.onclick=()=>{ state.repTab=b.getAttribute('data-rep'); repaintMain(); });
     $$('[data-genrep]').forEach(b=> b.onclick=()=> genSessionReport(b.getAttribute('data-genrep')));
