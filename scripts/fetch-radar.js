@@ -32,9 +32,11 @@ const DEFAULT_RSS = [
   'https://www.fxstreet.com/rss/analysis',
   'https://www.dailyforex.com/rss/technicalanalysis.xml',
   'https://www.dailyforex.com/rss/fundamentalanalysis.xml',
-  // DailyFX — pravidelně publikuje výhledy na fundamenty (Fed/sazby) i rozbory COT/pozicování
-  // velkých hráčů (badge COT v radar.html je detekuje podle titulku). URL nešlo ověřit naživo.
-  'https://www.dailyfx.com/feeds/all',
+  // ActionForex — denní/týdenní výhledy na páry, ověřeno naživo (20 položek, ~12h staré).
+  // (dailyfx.com/feeds/all, který tu byl dřív, se stejně ověřil jako mrtvý — 0 položek — nahrazeno.)
+  'https://www.actionforex.com/feed/',
+  // MarketPulse (OANDA) — jediný ověřený zdroj s pokrytím i indexů/akcií, ne jen FX párů.
+  'https://www.marketpulse.com/feed/',
   // geopolitika, co hýbe měnami
   'https://www.aljazeera.com/xml/rss/all.xml'
 ];
@@ -47,7 +49,7 @@ const CB_FEEDS = [
 ];
 // Feedy, jejichž URL značí ANALÝZU (analytické články, ne breaking) — portováno z radar.html,
 // aby sdílený feed nesl stejný `isAnalysis` příznak jako klientský pipeline (badge „📈 Analýza").
-const ANALYSIS_FEED_RE = /analysis|analytic|dailyfx|technicalanalysis|fundamentalanalysis|outlook|forecast/i;
+const ANALYSIS_FEED_RE = /analysis|analytic|dailyfx|actionforex|marketpulse|technicalanalysis|fundamentalanalysis|outlook|forecast/i;
 const SCORE_RULES = [
   [/\b(FOMC|rate decision|interest rate|úrokov\w*|sazb\w*|rate cut|rate hike)\b/i, 9],
   [/\b(CPI|inflation|inflac\w*|PCE)\b/i, 8],
@@ -59,7 +61,7 @@ const SCORE_RULES = [
 const SOURCE_TIERS = {
   'reuters':1,'bloomberg':1,'associated press':1,'apnews':1,' ap ':1,'wall street journal':1,'wsj':1,'financial times':1,'ft.com':1,
   'federal reserve':1,'european central bank':1,'ecb':1,'bank of england':1,'cnbc':1,
-  'marketwatch':2,'investing':2,'fxstreet':2,'forexlive':2,'forex factory':2,'forexfactory':2,'yahoo':2,'business insider':2,'barron':2,'the economist':2,'guardian':2,'dailyfx':2,'kitco':2,'tradingview':2,
+  'marketwatch':2,'investing':2,'fxstreet':2,'forexlive':2,'forex factory':2,'forexfactory':2,'yahoo':2,'business insider':2,'barron':2,'the economist':2,'guardian':2,'dailyfx':2,'actionforex':2,'marketpulse':2,'kitco':2,'tradingview':2,
   'twitter':3,'x (twitter)':3,'reddit':3,'seeking alpha':3,'seekingalpha':3,'zerohedge':3,'telegram':3,'blog':3
 };
 const RUMOR_RE = /\b(reportedly|sources say|according to sources|people familiar|rumou?r\w*|speculat\w*|unconfirmed|allegedly|mulls?|weighs?|in talks|could|denies|denied|údajně|podle zdroj\w*|spekul\w*|nepotvrzen\w*|zvažuj\w*|jedná o|popír\w*)\b/i;
