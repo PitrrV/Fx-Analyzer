@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260719a"></script>
+<script src="engine.js?v=20260719b"></script>
 <script src="sync.js?v=20260717b"></script>
 <style>
 *{box-sizing:border-box}
@@ -61,16 +61,17 @@ class FXApp extends React.Component{
     super(p);
     const h=React.createElement; this.h=h;
     this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'',
-      winFrom:(()=>{const d=new Date();return d.toISOString().slice(0,10);})(),
-      winTo:(()=>{const d=new Date();d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);})(),
-      winBusy:false, winErr:'', winResult:null, winDaily:null };
+      winFromM:(()=>new Date().getMonth()+1)(), winFromD:(()=>new Date().getDate())(),
+      winToM:(()=>{const d=new Date();d.setDate(d.getDate()+14);return d.getMonth()+1;})(),
+      winToD:(()=>{const d=new Date();d.setDate(d.getDate()+14);return d.getDate();})(),
+      winYears:20, winBusy:false, winErr:'', winResult:null, winDaily:null, winChartModal:false };
     this.CUR=(typeof CURRENCIES!=='undefined')?CURRENCIES:['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
     this.NAMES=(typeof NAMES!=='undefined')?NAMES:{};
     this.D={}; this.PAIRS=[]; this.series={}; this.dates=[]; this.daily=[]; this.cbdi=50; this.PRICES={};
     this.journal={wr:0,pf:0,trades:0,avgR:0,bestR:0,buckets:[],rows:[]}; this.equity=[0]; this.equityMeta=[{date:null,pair:null,r:0}];
     this.CUR.forEach(c=>{this.D[c]={score:0,fund:0,policy:0,yield:0,cot:0,sent:0,season:0,cotPct:50,chg7:0,cb:'—',inst:0,retail:50};this.series[c]=[0,0];});
     this.smooth=(pts)=>{ if(pts.length<2) return pts.length?`M ${pts[0][0]} ${pts[0][1]}`:''; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=0;i<pts.length-1;i++){ const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2; const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6,c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6; d+=` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2[0]} ${p2[1]}`; } return d; };
-    this.buildGauge(); this.buildCotModal(); this.buildHoverChart(); this.buildChartModal();
+    this.buildGauge(); this.buildCotModal(); this.buildHoverChart(); this.buildChartModal(); this.buildPriceMeasureChart(); this.buildWinChartModal();
   }
   componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000);
     if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s){ this._didInitSync=true; window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); } }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(!s){ this._didInitSync=false; return; } if(event==='SIGNED_IN'&&!this._didInitSync){ this._didInitSync=true; this.doSync(false); } }); } }
@@ -466,13 +467,13 @@ class FXApp extends React.Component{
     catch(e){ this.setState({seasErr:String(e&&e.message||e),seasBusy:false}); } }
   async loadWindowSeasonality(pair){
     const p=pair||this.state.seasPair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD';
-    const [fy,fm,fd]=this.state.winFrom.split('-').map(Number), [ty,tm,td]=this.state.winTo.split('-').map(Number);
+    const st=this.state;
     this.setState({seasPair:p,winBusy:true,winErr:'',winResult:null});
     try{
       let daily=this.state.winDaily;
       if(!daily||daily.pair!==p) daily=await fetchFXDailyHistory(p);
-      const res=computeWindowSeasonality(daily,fm,fd,tm,td);
-      if(!res) throw new Error('Pro tohle okno se nenašla dostatečná historická data — zkus širší rozmezí.');
+      const res=computeWindowSeasonality(daily,st.winFromM,st.winFromD,st.winToM,st.winToD,st.winYears);
+      if(!res) throw new Error('Pro tohle okno se nenašla dostatečná historická data — zkus širší rozmezí nebo víc let zpět.');
       this.setState({winDaily:daily,winResult:res,winBusy:false});
     }catch(e){ this.setState({winErr:String(e&&e.message||e),winBusy:false}); }
   }
@@ -597,6 +598,67 @@ class FXApp extends React.Component{
               h('button',{type:'button',onClick:close,style:{width:34,height:34,borderRadius:9,border:'1px solid #2a3242',background:'#161b27',color:T.dim,fontSize:18,cursor:'pointer',lineHeight:1}},'×'))),
           enough?h(self.HoverChart,{dates:dates,series:S,height:380,yMin:YMN,yMax:YMX,mid:mid,fmt:fmt,area:true})
                 :h('div',{style:{padding:'70px 20px',textAlign:'center',color:T.faint,fontSize:13}},'Málo historie pro tento graf — nasbírá se.')));
+    };
+  }
+  // Denní cenový graf s "táhni myší mezi dvěma body → uvidíš % změnu" — na
+  // rozdíl od HoverChart (jeden hover bod) tady jde vybrat DVA body tažením a
+  // appka mezi nimi rovnou spočítá % pohyb, přesně jak chtěl uživatel při
+  // manuálním prozkoumávání sezónního okna.
+  buildPriceMeasureChart(){ const self=this,h=this.h;
+    this.PriceMeasureChart=({dates,closes,height})=>{
+      const T=self.tok;
+      const n=closes.length;
+      const W=1000,H=height||320,PL=8,PR=58,PT=16,PB=26;
+      const mn=Math.min.apply(null,closes),mx=Math.max.apply(null,closes); const pad=((mx-mn)||1)*0.08;
+      const lo=mn-pad,hi=mx+pad,span=(hi-lo)||1;
+      const X=i=>PL+(W-PL-PR)*(n<2?0.5:(i/(n-1))), Y=v=>PT+(H-PT-PB)*(1-(v-lo)/span);
+      const [drag,setDrag]=React.useState(null);
+      const idxFromEvt=(e,rect)=>{ const px=(e.clientX-rect.left)/rect.width*W; let i=Math.round((px-PL)/((W-PL-PR)/Math.max(1,n-1))); return Math.max(0,Math.min(n-1,i)); };
+      const onDown=e=>{ const r=e.currentTarget.getBoundingClientRect(); const i=idxFromEvt(e,r); setDrag({startIdx:i,endIdx:i,dragging:true}); };
+      const onMove=e=>{ if(!drag||!drag.dragging) return; const r=e.currentTarget.getBoundingClientRect(); const i=idxFromEvt(e,r); setDrag(d=>d?Object.assign({},d,{endIdx:i}):d); };
+      const onUp=()=>{ setDrag(d=>d?Object.assign({},d,{dragging:false}):d); };
+      const pathD=self.smooth(closes.map((v,i)=>[X(i),Y(v)]));
+      const dfmt=d=>{ const dt=new Date(d); return isNaN(dt)?'':(dt.getDate()+'.'+(dt.getMonth()+1)+'.'+dt.getFullYear()); };
+      const yearMarks=[]; let lastYear=null;
+      for(let i=0;i<n;i++){ const y=new Date(dates[i]).getFullYear(); if(y!==lastYear){ yearMarks.push({i,y}); lastYear=y; } }
+      const yShown=yearMarks.length>16?yearMarks.filter((_,k)=>k%2===0):yearMarks;
+      let measure=null;
+      if(drag&&drag.startIdx!==drag.endIdx){
+        const a=Math.min(drag.startIdx,drag.endIdx), b=Math.max(drag.startIdx,drag.endIdx);
+        measure={a,b,pct:+(((closes[drag.endIdx]/closes[drag.startIdx])-1)*100).toFixed(2)};
+      }
+      return h('div',null,
+        h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',cursor:'crosshair',userSelect:'none',touchAction:'none'},
+          onMouseDown:onDown,onMouseMove:onMove,onMouseUp:onUp,onMouseLeave:onUp},
+          [0,0.5,1].map((t,k)=>{ const v=lo+span*t; return h('g',{key:'y'+k},h('line',{x1:PL,x2:W-PR,y1:Y(v),y2:Y(v),stroke:'#161b27',strokeWidth:1,strokeDasharray:'3 5'}),h('text',{x:W-PR+6,y:Y(v)+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},v.toFixed(4))); }),
+          yShown.map((yr,k)=>h('text',{key:'x'+k,x:X(yr.i),y:H-PB+15,fontSize:8.5,fill:T.faint,textAnchor:'middle'},yr.y)),
+          h('path',{d:pathD,fill:'none',stroke:T.accent,strokeWidth:1.3,strokeLinecap:'round'}),
+          measure&&h('rect',{x:X(measure.a),y:PT,width:Math.max(1,X(measure.b)-X(measure.a)),height:H-PT-PB,fill:measure.pct>=0?T.green:T.red,fillOpacity:.12}),
+          drag&&h('line',{x1:X(drag.startIdx),x2:X(drag.startIdx),y1:PT,y2:H-PB,stroke:T.accent,strokeWidth:1,strokeDasharray:'3 3'}),
+          drag&&h('line',{x1:X(drag.endIdx),x2:X(drag.endIdx),y1:PT,y2:H-PB,stroke:T.accent,strokeWidth:1,strokeDasharray:'3 3'}),
+          drag&&h('circle',{cx:X(drag.startIdx),cy:Y(closes[drag.startIdx]),r:3.5,fill:T.accent,stroke:'#0b0d13',strokeWidth:1.2}),
+          drag&&h('circle',{cx:X(drag.endIdx),cy:Y(closes[drag.endIdx]),r:3.5,fill:measure?(measure.pct>=0?T.green:T.red):T.accent,stroke:'#0b0d13',strokeWidth:1.2}),
+          measure&&(()=>{ const boxW=196,boxH=54; const bx=Math.min(W-PR-boxW,Math.max(PL,X(measure.b)+10)); const by=PT+6;
+            return h('g',null,
+              h('rect',{x:bx,y:by,width:boxW,height:boxH,rx:8,fill:'#11151d',stroke:'#2a3242'}),
+              h('text',{x:bx+10,y:by+19,fontSize:9.5,fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},dfmt(dates[drag.startIdx])+' → '+dfmt(dates[drag.endIdx])),
+              h('text',{x:bx+10,y:by+40,fontSize:16,fontWeight:800,fill:measure.pct>=0?T.green:T.red,fontFamily:"'JetBrains Mono',monospace"},(measure.pct>0?'+':'')+measure.pct+'%')); })(),
+          !measure&&h('text',{x:PL+8,y:PT+16,fontSize:10.5,fill:T.faint},'Klikni a táhni myší mezi dvěma body — appka spočítá % změnu.')));
+    };
+  }
+  buildWinChartModal(){ const self=this,h=this.h;
+    this.WinChartModal=({pair,dates,closes})=>{
+      const T=self.tok;
+      const close=()=>self.setState({winChartModal:false});
+      React.useEffect(()=>{ const k=e=>{ if(e.key==='Escape') self.setState({winChartModal:false}); }; window.addEventListener('keydown',k); return ()=>window.removeEventListener('keydown',k); },[]);
+      return h('div',{onClick:close,style:{position:'fixed',inset:0,background:'rgba(7,8,12,.82)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:120,padding:'24px',animation:'fxfade .2s ease'}},
+        h('div',{onClick:e=>e.stopPropagation(),style:{width:'min(1200px,96vw)',maxHeight:'92vh',overflow:'auto',background:'#0f1218',border:'1px solid #27304a',borderRadius:16,padding:'22px 26px',boxShadow:'0 30px 80px rgba(0,0,0,.55)'}},
+          h('div',{style:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginBottom:18}},
+            h('div',null,
+              h('div',{style:self.mono({fontSize:18,fontWeight:800})},'Denní historie — '+pair),
+              h('div',{style:{fontSize:12.5,color:T.dim,marginTop:5}},dates.length+' dní · klikni a táhni mezi dvěma body pro % změnu · Esc pro zavření')),
+            h('button',{type:'button',onClick:close,style:{width:34,height:34,borderRadius:9,border:'1px solid #2a3242',background:'#161b27',color:T.dim,fontSize:18,cursor:'pointer',lineHeight:1}},'×')),
+          h(self.PriceMeasureChart,{dates:dates,closes:closes,height:520})));
     };
   }
   CotHistChart(c,limit){ const self=this,h=this.h,T=this.tok; let s={dates:[],values:[]}; try{s=getCOTNetSeries(c,limit);}catch(e){}
@@ -1110,14 +1172,23 @@ class FXApp extends React.Component{
         h('div',{style:{display:'flex',gap:9,flexWrap:'wrap'}},h('select',{value:cur,onChange:e=>self.setState({seasPair:e.target.value,seasData:null,seasErr:''}),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 11px',fontSize:12.5,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"}},pairOpts.map(p=>h('option',{key:p,value:p},p))),
           h('button',{type:'button',disabled:st.seasBusy,onClick:()=>self.loadSeasonality(cur),style:{border:'1px solid '+T.accent,background:st.seasBusy?'#0c0f16':'linear-gradient(180deg,#5e7cfb,#4c63d9)',color:st.seasBusy?T.faint:'#fff',borderRadius:10,padding:'9px 15px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,cursor:st.seasBusy?'default':'pointer'}},st.seasBusy?'⏳ Stahuji…':(D?'↻ Aktualizovat':'Načíst sezónnost')))),
         st.seasErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:11,lineHeight:1.5}},'⚠ '+st.seasErr)),
-      h('div',{style:self.card({padding:'18px 22px'})},
-        self.ptitle('Sezónní okno — přesné datumové rozmezí','Win rate a průměrný pohyb v tomhle konkrétním okně, napříč všemi lety, co appka sežene · zdroj Stooq (zdarma, bez klíče, obvykle 15–20+ let)'),
+      h('div',{style:self.card({padding:'18px 22px'})},(()=>{
+        const selSm={background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 8px',fontSize:12.5,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"};
+        const dayOpts=Array.from({length:31},(_,i)=>i+1);
+        return h('div',null,
+        self.ptitle('Sezónní okno — přesné datumové rozmezí','Win rate a průměrný pohyb v tomhle konkrétním okně · zdroj Stooq (zdarma, bez klíče)'),
         h('div',{style:{display:'flex',gap:9,flexWrap:'wrap',alignItems:'center',marginTop:10}},
-          h('input',{type:'date',value:st.winFrom,onChange:e=>self.setState({winFrom:e.target.value,winResult:null}),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 11px',fontSize:12.5,fontFamily:"'JetBrains Mono',monospace",colorScheme:'dark'}}),
+          h('div',{style:{display:'flex',gap:5}},
+            h('select',{value:st.winFromD,onChange:e=>self.setState({winFromD:+e.target.value,winResult:null}),style:selSm},dayOpts.map(d=>h('option',{key:d,value:d},d))),
+            h('select',{value:st.winFromM,onChange:e=>self.setState({winFromM:+e.target.value,winResult:null}),style:selSm},MON.map((m,i)=>h('option',{key:i,value:i+1},m)))),
           h('span',{style:{color:T.faint}},'→'),
-          h('input',{type:'date',value:st.winTo,onChange:e=>self.setState({winTo:e.target.value,winResult:null}),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 11px',fontSize:12.5,fontFamily:"'JetBrains Mono',monospace",colorScheme:'dark'}}),
+          h('div',{style:{display:'flex',gap:5}},
+            h('select',{value:st.winToD,onChange:e=>self.setState({winToD:+e.target.value,winResult:null}),style:selSm},dayOpts.map(d=>h('option',{key:d,value:d},d))),
+            h('select',{value:st.winToM,onChange:e=>self.setState({winToM:+e.target.value,winResult:null}),style:selSm},MON.map((m,i)=>h('option',{key:i,value:i+1},m)))),
+          h('span',{style:{color:T.faint,fontSize:11}},'· posledních'),
+          h('select',{value:st.winYears,onChange:e=>self.setState({winYears:+e.target.value,winResult:null}),style:selSm},[5,10,15,20].map(y=>h('option',{key:y,value:y},y+' let'))),
           h('button',{type:'button',disabled:st.winBusy,onClick:()=>self.loadWindowSeasonality(cur),style:{border:'1px solid '+T.accent,background:st.winBusy?'#0c0f16':'linear-gradient(180deg,#5e7cfb,#4c63d9)',color:st.winBusy?T.faint:'#fff',borderRadius:10,padding:'9px 15px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,cursor:st.winBusy?'default':'pointer'}},st.winBusy?'⏳ Počítám…':'Spočítat pro '+cur)),
-        h('div',{style:{fontSize:10,color:T.faint,marginTop:8}},'Rok v datumech se ignoruje — bere se jen den+měsíc (jde tedy vybrat i okno přesahující přes Nový rok).'),
+        h('div',{style:{fontSize:10,color:T.faint,marginTop:8}},'Rok v okně se neřeší — jen den+měsíc (jde vybrat i okno přes Nový rok). "Posledních N let" omezuje, jak hluboko appka pro výpočet i graf níže sahá.'),
         st.winErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:11,lineHeight:1.5}},'⚠ '+st.winErr),
         st.winResult&&(()=>{
           const R=st.winResult, wrCol=R.wr>=60?T.green:R.wr<=40?T.red:T.amber;
@@ -1127,7 +1198,18 @@ class FXApp extends React.Component{
               h('div',null,h('div',{style:self.mono({fontSize:20,fontWeight:700,color:R.avg>=0?T.green:T.red})},(R.avg>0?'+':'')+R.avg+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'průměrný pohyb')),
               h('div',{style:{fontSize:11,color:T.dim,lineHeight:1.5,flex:1,minWidth:200}},cur+' šel v tomhle okně nahoru v '+R.results.filter(r=>r.ret>0).length+' z '+R.n+' let.')),
             h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(90px,1fr))',gap:6,marginTop:10}},R.results.map(r=>h('div',{key:r.year,title:r.from+' → '+r.to,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:8,padding:'7px 9px',textAlign:'center'}},h('div',{style:{fontSize:9.5,color:T.faint}},r.year),h('div',{style:self.mono({fontSize:12,fontWeight:700,color:r.ret>=0?T.green:T.red})},(r.ret>0?'+':'')+r.ret+'%')))));
-        })()),
+        })(),
+        st.winDaily&&st.winDaily.pair===cur&&(()=>{
+          const dd=st.winDaily, lastY=new Date(dd.dates[dd.dates.length-1]).getFullYear(), cutY=lastY-st.winYears+1;
+          let cutIdx=dd.dates.findIndex(d=>new Date(d).getFullYear()>=cutY); if(cutIdx<0) cutIdx=0;
+          const dSlice=dd.dates.slice(cutIdx), cSlice=dd.closes.slice(cutIdx);
+          return h('div',{style:{marginTop:18,paddingTop:16,borderTop:'1px solid #ffffff0f'}},
+            h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:8}},
+              h('div',{style:{fontSize:11.5,fontWeight:700,color:T.dim}},'Denní historie — '+cur+' ('+dSlice.length+' dní, '+new Date(dSlice[0]).getFullYear()+'–'+lastY+')'),
+              h('button',{type:'button',onClick:()=>self.setState({winChartModal:true}),style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:8,padding:'6px 11px',fontSize:11,fontFamily:'inherit',cursor:'pointer'}},'⤢ Zvětšit')),
+            h(self.PriceMeasureChart,{dates:dSlice,closes:cSlice,height:260}));
+        })());
+      })()),
       !D&&!st.seasBusy&&h('div',{style:self.card({padding:'40px 22px',textAlign:'center'})},h('div',{style:{fontSize:13,color:T.faint,lineHeight:1.6}},'Vyber pár a klikni ',h('b',{style:{color:T.accent}},'Načíst sezónnost'),'.',h('br'),'Stáhne reálné měsíční výnosy a spočítá, jak se ',cur,' v jednotlivých měsících historicky chová. Potřebuje Alpha Vantage klíč (Nastavení).')),
       D&&(()=>{
         // Kumulativní sezónní křivka — stejná data jako sloupcový graf níže (D.avg),
@@ -1253,6 +1335,11 @@ class FXApp extends React.Component{
       aside,main,
       st.cotModal&&h(self.CotModal,{key:st.cotModal,c:st.cotModal,range:st.cotRange}),
       st.chartModal&&h(self.ChartModal,Object.assign({key:st.chartModal.title},st.chartModal)),
+      st.winChartModal&&st.winDaily&&(()=>{
+        const dd=st.winDaily, lastY=new Date(dd.dates[dd.dates.length-1]).getFullYear(), cutY=lastY-st.winYears+1;
+        let cutIdx=dd.dates.findIndex(d=>new Date(d).getFullYear()>=cutY); if(cutIdx<0) cutIdx=0;
+        return h(self.WinChartModal,{pair:dd.pair,dates:dd.dates.slice(cutIdx),closes:dd.closes.slice(cutIdx)});
+      })(),
       !st.loaded&&h('div',{style:{position:'fixed',inset:0,background:'rgba(7,8,12,.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:99,fontSize:14,color:T.dim}},'⏳ Načítám živá data…'));
   }
 }

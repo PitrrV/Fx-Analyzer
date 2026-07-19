@@ -2899,14 +2899,18 @@ async function fetchFXDailyHistory(pair){
   const ck="seas_daily_"+pair;
   try{const c=JSON.parse(localStorage.getItem(ck)||"null"); if(c&&c.at&&(Date.now()-c.at)<30*86400000&&c.data&&c.data.dates&&c.data.dates.length>200) return c.data;}catch(e){}
   const sym=String(pair).toLowerCase();
-  const url="https://stooq.com/q/d/l/?s="+sym+"&i=d";
+  // Bez explicitního d1 (rozsahu) Stooq u některých symbolů (hlavně křížové
+  // páry mimo hlavní USD-páry) vrací jen malé výchozí okno místo celé historie
+  // — d1=19900101 si vynutí, ať appka dostane všechno, co Stooq pro daný pár má.
+  const today=new Date(); const d2=today.getFullYear()+String(today.getMonth()+1).padStart(2,"0")+String(today.getDate()).padStart(2,"0");
+  const url="https://stooq.com/q/d/l/?s="+sym+"&d1=19900101&d2="+d2+"&i=d";
   let text=null;
   try{ const r=await fetch(url,{cache:"no-store",signal:abortTimeout(15000)}); if(r.ok){ const t=await r.text(); if(t&&t.length>800&&!/exceeded|<!DOCTYPE/i.test(t)) text=t; } }catch(e){}
   if(!text) text=await fetchTextWithProxies(url);
   const lines=text.trim().split(/\r?\n/).slice(1);
   const dates=[],closes=[];
   lines.forEach(line=>{ const c=line.split(","); const d=c[0], close=parseFloat(c[4]); if(d&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(close)) { dates.push(d); closes.push(close); } });
-  if(dates.length<200) throw new Error("Stooq vrátilo málo denních dat ("+dates.length+") pro "+pair+" — zkus to za chvíli.");
+  if(dates.length<200) throw new Error("Stooq má pro "+pair+" jen "+dates.length+" dní denní historie — buď dočasný výpadek (zkus znovu), nebo tenhle pár/kříž na Stooq nemá delší denní historii. Hlavní páry (EURUSD, GBPUSD, USDJPY…) bývají nejhlubší.");
   const data={pair,dates,closes,asOf:new Date().toISOString()};
   try{localStorage.setItem(ck,JSON.stringify({at:Date.now(),data}));}catch(e){ /* historie je velká — v pořádku, jen se příště stáhne znovu */ }
   return data;
@@ -2916,13 +2920,16 @@ async function fetchFXDailyHistory(pair){
 // napříč všemi lety, co Stooq vrátil — stejný princip jako "20.7.-1.8., 65 %
 // BUY za 15 let" z konkurenčních nástrojů. startM/endM jsou 1-12, startD/endD
 // dny v měsíci. Okno přesahující přes Nový rok (např. 28.12.-5.1.) se počítá
-// správně (konec spadá do y+1).
-function computeWindowSeasonality(daily,startM,startD,endM,endD){
+// správně (konec spadá do y+1). maxYears (volitelné): omezí se jen na
+// posledních N let dat, ne na celou dostupnou historii.
+function computeWindowSeasonality(daily,startM,startD,endM,endD,maxYears){
   if(!daily||!Array.isArray(daily.dates)||daily.dates.length<200) return null;
   const rows=daily.dates.map((d,i)=>({d,t:Date.parse(d+"T00:00:00Z"),close:daily.closes[i]})).filter(r=>!isNaN(r.t)&&Number.isFinite(r.close)).sort((a,b)=>a.t-b.t);
   if(rows.length<200) return null;
   const wraps=(endM<startM)||(endM===startM&&endD<startD);
-  const firstY=new Date(rows[0].t).getUTCFullYear(), lastY=new Date(rows[rows.length-1].t).getUTCFullYear();
+  const lastY=new Date(rows[rows.length-1].t).getUTCFullYear();
+  const dataFirstY=new Date(rows[0].t).getUTCFullYear();
+  const firstY=maxYears?Math.max(dataFirstY,lastY-maxYears+1):dataFirstY;
   const results=[];
   for(let y=firstY;y<=lastY;y++){
     const y2=wraps?y+1:y;
