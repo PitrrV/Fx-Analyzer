@@ -616,7 +616,13 @@ class FXApp extends React.Component{
       const W=1000,H=height||320,PL=8,PR=58,PT=16,PB=40;
       const svgRef=React.useRef(null);
       const [view,setView]=React.useState({s:0,e:n-1});
-      React.useEffect(()=>{ setView({s:0,e:n-1}); },[dates]);
+      // Reset zoomu jen když se OBSAH dat skutečně změní (jiný pár/rozsah),
+      // ne na referenci pole — rodič si dSlice/cSlice dělá přes .slice() při
+      // každém renderu, takže "dates" je jiný objekt i beze změny obsahu, a
+      // efekt vázaný na [dates] by tak zoom nechtěně resetoval při každém
+      // překreslení appky (proto se přiblížení samo po chvíli oddálilo).
+      const dataSig=n+'|'+(dates[0]||'')+'|'+(dates[n-1]||'');
+      React.useEffect(()=>{ setView({s:0,e:n-1}); },[dataSig]);
       const vs=Math.max(0,Math.min(n-2,view.s)), ve=Math.max(vs+1,Math.min(n-1,view.e));
       const i0=Math.max(0,Math.floor(vs)), i1=Math.min(n-1,Math.ceil(ve));
       const sliceC=closes.slice(i0,i1+1);
@@ -1277,6 +1283,26 @@ class FXApp extends React.Component{
               h('div',null,h('div',{style:self.mono({fontSize:26,fontWeight:800,color:wrCol})},R.wr+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'win rate ('+R.n+' let)')),
               h('div',null,h('div',{style:self.mono({fontSize:20,fontWeight:700,color:R.avg>=0?T.green:T.red})},(R.avg>0?'+':'')+R.avg+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'průměrný pohyb')),
               h('div',{style:{fontSize:11,color:T.dim,lineHeight:1.5,flex:1,minWidth:200}},cur+' šel v tomhle okně nahoru v '+R.results.filter(r=>r.ret>0).length+' z '+R.n+' let. ',(R.wr>=50)!==(R.avg>=0)&&h('span',{style:{color:T.faint}},'Win rate a průměrný pohyb tu ukazují opačný směr — '+(R.wr>=50?'víc let bylo v plusu, ale ztrátové roky byly v průměru výraznější než ziskové':'víc let bylo v mínusu, ale ziskové roky byly v průměru výraznější než ztrátové')+', takže průměr táhne na '+(R.avg<0?'mínus':'plus')+'.'))),
+            R.results.length>1&&(()=>{
+              const pts=R.results.slice().sort((a,b)=>a.year-b.year);
+              const vals=pts.map(p=>p.ret);
+              const W=720,H=150,PL=10,PR=34,PT=14,PB=24;
+              const lo0=Math.min(0,...vals), hi0=Math.max(0,...vals), pad=((hi0-lo0)||1)*0.15;
+              const lo=lo0-pad, hi=hi0+pad, span=(hi-lo)||1;
+              const X=i=>PL+(W-PL-PR)*(vals.length<2?0.5:i/(vals.length-1)), Y=v=>PT+(H-PT-PB)*(1-(v-lo)/span);
+              const pathD=self.smooth(vals.map((v,i)=>[X(i),Y(v)]));
+              const zeroY=Y(0);
+              const nLbl=Math.min(pts.length,10), lblStep=Math.max(1,Math.round((pts.length-1)/(nLbl-1))||1);
+              return h('div',{style:{marginTop:14}},
+                h('div',{style:{fontSize:11.5,fontWeight:700,color:T.dim,marginBottom:4}},'Výsledek okna po jednotlivých letech'),
+                h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',overflow:'visible'}},
+                  zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'#2a3242',strokeWidth:1}),
+                  h('text',{x:W-PR+6,y:zeroY+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},'0%'),
+                  h('path',{d:pathD,fill:'none',stroke:T.accent,strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}),
+                  pts.map((p,i)=>h('g',{key:p.year},
+                    h('circle',{cx:X(i),cy:Y(p.ret),r:3,fill:p.ret>=0?T.green:T.red,stroke:'#0b0d13',strokeWidth:1}),
+                    (i%lblStep===0||i===pts.length-1)&&h('text',{x:X(i),y:H-PB+14,fontSize:8.5,textAnchor:'middle',fill:T.faint},p.year)))));
+            })(),
             h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(90px,1fr))',gap:6,marginTop:10}},R.results.map(r=>h('div',{key:r.year,title:r.from+' → '+r.to,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:8,padding:'7px 9px',textAlign:'center'}},h('div',{style:{fontSize:9.5,color:T.faint}},r.year),h('div',{style:self.mono({fontSize:12,fontWeight:700,color:r.ret>=0?T.green:T.red})},(r.ret>0?'+':'')+r.ret+'%')))),
             AP&&AP.avg&&AP.avg.length>1&&(()=>{
               const cum=AP.avg;
