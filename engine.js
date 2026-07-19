@@ -2897,20 +2897,31 @@ async function fetchSeasonality(pair,avKey){
 // žádné CORS) stahuje ze Stooq (fallback Yahoo) a commituje
 // data/fx_daily/{PAIR}.json — appka ho pak čte jako statický soubor
 // stejného originu, stejný vzor jako COT/kalendář/ceny/retail (viz CLAUDE.md).
+// Ochrana proti tichému "downgradu" granularity — server-side cron jednou
+// vrátil (Yahoo range=max&interval=1d) ~273 bodů za 22 let místo denních dat
+// (viz scripts/fetch-seasonality-daily.js). Kontrola počtu bodů sama tohle
+// nechytí, protože 273>200 — kontroluje se i mezera mezi po sobě jdoucími dny.
+function _isDailyResolution(dates){
+  if(!Array.isArray(dates)||dates.length<200) return false;
+  const gaps=[];
+  for(let i=1;i<dates.length;i++){ const d0=Date.parse(dates[i-1]+"T00:00:00Z"), d1=Date.parse(dates[i]+"T00:00:00Z"); if(!isNaN(d0)&&!isNaN(d1)) gaps.push((d1-d0)/86400000); }
+  gaps.sort((a,b)=>a-b);
+  return gaps.length>0 && gaps[Math.floor(gaps.length/2)]<=10;
+}
 async function fetchFXDailyHistory(pair){
   const ck="seas_daily_"+pair;
   try{
     const r=await fetch("data/fx_daily/"+pair+".json?v="+Math.floor(Date.now()/3600000),{cache:"no-store"});
     if(r.ok){
       const data=await r.json();
-      if(data&&Array.isArray(data.dates)&&data.dates.length>200){
+      if(data&&Array.isArray(data.dates)&&_isDailyResolution(data.dates)){
         try{localStorage.setItem(ck,JSON.stringify({at:Date.now(),data}));}catch(e){}
         return data;
       }
     }
   }catch(e){}
   // Fallback na dřívější lokální cache (i kdyby teď server soubor chyběl/byl nedostupný).
-  try{const c=JSON.parse(localStorage.getItem(ck)||"null"); if(c&&c.data&&c.data.dates&&c.data.dates.length>200) return c.data;}catch(e){}
+  try{const c=JSON.parse(localStorage.getItem(ck)||"null"); if(c&&c.data&&c.data.dates&&_isDailyResolution(c.data.dates)) return c.data;}catch(e){}
   throw new Error("Denní historie pro "+pair+" zatím není k dispozici — server ji stahuje na pozadí (cron běží jednou denně), zkus to prosím za chvíli nebo zítra.");
 }
 
