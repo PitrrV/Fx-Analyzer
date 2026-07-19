@@ -2894,9 +2894,9 @@ async function fetchSeasonality(pair,avKey){
 // prohlížeče přes veřejné CORS proxy (allorigins/corsproxy.io/codetabs) se
 // v praxi ukázalo nespolehlivé (selhávalo i na hlavních párech typu EURUSD).
 // Řešení: server-side cron (scripts/fetch-seasonality-daily.js, Node fetch,
-// žádné CORS) stahuje ze Stooq a commituje data/fx_daily/{PAIR}.json —
-// appka ho pak čte jako statický soubor stejného originu, stejný vzor jako
-// COT/kalendář/ceny/retail (viz CLAUDE.md).
+// žádné CORS) stahuje ze Stooq (fallback Yahoo) a commituje
+// data/fx_daily/{PAIR}.json — appka ho pak čte jako statický soubor
+// stejného originu, stejný vzor jako COT/kalendář/ceny/retail (viz CLAUDE.md).
 async function fetchFXDailyHistory(pair){
   const ck="seas_daily_"+pair;
   try{
