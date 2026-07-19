@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260717a"></script>
+<script src="engine.js?v=20260719a"></script>
 <script src="sync.js?v=20260717b"></script>
 <style>
 *{box-sizing:border-box}
@@ -60,7 +60,10 @@ class FXApp extends React.Component{
   constructor(p){
     super(p);
     const h=React.createElement; this.h=h;
-    this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'' };
+    this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'',
+      winFrom:(()=>{const d=new Date();return d.toISOString().slice(0,10);})(),
+      winTo:(()=>{const d=new Date();d.setDate(d.getDate()+14);return d.toISOString().slice(0,10);})(),
+      winBusy:false, winErr:'', winResult:null, winDaily:null };
     this.CUR=(typeof CURRENCIES!=='undefined')?CURRENCIES:['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
     this.NAMES=(typeof NAMES!=='undefined')?NAMES:{};
     this.D={}; this.PAIRS=[]; this.series={}; this.dates=[]; this.daily=[]; this.cbdi=50; this.PRICES={};
@@ -461,6 +464,18 @@ class FXApp extends React.Component{
   async loadSeasonality(pair){ const p=pair||this.state.seasPair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD'; this.setState({seasPair:p,seasBusy:true,seasErr:'',seasData:null});
     try{ const av=(localStorage.getItem('av')||'').trim(); const data=await fetchSeasonality(p,av); this.setState({seasData:data,seasBusy:false}); }
     catch(e){ this.setState({seasErr:String(e&&e.message||e),seasBusy:false}); } }
+  async loadWindowSeasonality(pair){
+    const p=pair||this.state.seasPair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD';
+    const [fy,fm,fd]=this.state.winFrom.split('-').map(Number), [ty,tm,td]=this.state.winTo.split('-').map(Number);
+    this.setState({seasPair:p,winBusy:true,winErr:'',winResult:null});
+    try{
+      let daily=this.state.winDaily;
+      if(!daily||daily.pair!==p) daily=await fetchFXDailyHistory(p);
+      const res=computeWindowSeasonality(daily,fm,fd,tm,td);
+      if(!res) throw new Error('Pro tohle okno se nenašla dostatečná historická data — zkus širší rozmezí.');
+      this.setState({winDaily:daily,winResult:res,winBusy:false});
+    }catch(e){ this.setState({winErr:String(e&&e.message||e),winBusy:false}); }
+  }
   buildHoverChart(){ const self=this,h=this.h;
     // pointLabels (volitelné): pole rovnoběžné s dates, extra řádek v tooltipu nad
     // hodnotami sérií — používá Equity křivka pro pár/číslo obchodu k danému bodu.
@@ -1095,6 +1110,24 @@ class FXApp extends React.Component{
         h('div',{style:{display:'flex',gap:9,flexWrap:'wrap'}},h('select',{value:cur,onChange:e=>self.setState({seasPair:e.target.value,seasData:null,seasErr:''}),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 11px',fontSize:12.5,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"}},pairOpts.map(p=>h('option',{key:p,value:p},p))),
           h('button',{type:'button',disabled:st.seasBusy,onClick:()=>self.loadSeasonality(cur),style:{border:'1px solid '+T.accent,background:st.seasBusy?'#0c0f16':'linear-gradient(180deg,#5e7cfb,#4c63d9)',color:st.seasBusy?T.faint:'#fff',borderRadius:10,padding:'9px 15px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,cursor:st.seasBusy?'default':'pointer'}},st.seasBusy?'⏳ Stahuji…':(D?'↻ Aktualizovat':'Načíst sezónnost')))),
         st.seasErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:11,lineHeight:1.5}},'⚠ '+st.seasErr)),
+      h('div',{style:self.card({padding:'18px 22px'})},
+        self.ptitle('Sezónní okno — přesné datumové rozmezí','Win rate a průměrný pohyb v tomhle konkrétním okně, napříč všemi lety, co appka sežene · zdroj Stooq (zdarma, bez klíče, obvykle 15–20+ let)'),
+        h('div',{style:{display:'flex',gap:9,flexWrap:'wrap',alignItems:'center',marginTop:10}},
+          h('input',{type:'date',value:st.winFrom,onChange:e=>self.setState({winFrom:e.target.value,winResult:null}),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 11px',fontSize:12.5,fontFamily:"'JetBrains Mono',monospace",colorScheme:'dark'}}),
+          h('span',{style:{color:T.faint}},'→'),
+          h('input',{type:'date',value:st.winTo,onChange:e=>self.setState({winTo:e.target.value,winResult:null}),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 11px',fontSize:12.5,fontFamily:"'JetBrains Mono',monospace",colorScheme:'dark'}}),
+          h('button',{type:'button',disabled:st.winBusy,onClick:()=>self.loadWindowSeasonality(cur),style:{border:'1px solid '+T.accent,background:st.winBusy?'#0c0f16':'linear-gradient(180deg,#5e7cfb,#4c63d9)',color:st.winBusy?T.faint:'#fff',borderRadius:10,padding:'9px 15px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,cursor:st.winBusy?'default':'pointer'}},st.winBusy?'⏳ Počítám…':'Spočítat pro '+cur)),
+        h('div',{style:{fontSize:10,color:T.faint,marginTop:8}},'Rok v datumech se ignoruje — bere se jen den+měsíc (jde tedy vybrat i okno přesahující přes Nový rok).'),
+        st.winErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:11,lineHeight:1.5}},'⚠ '+st.winErr),
+        st.winResult&&(()=>{
+          const R=st.winResult, wrCol=R.wr>=60?T.green:R.wr<=40?T.red:T.amber;
+          return h('div',{style:{marginTop:16}},
+            h('div',{style:{display:'flex',gap:22,flexWrap:'wrap',alignItems:'baseline',padding:'14px 16px',background:wrCol+'14',border:'1px solid '+wrCol+'33',borderRadius:12}},
+              h('div',null,h('div',{style:self.mono({fontSize:26,fontWeight:800,color:wrCol})},R.wr+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'win rate ('+R.n+' let)')),
+              h('div',null,h('div',{style:self.mono({fontSize:20,fontWeight:700,color:R.avg>=0?T.green:T.red})},(R.avg>0?'+':'')+R.avg+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'průměrný pohyb')),
+              h('div',{style:{fontSize:11,color:T.dim,lineHeight:1.5,flex:1,minWidth:200}},cur+' šel v tomhle okně nahoru v '+R.results.filter(r=>r.ret>0).length+' z '+R.n+' let.')),
+            h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(90px,1fr))',gap:6,marginTop:10}},R.results.map(r=>h('div',{key:r.year,title:r.from+' → '+r.to,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:8,padding:'7px 9px',textAlign:'center'}},h('div',{style:{fontSize:9.5,color:T.faint}},r.year),h('div',{style:self.mono({fontSize:12,fontWeight:700,color:r.ret>=0?T.green:T.red})},(r.ret>0?'+':'')+r.ret+'%')))));
+        })()),
       !D&&!st.seasBusy&&h('div',{style:self.card({padding:'40px 22px',textAlign:'center'})},h('div',{style:{fontSize:13,color:T.faint,lineHeight:1.6}},'Vyber pár a klikni ',h('b',{style:{color:T.accent}},'Načíst sezónnost'),'.',h('br'),'Stáhne reálné měsíční výnosy a spočítá, jak se ',cur,' v jednotlivých měsících historicky chová. Potřebuje Alpha Vantage klíč (Nastavení).')),
       D&&(()=>{
         // Kumulativní sezónní křivka — stejná data jako sloupcový graf níže (D.avg),

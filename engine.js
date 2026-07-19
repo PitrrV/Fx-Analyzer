@@ -2887,6 +2887,57 @@ async function fetchSeasonality(pair,avKey){
   try{localStorage.setItem(ck,JSON.stringify({at:Date.now(),data}));}catch(e){}
   return data;
 }
+
+// ── DENNÍ historie ze Stooq (zdarma, bez klíče, 20+ let u hlavních párů) ──
+// Alpha Vantage zdarma ořízne "full" na ~100 bodů bez ohledu na funkci — u
+// měsíčních dat je to ~8-9 let, na denní okno (potřeba tisíce dní) je to
+// nepoužitelné. Stooq nemá tenhle strop (stejný zdroj appka už používá pro
+// ropu, viz scripts/fetch-oil.js) — jen typicky nenastavuje CORS hlavičky,
+// takže zkusíme přímo a při selhání přes fetchTextWithProxies (stejný
+// fallback řetězec jako zbytek appky).
+async function fetchFXDailyHistory(pair){
+  const ck="seas_daily_"+pair;
+  try{const c=JSON.parse(localStorage.getItem(ck)||"null"); if(c&&c.at&&(Date.now()-c.at)<30*86400000&&c.data&&c.data.dates&&c.data.dates.length>200) return c.data;}catch(e){}
+  const sym=String(pair).toLowerCase();
+  const url="https://stooq.com/q/d/l/?s="+sym+"&i=d";
+  let text=null;
+  try{ const r=await fetch(url,{cache:"no-store",signal:abortTimeout(15000)}); if(r.ok){ const t=await r.text(); if(t&&t.length>800&&!/exceeded|<!DOCTYPE/i.test(t)) text=t; } }catch(e){}
+  if(!text) text=await fetchTextWithProxies(url);
+  const lines=text.trim().split(/\r?\n/).slice(1);
+  const dates=[],closes=[];
+  lines.forEach(line=>{ const c=line.split(","); const d=c[0], close=parseFloat(c[4]); if(d&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(close)) { dates.push(d); closes.push(close); } });
+  if(dates.length<200) throw new Error("Stooq vrátilo málo denních dat ("+dates.length+") pro "+pair+" — zkus to za chvíli.");
+  const data={pair,dates,closes,asOf:new Date().toISOString()};
+  try{localStorage.setItem(ck,JSON.stringify({at:Date.now(),data}));}catch(e){ /* historie je velká — v pořádku, jen se příště stáhne znovu */ }
+  return data;
+}
+
+// Win rate + průměrný pohyb v KONKRÉTNÍM datumovém okně (den+měsíc, bez roku)
+// napříč všemi lety, co Stooq vrátil — stejný princip jako "20.7.-1.8., 65 %
+// BUY za 15 let" z konkurenčních nástrojů. startM/endM jsou 1-12, startD/endD
+// dny v měsíci. Okno přesahující přes Nový rok (např. 28.12.-5.1.) se počítá
+// správně (konec spadá do y+1).
+function computeWindowSeasonality(daily,startM,startD,endM,endD){
+  if(!daily||!Array.isArray(daily.dates)||daily.dates.length<200) return null;
+  const rows=daily.dates.map((d,i)=>({d,t:Date.parse(d+"T00:00:00Z"),close:daily.closes[i]})).filter(r=>!isNaN(r.t)&&Number.isFinite(r.close)).sort((a,b)=>a.t-b.t);
+  if(rows.length<200) return null;
+  const wraps=(endM<startM)||(endM===startM&&endD<startD);
+  const firstY=new Date(rows[0].t).getUTCFullYear(), lastY=new Date(rows[rows.length-1].t).getUTCFullYear();
+  const results=[];
+  for(let y=firstY;y<=lastY;y++){
+    const y2=wraps?y+1:y;
+    const startMs=Date.UTC(y,startM-1,startD), endMs=Date.UTC(y2,endM-1,endD);
+    if(endMs<=startMs) continue;
+    let startRow=null; for(const r of rows){ if(r.t>=startMs){ startRow=r; break; } }
+    let endRow=null; for(let i=rows.length-1;i>=0;i--){ if(rows[i].t<=endMs){ endRow=rows[i]; break; } }
+    if(!startRow||!endRow||endRow.t<=startRow.t) continue;
+    if(Math.abs(startRow.t-startMs)>7*86400000||Math.abs(endRow.t-endMs)>7*86400000) continue; // chybějící data v okně — přeskoč rok, ne hádej
+    results.push({year:y,from:startRow.d,to:endRow.d,ret:+(((endRow.close/startRow.close)-1)*100).toFixed(2)});
+  }
+  if(!results.length) return null;
+  const wins=results.filter(r=>r.ret>0).length;
+  return {n:results.length,wr:Math.round(wins/results.length*100),avg:+(results.reduce((a,b)=>a+b.ret,0)/results.length).toFixed(2),results:results.sort((a,b)=>b.year-a.year)};
+}
 // COT % long/short z posledního snapshotu (syrové počty kontraktů velkých hráčů)
 // Preferuje cot_hist (chráněné src:"server" merge pravidlem v sync.js — viz
 // mergeObj/cot_hist) — cot_meta je scalar sync klíč ("lokál vždy vyhrává", bez
