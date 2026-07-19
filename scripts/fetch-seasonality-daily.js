@@ -25,6 +25,24 @@ function parseCSVRows(text) {
   return text.trim().split(/\r?\n/).slice(1).map((line) => line.split(","));
 }
 
+// Ochrana proti tichému "downgradu" granularity — první živý běh s Yahoo
+// fallbackem vrátil pro range=max&interval=1d jen ~273 bodů za 22 let
+// (=měsíční data, ne denní), i když parametr interval=1d byl v URL.
+// rows.length<200 by tohle nechytilo (273 > 200), protože kontroloval jen
+// POČET bodů, ne jejich hustotu — mezera mezi po sobě jdoucími dny u
+// skutečně denních FX dat je řádově dny (víkendy/svátky), ne měsíce.
+function assertDailyResolution(dates) {
+  if (dates.length < 200) throw new Error(`málo dat (${dates.length} dní)`);
+  const gaps = [];
+  for (let i = 1; i < dates.length; i++) {
+    const d0 = Date.parse(dates[i - 1] + "T00:00:00Z"), d1 = Date.parse(dates[i] + "T00:00:00Z");
+    if (!isNaN(d0) && !isNaN(d1)) gaps.push((d1 - d0) / 86400000);
+  }
+  gaps.sort((a, b) => a - b);
+  const median = gaps[Math.floor(gaps.length / 2)];
+  if (!(median <= 10)) throw new Error(`data nejsou denní granularita (medián mezery mezi dny: ${median})`);
+}
+
 async function fetchPairStooq(pair) {
   const sym = pair.toLowerCase();
   const today = new Date();
@@ -37,14 +55,20 @@ async function fetchPairStooq(pair) {
   const rows = parseCSVRows(text)
     .map((c) => ({ date: c[0], close: parseFloat(c[4]) }))
     .filter((row) => row.date && /^\d{4}-\d{2}-\d{2}$/.test(row.date) && Number.isFinite(row.close));
-  if (rows.length < 200) throw new Error(`málo dat (${rows.length} dní)`);
-  return { pair, dates: rows.map((row) => row.date), closes: rows.map((row) => row.close), updated: new Date().toISOString() };
+  const dates = rows.map((row) => row.date), closes = rows.map((row) => row.close);
+  assertDailyResolution(dates);
+  return { pair, dates, closes, updated: new Date().toISOString() };
 }
 
 // Fallback — stejný vzor jako fromYahoo() ve fetch-oil.js. Yahoo FX symboly
-// mají tvar "EURUSD=X", range=max dá u hlavních párů běžně 20+ let denních dat.
+// mají tvar "EURUSD=X". POZOR: range=max&interval=1d u Yahoo v praxi vrátilo
+// jen ~273 bodů za 22 let (tiše převzorkováno na měsíční data) — explicitní
+// period1/period2 (Unix timestampy) tohle chování obchází a vynutí skutečně
+// denní granularitu.
 async function fetchPairYahoo(pair) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${pair}=X?range=max&interval=1d`;
+  const period2 = Math.floor(Date.now() / 1000);
+  const period1 = Math.floor(new Date("2000-01-01T00:00:00Z").getTime() / 1000);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${pair}=X?period1=${period1}&period2=${period2}&interval=1d`;
   const r = await fetch(url, {
     signal: AbortSignal.timeout(20000),
     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
@@ -56,8 +80,9 @@ async function fetchPairYahoo(pair) {
   if (!Array.isArray(ts) || !Array.isArray(closes)) throw new Error("neplatná struktura");
   const rows = ts.map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), close: closes[i] }))
     .filter((row) => row.close != null && Number.isFinite(row.close));
-  if (rows.length < 200) throw new Error(`málo dat (${rows.length} dní)`);
-  return { pair, dates: rows.map((row) => row.date), closes: rows.map((row) => row.close), updated: new Date().toISOString() };
+  const outDates = rows.map((row) => row.date), outCloses = rows.map((row) => row.close);
+  assertDailyResolution(outDates);
+  return { pair, dates: outDates, closes: outCloses, updated: new Date().toISOString() };
 }
 
 async function fetchPair(pair) {
