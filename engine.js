@@ -2954,6 +2954,43 @@ function computeWindowSeasonality(daily,startM,startD,endM,endD,maxYears){
   const wins=results.filter(r=>r.ret>0).length;
   return {n:results.length,wr:Math.round(wins/results.length*100),avg:+(results.reduce((a,b)=>a+b.ret,0)/results.length).toFixed(2),results:results.sort((a,b)=>b.year-a.year)};
 }
+// Průměrná cesta OKNEM napříč lety — pro každý obchodní den v okně (0=start)
+// zprůměruje kumulativní % pohyb od startu přes všechny roky, co pro dané
+// okno mají data (viz computeWindowSeasonality — stejná tolerance/filtr).
+// Na rozdíl od computeWindowSeasonality, který vrací jen KONCOVÝ výsledek
+// za rok, tohle je celý tvar průběhu (typicky roste/klesá/otočí se v půlce),
+// tj. ten "matematický výpočet vložený do grafu", ne cena jednoho roku.
+function computeWindowAvgPath(daily,startM,startD,endM,endD,maxYears){
+  if(!daily||!Array.isArray(daily.dates)||daily.dates.length<200) return null;
+  const rows=daily.dates.map((d,i)=>({d,t:Date.parse(d+"T00:00:00Z"),close:daily.closes[i]})).filter(r=>!isNaN(r.t)&&Number.isFinite(r.close)).sort((a,b)=>a.t-b.t);
+  if(rows.length<200) return null;
+  const wraps=(endM<startM)||(endM===startM&&endD<startD);
+  const lastY=new Date(rows[rows.length-1].t).getUTCFullYear();
+  const dataFirstY=new Date(rows[0].t).getUTCFullYear();
+  const firstY=maxYears?Math.max(dataFirstY,lastY-maxYears+1):dataFirstY;
+  const paths=[]; let refDates=null;
+  for(let y=lastY;y>=firstY;y--){
+    const y2=wraps?y+1:y;
+    const startMs=Date.UTC(y,startM-1,startD), endMs=Date.UTC(y2,endM-1,endD);
+    if(endMs<=startMs) continue;
+    let startIdx=-1; for(let i=0;i<rows.length;i++){ if(rows[i].t>=startMs){ startIdx=i; break; } }
+    let endIdx=-1; for(let i=rows.length-1;i>=0;i--){ if(rows[i].t<=endMs){ endIdx=i; break; } }
+    if(startIdx<0||endIdx<0||endIdx<=startIdx) continue;
+    if(Math.abs(rows[startIdx].t-startMs)>7*86400000||Math.abs(rows[endIdx].t-endMs)>7*86400000) continue;
+    const base=rows[startIdx].close;
+    const path=[]; for(let i=startIdx;i<=endIdx;i++) path.push(((rows[i].close/base)-1)*100);
+    paths.push(path);
+    if(!refDates) refDates=rows.slice(startIdx,endIdx+1).map(r=>r.d); // nejnovější kompletní rok = popisky na ose
+  }
+  if(!paths.length) return null;
+  const maxLen=Math.max.apply(null,paths.map(p=>p.length));
+  const avg=[];
+  for(let i=0;i<maxLen;i++){
+    const vals=paths.map(p=>p[i]).filter(v=>v!=null);
+    avg.push(vals.length?+((vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(3)):(avg[i-1]!=null?avg[i-1]:0));
+  }
+  return {avg,n:paths.length,dates:(refDates||[]).slice(0,maxLen)};
+}
 // COT % long/short z posledního snapshotu (syrové počty kontraktů velkých hráčů)
 // Preferuje cot_hist (chráněné src:"server" merge pravidlem v sync.js — viz
 // mergeObj/cot_hist) — cot_meta je scalar sync klíč ("lokál vždy vyhrává", bez
