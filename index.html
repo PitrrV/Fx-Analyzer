@@ -1083,7 +1083,12 @@ class FXApp extends React.Component{
     const MON=['Led','Úno','Bře','Dub','Kvě','Čvn','Čvc','Srp','Zář','Říj','Lis','Pro'];
     const pairOpts=this.PAIRS.map(p=>p.pair); const cur=st.seasPair||pairOpts[0]||'EURUSD';
     const cell=v=>{ if(v==null)return{background:'#0a0d13',color:T.faint}; const op=Math.min(.82,Math.abs(v)/5*.7+.14); return {background:(v>=0?'rgba(46,211,160,'+op+')':'rgba(242,96,110,'+op+')'),color:'#0a0d10'}; };
-    const years=D?D.years.slice(-6):[];
+    // Dřív oříznuto na posledních 6 let jen kvůli šířce tabulky — průměr (D.avg,
+    // sloupcový graf i nová sezónní křivka) VŽDY počítal ze VŠECH let, co appka
+    // stáhla (Alpha Vantage FX_MONTHLY, outputsize=full). Teď se v heatmapě
+    // zobrazí taky všechny — karta má overflowX:auto, takže se to jen vodorovně
+    // scrolluje, nic se neztratí.
+    const years=D?D.years:[];
     return h('div',{style:{maxWidth:1080,display:'flex',flexDirection:'column',gap:16}},
       h('div',{style:self.card({padding:'18px 22px'})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}},
         h('div',null,h('div',{style:{fontSize:13.5,fontWeight:800}},'Reálná sezónnost'),h('div',{style:self.mono({fontSize:10.5,color:T.faint,marginTop:4})},'Měsíční % výkonnost z historických cen (Alpha Vantage) · cache 30 dní')),
