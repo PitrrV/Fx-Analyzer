@@ -2888,32 +2888,30 @@ async function fetchSeasonality(pair,avKey){
   return data;
 }
 
-// ── DENNÍ historie ze Stooq (zdarma, bez klíče, 20+ let u hlavních párů) ──
+// ── DENNÍ historie pro Sezónní okno — ČTE SERVEROVOU DATA/FX_DAILY/*.JSON ──
 // Alpha Vantage zdarma ořízne "full" na ~100 bodů bez ohledu na funkci — u
-// měsíčních dat je to ~8-9 let, na denní okno (potřeba tisíce dní) je to
-// nepoužitelné. Stooq nemá tenhle strop (stejný zdroj appka už používá pro
-// ropu, viz scripts/fetch-oil.js) — jen typicky nenastavuje CORS hlavičky,
-// takže zkusíme přímo a při selhání přes fetchTextWithProxies (stejný
-// fallback řetězec jako zbytek appky).
+// denního okna (potřeba tisíce dní) nepoužitelné. Přímé volání Stooq z
+// prohlížeče přes veřejné CORS proxy (allorigins/corsproxy.io/codetabs) se
+// v praxi ukázalo nespolehlivé (selhávalo i na hlavních párech typu EURUSD).
+// Řešení: server-side cron (scripts/fetch-seasonality-daily.js, Node fetch,
+// žádné CORS) stahuje ze Stooq a commituje data/fx_daily/{PAIR}.json —
+// appka ho pak čte jako statický soubor stejného originu, stejný vzor jako
+// COT/kalendář/ceny/retail (viz CLAUDE.md).
 async function fetchFXDailyHistory(pair){
   const ck="seas_daily_"+pair;
-  try{const c=JSON.parse(localStorage.getItem(ck)||"null"); if(c&&c.at&&(Date.now()-c.at)<30*86400000&&c.data&&c.data.dates&&c.data.dates.length>200) return c.data;}catch(e){}
-  const sym=String(pair).toLowerCase();
-  // Bez explicitního d1 (rozsahu) Stooq u některých symbolů (hlavně křížové
-  // páry mimo hlavní USD-páry) vrací jen malé výchozí okno místo celé historie
-  // — d1=19900101 si vynutí, ať appka dostane všechno, co Stooq pro daný pár má.
-  const today=new Date(); const d2=today.getFullYear()+String(today.getMonth()+1).padStart(2,"0")+String(today.getDate()).padStart(2,"0");
-  const url="https://stooq.com/q/d/l/?s="+sym+"&d1=19900101&d2="+d2+"&i=d";
-  let text=null;
-  try{ const r=await fetch(url,{cache:"no-store",signal:abortTimeout(15000)}); if(r.ok){ const t=await r.text(); if(t&&t.length>800&&!/exceeded|<!DOCTYPE/i.test(t)) text=t; } }catch(e){}
-  if(!text) text=await fetchTextWithProxies(url);
-  const lines=text.trim().split(/\r?\n/).slice(1);
-  const dates=[],closes=[];
-  lines.forEach(line=>{ const c=line.split(","); const d=c[0], close=parseFloat(c[4]); if(d&&/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(close)) { dates.push(d); closes.push(close); } });
-  if(dates.length<200) throw new Error("Stooq má pro "+pair+" jen "+dates.length+" dní denní historie — buď dočasný výpadek (zkus znovu), nebo tenhle pár/kříž na Stooq nemá delší denní historii. Hlavní páry (EURUSD, GBPUSD, USDJPY…) bývají nejhlubší.");
-  const data={pair,dates,closes,asOf:new Date().toISOString()};
-  try{localStorage.setItem(ck,JSON.stringify({at:Date.now(),data}));}catch(e){ /* historie je velká — v pořádku, jen se příště stáhne znovu */ }
-  return data;
+  try{
+    const r=await fetch("data/fx_daily/"+pair+".json?v="+Math.floor(Date.now()/3600000),{cache:"no-store"});
+    if(r.ok){
+      const data=await r.json();
+      if(data&&Array.isArray(data.dates)&&data.dates.length>200){
+        try{localStorage.setItem(ck,JSON.stringify({at:Date.now(),data}));}catch(e){}
+        return data;
+      }
+    }
+  }catch(e){}
+  // Fallback na dřívější lokální cache (i kdyby teď server soubor chyběl/byl nedostupný).
+  try{const c=JSON.parse(localStorage.getItem(ck)||"null"); if(c&&c.data&&c.data.dates&&c.data.dates.length>200) return c.data;}catch(e){}
+  throw new Error("Denní historie pro "+pair+" zatím není k dispozici — server ji stahuje na pozadí (cron běží jednou denně), zkus to prosím za chvíli nebo zítra.");
 }
 
 // Win rate + průměrný pohyb v KONKRÉTNÍM datumovém okně (den+měsíc, bez roku)
