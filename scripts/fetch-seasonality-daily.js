@@ -1,10 +1,16 @@
 // Denní historie pro "Sezónní okno" — server-side cron, bez API klíče,
-// bez CORS (Node fetch, ne prohlížeč). Stahuje ze Stooq (zdarma) pro
-// všechny standardní páry a píše data/fx_daily/{PAIR}.json ve tvaru
-// {pair,dates,closes,updated}, které klientský fetchFXDailyHistory()
-// v engine.js čte jako statický soubor stejného originu — obchází
-// veřejné CORS proxy (allorigins/corsproxy.io/codetabs), které se
-// pro Stooq ukázaly nespolehlivé při přímém volání z prohlížeče.
+// bez CORS (Node fetch, ne prohlížeč). Stahuje pro všechny standardní páry
+// a píše data/fx_daily/{PAIR}.json ve tvaru {pair,dates,closes,updated},
+// které klientský fetchFXDailyHistory() v engine.js čte jako statický
+// soubor stejného originu — obchází veřejné CORS proxy (allorigins/
+// corsproxy.io/codetabs), které se pro Stooq ukázaly nespolehlivé při
+// přímém volání z prohlížeče.
+//
+// Primární zdroj Stooq, fallback Yahoo Finance (stejný vzor jako
+// fetch-oil.js) — první živý běh z GitHub Actions ukázal, že Stooq vrací
+// HTML/blok stránku místo CSV pro VŠECHNY páry stejně, nejspíš plošný
+// blok datacentrových (Azure) IP adres runnerů, ne problém konkrétního
+// páru nebo query parametrů.
 const fs = require("fs");
 const path = require("path");
 
@@ -19,7 +25,7 @@ function parseCSVRows(text) {
   return text.trim().split(/\r?\n/).slice(1).map((line) => line.split(","));
 }
 
-async function fetchPair(pair) {
+async function fetchPairStooq(pair) {
   const sym = pair.toLowerCase();
   const today = new Date();
   const d2 = today.getFullYear() + String(today.getMonth() + 1).padStart(2, "0") + String(today.getDate()).padStart(2, "0");
@@ -27,12 +33,40 @@ async function fetchPair(pair) {
   const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const text = await r.text();
-  if (!text || /^<!DOCTYPE|exceeded/i.test(text)) throw new Error("neplatná odpověď");
+  if (!text || /^<!DOCTYPE|exceeded/i.test(text)) throw new Error("neplatná odpověď (Stooq nejspíš blokuje datacentrové IP GitHub Actions)");
   const rows = parseCSVRows(text)
     .map((c) => ({ date: c[0], close: parseFloat(c[4]) }))
     .filter((row) => row.date && /^\d{4}-\d{2}-\d{2}$/.test(row.date) && Number.isFinite(row.close));
   if (rows.length < 200) throw new Error(`málo dat (${rows.length} dní)`);
   return { pair, dates: rows.map((row) => row.date), closes: rows.map((row) => row.close), updated: new Date().toISOString() };
+}
+
+// Fallback — stejný vzor jako fromYahoo() ve fetch-oil.js. Yahoo FX symboly
+// mají tvar "EURUSD=X", range=max dá u hlavních párů běžně 20+ let denních dat.
+async function fetchPairYahoo(pair) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${pair}=X?range=max&interval=1d`;
+  const r = await fetch(url, {
+    signal: AbortSignal.timeout(20000),
+    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const j = await r.json();
+  const res = j && j.chart && j.chart.result && j.chart.result[0];
+  const ts = res && res.timestamp, closes = res && res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close;
+  if (!Array.isArray(ts) || !Array.isArray(closes)) throw new Error("neplatná struktura");
+  const rows = ts.map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), close: closes[i] }))
+    .filter((row) => row.close != null && Number.isFinite(row.close));
+  if (rows.length < 200) throw new Error(`málo dat (${rows.length} dní)`);
+  return { pair, dates: rows.map((row) => row.date), closes: rows.map((row) => row.close), updated: new Date().toISOString() };
+}
+
+async function fetchPair(pair) {
+  try {
+    return await fetchPairStooq(pair);
+  } catch (e) {
+    console.log("Stooq selhalo pro", pair, "-", e.message, "- zkouším Yahoo");
+    return await fetchPairYahoo(pair);
+  }
 }
 
 (async () => {
