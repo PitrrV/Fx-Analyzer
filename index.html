@@ -61,9 +61,12 @@ class FXApp extends React.Component{
     super(p);
     const h=React.createElement; this.h=h;
     this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'',
-      winFromM:(()=>new Date().getMonth()+1)(), winFromD:(()=>new Date().getDate())(),
-      winToM:(()=>{const d=new Date();d.setDate(d.getDate()+14);return d.getMonth()+1;})(),
-      winToD:(()=>{const d=new Date();d.setDate(d.getDate()+14);return d.getDate();})(),
+      // Výchozí okno = celý aktuální kalendářní měsíc (1. → poslední den) —
+      // přepočítá se samo při každém otevření appky podle dnešního data,
+      // takže v srpnu naskočí 1.8.–31.8. bez ručního překlikávání.
+      winFromM:(()=>new Date().getMonth()+1)(), winFromD:1,
+      winToM:(()=>new Date().getMonth()+1)(),
+      winToD:(()=>new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate())(),
       winYears:20, winBusy:false, winErr:'', winResult:null, winAvgPath:null, winDaily:null, winChartModal:false };
     this.CUR=(typeof CURRENCIES!=='undefined')?CURRENCIES:['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
     this.NAMES=(typeof NAMES!=='undefined')?NAMES:{};
