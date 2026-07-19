@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260719e"></script>
+<script src="engine.js?v=20260719f"></script>
 <script src="sync.js?v=20260717b"></script>
 <style>
 *{box-sizing:border-box}
@@ -64,7 +64,7 @@ class FXApp extends React.Component{
       winFromM:(()=>new Date().getMonth()+1)(), winFromD:(()=>new Date().getDate())(),
       winToM:(()=>{const d=new Date();d.setDate(d.getDate()+14);return d.getMonth()+1;})(),
       winToD:(()=>{const d=new Date();d.setDate(d.getDate()+14);return d.getDate();})(),
-      winYears:20, winBusy:false, winErr:'', winResult:null, winDaily:null, winChartModal:false };
+      winYears:20, winBusy:false, winErr:'', winResult:null, winAvgPath:null, winDaily:null, winChartModal:false };
     this.CUR=(typeof CURRENCIES!=='undefined')?CURRENCIES:['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
     this.NAMES=(typeof NAMES!=='undefined')?NAMES:{};
     this.D={}; this.PAIRS=[]; this.series={}; this.dates=[]; this.daily=[]; this.cbdi=50; this.PRICES={};
@@ -468,13 +468,14 @@ class FXApp extends React.Component{
   async loadWindowSeasonality(pair){
     const p=pair||this.state.seasPair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD';
     const st=this.state;
-    this.setState({seasPair:p,winBusy:true,winErr:'',winResult:null});
+    this.setState({seasPair:p,winBusy:true,winErr:'',winResult:null,winAvgPath:null});
     try{
       let daily=this.state.winDaily;
       if(!daily||daily.pair!==p) daily=await fetchFXDailyHistory(p);
       const res=computeWindowSeasonality(daily,st.winFromM,st.winFromD,st.winToM,st.winToD,st.winYears);
       if(!res) throw new Error('Pro tohle okno se nenašla dostatečná historická data — zkus širší rozmezí nebo víc let zpět.');
-      this.setState({winDaily:daily,winResult:Object.assign({pair:p},res),winBusy:false});
+      const path=computeWindowAvgPath(daily,st.winFromM,st.winFromD,st.winToM,st.winToD,st.winYears);
+      this.setState({winDaily:daily,winResult:Object.assign({pair:p},res),winAvgPath:path?Object.assign({pair:p},path):null,winBusy:false});
     }catch(e){ this.setState({winErr:String(e&&e.message||e),winBusy:false}); }
   }
   buildHoverChart(){ const self=this,h=this.h;
@@ -1270,27 +1271,36 @@ class FXApp extends React.Component{
         st.winErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:11,lineHeight:1.5}},'⚠ '+st.winErr),
         st.winResult&&st.winResult.pair===cur&&(()=>{
           const R=st.winResult, wrCol=R.wr>=60?T.green:R.wr<=40?T.red:T.amber;
-          const latest=R.results[0];
-          let detail=null;
-          if(st.winDaily&&st.winDaily.pair===cur&&latest){
-            const dd=st.winDaily;
-            let a=dd.dates.findIndex(d=>d>=latest.from); if(a<0) a=dd.dates.length-1;
-            let b=-1; for(let i=dd.dates.length-1;i>=0;i--){ if(dd.dates[i]<=latest.to){ b=i; break; } }
-            if(b>=a){
-              const padI=10, i0=Math.max(0,a-padI), i1=Math.min(dd.dates.length-1,b+padI);
-              detail={dates:dd.dates.slice(i0,i1+1),closes:dd.closes.slice(i0,i1+1)};
-            }
-          }
+          const AP=(st.winAvgPath&&st.winAvgPath.pair===cur)?st.winAvgPath:null;
           return h('div',{style:{marginTop:16}},
             h('div',{style:{display:'flex',gap:22,flexWrap:'wrap',alignItems:'baseline',padding:'14px 16px',background:wrCol+'14',border:'1px solid '+wrCol+'33',borderRadius:12}},
               h('div',null,h('div',{style:self.mono({fontSize:26,fontWeight:800,color:wrCol})},R.wr+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'win rate ('+R.n+' let)')),
               h('div',null,h('div',{style:self.mono({fontSize:20,fontWeight:700,color:R.avg>=0?T.green:T.red})},(R.avg>0?'+':'')+R.avg+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'průměrný pohyb')),
               h('div',{style:{fontSize:11,color:T.dim,lineHeight:1.5,flex:1,minWidth:200}},cur+' šel v tomhle okně nahoru v '+R.results.filter(r=>r.ret>0).length+' z '+R.n+' let. ',(R.wr>=50)!==(R.avg>=0)&&h('span',{style:{color:T.faint}},'Win rate a průměrný pohyb tu ukazují opačný směr — '+(R.wr>=50?'víc let bylo v plusu, ale ztrátové roky byly v průměru výraznější než ziskové':'víc let bylo v mínusu, ale ziskové roky byly v průměru výraznější než ztrátové')+', takže průměr táhne na '+(R.avg<0?'mínus':'plus')+'.'))),
             h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(90px,1fr))',gap:6,marginTop:10}},R.results.map(r=>h('div',{key:r.year,title:r.from+' → '+r.to,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:8,padding:'7px 9px',textAlign:'center'}},h('div',{style:{fontSize:9.5,color:T.faint}},r.year),h('div',{style:self.mono({fontSize:12,fontWeight:700,color:r.ret>=0?T.green:T.red})},(r.ret>0?'+':'')+r.ret+'%')))),
-            detail&&h('div',{style:{marginTop:16,paddingTop:14,borderTop:'1px solid #ffffff0f'}},
-              h('div',{style:{fontSize:11.5,fontWeight:700,color:T.dim,marginBottom:4}},'Detail vybraného období — '+latest.from+' → '+latest.to+' ('+latest.year+')'),
-              h('div',{style:{fontSize:10.5,color:T.faint,lineHeight:1.5,marginBottom:8}},'Tohle je jen nejnovější jeden ročník ('+latest.year+': '+(latest.ret>0?'+':'')+latest.ret+'%), ne průměr — win rate '+R.wr+'% je spočítaný ze všech '+R.n+' let dohromady, takže se od tohohle konkrétního roku klidně může (a často bude) lišit.'),
-              h(self.PriceMeasureChart,{dates:detail.dates,closes:detail.closes,height:200,highlights:[{from:latest.from,to:latest.to}]})));
+            AP&&AP.avg&&AP.avg.length>1&&(()=>{
+              const cum=AP.avg;
+              const W=720,H=170,PL=10,PR=40,PT=18,PB=26;
+              const lo0=Math.min(0,...cum), hi0=Math.max(0,...cum), pad=((hi0-lo0)||1)*0.2;
+              const lo=lo0-pad, hi=hi0+pad, span=(hi-lo)||1;
+              const X=i=>PL+(W-PL-PR)*(i/(cum.length-1)), Y=v=>PT+(H-PT-PB)*(1-(v-lo)/span);
+              const pathD=self.smooth(cum.map((v,i)=>[X(i),Y(v)]));
+              const zeroY=Y(0), endUp=cum[cum.length-1]>=0, col=endUp?T.green:T.red;
+              const dLbl=d=>{ const dt=new Date(d); return isNaN(dt)?'':(dt.getDate()+'.'+(dt.getMonth()+1)+'.'); };
+              const nLbl=Math.min(cum.length,10), lblStep=Math.max(1,Math.round((cum.length-1)/(nLbl-1))||1);
+              return h('div',{style:{marginTop:16,paddingTop:14,borderTop:'1px solid #ffffff0f'}},
+                h('div',{style:{fontSize:11.5,fontWeight:700,color:T.dim,marginBottom:4}},'Průměrný průběh vybraného období — '+AP.n+' let'),
+                h('div',{style:{fontSize:10.5,color:T.faint,lineHeight:1.5,marginBottom:8}},'Kumulativní % pohyb den po dni od začátku okna, zprůměrovaný přes všech '+AP.n+' let (ne jeden konkrétní rok) — stejný výpočet, ze kterého vychází win rate a průměr výše.'),
+                h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',overflow:'visible'}},
+                  zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'#2a3242',strokeWidth:1}),
+                  h('text',{x:W-PR+6,y:zeroY+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},'0%'),
+                  h('path',{d:pathD+' L '+X(cum.length-1)+' '+zeroY+' L '+X(0)+' '+zeroY+' Z',fill:col,fillOpacity:.12}),
+                  h('path',{d:pathD,fill:'none',stroke:col,strokeWidth:2.5,strokeLinecap:'round',strokeLinejoin:'round'}),
+                  cum.map((v,i)=>(i%lblStep===0||i===cum.length-1)&&h('g',{key:i},
+                    h('circle',{cx:X(i),cy:Y(v),r:2.6,fill:col,stroke:'#0b0d13',strokeWidth:1.2}),
+                    h('text',{x:X(i),y:Y(v)-9,fontSize:8,textAnchor:'middle',fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},(v>0?'+':'')+v.toFixed(1)),
+                    h('text',{x:X(i),y:H-PB+15,fontSize:8.5,textAnchor:'middle',fill:T.faint},AP.dates[i]?dLbl(AP.dates[i]):'')))));
+            })());
         })(),
         st.winDaily&&st.winDaily.pair===cur&&(()=>{
           const dd=st.winDaily, lastY=new Date(dd.dates[dd.dates.length-1]).getFullYear(), cutY=lastY-st.winYears+1;
