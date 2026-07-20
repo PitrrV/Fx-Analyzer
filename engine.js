@@ -2549,19 +2549,47 @@ function buildDailySeries(currency,windowDays){
   }
   return {dates,values};
 }
-function getCOTNetSeries(currency,limit=104){
-  // Jen týdny s raw daty (levNet) — dřívější fallback na scores[c] míchal do
+function getCOTNetSeries(currency,limit=104,category='lev'){
+  // Jen týdny s raw daty (levNet/assetNet) — dřívější fallback na scores[c] míchal do
   // JEDNÉ křivky dvě jednotky (net kontrakty/10k vs. skóre −3..+3) a dělal
   // falešné zuby v historii. Týden bez raw se vynechá (drobná mezera v ose,
-  // ale konzistentní jednotka). Jednotka: net pozice lev. funds ×10 tis. kontraktů.
+  // ale konzistentní jednotka). category: 'lev' (Leveraged Funds, výchozí — hedge
+  // fondy/CTA, rychlý trend money) nebo 'asset' (Asset Managers — reálné peníze,
+  // pomalejší/strukturální pozicování; u JPY je to kategorie, kde protiaudit
+  // (2026-07) našel statisticky robustní kontrariánský signál, na rozdíl od
+  // Leveraged Funds samotných).
+  const field=category==='asset'?'assetNet':'levNet';
   const hist=loadCOTHistory();
   const all=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-limit);
   const dates=[],values=[];
   for(const d of all){
     const r=hist[d]?.raw?.[currency];
-    if(r&&Number.isFinite(r.levNet)){ dates.push(d); values.push(r.levNet/10000); }
+    if(r&&Number.isFinite(r[field])){ dates.push(d); values.push(r[field]/10000); }
   }
-  return {dates,values,unit:"net lev. funds · ×10 tis. kontraktů"};
+  return {dates,values,unit:(category==='asset'?"net asset managers":"net lev. funds")+" · ×10 tis. kontraktů"};
+}
+// Percentil (0-100) posledního COT skóre PRO JEDNU KATEGORII SAMOSTATNĚ (na rozdíl
+// od getCOTPercentile, který bere appkou používané kombinované skóre lev*0.70+asset*0.30).
+// Skóre dopočítáno z uloženého ratio (long-short)/(long+short) přes stejný vzorec jako
+// cotNetScore (clamp(ratio*6,-3,3)) — ratio je v raw historii vždy, i pro bulk import.
+// POZOR: na rozdíl od getCOTPercentile NEMÁ server-snapshot fallback (ten je jen pro
+// kombinované skóre), takže se počítá z lokální (per-zařízení) cot_hist historie —
+// hodnota se mezi zařízeními může mírně lišit podle toho, kolik historie má dané
+// zařízení naimportované/nasbírané.
+function getCOTCategoryPercentile(currency,category='lev',limit=104){
+  try{
+    const field=category==='asset'?'assetRatio':'levRatio';
+    const hist=loadCOTHistory();
+    const dates=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-limit);
+    const scores=[];
+    for(const d of dates){
+      const r=hist[d]?.raw?.[currency];
+      if(r&&Number.isFinite(r[field])) scores.push(Math.max(-3,Math.min(3,r[field]*6)));
+    }
+    if(scores.length<12) return null;
+    const cur=scores[scores.length-1], h2=scores.slice(0,-1);
+    return Math.round((h2.filter(s=>s<=cur).length/h2.length)*100);
+  }catch(e){return null;}
 }
 function getRetailPairData(pair,sentData={}){
   const bLong=Number(sentData?.[pair.base] ?? 50);

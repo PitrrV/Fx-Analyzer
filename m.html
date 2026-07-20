@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260719f"></script>
+<script src="engine.js?v=20260720a"></script>
 <script src="sync.js?v=20260717b"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -664,6 +664,7 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
   let histN=0; try{histN=Object.keys(loadCOTHistory()||{}).length;}catch(e){}
   const cotAge=meta&&meta.asOf?Math.round((Date.now()-new Date(meta.asOf).getTime())/86400000):null;
   const [range,setRange]=useState("1Y");
+  const [category,setCategory]=useState("lev");
   const RN={"6M":26,"1Y":52,"2Y":104,"ALL":520};
   // Scanner příležitostí (dav přeplněný proti COT + fundamentu) — sdílená logika s PC
   const rl=(data&&data.retailLatest)||null;
@@ -696,12 +697,13 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
       {/* COT skóre + percentil */}
       <div className="card">
         <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>📊 COT skóre & percentil <span className="muted" style={{fontWeight:400,fontSize:11}}>(okno 104 týdnů)</span></div>
-        <div className="muted" style={{fontSize:10.5,marginBottom:8,lineHeight:1.5}}>p = kde je dnešní COT skóre v historii (0–100). Δ v závorce = posun oproti minulému staženému COT (týdenní). Skóre vpravo = aktuální síla měny podle COT (−10…+10), ne změna.</div>
-        {CURRENCIES.map(c=>{const d=D[c]||{};const ext=d.cotPct>=85||d.cotPct<=15;const col=ext?"var(--amber)":"var(--dim)";const dl=d.cotPctDelta;return (
-          <div key={c} style={{display:"grid",gridTemplateColumns:"54px 1fr 78px 44px",alignItems:"center",gap:8,padding:"6px 0"}}>
+        <div className="muted" style={{fontSize:10.5,marginBottom:8,lineHeight:1.5}}>p = kde je dnešní COT skóre v historii (0–100), kombinace 70 % leveraged funds + 30 % asset managers. Δ v závorce = posun oproti minulému staženému COT (týdenní). <span style={{color:"#bf4cff"}}>AM</span> = percentil jen z asset managers samostatně (u JPY je tohle kategorie s ověřeným kontrariánským signálem, ne blend vlevo). Skóre vpravo = aktuální síla měny podle COT (−10…+10), ne změna.</div>
+        {CURRENCIES.map(c=>{const d=D[c]||{};const ext=d.cotPct>=85||d.cotPct<=15;const col=ext?"var(--amber)":"var(--dim)";const dl=d.cotPctDelta;let amPct=null;try{amPct=getCOTCategoryPercentile(c,"asset");}catch(e){}const amExt=amPct!=null&&(amPct>=85||amPct<=15);return (
+          <div key={c} style={{display:"grid",gridTemplateColumns:"54px 1fr 78px 60px 44px",alignItems:"center",gap:6,padding:"6px 0"}}>
             <span className="mono" style={{fontSize:12,fontWeight:700}}>{FLAGS[c]} {c}</span>
             <div style={{height:7,background:"var(--inp)",border:"1px solid #161b27",borderRadius:4,overflow:"hidden"}}><div style={{height:"100%",width:(d.cotPct||50)+"%",background:col,opacity:.85,borderRadius:4}}/></div>
             <span className="mono" style={{fontSize:11,fontWeight:700,color:col,textAlign:"right"}}>{(d.cotPct||50)}p{ext?" ⚑":""}{dl&&dl.delta!==0&&<span style={{marginLeft:4,fontWeight:700,color:dl.delta>0?"var(--green)":"var(--red)"}}>{"("+(dl.delta>0?"+":"")+dl.delta+")"}</span>}</span>
+            <span className="mono" style={{fontSize:10,fontWeight:700,color:amExt?"#bf4cff":"var(--faint)",textAlign:"right"}}>{amPct==null?"AM —":"AM "+amPct+"p"+(amExt?" ⚑":"")}</span>
             <b className="mono" style={{fontSize:13,color:cScore(cot[c]||0),textAlign:"right"}}>{fmtNum(cot[c]||0)}</b>
           </div>
         );})}
@@ -725,16 +727,19 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
       {/* COT net vývoj v čase */}
       <div className="card">
         <div className="between" style={{marginBottom:8}}>
-          <div style={{fontWeight:800,fontSize:13}}>📈 Vývoj COT (net)</div>
+          <div style={{fontWeight:800,fontSize:13}}>📈 Vývoj COT (net) · {category==="asset"?"Asset Managers":"Leveraged Funds"}</div>
           <div className="row" style={{gap:5}}>{["6M","1Y","2Y","ALL"].map(l=>(
             <button key={l} onClick={()=>setRange(l)} className="mono" style={{border:"1px solid "+(range===l?"#5e7cfb88":"var(--line)"),background:range===l?"rgba(94,124,251,.1)":"#0c0f16",color:range===l?"#cdd6ff":"var(--dim)",borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:700,cursor:"pointer"}}>{l}</button>
           ))}</div>
         </div>
+        <div className="row" style={{gap:5,marginBottom:10}}>{[["lev","LF"],["asset","AM"]].map(([v,l])=>(
+          <button key={v} onClick={()=>setCategory(v)} className="mono" style={{border:"1px solid "+(category===v?"#bf4cff88":"var(--line)"),background:category===v?"rgba(191,76,255,.12)":"#0c0f16",color:category===v?"#e3b8ff":"var(--dim)",borderRadius:8,padding:"4px 9px",fontSize:10,fontWeight:700,cursor:"pointer"}}>{l}</button>
+        ))}</div>
         <div className="grid2">
-          {CURRENCIES.map(c=>{const d=D[c]||{};const series=getCOTNetSeries(c,RN[range]||52).values;return (
+          {CURRENCIES.map(c=>{const d=D[c]||{};const series=getCOTNetSeries(c,RN[range]||52,category).values;const last=series.length?series[series.length-1]:null;return (
             <div key={c} style={{background:"var(--inp)",border:"1px solid #161b27",borderRadius:12,padding:"8px 10px"}}>
-              <div className="between" style={{marginBottom:2}}><b className="mono" style={{fontSize:12}}>{c}</b><span className="mono" style={{fontSize:10.5,fontWeight:700,color:(d.inst>=0?"var(--green)":"var(--red)")}}>{(d.inst>0?"net +":"net ")+d.inst}</span></div>
-              <MiniChart values={series} color={d.inst>=0?"#2ed3a0":"#f2606e"} height={42}/>
+              <div className="between" style={{marginBottom:2}}><b className="mono" style={{fontSize:12}}>{c}</b><span className="mono" style={{fontSize:10.5,fontWeight:700,color:(last==null||last>=0)?"var(--green)":"var(--red)"}}>{last==null?"—":((last>0?"net +":"net ")+last.toFixed(1))}</span></div>
+              <MiniChart values={series} color={(last==null||last>=0)?"#2ed3a0":"#f2606e"} height={42}/>
             </div>
           );})}
         </div>
