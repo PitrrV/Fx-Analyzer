@@ -1,0 +1,870 @@
+{
+  "updated": "2026-07-20T10:33:45.710Z",
+  "source": "data/calibration_replay.json (atribuce komponent, VŠECHNY měny)",
+  "window": {
+    "backfillFrom": "2024-03-04",
+    "warmupWeeks": 12,
+    "from": "2024-05-27",
+    "to": "2026-07-19",
+    "daysReconstructed": 784,
+    "splitAt": "2025-06-23"
+  },
+  "table": {
+    "USD": {
+      "pairs": [
+        "EURUSD",
+        "USDJPY",
+        "GBPUSD",
+        "AUDUSD",
+        "USDCAD",
+        "USDCHF",
+        "NZDUSD"
+      ],
+      "score": {
+        "n": 21621,
+        "wr": 48.7,
+        "pf": 0.862,
+        "avg": -0.0555
+      },
+      "components": {
+        "fund_data": {
+          "n": 21541,
+          "wr": 50.5,
+          "pf": 1.043,
+          "avg": 0.0158,
+          "stability": {
+            "flips": 21,
+            "nonZero": 761,
+            "avgAbs": 0.173
+          }
+        },
+        "policy": {
+          "n": 11140,
+          "wr": 46.1,
+          "pf": 0.872,
+          "avg": -0.0527,
+          "stability": {
+            "flips": 2,
+            "nonZero": 747,
+            "avgAbs": 0.154
+          }
+        },
+        "yield": {
+          "n": 21377,
+          "wr": 51.2,
+          "pf": 0.955,
+          "avg": -0.0175,
+          "stability": {
+            "flips": 2,
+            "nonZero": 779,
+            "avgAbs": 0.113
+          }
+        },
+        "cot": {
+          "n": 21553,
+          "wr": 48.9,
+          "pf": 0.814,
+          "avg": -0.0772,
+          "stability": {
+            "flips": 4,
+            "nonZero": 777,
+            "avgAbs": 0.411
+          }
+        },
+        "sent": {
+          "n": 118,
+          "wr": 67.8,
+          "pf": 3.214,
+          "avg": 0.3585,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        },
+        "season": {
+          "n": 16151,
+          "wr": 52.8,
+          "pf": 1.422,
+          "avg": 0.1348,
+          "stability": {
+            "flips": 4,
+            "nonZero": 429,
+            "avgAbs": 0.023
+          }
+        },
+        "oil": {
+          "n": 21545,
+          "wr": 47.7,
+          "pf": 0.939,
+          "avg": -0.0237,
+          "stability": {
+            "flips": 35,
+            "nonZero": 778,
+            "avgAbs": 0.246
+          }
+        },
+        "risk": {
+          "n": 9380,
+          "wr": 50.6,
+          "pf": 0.975,
+          "avg": -0.0107,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        }
+      }
+    },
+    "EUR": {
+      "pairs": [
+        "EURUSD",
+        "EURGBP",
+        "EURCHF",
+        "EURAUD",
+        "EURCAD",
+        "EURJPY",
+        "EURNZD"
+      ],
+      "score": {
+        "n": 21641,
+        "wr": 48,
+        "pf": 0.893,
+        "avg": -0.0331
+      },
+      "components": {
+        "fund_data": {
+          "n": 21414,
+          "wr": 47.6,
+          "pf": 0.879,
+          "avg": -0.0378,
+          "stability": {
+            "flips": 20,
+            "nonZero": 758,
+            "avgAbs": 0.098
+          }
+        },
+        "policy": {
+          "n": 21119,
+          "wr": 49.3,
+          "pf": 1.095,
+          "avg": 0.027,
+          "stability": {
+            "flips": 0,
+            "nonZero": 783,
+            "avgAbs": 0.471
+          }
+        },
+        "yield": {
+          "n": 21169,
+          "wr": 51.7,
+          "pf": 0.946,
+          "avg": -0.0164,
+          "stability": {
+            "flips": 6,
+            "nonZero": 771,
+            "avgAbs": 0.143
+          }
+        },
+        "cot": {
+          "n": 21225,
+          "wr": 48.2,
+          "pf": 0.897,
+          "avg": -0.0321,
+          "stability": {
+            "flips": 25,
+            "nonZero": 777,
+            "avgAbs": 0.507
+          }
+        },
+        "sent": {
+          "n": 118,
+          "wr": 55.1,
+          "pf": 3.15,
+          "avg": 0.2966,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        },
+        "season": {
+          "n": 14524,
+          "wr": 52.9,
+          "pf": 1.367,
+          "avg": 0.091,
+          "stability": {
+            "flips": 5,
+            "nonZero": 512,
+            "avgAbs": 0.02
+          }
+        },
+        "oil": {
+          "n": 6170,
+          "wr": 48.5,
+          "pf": 0.944,
+          "avg": -0.0171,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        },
+        "risk": {
+          "n": 9380,
+          "wr": 50.7,
+          "pf": 1.063,
+          "avg": 0.0201,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        }
+      }
+    },
+    "GBP": {
+      "pairs": [
+        "GBPUSD",
+        "EURGBP",
+        "GBPCHF",
+        "GBPJPY",
+        "GBPAUD",
+        "GBPCAD",
+        "GBPNZD"
+      ],
+      "score": {
+        "n": 21597,
+        "wr": 47.6,
+        "pf": 0.8,
+        "avg": -0.0682
+      },
+      "components": {
+        "fund_data": {
+          "n": 21549,
+          "wr": 46.5,
+          "pf": 0.848,
+          "avg": -0.0506,
+          "stability": {
+            "flips": 19,
+            "nonZero": 768,
+            "avgAbs": 0.286
+          }
+        },
+        "policy": {
+          "n": 10961,
+          "wr": 45.2,
+          "pf": 0.776,
+          "avg": -0.0755,
+          "stability": {
+            "flips": 2,
+            "nonZero": 747,
+            "avgAbs": 0.16
+          }
+        },
+        "yield": {
+          "n": 21521,
+          "wr": 53,
+          "pf": 1.054,
+          "avg": 0.0162,
+          "stability": {
+            "flips": 18,
+            "nonZero": 742,
+            "avgAbs": 0.123
+          }
+        },
+        "cot": {
+          "n": 21269,
+          "wr": 49.9,
+          "pf": 0.902,
+          "avg": -0.0318,
+          "stability": {
+            "flips": 39,
+            "nonZero": 770,
+            "avgAbs": 0.435
+          }
+        },
+        "sent": {
+          "n": 293,
+          "wr": 30,
+          "pf": 0.473,
+          "avg": -0.1589,
+          "stability": {
+            "flips": 0,
+            "nonZero": 12,
+            "avgAbs": 0.068
+          }
+        },
+        "season": {
+          "n": 15632,
+          "wr": 51.9,
+          "pf": 1.15,
+          "avg": 0.0427,
+          "stability": {
+            "flips": 4,
+            "nonZero": 477,
+            "avgAbs": 0.02
+          }
+        },
+        "oil": {
+          "n": 6170,
+          "wr": 49.1,
+          "pf": 0.947,
+          "avg": -0.017,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        },
+        "risk": {
+          "n": 9380,
+          "wr": 49.5,
+          "pf": 1.022,
+          "avg": 0.0073,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        }
+      }
+    },
+    "JPY": {
+      "pairs": [
+        "USDJPY",
+        "EURJPY",
+        "GBPJPY",
+        "AUDJPY",
+        "NZDJPY",
+        "CADJPY",
+        "CHFJPY"
+      ],
+      "score": {
+        "n": 21659,
+        "wr": 46.2,
+        "pf": 0.701,
+        "avg": -0.1507
+      },
+      "components": {
+        "fund_data": {
+          "n": 21498,
+          "wr": 45.2,
+          "pf": 0.78,
+          "avg": -0.1058,
+          "stability": {
+            "flips": 9,
+            "nonZero": 778,
+            "avgAbs": 0.271
+          }
+        },
+        "policy": {
+          "n": 19959,
+          "wr": 45.1,
+          "pf": 0.803,
+          "avg": -0.0907,
+          "stability": {
+            "flips": 1,
+            "nonZero": 749,
+            "avgAbs": 0.352
+          }
+        },
+        "yield": {
+          "n": 21673,
+          "wr": 56.5,
+          "pf": 1.175,
+          "avg": 0.0689,
+          "stability": {
+            "flips": 0,
+            "nonZero": 783,
+            "avgAbs": 0.428
+          }
+        },
+        "cot": {
+          "n": 21437,
+          "wr": 48.6,
+          "pf": 0.799,
+          "avg": -0.0956,
+          "stability": {
+            "flips": 14,
+            "nonZero": 763,
+            "avgAbs": 0.647
+          }
+        },
+        "sent": {
+          "n": 122,
+          "wr": 61.5,
+          "pf": 3.168,
+          "avg": 0.3731,
+          "stability": {
+            "flips": 0,
+            "nonZero": 2,
+            "avgAbs": 0.06
+          }
+        },
+        "season": {
+          "n": 14855,
+          "wr": 53.1,
+          "pf": 1.293,
+          "avg": 0.1124,
+          "stability": {
+            "flips": 8,
+            "nonZero": 517,
+            "avgAbs": 0.022
+          }
+        },
+        "oil": {
+          "n": 6170,
+          "wr": 49,
+          "pf": 0.963,
+          "avg": -0.0165,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        },
+        "risk": {
+          "n": 13132,
+          "wr": 49.8,
+          "pf": 0.995,
+          "avg": -0.0022,
+          "stability": {
+            "flips": 48,
+            "nonZero": 477,
+            "avgAbs": 0.792
+          }
+        }
+      }
+    },
+    "AUD": {
+      "pairs": [
+        "AUDUSD",
+        "EURAUD",
+        "GBPAUD",
+        "AUDCAD",
+        "AUDJPY",
+        "AUDNZD",
+        "AUDCHF"
+      ],
+      "score": {
+        "n": 21637,
+        "wr": 48.2,
+        "pf": 0.862,
+        "avg": -0.0529
+      },
+      "components": {
+        "fund_data": {
+          "n": 21521,
+          "wr": 48,
+          "pf": 0.882,
+          "avg": -0.0446,
+          "stability": {
+            "flips": 19,
+            "nonZero": 771,
+            "avgAbs": 0.191
+          }
+        },
+        "policy": {
+          "n": 13853,
+          "wr": 45.6,
+          "pf": 0.751,
+          "avg": -0.1063,
+          "stability": {
+            "flips": 3,
+            "nonZero": 658,
+            "avgAbs": 0.167
+          }
+        },
+        "yield": {
+          "n": 21437,
+          "wr": 52.4,
+          "pf": 1.03,
+          "avg": 0.0106,
+          "stability": {
+            "flips": 16,
+            "nonZero": 761,
+            "avgAbs": 0.297
+          }
+        },
+        "cot": {
+          "n": 21437,
+          "wr": 50.5,
+          "pf": 1.005,
+          "avg": 0.0017,
+          "stability": {
+            "flips": 3,
+            "nonZero": 784,
+            "avgAbs": 0.73
+          }
+        },
+        "sent": {
+          "n": 118,
+          "wr": 63.6,
+          "pf": 5.055,
+          "avg": 0.306,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        },
+        "season": {
+          "n": 14080,
+          "wr": 51.8,
+          "pf": 1.184,
+          "avg": 0.0643,
+          "stability": {
+            "flips": 4,
+            "nonZero": 540,
+            "avgAbs": 0.02
+          }
+        },
+        "oil": {
+          "n": 6170,
+          "wr": 48.8,
+          "pf": 0.958,
+          "avg": -0.0153,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        },
+        "risk": {
+          "n": 12568,
+          "wr": 51.2,
+          "pf": 1.032,
+          "avg": 0.012,
+          "stability": {
+            "flips": 48,
+            "nonZero": 477,
+            "avgAbs": 0.883
+          }
+        }
+      }
+    },
+    "CAD": {
+      "pairs": [
+        "USDCAD",
+        "EURCAD",
+        "GBPCAD",
+        "AUDCAD",
+        "NZDCAD",
+        "CADJPY",
+        "CADCHF"
+      ],
+      "score": {
+        "n": 21629,
+        "wr": 50.1,
+        "pf": 0.98,
+        "avg": -0.006
+      },
+      "components": {
+        "fund_data": {
+          "n": 21477,
+          "wr": 49.1,
+          "pf": 0.946,
+          "avg": -0.0169,
+          "stability": {
+            "flips": 22,
+            "nonZero": 755,
+            "avgAbs": 0.172
+          }
+        },
+        "policy": {
+          "n": 11340,
+          "wr": 50.4,
+          "pf": 1.029,
+          "avg": 0.009,
+          "stability": {
+            "flips": 0,
+            "nonZero": 783,
+            "avgAbs": 0.188
+          }
+        },
+        "yield": {
+          "n": 21277,
+          "wr": 50.5,
+          "pf": 0.983,
+          "avg": -0.0054,
+          "stability": {
+            "flips": 10,
+            "nonZero": 762,
+            "avgAbs": 0.087
+          }
+        },
+        "cot": {
+          "n": 21296,
+          "wr": 51.5,
+          "pf": 1.093,
+          "avg": 0.0269,
+          "stability": {
+            "flips": 0,
+            "nonZero": 784,
+            "avgAbs": 1.184
+          }
+        },
+        "sent": {
+          "n": 170,
+          "wr": 73.5,
+          "pf": 4.986,
+          "avg": 0.3255,
+          "stability": {
+            "flips": 0,
+            "nonZero": 5,
+            "avgAbs": 0.06
+          }
+        },
+        "season": {
+          "n": 15549,
+          "wr": 50.6,
+          "pf": 1.067,
+          "avg": 0.0196,
+          "stability": {
+            "flips": 5,
+            "nonZero": 516,
+            "avgAbs": 0.02
+          }
+        },
+        "oil": {
+          "n": 21665,
+          "wr": 49.9,
+          "pf": 0.953,
+          "avg": -0.0146,
+          "stability": {
+            "flips": 39,
+            "nonZero": 783,
+            "avgAbs": 1.055
+          }
+        },
+        "risk": {
+          "n": 13132,
+          "wr": 51.1,
+          "pf": 1.083,
+          "avg": 0.0258,
+          "stability": {
+            "flips": 48,
+            "nonZero": 477,
+            "avgAbs": 0.542
+          }
+        }
+      }
+    },
+    "CHF": {
+      "pairs": [
+        "USDCHF",
+        "EURCHF",
+        "GBPCHF",
+        "AUDCHF",
+        "NZDCHF",
+        "CADCHF",
+        "CHFJPY"
+      ],
+      "score": {
+        "n": 21663,
+        "wr": 48.9,
+        "pf": 0.829,
+        "avg": -0.0604
+      },
+      "components": {
+        "fund_data": {
+          "n": 21561,
+          "wr": 48.3,
+          "pf": 0.832,
+          "avg": -0.0592,
+          "stability": {
+            "flips": 1,
+            "nonZero": 784,
+            "avgAbs": 0.237
+          }
+        },
+        "policy": {
+          "n": 10276,
+          "wr": 46.3,
+          "pf": 0.728,
+          "avg": -0.1043,
+          "stability": {
+            "flips": 0,
+            "nonZero": 784,
+            "avgAbs": 0.171
+          }
+        },
+        "yield": {
+          "n": 21465,
+          "wr": 50.6,
+          "pf": 0.89,
+          "avg": -0.0378,
+          "stability": {
+            "flips": 0,
+            "nonZero": 784,
+            "avgAbs": 0.175
+          }
+        },
+        "cot": {
+          "n": 21174,
+          "wr": 49.8,
+          "pf": 0.847,
+          "avg": -0.0535,
+          "stability": {
+            "flips": 4,
+            "nonZero": 784,
+            "avgAbs": 0.855
+          }
+        },
+        "sent": {
+          "n": 118,
+          "wr": 57.6,
+          "pf": 2.576,
+          "avg": 0.3261,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        },
+        "season": {
+          "n": 16003,
+          "wr": 50,
+          "pf": 1.145,
+          "avg": 0.0445,
+          "stability": {
+            "flips": 4,
+            "nonZero": 465,
+            "avgAbs": 0.02
+          }
+        },
+        "oil": {
+          "n": 6170,
+          "wr": 49.4,
+          "pf": 0.951,
+          "avg": -0.0168,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        },
+        "risk": {
+          "n": 13132,
+          "wr": 50.6,
+          "pf": 1.094,
+          "avg": 0.0312,
+          "stability": {
+            "flips": 48,
+            "nonZero": 477,
+            "avgAbs": 0.593
+          }
+        }
+      }
+    },
+    "NZD": {
+      "pairs": [
+        "NZDUSD",
+        "EURNZD",
+        "GBPNZD",
+        "AUDNZD",
+        "NZDCAD",
+        "NZDJPY",
+        "NZDCHF"
+      ],
+      "score": {
+        "n": 21629,
+        "wr": 47,
+        "pf": 0.778,
+        "avg": -0.0881
+      },
+      "components": {
+        "fund_data": {
+          "n": 21569,
+          "wr": 47.3,
+          "pf": 0.851,
+          "avg": -0.0568,
+          "stability": {
+            "flips": 14,
+            "nonZero": 779,
+            "avgAbs": 0.339
+          }
+        },
+        "policy": {
+          "n": 10008,
+          "wr": 49,
+          "pf": 0.964,
+          "avg": -0.0132,
+          "stability": {
+            "flips": 2,
+            "nonZero": 748,
+            "avgAbs": 0.165
+          }
+        },
+        "yield": {
+          "n": 21513,
+          "wr": 48.4,
+          "pf": 0.907,
+          "avg": -0.0344,
+          "stability": {
+            "flips": 0,
+            "nonZero": 764,
+            "avgAbs": 0.303
+          }
+        },
+        "cot": {
+          "n": 21415,
+          "wr": 48.3,
+          "pf": 0.844,
+          "avg": -0.0601,
+          "stability": {
+            "flips": 5,
+            "nonZero": 777,
+            "avgAbs": 0.78
+          }
+        },
+        "sent": {
+          "n": 431,
+          "wr": 79.4,
+          "pf": 13.197,
+          "avg": 0.6658,
+          "stability": {
+            "flips": 1,
+            "nonZero": 22,
+            "avgAbs": 0.076
+          }
+        },
+        "season": {
+          "n": 13832,
+          "wr": 51.9,
+          "pf": 1.256,
+          "avg": 0.0864,
+          "stability": {
+            "flips": 4,
+            "nonZero": 478,
+            "avgAbs": 0.02
+          }
+        },
+        "oil": {
+          "n": 6170,
+          "wr": 49.5,
+          "pf": 0.959,
+          "avg": -0.0162,
+          "stability": {
+            "flips": 0,
+            "nonZero": 0,
+            "avgAbs": 0
+          }
+        },
+        "risk": {
+          "n": 12568,
+          "wr": 47.6,
+          "pf": 0.812,
+          "avg": -0.0802,
+          "stability": {
+            "flips": 48,
+            "nonZero": 477,
+            "avgAbs": 0.825
+          }
+        }
+      }
+    }
+  }
+}
