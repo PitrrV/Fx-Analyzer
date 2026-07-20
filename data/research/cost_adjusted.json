@@ -1,0 +1,32 @@
+{
+  "updated": "2026-07-20T16:08:06.422Z",
+  "methodology": "spread = konzervativní pipy/páry (0.15-0.4 bps roundtrip), swap = 0.008%/den plochá přirážka × horizont dní",
+  "old": {
+    "gross": {
+      "n": 86772,
+      "wr": 48.1,
+      "pf": 0.829,
+      "avg": -0.064
+    },
+    "net": {
+      "n": 86772,
+      "wr": 44.6,
+      "pf": 0.685,
+      "avg": -0.1292
+    }
+  },
+  "new": {
+    "gross": {
+      "n": 86772,
+      "wr": 49.8,
+      "pf": 1.037,
+      "avg": 0.0123
+    },
+    "net": {
+      "n": 86772,
+      "wr": 46.4,
+      "pf": 0.857,
+      "avg": -0.0529
+    }
+  }
+}
