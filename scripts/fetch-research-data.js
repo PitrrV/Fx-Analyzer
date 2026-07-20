@@ -38,7 +38,11 @@ const FRED_SERIES = {
   cpi_JP: "CPALTT01JPM659N", cpi_AU: "CPALTT01AUQ659N", cpi_CA: "CPALTT01CAM659N",
   cpi_CH: "CPALTT01CHM659N", cpi_NZ: "CPALTT01NZQ659N",
   // komodity — měsíční IMF
-  copper: "PCOPPUSDM", iron_ore: "PIORECRUSDM", gold_imf: "PGOLDUSDM",
+  copper: "PCOPPUSDM", iron_ore: "PIORECRUSDM",
+  // CPI INDEXY (YoY dopočítá analýza) — growth série končí dřív/neexistují
+  cpix_US: "CPIAUCSL", cpix_EA: "CP0000EZ19M086NEST", cpix_GB: "GBRCPIALLMINMEI",
+  cpix_JP: "JPNCPIALLMINMEI", cpix_AU: "AUSCPIALLQINMEI", cpix_CA: "CANCPIALLMINMEI",
+  cpix_CH: "CHECPIALLMINMEI", cpix_NZ: "NZLCPIALLQINMEI",
 };
 
 const COT_MARKETS = {
@@ -46,12 +50,16 @@ const COT_MARKETS = {
   CHF: "SWISS FRANC", AUD: "AUSTRALIAN DOLLAR", NZD: "NZ DOLLAR",
   CAD: "CANADIAN DOLLAR", USD: "U.S. DOLLAR INDEX",
 };
-// starší názvy trhů v legacy datasetu (název se v čase měnil — LIKE match)
+// starší názvy trhů v legacy datasetu (název se v čase měnil — OR přes LIKE
+// varianty; NZD byl dřív "NEW ZEALAND DOLLAR", USD index se přejmenovával)
 const COT_LIKE = {
-  EUR: "EURO FX%", JPY: "JAPANESE YEN%", GBP: "BRITISH POUND%",
-  CHF: "SWISS FRANC%", AUD: "AUSTRALIAN DOLLAR%", NZD: "%NZ DOLLAR%",
-  CAD: "CANADIAN DOLLAR%", USD: "%DOLLAR INDEX%",
+  EUR: ["EURO FX%"], JPY: ["JAPANESE YEN%"], GBP: ["BRITISH POUND%"],
+  CHF: ["SWISS FRANC%"], AUD: ["AUSTRALIAN DOLLAR%"],
+  NZD: ["%NZ DOLLAR%", "%NEW ZEALAND%"],
+  CAD: ["CANADIAN DOLLAR%"],
+  USD: ["%U.S. DOLLAR INDEX%", "%USD INDEX%"],
 };
+const likeWhere = (pats) => "(" + pats.map((p) => `market_and_exchange_names like '${p}'`).join(" OR ") + ")";
 
 async function fetchText(url, tries = 3) {
   for (let i = 0; i < tries; i++) {
@@ -117,10 +125,10 @@ async function fetchSocrata(dataset, where, fields, order) {
   // ── CFTC legacy (noncommercial/commercial) — futures only ──
   const legacyFields = "market_and_exchange_names,report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all,comm_positions_long_all,comm_positions_short_all,open_interest_all";
   const legacy = {};
-  for (const [ccy, like] of Object.entries(COT_LIKE)) {
+  for (const [ccy, pats] of Object.entries(COT_LIKE)) {
     try {
       const rows = await fetchSocrata("6dca-aqww",
-        `market_and_exchange_names like '${like}'`,
+        likeWhere(pats),
         legacyFields, "report_date_as_yyyy_mm_dd");
       legacy[ccy] = rows.map((r) => ({
         d: String(r.report_date_as_yyyy_mm_dd).slice(0, 10),
@@ -142,10 +150,10 @@ async function fetchSocrata(dataset, where, fields, order) {
   // ── CFTC TFF (dealer / asset manager / leveraged funds) ──
   const tffFields = "market_and_exchange_names,report_date_as_yyyy_mm_dd,dealer_positions_long_all,dealer_positions_short_all,asset_mgr_positions_long,asset_mgr_positions_short,lev_money_positions_long,lev_money_positions_short,open_interest_all";
   const tff = {};
-  for (const [ccy, like] of Object.entries(COT_LIKE)) {
+  for (const [ccy, pats] of Object.entries(COT_LIKE)) {
     try {
       const rows = await fetchSocrata("gpe5-46if",
-        `market_and_exchange_names like '${like}'`,
+        likeWhere(pats),
         tffFields, "report_date_as_yyyy_mm_dd");
       tff[ccy] = rows.map((r) => ({
         d: String(r.report_date_as_yyyy_mm_dd).slice(0, 10),
@@ -164,6 +172,22 @@ async function fetchSocrata(dataset, where, fields, order) {
     await new Promise((r) => setTimeout(r, 800));
   }
   fs.writeFileSync(path.join(OUT, "cot_tff.json"), JSON.stringify(tff));
+
+  // ── zlato: Yahoo GC=F denní (FRED London fix série jsou ukončené/404) ──
+  try {
+    const p1 = Math.floor(Date.parse("2000-01-01T00:00:00Z") / 1000), p2 = Math.floor(Date.now() / 1000);
+    const t = await fetchText(`https://query1.finance.yahoo.com/v8/finance/chart/GC=F?period1=${p1}&period2=${p2}&interval=1d`);
+    const j = JSON.parse(t);
+    const res = j.chart.result[0];
+    const rows = res.timestamp.map((ts, i) => ({ d: new Date(ts * 1000).toISOString().slice(0, 10), v: res.indicators.quote[0].close[i] }))
+      .filter((r) => Number.isFinite(r.v));
+    fs.writeFileSync(path.join(OUT, "gold.json"), JSON.stringify(rows));
+    console.log("Zlato (Yahoo GC=F) OK:", rows.length, "dní,", rows[0]?.d, "→", rows.at(-1)?.d);
+    meta.sources.gold_yahoo = { n: rows.length, from: rows[0]?.d, to: rows.at(-1)?.d };
+  } catch (e) {
+    console.log("Zlato CHYBA:", e.message);
+    meta.failures.push("gold Yahoo GC=F: " + e.message);
+  }
 
   fs.writeFileSync(path.join(OUT, "meta.json"), JSON.stringify(meta, null, 2));
   console.log("\nHotovo. Selhání:", meta.failures.length ? meta.failures.join(" | ") : "žádné");
