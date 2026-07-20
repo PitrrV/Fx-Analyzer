@@ -1279,13 +1279,20 @@ class FXApp extends React.Component{
         h('div',{style:{fontSize:10,color:T.faint,marginTop:8}},'Rok v okně se neřeší — jen den+měsíc (jde vybrat i okno přes Nový rok). "Posledních N let" omezuje, jak hluboko appka pro výpočet i graf níže sahá.'),
         st.winErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:11,lineHeight:1.5}},'⚠ '+st.winErr),
         st.winResult&&st.winResult.pair===cur&&(()=>{
-          const R=st.winResult, wrCol=R.wr>=60?T.green:R.wr<=40?T.red:T.amber;
+          const R=st.winResult;
+          // Vždycky ukázat SILNĚJŠÍ (většinovou) stranu se směrovým labelem —
+          // 37% Long čte se slabě, i když jde o přesně to samé jako 63% Short.
+          // Pod 55 % je to skoro coinflip, tam necháme neutrální amber i přes
+          // směrový label, ať se to nečte jako silný edge, když žádný není.
+          const dirLong=R.wr>=50, domPct=dirLong?R.wr:100-R.wr, domLabel=dirLong?'LONG':'SHORT';
+          const domColor=dirLong?T.green:T.red, wrCol=domPct<55?T.amber:domColor;
+          const winsUp=R.results.filter(r=>r.ret>0).length, domCount=dirLong?winsUp:(R.n-winsUp);
           const AP=(st.winAvgPath&&st.winAvgPath.pair===cur)?st.winAvgPath:null;
           return h('div',{style:{marginTop:16}},
             h('div',{style:{display:'flex',gap:22,flexWrap:'wrap',alignItems:'baseline',padding:'14px 16px',background:wrCol+'14',border:'1px solid '+wrCol+'33',borderRadius:12}},
-              h('div',null,h('div',{style:self.mono({fontSize:26,fontWeight:800,color:wrCol})},R.wr+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'win rate ('+R.n+' let)')),
+              h('div',null,h('div',{style:{display:'flex',alignItems:'baseline',gap:7}},h('span',{style:self.mono({fontSize:26,fontWeight:800,color:wrCol})},domPct+'%'),h('span',{style:{fontSize:11,fontWeight:800,color:wrCol,letterSpacing:'.04em'}},domLabel)),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'win rate ('+R.n+' let)')),
               h('div',null,h('div',{style:self.mono({fontSize:20,fontWeight:700,color:R.avg>=0?T.green:T.red})},(R.avg>0?'+':'')+R.avg+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'průměrný pohyb')),
-              h('div',{style:{fontSize:11,color:T.dim,lineHeight:1.5,flex:1,minWidth:200}},cur+' šel v tomhle okně nahoru v '+R.results.filter(r=>r.ret>0).length+' z '+R.n+' let. ',(R.wr>=50)!==(R.avg>=0)&&h('span',{style:{color:T.faint}},'Win rate a průměrný pohyb tu ukazují opačný směr — '+(R.wr>=50?'víc let bylo v plusu, ale ztrátové roky byly v průměru výraznější než ziskové':'víc let bylo v mínusu, ale ziskové roky byly v průměru výraznější než ztrátové')+', takže průměr táhne na '+(R.avg<0?'mínus':'plus')+'.'))),
+              h('div',{style:{fontSize:11,color:T.dim,lineHeight:1.5,flex:1,minWidth:200}},cur+' šel v tomhle okně '+(dirLong?'nahoru':'dolů')+' v '+domCount+' z '+R.n+' let. ',(R.wr>=50)!==(R.avg>=0)&&h('span',{style:{color:T.faint}},'Win rate a průměrný pohyb tu ukazují opačný směr — '+(R.wr>=50?'víc let bylo v plusu, ale ztrátové roky byly v průměru výraznější než ziskové':'víc let bylo v mínusu, ale ziskové roky byly v průměru výraznější než ztrátové')+', takže průměr táhne na '+(R.avg<0?'mínus':'plus')+'.'))),
             h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(90px,1fr))',gap:6,marginTop:10}},R.results.map(r=>h('div',{key:r.year,title:r.from+' → '+r.to,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:8,padding:'7px 9px',textAlign:'center'}},h('div',{style:{fontSize:9.5,color:T.faint}},r.year),h('div',{style:self.mono({fontSize:12,fontWeight:700,color:r.ret>=0?T.green:T.red})},(r.ret>0?'+':'')+r.ret+'%')))),
             AP&&AP.avg&&AP.avg.length>1&&(()=>{
               const cum=AP.avg;
