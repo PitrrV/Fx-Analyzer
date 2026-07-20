@@ -1,0 +1,45 @@
+{
+  "updated": "2026-07-20T15:32:48.907Z",
+  "methodology": "train = první polovina replay dní, test = druhá polovina po embargu 10 dní. Škálovací faktory (VIX risk, COT rework, CPI akcelerace) fitované VÝHRADNĚ na train, měření VÝHRADNĚ na test.",
+  "split": {
+    "trainFrom": "2024-05-27",
+    "trainTo": "2025-06-22",
+    "embargoDays": 10,
+    "testFrom": "2025-07-03",
+    "testTo": "2026-07-19"
+  },
+  "scaling": {
+    "scaleJPY": 0.460749497410299,
+    "scaleCHF": 0.5408566941227713,
+    "scaleGBP": 1.1717391758660989,
+    "scaleCpi": 2.009066268584268
+  },
+  "train": {
+    "old": {
+      "n": 43904,
+      "wr": 47.6,
+      "pf": 0.809,
+      "avg": -0.0841
+    },
+    "new": {
+      "n": 43904,
+      "wr": 50.3,
+      "pf": 1.094,
+      "avg": 0.0355
+    }
+  },
+  "test": {
+    "old": {
+      "n": 41748,
+      "wr": 48.9,
+      "pf": 0.875,
+      "avg": -0.0381
+    },
+    "new": {
+      "n": 41748,
+      "wr": 50.6,
+      "pf": 1.029,
+      "avg": 0.0083
+    }
+  }
+}
