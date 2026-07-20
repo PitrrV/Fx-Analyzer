@@ -1,0 +1,47 @@
+{
+ "Carry podmíněně na VIX (h4)": [
+  "USD: carry IC lowVIX=0.083 (n880) | highVIX=-0.1 (n502)",
+  "EUR: carry IC lowVIX=0.028 (n874) | highVIX=0.0 (n496)",
+  "GBP: carry IC lowVIX=-0.048 (n874) | highVIX=-0.029 (n496)",
+  "JPY: carry IC lowVIX=0.096 (n786) | highVIX=-0.16 (n475)",
+  "AUD: carry IC lowVIX=0.085 (n773) | highVIX=0.042 (n431)",
+  "CAD: carry IC lowVIX=-0.115 (n758) | highVIX=-0.039 (n431)",
+  "CHF: carry IC lowVIX=0.087 (n780) | highVIX=-0.094 (n443)",
+  "NZD: carry IC lowVIX=0.059 (n773) | highVIX=-0.119 (n431)"
+ ],
+ "Momentum podmíněně na trend (h4)": [
+  "USD: mom4 IC trend=0.035 (n618) | range=-0.006 (n760)",
+  "EUR: mom4 IC trend=0.005 (n536) | range=-0.031 (n842)",
+  "GBP: mom4 IC trend=-0.085 (n563) | range=-0.057 (n815)",
+  "JPY: mom4 IC trend=-0.008 (n681) | range=-0.166 (n697)",
+  "AUD: mom4 IC trend=-0.065 (n572) | range=-0.008 (n628)",
+  "CAD: mom4 IC trend=-0.093 (n472) | range=-0.064 (n713)",
+  "CHF: mom4 IC trend=-0.169 (n517) | range=-0.005 (n702)",
+  "NZD: mom4 IC trend=-0.16 (n499) | range=0.001 (n701)"
+ ],
+ "COT noncomm podmíněně na extrém (h4)": [
+  "USD: cot_nc IC extrém=0.104 (n386) | střed=0.062 (n960)",
+  "EUR: cot_nc IC extrém=0.136 (n330) | střed=0.016 (n1052)",
+  "GBP: cot_nc IC extrém=-0.083 (n336) | střed=-0.094 (n836)",
+  "JPY: cot_nc IC extrém=-0.1 (n468) | střed=-0.002 (n914)",
+  "AUD: cot_nc IC extrém=-0.039 (n369) | střed=0.039 (n835)",
+  "CAD: cot_nc IC extrém=-0.112 (n320) | střed=0.029 (n869)",
+  "CHF: cot_nc IC extrém=-0.194 (n340) | střed=-0.051 (n883)",
+  "NZD: cot_nc IC extrém=-0.047 (n303) | střed=0.029 (n811)"
+ ],
+ "VIX úroveň podmíněně na režim (h4)": [
+  "AUD: vix_lvl IC highVIX=0.184 (n431) | lowVIX=0.096 (n773)",
+  "GBP: vix_lvl IC highVIX=-0.023 (n502) | lowVIX=-0.102 (n880)",
+  "CHF: vix_lvl IC highVIX=-0.13 (n443) | lowVIX=-0.021 (n780)",
+  "JPY: vix_lvl IC highVIX=-0.003 (n502) | lowVIX=0.01 (n880)"
+ ],
+ "Redundance faktorů (korelace)": [
+  "carry3m × y10diff: prům. korelace = 0.67 (n měn 8)",
+  "carry3m × realyield: prům. korelace = 0.72 (n měn 8)",
+  "y10diff × realyield: prům. korelace = 0.38 (n měn 8)",
+  "cot_nc × cot_lev: prům. korelace = 0.82 (n měn 8)",
+  "cot_nc × cot_am: prům. korelace = 0.48 (n měn 8)",
+  "cot_comm × cot_nc: prům. korelace = -0.97 (n měn 8)",
+  "cot_dealer × cot_am: prům. korelace = -0.65 (n měn 8)"
+ ]
+}
