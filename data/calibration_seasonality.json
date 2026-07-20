@@ -1,0 +1,151 @@
+{
+  "updated": "2026-07-20T05:48:29.045Z",
+  "source": "data/fx_daily/*.json (denní ceny, currency-level síla odvozená ze všech 28 párů)",
+  "window": {
+    "startYear": 2000,
+    "endYear": 2026,
+    "walkForwardFrom": 2005,
+    "minTrainYears": 5
+  },
+  "static": {
+    "overall": {
+      "n": 5337,
+      "wr": 52.1,
+      "pf": 1.182,
+      "avg": 0.1749
+    },
+    "grid": [
+      {
+        "band": "slabý <1",
+        "n": 0,
+        "wr": null,
+        "pf": null,
+        "avg": null,
+        "half1": {
+          "n": 0,
+          "wr": null,
+          "pf": null,
+          "avg": null
+        },
+        "half2": {
+          "n": 0,
+          "wr": null,
+          "pf": null,
+          "avg": null
+        },
+        "robust": false
+      },
+      {
+        "band": "střední 1–2",
+        "n": 3860,
+        "wr": 51.6,
+        "pf": 1.15,
+        "avg": 0.1479,
+        "half1": {
+          "n": 1918,
+          "wr": 50.1,
+          "pf": 1.029,
+          "avg": 0.0339
+        },
+        "half2": {
+          "n": 1942,
+          "wr": 53.2,
+          "pf": 1.319,
+          "avg": 0.2605
+        },
+        "robust": true
+      },
+      {
+        "band": "silný 2+",
+        "n": 1477,
+        "wr": 53.3,
+        "pf": 1.277,
+        "avg": 0.2454,
+        "half1": {
+          "n": 731,
+          "wr": 51.8,
+          "pf": 1.166,
+          "avg": 0.1834
+        },
+        "half2": {
+          "n": 746,
+          "wr": 54.7,
+          "pf": 1.458,
+          "avg": 0.3062
+        },
+        "robust": true
+      }
+    ]
+  },
+  "walkForward": {
+    "overall": {
+      "n": 6849,
+      "wr": 50.3,
+      "pf": 0.948,
+      "avg": -0.0554
+    },
+    "grid": [
+      {
+        "band": "slabý <1",
+        "n": 4857,
+        "wr": 50.3,
+        "pf": 0.944,
+        "avg": -0.0571,
+        "half1": {
+          "n": 2088,
+          "wr": 51.1,
+          "pf": 0.989,
+          "avg": -0.0128
+        },
+        "half2": {
+          "n": 2769,
+          "wr": 49.7,
+          "pf": 0.899,
+          "avg": -0.0905
+        },
+        "robust": false
+      },
+      {
+        "band": "střední 1–2",
+        "n": 1536,
+        "wr": 49.5,
+        "pf": 0.951,
+        "avg": -0.0554,
+        "half1": {
+          "n": 938,
+          "wr": 49.7,
+          "pf": 0.952,
+          "avg": -0.0631
+        },
+        "half2": {
+          "n": 598,
+          "wr": 49.2,
+          "pf": 0.95,
+          "avg": -0.0433
+        },
+        "robust": false
+      },
+      {
+        "band": "silný 2+",
+        "n": 456,
+        "wr": 53.1,
+        "pf": 0.971,
+        "avg": -0.0375,
+        "half1": {
+          "n": 379,
+          "wr": 52.5,
+          "pf": 0.943,
+          "avg": -0.0782
+        },
+        "half2": {
+          "n": 77,
+          "wr": 55.8,
+          "pf": 1.211,
+          "avg": 0.1629
+        },
+        "robust": false
+      }
+    ]
+  },
+  "note": "Měřicí nástroj — nic v engine.js se automaticky neupravuje. Porovnej PF/WR obou režimů a robust flagy (obě poloviny okna PF>1, n>=20) před případnou změnou váhy 'sea' v getDynamicWeights()."
+}
