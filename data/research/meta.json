@@ -1,0 +1,281 @@
+{
+  "updated": "2026-07-20T11:15:29.971Z",
+  "sources": {
+    "us2y": {
+      "id": "DGS2",
+      "n": 12527,
+      "from": "1976-06-01",
+      "to": "2026-07-16"
+    },
+    "us10y": {
+      "id": "DGS10",
+      "n": 16119,
+      "from": "1962-01-02",
+      "to": "2026-07-16"
+    },
+    "fedfunds": {
+      "id": "DFF",
+      "n": 26314,
+      "from": "1954-07-01",
+      "to": "2026-07-16"
+    },
+    "vix": {
+      "id": "VIXCLS",
+      "n": 9231,
+      "from": "1990-01-02",
+      "to": "2026-07-16"
+    },
+    "wti": {
+      "id": "DCOILWTICO",
+      "n": 10200,
+      "from": "1986-01-02",
+      "to": "2026-07-13"
+    },
+    "dxy_broad": {
+      "id": "DTWEXBGS",
+      "n": 5144,
+      "from": "2006-01-02",
+      "to": "2026-07-10"
+    },
+    "ir3m_US": {
+      "id": "IR3TIB01USM156N",
+      "n": 744,
+      "from": "1964-06-01",
+      "to": "2026-06-01"
+    },
+    "ir3m_EA": {
+      "id": "IR3TIB01EZM156N",
+      "n": 385,
+      "from": "1994-01-01",
+      "to": "2026-01-01"
+    },
+    "ir3m_GB": {
+      "id": "IR3TIB01GBM156N",
+      "n": 829,
+      "from": "1957-01-01",
+      "to": "2026-01-01"
+    },
+    "ir3m_JP": {
+      "id": "IR3TIB01JPM156N",
+      "n": 290,
+      "from": "2002-04-01",
+      "to": "2026-05-01"
+    },
+    "ir3m_AU": {
+      "id": "IR3TIB01AUM156N",
+      "n": 702,
+      "from": "1968-01-01",
+      "to": "2026-06-01"
+    },
+    "ir3m_CA": {
+      "id": "IR3TIB01CAM156N",
+      "n": 846,
+      "from": "1956-01-01",
+      "to": "2026-06-01"
+    },
+    "ir3m_CH": {
+      "id": "IR3TIB01CHM156N",
+      "n": 324,
+      "from": "1999-07-01",
+      "to": "2026-06-01"
+    },
+    "ir3m_NZ": {
+      "id": "IR3TIB01NZM156N",
+      "n": 631,
+      "from": "1973-12-01",
+      "to": "2026-06-01"
+    },
+    "y10_US": {
+      "id": "IRLTLT01USM156N",
+      "n": 879,
+      "from": "1953-04-01",
+      "to": "2026-06-01"
+    },
+    "y10_EA": {
+      "id": "IRLTLT01EZM156N",
+      "n": 673,
+      "from": "1970-01-01",
+      "to": "2026-01-01"
+    },
+    "y10_GB": {
+      "id": "IRLTLT01GBM156N",
+      "n": 798,
+      "from": "1960-01-01",
+      "to": "2026-06-01"
+    },
+    "y10_JP": {
+      "id": "IRLTLT01JPM156N",
+      "n": 450,
+      "from": "1989-01-01",
+      "to": "2026-06-01"
+    },
+    "y10_AU": {
+      "id": "IRLTLT01AUM156N",
+      "n": 684,
+      "from": "1969-07-01",
+      "to": "2026-06-01"
+    },
+    "y10_CA": {
+      "id": "IRLTLT01CAM156N",
+      "n": 858,
+      "from": "1955-01-01",
+      "to": "2026-06-01"
+    },
+    "y10_CH": {
+      "id": "IRLTLT01CHM156N",
+      "n": 858,
+      "from": "1955-01-01",
+      "to": "2026-06-01"
+    },
+    "y10_NZ": {
+      "id": "IRLTLT01NZM156N",
+      "n": 677,
+      "from": "1970-01-01",
+      "to": "2026-06-01"
+    },
+    "cpi_US": {
+      "id": "CPALTT01USM659N",
+      "n": 832,
+      "from": "1956-01-01",
+      "to": "2025-04-01"
+    },
+    "cpi_GB": {
+      "id": "CPALTT01GBM659N",
+      "n": 831,
+      "from": "1956-01-01",
+      "to": "2025-03-01"
+    },
+    "cpi_JP": {
+      "id": "CPALTT01JPM659N",
+      "n": 786,
+      "from": "1956-01-01",
+      "to": "2021-06-01"
+    },
+    "cpi_AU": {
+      "id": "CPALTT01AUQ659N",
+      "n": 303,
+      "from": "1949-07-01",
+      "to": "2025-01-01"
+    },
+    "cpi_CA": {
+      "id": "CPALTT01CAM659N",
+      "n": 1323,
+      "from": "1915-01-01",
+      "to": "2025-03-01"
+    },
+    "cpi_CH": {
+      "id": "CPALTT01CHM659N",
+      "n": 832,
+      "from": "1956-01-01",
+      "to": "2025-04-01"
+    },
+    "cpi_NZ": {
+      "id": "CPALTT01NZQ659N",
+      "n": 255,
+      "from": "1960-01-01",
+      "to": "2023-07-01"
+    },
+    "copper": {
+      "id": "PCOPPUSDM",
+      "n": 414,
+      "from": "1992-01-01",
+      "to": "2026-06-01"
+    },
+    "iron_ore": {
+      "id": "PIORECRUSDM",
+      "n": 414,
+      "from": "1992-01-01",
+      "to": "2026-06-01"
+    },
+    "cot_legacy_EUR": {
+      "n": 2242,
+      "from": "1999-01-05",
+      "to": "2026-07-14"
+    },
+    "cot_legacy_JPY": {
+      "n": 1927,
+      "from": "1986-01-15",
+      "to": "2026-07-14"
+    },
+    "cot_legacy_GBP": {
+      "n": 1357,
+      "from": "1986-01-15",
+      "to": "2026-07-14"
+    },
+    "cot_legacy_CHF": {
+      "n": 1929,
+      "from": "1986-01-15",
+      "to": "2026-07-14"
+    },
+    "cot_legacy_AUD": {
+      "n": 1794,
+      "from": "1987-01-30",
+      "to": "2026-07-14"
+    },
+    "cot_legacy_NZD": {
+      "n": 232,
+      "from": "2022-02-08",
+      "to": "2026-07-14"
+    },
+    "cot_legacy_CAD": {
+      "n": 1926,
+      "from": "1986-01-15",
+      "to": "2026-07-14"
+    },
+    "cot_legacy_USD": {
+      "n": 1628,
+      "from": "1986-01-15",
+      "to": "2022-02-01"
+    },
+    "cot_tff_EUR": {
+      "n": 1842,
+      "from": "2006-06-13",
+      "to": "2026-07-14"
+    },
+    "cot_tff_JPY": {
+      "n": 1049,
+      "from": "2006-06-13",
+      "to": "2026-07-14"
+    },
+    "cot_tff_GBP": {
+      "n": 1049,
+      "from": "2006-06-13",
+      "to": "2026-07-14"
+    },
+    "cot_tff_CHF": {
+      "n": 1049,
+      "from": "2006-06-13",
+      "to": "2026-07-14"
+    },
+    "cot_tff_AUD": {
+      "n": 1049,
+      "from": "2006-06-13",
+      "to": "2026-07-14"
+    },
+    "cot_tff_NZD": {
+      "n": 232,
+      "from": "2022-02-08",
+      "to": "2026-07-14"
+    },
+    "cot_tff_CAD": {
+      "n": 1049,
+      "from": "2006-06-13",
+      "to": "2026-07-14"
+    },
+    "cot_tff_USD": {
+      "n": 817,
+      "from": "2006-06-13",
+      "to": "2022-02-01"
+    }
+  },
+  "failures": [
+    "FRED gold_pm (GOLDPMGBD228NLBM): HTTP 404",
+    "FRED cpi_EA (CPALTT01EZM659N): HTTP 404",
+    "FRED gold_imf (PGOLDUSDM): HTTP 404"
+  ],
+  "limitations": [
+    "PMI (S&P Global), MOVE index, Citi Economic Surprise Index, OIS/forward expected rates, iron ore spot — proprietární, bez volné plné historie; netestováno.",
+    "CPI AU/NZ jsou čtvrtletní (FRED nemá měsíční) — v panelu ffill.",
+    "COT legacy sahá do ~1986; TFF (dealer/asset manager/leveraged) až od 2006."
+  ]
+}
