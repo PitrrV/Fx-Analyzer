@@ -1,5 +1,5 @@
 {
-  "updated": "2026-07-20T11:15:29.971Z",
+  "updated": "2026-07-20T11:21:05.857Z",
   "sources": {
     "us2y": {
       "id": "DGS2",
@@ -187,6 +187,54 @@
       "from": "1992-01-01",
       "to": "2026-06-01"
     },
+    "cpix_US": {
+      "id": "CPIAUCSL",
+      "n": 953,
+      "from": "1947-01-01",
+      "to": "2026-06-01"
+    },
+    "cpix_EA": {
+      "id": "CP0000EZ19M086NEST",
+      "n": 355,
+      "from": "1996-12-01",
+      "to": "2026-06-01"
+    },
+    "cpix_GB": {
+      "id": "GBRCPIALLMINMEI",
+      "n": 843,
+      "from": "1955-01-01",
+      "to": "2025-03-01"
+    },
+    "cpix_JP": {
+      "id": "JPNCPIALLMINMEI",
+      "n": 798,
+      "from": "1955-01-01",
+      "to": "2021-06-01"
+    },
+    "cpix_AU": {
+      "id": "AUSCPIALLQINMEI",
+      "n": 307,
+      "from": "1948-07-01",
+      "to": "2025-01-01"
+    },
+    "cpix_CA": {
+      "id": "CANCPIALLMINMEI",
+      "n": 1335,
+      "from": "1914-01-01",
+      "to": "2025-03-01"
+    },
+    "cpix_CH": {
+      "id": "CHECPIALLMINMEI",
+      "n": 844,
+      "from": "1955-01-01",
+      "to": "2025-04-01"
+    },
+    "cpix_NZ": {
+      "id": "NZLCPIALLQINMEI",
+      "n": 444,
+      "from": "1914-04-01",
+      "to": "2025-01-01"
+    },
     "cot_legacy_EUR": {
       "n": 2242,
       "from": "1999-01-05",
@@ -213,8 +261,8 @@
       "to": "2026-07-14"
     },
     "cot_legacy_NZD": {
-      "n": 232,
-      "from": "2022-02-08",
+      "n": 1184,
+      "from": "1998-11-17",
       "to": "2026-07-14"
     },
     "cot_legacy_CAD": {
@@ -223,9 +271,9 @@
       "to": "2026-07-14"
     },
     "cot_legacy_USD": {
-      "n": 1628,
+      "n": 1860,
       "from": "1986-01-15",
-      "to": "2022-02-01"
+      "to": "2026-07-14"
     },
     "cot_tff_EUR": {
       "n": 1842,
@@ -253,8 +301,8 @@
       "to": "2026-07-14"
     },
     "cot_tff_NZD": {
-      "n": 232,
-      "from": "2022-02-08",
+      "n": 1046,
+      "from": "2006-06-13",
       "to": "2026-07-14"
     },
     "cot_tff_CAD": {
@@ -263,15 +311,19 @@
       "to": "2026-07-14"
     },
     "cot_tff_USD": {
-      "n": 817,
+      "n": 1049,
       "from": "2006-06-13",
-      "to": "2022-02-01"
+      "to": "2026-07-14"
+    },
+    "gold_yahoo": {
+      "n": 6494,
+      "from": "2000-08-30",
+      "to": "2026-07-20"
     }
   },
   "failures": [
     "FRED gold_pm (GOLDPMGBD228NLBM): HTTP 404",
-    "FRED cpi_EA (CPALTT01EZM659N): HTTP 404",
-    "FRED gold_imf (PGOLDUSDM): HTTP 404"
+    "FRED cpi_EA (CPALTT01EZM659N): HTTP 404"
   ],
   "limitations": [
     "PMI (S&P Global), MOVE index, Citi Economic Surprise Index, OIS/forward expected rates, iron ore spot — proprietární, bez volné plné historie; netestováno.",
