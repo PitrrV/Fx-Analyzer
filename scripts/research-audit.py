@@ -72,8 +72,15 @@ def build_fred():
         return s[~s.index.duplicated()].sort_index()
     out = {}
     # globální denní → weekly
-    for k in ["vix","wti","dxy_broad","us2y","us10y","gold_pm"]:
+    for k in ["vix","wti","dxy_broad","us2y","us10y"]:
         out[k] = ser(k).resample("W-FRI").last()
+    # zlato — Yahoo GC=F v samostatném souboru
+    try:
+        g = load_json("data/research/gold.json")
+        gs = pd.Series([r["v"] for r in g], index=pd.to_datetime([r["d"] for r in g]))
+        out["gold"] = gs[~gs.index.duplicated()].sort_index().resample("W-FRI").last()
+    except Exception:
+        out["gold"] = pd.Series(dtype=float)
     # měsíční per měna: posun o 1 měsíc (publikační lag), pak weekly ffill
     def monthly_lagged(prefix):
         d = {}
@@ -86,8 +93,29 @@ def build_fred():
         return pd.DataFrame(d)
     out["ir3m"] = monthly_lagged("ir3m")
     out["y10"] = monthly_lagged("y10")
-    out["cpi"] = monthly_lagged("cpi")
-    for k in ["copper","iron_ore","gold_imf"]:
+    # CPI YoY: preferuj OECD growth sérii; prodluž/doplň YoY dopočtenou z
+    # indexové série (EA growth neexistuje, JP končí 2021, US/GB/CA/CH končí
+    # ~2025 — indexy jdou dál). Kvartální indexy (AU/NZ) → pct_change(4).
+    cpi_cols = {}
+    for code, ccy in FCUR.items():
+        parts = []
+        g = ser(f"cpi_{code}")
+        if not g.empty: parts.append(g)
+        ix = ser(f"cpix_{code}")
+        if not ix.empty:
+            gaps = ix.index.to_series().diff().dt.days.dropna()
+            periods = 4 if (len(gaps) and gaps.median() > 80) else 12
+            yoy = ix.pct_change(periods) * 100
+            parts.append(yoy.dropna())
+        if not parts: continue
+        s = parts[0]
+        for extra in parts[1:]:
+            s = s.combine_first(extra)   # growth série má přednost, index doplní díry/konec
+        s = s.sort_index()
+        s.index = s.index + pd.DateOffset(months=1)   # publikační lag
+        cpi_cols[ccy] = s.resample("W-FRI").last().ffill()
+    out["cpi"] = pd.DataFrame(cpi_cols)
+    for k in ["copper","iron_ore"]:
         s = ser(k); s.index = s.index + pd.DateOffset(months=1)
         out[k] = s.resample("W-FRI").last().ffill()
     return out
@@ -151,7 +179,7 @@ def build_panel(bk, fred, cot):
     vix = fred["vix"].reindex(idx).ffill(limit=2)
     F["vix_lvl"] = pd.DataFrame({c: vix for c in CUR})
     F["vix_chg4"] = pd.DataFrame({c: vix.diff(4) for c in CUR})
-    for k, name in [("wti","oil_r4"),("gold_pm","gold_r4"),("copper","copper_r4"),("dxy_broad","dxy_r4")]:
+    for k, name in [("wti","oil_r4"),("gold","gold_r4"),("copper","copper_r4"),("dxy_broad","dxy_r4")]:
         s = np.log(fred[k].reindex(idx).ffill(limit=8)).diff(4)
         F[name] = pd.DataFrame({c: s for c in CUR})
     # walk-forward sezónnost: expanding průměr basket returnu daného měsíce (min 5 let)
