@@ -1,0 +1,135 @@
+{
+ "regimes": [
+  "Financial Crisis",
+  "QE1-3 éra",
+  "Nízká inflace",
+  "Covid crash",
+  "Covid QE",
+  "Vysoká inflace",
+  "Hiking cycle (Fed)",
+  "Cutting cycle (Fed)",
+  "Post-covid"
+ ],
+ "results": {
+  "AUD:vix_lvl": {
+   "overall_ic": 0.2,
+   "n_regimes_valid": 8,
+   "n_agree": 8,
+   "regimes": {
+    "Financial Crisis": 0.262,
+    "QE1-3 éra": 0.343,
+    "Nízká inflace": 0.28,
+    "Covid QE": 0.436,
+    "Vysoká inflace": 0.241,
+    "Hiking cycle (Fed)": 0.155,
+    "Cutting cycle (Fed)": 0.012,
+    "Post-covid": 0.139
+   }
+  },
+  "JPY:cot_am": {
+   "overall_ic": -0.147,
+   "n_regimes_valid": 8,
+   "n_agree": 8,
+   "regimes": {
+    "Financial Crisis": -0.179,
+    "QE1-3 éra": -0.12,
+    "Nízká inflace": -0.194,
+    "Covid QE": -0.267,
+    "Vysoká inflace": -0.186,
+    "Hiking cycle (Fed)": -0.244,
+    "Cutting cycle (Fed)": -0.348,
+    "Post-covid": -0.233
+   }
+  },
+  "CAD:cpi_accel": {
+   "overall_ic": 0.143,
+   "n_regimes_valid": 8,
+   "n_agree": 8,
+   "regimes": {
+    "Financial Crisis": 0.166,
+    "QE1-3 éra": 0.141,
+    "Nízká inflace": 0.113,
+    "Covid QE": 0.015,
+    "Vysoká inflace": 0.22,
+    "Hiking cycle (Fed)": 0.381,
+    "Cutting cycle (Fed)": 0.199,
+    "Post-covid": 0.162
+   }
+  },
+  "CHF:cot_comm": {
+   "overall_ic": 0.129,
+   "n_regimes_valid": 8,
+   "n_agree": 6,
+   "regimes": {
+    "Financial Crisis": 0.056,
+    "QE1-3 éra": -0.036,
+    "Nízká inflace": 0.037,
+    "Covid QE": 0.477,
+    "Vysoká inflace": 0.216,
+    "Hiking cycle (Fed)": 0.112,
+    "Cutting cycle (Fed)": -0.092,
+    "Post-covid": 0.159
+   }
+  },
+  "GBP:vix_lvl": {
+   "overall_ic": -0.127,
+   "n_regimes_valid": 8,
+   "n_agree": 6,
+   "regimes": {
+    "Financial Crisis": -0.239,
+    "QE1-3 éra": -0.271,
+    "Nízká inflace": -0.121,
+    "Covid QE": 0.326,
+    "Vysoká inflace": -0.091,
+    "Hiking cycle (Fed)": -0.153,
+    "Cutting cycle (Fed)": 0.066,
+    "Post-covid": -0.096
+   }
+  },
+  "CHF:cot_dealer": {
+   "overall_ic": 0.12,
+   "n_regimes_valid": 8,
+   "n_agree": 5,
+   "regimes": {
+    "Financial Crisis": 0.026,
+    "QE1-3 éra": -0.016,
+    "Nízká inflace": 0.061,
+    "Covid QE": 0.419,
+    "Vysoká inflace": 0.085,
+    "Hiking cycle (Fed)": -0.079,
+    "Cutting cycle (Fed)": 0.071,
+    "Post-covid": -0.013
+   }
+  },
+  "USD:dxy_r4": {
+   "overall_ic": 0.075,
+   "n_regimes_valid": 8,
+   "n_agree": 6,
+   "regimes": {
+    "Financial Crisis": 0.131,
+    "QE1-3 éra": 0.052,
+    "Nízká inflace": 0.065,
+    "Covid QE": 0.099,
+    "Vysoká inflace": -0.098,
+    "Hiking cycle (Fed)": -0.07,
+    "Cutting cycle (Fed)": 0.175,
+    "Post-covid": 0.036
+   }
+  },
+  "CAD:realyield": {
+   "overall_ic": -0.144,
+   "n_regimes_valid": 8,
+   "n_agree": 6,
+   "regimes": {
+    "Financial Crisis": -0.102,
+    "QE1-3 éra": -0.113,
+    "Nízká inflace": -0.112,
+    "Covid QE": 0.067,
+    "Vysoká inflace": -0.09,
+    "Hiking cycle (Fed)": -0.291,
+    "Cutting cycle (Fed)": 0.133,
+    "Post-covid": -0.225
+   }
+  }
+ }
+}
