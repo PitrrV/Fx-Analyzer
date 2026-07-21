@@ -122,8 +122,11 @@ async function fetchSocrata(dataset, where, fields, order) {
   }
   fs.writeFileSync(path.join(OUT, "fred.json"), JSON.stringify(fred));
 
-  // ── CFTC legacy (noncommercial/commercial) — futures only ──
-  const legacyFields = "market_and_exchange_names,report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all,comm_positions_long_all,comm_positions_short_all,open_interest_all";
+  // ── CFTC legacy (noncommercial/commercial/nonreportable — poslední = veřejná
+  // proxy pro "retail", nejde po jednotlivých brokerech, ale je to týž zdroj a
+  // stejná dlouhá historie jako ncl/cl, takže lze point-in-time testovat proti
+  // COT divergenci bez závislosti na appčině krátké lokální retail historii) ──
+  const legacyFields = "market_and_exchange_names,report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all,comm_positions_long_all,comm_positions_short_all,nonrept_positions_long_all,nonrept_positions_short_all,open_interest_all";
   const legacy = {};
   for (const [ccy, pats] of Object.entries(COT_LIKE)) {
     try {
@@ -135,6 +138,7 @@ async function fetchSocrata(dataset, where, fields, order) {
         m: r.market_and_exchange_names,
         ncl: +r.noncomm_positions_long_all, ncs: +r.noncomm_positions_short_all,
         cl: +r.comm_positions_long_all, cs: +r.comm_positions_short_all,
+        nrl: +r.nonrept_positions_long_all, nrs: +r.nonrept_positions_short_all,
         oi: +r.open_interest_all,
       }));
       console.log("COT legacy OK", ccy, legacy[ccy].length, "týdnů,", legacy[ccy][0]?.d, "→", legacy[ccy].at(-1)?.d);
