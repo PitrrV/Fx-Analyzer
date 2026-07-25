@@ -26,7 +26,16 @@ async function myfxbookLogin() {
   const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error("Myfxbook login HTTP " + r.status);
   const j = await r.json();
+  console.log("  DEBUG login response: error=" + j.error + " message=" + JSON.stringify(j.message) + " session_len=" + (j.session ? j.session.length : 0) + " session_prefix=" + (j.session ? j.session.slice(0, 6) : "-"));
   if (j.error || !j.session) throw new Error("Myfxbook login: " + (j.message || "chybí session"));
+  // Kontrolní volání na jiný endpoint stejnou session — odliší, jestli je session
+  // obecně neplatná (login sám o sobě chybný), nebo je problém specifický jen pro
+  // get-community-outlook.json.
+  try {
+    const cr = await fetch(`https://www.myfxbook.com/api/get-my-accounts.json?session=${encodeURIComponent(j.session)}`, { headers: UA, signal: AbortSignal.timeout(15000) });
+    const cj = await cr.json();
+    console.log("  DEBUG get-my-accounts (kontrola stejné session): error=" + cj.error + " message=" + JSON.stringify(cj.message));
+  } catch (e) { console.log("  DEBUG get-my-accounts kontrola selhala:", e.message); }
   return j.session;
 }
 async function myfxbookLogout(session) {
