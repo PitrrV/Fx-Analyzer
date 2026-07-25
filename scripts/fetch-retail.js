@@ -1,78 +1,59 @@
 // Retail sentiment — hodinový/půlhodinový snímek na server.
-// PŘÍSTUP 1: CFTC Non-reportable positions (oficiální, .gov, žádná Cloudflare blokace) —
-// stejný primární zdroj a stejný parser jako klientský fetchRetailSentiment() v engine.js
-// (parseNonReportableFromCOT). Malí spekulanti z CFTC TFF = reálný retail proxy, per měna
-// (ne per pár — CFTC reportuje na úrovni měnového futures kontraktu). Aktualizuje se týdně
-// (páteční CFTC report), ne intradenně — ale je spolehlivý a appka ho i tak preferuje.
-// PŘÍSTUP 2 (fallback): Myfxbook Community Outlook přes „čtecí" proxy — per pár, intradenní,
-// ale v posledních dnech blokovaný na všech proxy (Cloudflare zpřísnění na straně Myfxbook).
-// Ponecháno jako druhotný zdroj pro jemnější/intradenní obohacení, když je dostupný.
+// PŘÍSTUP 1: CFTC Non-reportable positions přes oficiální Socrata JSON API
+// (publicreporting.cftc.gov) — STEJNÁ doména a STEJNÝ vzor dotazu jako fetch-cot.js
+// (CFTC TFF cron) a fetch-research-data.js, oba prokazatelně fungují z GitHub Actions
+// (běží spolehlivě každý týden). Dřívější verze tohohle skriptu scrapovala
+// www.cftc.gov/dea/futures/financial_lf.htm (stejný zdroj jako klientský
+// fetchRetailSentiment() v engine.js) — ta stránka ale z cloud IP GitHub Actions
+// runneru vrací 403 (funguje jen z běžné prohlížečové sítě), takže nikdy neuspěla.
+// Socrata API běží na jiné infrastruktuře a blokaci nemá. Malí spekulanti (legacy
+// dataset 6dca-aqww, "nonrept_positions_*") = reálný retail proxy, per měna (ne per
+// pár). Aktualizuje se týdně (páteční CFTC report), ne intradenně.
+// PŘÍSTUP 2 (fallback): Myfxbook Community Outlook přes „čtecí" proxy — per pár,
+// intradenní, ale v posledních dnech blokovaný na všech proxy (Cloudflare zpřísnění
+// na straně Myfxbook). Ponecháno jako druhotný zdroj pro jemnější obohacení, když
+// je dostupný — CFTC teď gate na výstup nedrží.
 // Výstup: data/retail_hist.json = { updated, points:[ {t, pairs:{EURUSD:{l,s}}, ccy:{USD:..}, source } ] }
 const fs = require("fs");
 const CUR = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD"];
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" };
 
-// ── CFTC Non-reportable (primární) ──────────────────────────────────
+// ── CFTC Non-reportable přes Socrata API (primární) ─────────────────
+const CFTC_LEGACY_DATASET = "6dca-aqww";
 const COT_MARKETS = {
   EUR: "EURO FX", GBP: "BRITISH POUND", JPY: "JAPANESE YEN", AUD: "AUSTRALIAN DOLLAR",
   CAD: "CANADIAN DOLLAR", CHF: "SWISS FRANC", NZD: "NZ DOLLAR",
 };
-const CFTC_TXT_URL = "https://www.cftc.gov/dea/futures/financial_lf.htm";
-
-function parseNums(line) { return (line.match(/-?\d[\d,]*/g) || []).map((x) => parseInt(x.replace(/,/g, ""), 10)); }
-
-// Stejná fixed-position logika jako parseNonReportableFromCOT() v engine.js:
-// TFF report řádek "Positions" má 14 čísel: [0-2]=Dealer, [3-5]=Asset Mgr, [6-8]=Lev.Funds,
-// [9-11]=Other Rep., [12-13]=NonReportable (Long,Short) — malí spekulanti = retail proxy.
-function parseNonReportableFromCOT(txt) {
-  const lines = txt.split(/\r?\n/);
-  const out = {};
-  for (const [ccy, market] of Object.entries(COT_MARKETS)) {
-    const idx = lines.findIndex((l) => l.toUpperCase().includes(market) && l.toUpperCase().includes("CHICAGO MERCANTILE EXCHANGE"));
-    if (idx < 0) continue;
-    const posIdx = lines.findIndex((l, i) => i > idx && i < idx + 14 && l.trim().toLowerCase() === "positions");
-    if (posIdx < 0) continue;
-    let n = [];
-    for (let j = posIdx + 1; j < Math.min(lines.length, posIdx + 8); j++) {
-      const nums = parseNums(lines[j]);
-      if (nums.length >= 14) { n = nums; break; }
-    }
-    if (n.length < 14) continue;
-    const nrLong = n[12], nrShort = n[13];
-    if (nrLong > 0 || nrShort > 0) {
-      const total = nrLong + nrShort;
-      out[ccy] = total > 0 ? Math.round((nrLong / total) * 100) : 50;
-    }
-  }
-  const vals = Object.values(out).filter((v) => typeof v === "number");
-  if (vals.length >= 3) out.USD = Math.round(100 - vals.reduce((a, b) => a + b, 0) / vals.length);
-  return Object.keys(out).length >= 4 ? out : null;
-}
-
-// Stejný vzor jako fetchTextWithFallback() v engine.js: přímý fetch napřed (server nemá
-// CORS problém a CFTC .gov nemá Cloudflare jako Myfxbook), proxy jen jako záloha.
-async function fetchTextWithFallback(url) {
-  const urls = [url, "https://r.jina.ai/" + url, "https://api.allorigins.win/raw?url=" + encodeURIComponent(url), "https://corsproxy.io/?url=" + encodeURIComponent(url)];
-  let lastErr = null;
-  for (const u of urls) {
-    try {
-      const r = await fetch(u, { headers: UA, cache: "no-store" });
-      console.log(`CFTC txt ${u.slice(0, 45)}… status=${r.status}`);
-      if (r.ok) {
-        const t = await r.text();
-        if (t && t.includes("Positions") && (t.includes("EURO FX") || t.includes("CANADIAN DOLLAR"))) return t;
-        lastErr = new Error("stažený text neobsahuje očekávaná data");
-      } else lastErr = new Error("HTTP " + r.status);
-    } catch (e) { lastErr = e; }
-  }
-  throw lastErr || new Error("CFTC text fetch selhal");
-}
+// LIKE vzory pro $where — širší než COT_MARKETS (NZD měnil název v čase), stejné
+// jako COT_LIKE ve fetch-research-data.js.
+const COT_LIKE_PATS = [
+  "EURO FX%", "BRITISH POUND%", "JAPANESE YEN%", "AUSTRALIAN DOLLAR%",
+  "CANADIAN DOLLAR%", "SWISS FRANC%", "%NZ DOLLAR%", "%NEW ZEALAND%",
+];
 
 async function fetchCftcNonReportable() {
-  const txt = await fetchTextWithFallback(CFTC_TXT_URL);
-  const parsed = parseNonReportableFromCOT(txt);
-  if (!parsed) throw new Error("parseNonReportableFromCOT nevrátil dost měn");
-  return parsed;
+  const cutoff = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10);
+  const where = `(${COT_LIKE_PATS.map((p) => `market_and_exchange_names like '${p}'`).join(" OR ")}) AND report_date_as_yyyy_mm_dd > '${cutoff}T00:00:00.000'`;
+  const fields = "market_and_exchange_names,report_date_as_yyyy_mm_dd,nonrept_positions_long_all,nonrept_positions_short_all";
+  const url = `https://publicreporting.cftc.gov/resource/${CFTC_LEGACY_DATASET}.json?$select=${encodeURIComponent(fields)}&$where=${encodeURIComponent(where)}&$order=${encodeURIComponent("report_date_as_yyyy_mm_dd DESC")}&$limit=200`;
+  const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(25000) });
+  if (!r.ok) throw new Error("CFTC Socrata API HTTP " + r.status);
+  const rows = await r.json();
+  if (!Array.isArray(rows) || !rows.length) throw new Error("CFTC Socrata API: 0 řádků");
+
+  const out = {};
+  for (const [ccy, market] of Object.entries(COT_MARKETS)) {
+    const row = rows.find((row) => String(row.market_and_exchange_names || "").toUpperCase().includes(market));
+    if (!row) continue;
+    const nrLong = parseFloat(row.nonrept_positions_long_all), nrShort = parseFloat(row.nonrept_positions_short_all);
+    if (!Number.isFinite(nrLong) || !Number.isFinite(nrShort)) continue;
+    const total = nrLong + nrShort;
+    out[ccy] = total > 0 ? Math.round((nrLong / total) * 100) : 50;
+  }
+  const vals = Object.values(out);
+  if (vals.length < 4) throw new Error("CFTC Socrata API: namapováno jen " + vals.length + " měn");
+  out.USD = Math.round(100 - vals.reduce((a, b) => a + b, 0) / vals.length);
+  return out;
 }
 
 // ── Myfxbook (sekundární, intradenní obohacení, když je dostupný) ──────
@@ -162,11 +143,11 @@ async function fetchMyfxbook() {
   }
 
   if (!ccy) {
-    // Oba zdroje bývají blokované z cloud IP GitHub Actions runnerů (CFTC i.htm 403,
-    // Myfxbook Cloudflare) — recoverable stav, ne chyba appky: existující retail_hist.json
-    // zůstává nedotčený a další běh za 30 min to zkusí znovu. Exit 0 (ne 1), ať tenhle
-    // očekávaný stav negeneruje opakované CI failure notifikace několikrát denně —
-    // skutečná chyba (např. FATAL níž) pořád exituje s 1.
+    // CFTC Socrata API by měl být spolehlivý (stejná infrastruktura jako fungující
+    // fetch-cot.js cron), ale pro jistotu zůstává i tenhle bezpečný fallback — kdyby
+    // Socrata dočasně nešlo a Myfxbook zrovna taky ne, nic se nepřepíše a další běh
+    // za 30 min to zkusí znovu. Exit 0 (ne 1), ať tenhle recoverable stav negeneruje
+    // CI failure notifikace — skutečná chyba (např. FATAL níž) pořád exituje s 1.
     console.warn("Žádný retail zdroj nedostupný (CFTC i Myfxbook selhaly) — nepřepisuju, zkusím příští běh.");
     process.exit(0);
   }
