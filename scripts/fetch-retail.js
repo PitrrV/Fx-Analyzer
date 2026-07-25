@@ -1,24 +1,71 @@
-// Retail sentiment — hodinový/půlhodinový snímek na server.
-// PŘÍSTUP 1: CFTC Non-reportable positions přes oficiální Socrata JSON API
-// (publicreporting.cftc.gov) — STEJNÁ doména a STEJNÝ vzor dotazu jako fetch-cot.js
-// (CFTC TFF cron) a fetch-research-data.js, oba prokazatelně fungují z GitHub Actions
-// (běží spolehlivě každý týden). Dřívější verze tohohle skriptu scrapovala
-// www.cftc.gov/dea/futures/financial_lf.htm (stejný zdroj jako klientský
-// fetchRetailSentiment() v engine.js) — ta stránka ale z cloud IP GitHub Actions
-// runneru vrací 403 (funguje jen z běžné prohlížečové sítě), takže nikdy neuspěla.
-// Socrata API běží na jiné infrastruktuře a blokaci nemá. Malí spekulanti (legacy
-// dataset 6dca-aqww, "nonrept_positions_*") = reálný retail proxy, per měna (ne per
-// pár). Aktualizuje se týdně (páteční CFTC report), ne intradenně.
-// PŘÍSTUP 2 (fallback): Myfxbook Community Outlook přes „čtecí" proxy — per pár,
-// intradenní, ale v posledních dnech blokovaný na všech proxy (Cloudflare zpřísnění
-// na straně Myfxbook). Ponecháno jako druhotný zdroj pro jemnější obohacení, když
-// je dostupný — CFTC teď gate na výstup nedrží.
+// Retail sentiment — půlhodinový snímek na server.
+// PŘÍSTUP 1 (primární, intradenní): Myfxbook OFICIÁLNÍ REST API (login.json +
+// get-community-outlook.json, viz myfxbook.com/api) — NENÍ totéž jako dřívější HTML
+// scraping community/outlook stránky (ten je za Cloudflare a blokovaný). Oficiální API
+// je jiná cesta na serveru myfxbook.com, potřebuje účet (MYFXBOOK_EMAIL/MYFXBOOK_PASSWORD
+// jako GH secrets). Volný limit 100 requestů/24h platí jen na get-community-outlook.json
+// (login/logout nejsou tahle stejná limitovaná brána) — cron po 30 min = 48 volání
+// outlooku/den, bezpečně pod limitem. Session je vázaná na IP, takže se přihlašuje
+// nanovo každý běh (runner má pokaždé jinou IP) — nedá se cachovat mezi běhy.
+// PŘÍSTUP 2 (fallback/cross-check, týdenní): CFTC Non-reportable positions přes oficiální
+// Socrata JSON API (publicreporting.cftc.gov) — STEJNÁ doména a STEJNÝ vzor dotazu jako
+// fetch-cot.js (CFTC TFF cron) a fetch-research-data.js, oba prokazatelně fungují z GitHub
+// Actions. Malí spekulanti (legacy dataset 6dca-aqww, "nonrept_positions_*") = per měna,
+// ne per pár, aktualizuje se týdně (páteční report). Použije se jen když Myfxbook API
+// selže (výpadek, vyčerpaný limit, chybějící/neplatné přihlašovací údaje).
 // Výstup: data/retail_hist.json = { updated, points:[ {t, pairs:{EURUSD:{l,s}}, ccy:{USD:..}, source } ] }
 const fs = require("fs");
 const CUR = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD"];
 const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" };
 
-// ── CFTC Non-reportable přes Socrata API (primární) ─────────────────
+// ── Myfxbook oficiální API (primární, intradenní) ───────────────────
+async function myfxbookLogin() {
+  const email = process.env.MYFXBOOK_EMAIL, password = process.env.MYFXBOOK_PASSWORD;
+  if (!email || !password) throw new Error("MYFXBOOK_EMAIL/MYFXBOOK_PASSWORD nejsou nastavené (GH secrets)");
+  const url = `https://www.myfxbook.com/api/login.json?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`;
+  const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new Error("Myfxbook login HTTP " + r.status);
+  const j = await r.json();
+  if (j.error || !j.session) throw new Error("Myfxbook login: " + (j.message || "chybí session"));
+  return j.session;
+}
+async function myfxbookLogout(session) {
+  try { await fetch(`https://www.myfxbook.com/api/logout.json?session=${encodeURIComponent(session)}`, { headers: UA, signal: AbortSignal.timeout(10000) }); } catch (e) {}
+}
+async function fetchMyfxbookOfficial() {
+  const session = await myfxbookLogin();
+  try {
+    const url = `https://www.myfxbook.com/api/get-community-outlook.json?session=${encodeURIComponent(session)}`;
+    const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error("Myfxbook outlook HTTP " + r.status);
+    const j = await r.json();
+    if (j.error) throw new Error("Myfxbook outlook: " + (j.message || "chyba"));
+    const symbols = Array.isArray(j.symbols) ? j.symbols : [];
+    const pairs = {};
+    for (const s of symbols) {
+      const sym = String(s.name || "").toUpperCase().replace("/", "");
+      const l = parseFloat(s.longPercentage), sh = parseFloat(s.shortPercentage);
+      if (/^[A-Z]{6}$/.test(sym) && Number.isFinite(l) && Number.isFinite(sh)) pairs[sym] = { l: Math.round(l), s: Math.round(sh) };
+    }
+    if (Object.keys(pairs).length < 4) throw new Error("Myfxbook outlook: jen " + Object.keys(pairs).length + " párů");
+    return pairs;
+  } finally {
+    myfxbookLogout(session);
+  }
+}
+function pairsToCcy(pairs) {
+  const sum = {}, cnt = {};
+  for (const [pair, d] of Object.entries(pairs)) {
+    const b = pair.slice(0, 3), q = pair.slice(3, 6);
+    if (CUR.includes(b)) { sum[b] = (sum[b] || 0) + d.l; cnt[b] = (cnt[b] || 0) + 1; }
+    if (CUR.includes(q)) { sum[q] = (sum[q] || 0) + (100 - d.l); cnt[q] = (cnt[q] || 0) + 1; }
+  }
+  const ccy = {};
+  for (const c of CUR) ccy[c] = cnt[c] ? Math.round(sum[c] / cnt[c]) : 50;
+  return ccy;
+}
+
+// ── CFTC Non-reportable přes Socrata API (fallback/cross-check) ─────
 const CFTC_LEGACY_DATASET = "6dca-aqww";
 const COT_MARKETS = {
   EUR: "EURO FX", GBP: "BRITISH POUND", JPY: "JAPANESE YEN", AUD: "AUSTRALIAN DOLLAR",
@@ -56,99 +103,34 @@ async function fetchCftcNonReportable() {
   return out;
 }
 
-// ── Myfxbook (sekundární, intradenní obohacení, když je dostupný) ──────
-const MYFX = "https://www.myfxbook.com/community/outlook";
-const MYFX_PROXIES = [
-  "https://r.jina.ai/" + MYFX,
-  "https://api.allorigins.win/raw?url=" + encodeURIComponent(MYFX),
-  "https://corsproxy.io/?url=" + encodeURIComponent(MYFX),
-  "https://thingproxy.freeboard.io/fetch/" + MYFX,
-];
-
-function parseMyfxPairs(html) {
-  const out = {};
-  const pats = [
-    /"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"longPercentage"\s*:\s*([\d.]+)[^}]*?"shortPercentage"\s*:\s*([\d.]+)/g,
-    /"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"shortPercentage"\s*:\s*([\d.]+)[^}]*?"longPercentage"\s*:\s*([\d.]+)/g,
-  ];
-  for (const [i, p] of pats.entries()) {
-    for (const m of html.matchAll(p)) {
-      const sym = m[1];
-      const l = parseFloat(i === 1 ? m[3] : m[2]);
-      const s = parseFloat(i === 1 ? m[2] : m[3]);
-      if (isFinite(l) && isFinite(s) && l + s > 90 && l + s < 110) out[sym] = { l: Math.round(l), s: Math.round(s) };
-    }
-    if (Object.keys(out).length >= 4) return out;
-  }
-  const nd = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-  if (nd) {
-    try {
-      const str = JSON.stringify(JSON.parse(nd[1]));
-      for (const m of str.matchAll(/"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"longPercentage"\s*:\s*([\d.]+)/g)) {
-        const l = parseFloat(m[2]); out[m[1]] = { l: Math.round(l), s: Math.round(100 - l) };
-      }
-    } catch (e) {}
-  }
-  if (Object.keys(out).length < 4) {
-    for (const m of html.matchAll(/([A-Z]{6})[^%]{0,80}?(\d{2,3}(?:\.\d+)?)\s*%[^%]{0,80}?(\d{2,3}(?:\.\d+)?)\s*%/g)) {
-      const l = parseFloat(m[2]), s = parseFloat(m[3]);
-      if (l + s > 95 && l + s < 105) out[m[1]] = { l: Math.round(l), s: Math.round(s) };
-    }
-  }
-  return out;
-}
-function pairsToCcy(pairs) {
-  const sum = {}, cnt = {};
-  for (const [pair, d] of Object.entries(pairs)) {
-    const b = pair.slice(0, 3), q = pair.slice(3, 6);
-    if (CUR.includes(b)) { sum[b] = (sum[b] || 0) + d.l; cnt[b] = (cnt[b] || 0) + 1; }
-    if (CUR.includes(q)) { sum[q] = (sum[q] || 0) + (100 - d.l); cnt[q] = (cnt[q] || 0) + 1; }
-  }
-  const ccy = {};
-  for (const c of CUR) ccy[c] = cnt[c] ? Math.round(sum[c] / cnt[c]) : 50;
-  return ccy;
-}
-async function fetchMyfxbook() {
-  for (const u of MYFX_PROXIES) {
-    try {
-      const r = await fetch(u, { headers: UA });
-      const html = await r.text();
-      console.log(`proxy ${u.slice(0, 40)}… status=${r.status} len=${html.length}`);
-      if (!r.ok || html.length < 800) continue;
-      const pairs = parseMyfxPairs(html);
-      console.log("  parsed pairs:", Object.keys(pairs).length);
-      if (Object.keys(pairs).length >= 4) return pairs;
-    } catch (e) { console.log("  ERR", e.message); }
-  }
-  return null;
-}
-
 (async () => {
   let ccy = null, pairs = {}, source = "";
 
   try {
-    ccy = await fetchCftcNonReportable();
-    source = "cftc-nonreport";
-    console.log("CFTC Non-reportable OK:", JSON.stringify(ccy));
-  } catch (e) { console.log("CFTC Non-reportable selhal:", e.message); }
+    pairs = await fetchMyfxbookOfficial();
+    ccy = pairsToCcy(pairs);
+    source = "myfxbook-api";
+    console.log("Myfxbook API OK:", Object.keys(pairs).length, "párů,", JSON.stringify(ccy));
+  } catch (e) { console.log("Myfxbook API selhal:", e.message); }
 
-  // Myfxbook: pokud dostupný, dá jemnější per-pár rozpad. Pokud CFTC selhal, je to
-  // jediná šance na výsledek vůbec; pokud CFTC uspěl, Myfxbook jen doplní `pairs`
-  // (ccy z CFTC se nepřepisuje — je to spolehlivější primární zdroj).
-  const myfx = await fetchMyfxbook();
-  if (myfx) {
-    pairs = myfx;
-    if (!ccy) { ccy = pairsToCcy(myfx); source = "myfxbook-outlook"; }
-    else source += "+myfxbook";
+  // CFTC: použije se jen když Myfxbook API selhal (výpadek/limit/špatné údaje) —
+  // per-měnový fallback, i když jen týdenní, je lepší než nic.
+  if (!ccy) {
+    try {
+      ccy = await fetchCftcNonReportable();
+      source = "cftc-nonreport";
+      console.log("CFTC Non-reportable OK (fallback):", JSON.stringify(ccy));
+    } catch (e) { console.log("CFTC Non-reportable selhal:", e.message); }
   }
 
   if (!ccy) {
-    // CFTC Socrata API by měl být spolehlivý (stejná infrastruktura jako fungující
-    // fetch-cot.js cron), ale pro jistotu zůstává i tenhle bezpečný fallback — kdyby
-    // Socrata dočasně nešlo a Myfxbook zrovna taky ne, nic se nepřepíše a další běh
-    // za 30 min to zkusí znovu. Exit 0 (ne 1), ať tenhle recoverable stav negeneruje
-    // CI failure notifikace — skutečná chyba (např. FATAL níž) pořád exituje s 1.
-    console.warn("Žádný retail zdroj nedostupný (CFTC i Myfxbook selhaly) — nepřepisuju, zkusím příští běh.");
+    // Oba zdroje mají za sebou fungující historii (Myfxbook API je oficiální, CFTC
+    // Socrata je stejná infrastruktura jako spolehlivý fetch-cot.js cron), ale pro
+    // jistotu zůstává bezpečný fallback — kdyby oba dočasně selhaly (výpadek, vyčerpaný
+    // Myfxbook limit), nic se nepřepíše a další běh za 45 min to zkusí znovu. Exit 0
+    // (ne 1), ať tenhle recoverable stav negeneruje CI failure notifikace — skutečná
+    // chyba (např. FATAL níž) pořád exituje s 1.
+    console.warn("Žádný retail zdroj nedostupný (Myfxbook API i CFTC selhaly) — nepřepisuju, zkusím příští běh.");
     process.exit(0);
   }
 
