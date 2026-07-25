@@ -2,7 +2,10 @@ name: Retail Sentiment
 
 on:
   schedule:
-    - cron: "*/30 * * * *"  # každých 30 min (GitHub část přeskočí; commit jen při změně)
+    # každých 30 min jako dřív — volný limit Myfxbook API (100 req/24h) platí jen
+    # na get-community-outlook.json, ne na login/logout; 48 běhů/den = 48 volání
+    # outlooku/den, bezpečně pod limitem.
+    - cron: "*/30 * * * *"
   workflow_dispatch:        # ruční/API spuštění
 
 permissions:
@@ -21,6 +24,9 @@ jobs:
         with:
           node-version: "20"
       - name: Stáhnout retail sentiment
+        env:
+          MYFXBOOK_EMAIL: ${{ secrets.MYFXBOOK_EMAIL }}
+          MYFXBOOK_PASSWORD: ${{ secrets.MYFXBOOK_PASSWORD }}
         run: node scripts/fetch-retail.js
       - name: Commit při změně
         run: |
