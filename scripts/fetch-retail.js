@@ -32,14 +32,32 @@ async function myfxbookLogin() {
 async function myfxbookLogout(session) {
   try { await fetch(`https://www.myfxbook.com/api/logout.json?session=${encodeURIComponent(session)}`, { headers: UA, signal: AbortSignal.timeout(10000) }); } catch (e) {}
 }
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+// Známý (zdokumentovaný na myfxbook.com fóru) zlozvyk API: čerstvá session z
+// login.json je občas hned napoprvé odmítnuta jako "Invalid session." — pomáhá
+// krátká prodleva a zopakování dotazu, ne chyba na naší straně.
+async function fetchOutlookWithSession(session) {
+  const url = `https://www.myfxbook.com/api/get-community-outlook.json?session=${encodeURIComponent(session)}`;
+  const attempts = [0, 1500, 3000];
+  let lastErr = null;
+  for (const delay of attempts) {
+    if (delay) await sleep(delay);
+    try {
+      const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20000) });
+      if (!r.ok) { lastErr = new Error("Myfxbook outlook HTTP " + r.status); continue; }
+      const j = await r.json();
+      if (j.error) { lastErr = new Error("Myfxbook outlook: " + (j.message || "chyba")); console.log(`  pokus (delay=${delay}ms): ${lastErr.message}`); continue; }
+      return j;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("Myfxbook outlook: neznámá chyba");
+}
+
 async function fetchMyfxbookOfficial() {
   const session = await myfxbookLogin();
   try {
-    const url = `https://www.myfxbook.com/api/get-community-outlook.json?session=${encodeURIComponent(session)}`;
-    const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(20000) });
-    if (!r.ok) throw new Error("Myfxbook outlook HTTP " + r.status);
-    const j = await r.json();
-    if (j.error) throw new Error("Myfxbook outlook: " + (j.message || "chyba"));
+    const j = await fetchOutlookWithSession(session);
     const symbols = Array.isArray(j.symbols) ? j.symbols : [];
     const pairs = {};
     for (const s of symbols) {
