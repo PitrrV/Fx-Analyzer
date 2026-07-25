@@ -161,7 +161,15 @@ async function fetchMyfxbook() {
     else source += "+myfxbook";
   }
 
-  if (!ccy) { console.error("Žádný retail zdroj nedostupný (CFTC i Myfxbook selhaly) — nepřepisuju."); process.exit(1); }
+  if (!ccy) {
+    // Oba zdroje bývají blokované z cloud IP GitHub Actions runnerů (CFTC i.htm 403,
+    // Myfxbook Cloudflare) — recoverable stav, ne chyba appky: existující retail_hist.json
+    // zůstává nedotčený a další běh za 30 min to zkusí znovu. Exit 0 (ne 1), ať tenhle
+    // očekávaný stav negeneruje opakované CI failure notifikace několikrát denně —
+    // skutečná chyba (např. FATAL níž) pořád exituje s 1.
+    console.warn("Žádný retail zdroj nedostupný (CFTC i Myfxbook selhaly) — nepřepisuju, zkusím příští běh.");
+    process.exit(0);
+  }
 
   const point = { t: new Date().toISOString(), pairs, ccy, source };
 
