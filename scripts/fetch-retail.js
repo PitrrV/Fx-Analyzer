@@ -149,6 +149,57 @@ async function fetchCftcNonReportable() {
     process.exit(0);
   }
 
+  // ── VALIDAČNÍ BRÁNA PŘED ZÁPISEM ──────────────────────────────────
+  // Vznikla po incidentu, kdy poziční parser prohodil long/short a data byla
+  // 30 dní tiše obrácená. Cíl: radši nic nezapsat než zapsat obrácená data.
+  const problems = [];
+
+  // (a) strukturální invariant
+  for (const [p, d] of Object.entries(pairs)) {
+    if (!Number.isFinite(d.l) || !Number.isFinite(d.s)) problems.push(`${p}: nečíselné l/s`);
+    else if (Math.abs(d.l + d.s - 100) > 1) problems.push(`${p}: l+s=${d.l + d.s} (má být 100)`);
+    else if (d.l < 0 || d.l > 100) problems.push(`${p}: l=${d.l} mimo 0–100`);
+  }
+  for (const c of CUR) {
+    const v = ccy[c];
+    if (!Number.isFinite(v) || v < 0 || v > 100) problems.push(`ccy ${c}=${v} mimo 0–100`);
+  }
+
+  // (b) ANTI-INVERZE: porovnej s posledním uloženým bodem téhož zdroje. Retail
+  // pozicování je setrvačné — mezi dvěma běhy (30 min) se nemůže hromadně
+  // překlopit na svůj zrcadlový obraz. Když by korelace vyšla silně ZÁPORNÁ,
+  // je to podpis prohozených long/short, ne pohyb trhu.
+  let prevStore = null;
+  try { prevStore = JSON.parse(fs.readFileSync("data/retail_hist.json", "utf8")); } catch (e) {}
+  const prev = prevStore && Array.isArray(prevStore.points)
+    ? [...prevStore.points].reverse().find((p) => p.source === source && p.pairs && Object.keys(p.pairs).length)
+    : null;
+  if (prev) {
+    const xs = [], ys = [];
+    for (const [p, d] of Object.entries(pairs)) {
+      const q = prev.pairs[p];
+      if (q && Number.isFinite(q.l)) { xs.push(d.l); ys.push(q.l); }
+    }
+    if (xs.length >= 6) {
+      const n = xs.length;
+      const mx = xs.reduce((a, b) => a + b, 0) / n, my = ys.reduce((a, b) => a + b, 0) / n;
+      const cov = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0);
+      const sx = Math.sqrt(xs.reduce((s, x) => s + (x - mx) ** 2, 0));
+      const sy = Math.sqrt(ys.reduce((s, y) => s + (y - my) ** 2, 0));
+      const rho = sx && sy ? cov / (sx * sy) : NaN;
+      console.log(`Anti-inverze: korelace s předchozím bodem (n=${n}) r=${Number.isFinite(rho) ? rho.toFixed(3) : "n/a"}`);
+      if (Number.isFinite(rho) && rho < -0.5) {
+        problems.push(`korelace s předchozím bodem r=${rho.toFixed(3)} — vypadá to na PROHOZENÉ long/short`);
+      }
+    }
+  }
+
+  if (problems.length) {
+    console.error("VALIDACE SELHALA — nezapisuju, aby se do historie nedostala vadná data:");
+    for (const p of problems) console.error("  · " + p);
+    process.exit(1);
+  }
+
   const point = { t: new Date().toISOString(), pairs, ccy, source };
 
   let store = { updated: "", points: [] };
