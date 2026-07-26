@@ -19,3 +19,8 @@ jobs:
         run: node scripts/audit-retail-integrity.js
       - name: Průzkum pokrytí párů
         run: node scripts/probe-retail-coverage.js
+      - name: Myfxbook keep-alive test
+        env:
+          MYFXBOOK_EMAIL: ${{ secrets.MYFXBOOK_EMAIL }}
+          MYFXBOOK_PASSWORD: ${{ secrets.MYFXBOOK_PASSWORD }}
+        run: node scripts/probe-myfxbook-keepalive.js
