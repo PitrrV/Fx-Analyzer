@@ -17,3 +17,5 @@ jobs:
         run: node scripts/probe-retail-sources.js
       - name: Audit integrity retail sentimentu
         run: node scripts/audit-retail-integrity.js
+      - name: Průzkum pokrytí párů
+        run: node scripts/probe-retail-coverage.js
