@@ -15,3 +15,5 @@ jobs:
           node-version: "20"
       - name: Otestovat kandidátní zdroje
         run: node scripts/probe-retail-sources.js
+      - name: Audit integrity retail sentimentu
+        run: node scripts/audit-retail-integrity.js

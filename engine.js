@@ -1238,7 +1238,11 @@ function getCOTScore(currency,cotData){
 }
 // Retail sentiment score: contrarian — 80%+ long = bearish, 20%- long = bullish. Rozsah držíme -1..+1 dle Trading Analyzer logiky.
 function getSentimentScore(currency,sentData){
-  const pct=sentData[currency]||50;
+  // POZOR na `||50`: retail 0 % long je legitimní krajní hodnota, ale v JS je 0
+  // falsy, takže by se tiše přepsala na 50 (neutrál) — přesně opačný závěr, než
+  // jaký data říkají (0 % long = maximálně kontrariánsky BULLISH). Proto isFinite.
+  const raw=sentData&&sentData[currency];
+  const pct=Number.isFinite(raw)?raw:50;
   if(pct>=80) return -1;
   if(pct>=70) return -0.5;
   if(pct<=20) return 1;
