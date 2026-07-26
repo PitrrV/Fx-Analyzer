@@ -636,19 +636,26 @@ async function fetchRetailSentiment(){
       if(!html||html.length<1000) continue;
 
       const sentByPair={};
-      // Vzor 1: JSON s longPercentage/shortPercentage
+      // POUZE vzory s POJMENOVANÝMI poli (longPercentage/shortPercentage) — směr je
+      // z názvu pole jednoznačný. Dřívější třetí, poziční vzor
+      //   /([A-Z]{6}).*?(\d{2,3})%.*?(\d{2,3})%/  s longPct = první %
+      // hádal směr z pořadí procent na stránce, jenže Myfxbook zobrazuje Short PŘED
+      // Long → tiše vracel prohozené long/short. Ta samá chyba v serverovém cronu
+      // způsobila, že retail data byla 30 dní obrácená (22.6.–23.7.2026, opraveno
+      // v scripts/fix-retail-history-inversion.js). Odstraněno: když pojmenované
+      // vzory nesednou, je správné nevrátit nic a nechat spadnout na
+      // deriveRetailFromCOTData() — žádná data jsou lepší než obrácená.
       const patterns=[
         /"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"longPercentage"\s*:\s*([\d.]+)[^}]*?"shortPercentage"\s*:\s*([\d.]+)/g,
         /"symbol"\s*:\s*"([A-Z]{6})"[^}]*?"shortPercentage"\s*:\s*([\d.]+)[^}]*?"longPercentage"\s*:\s*([\d.]+)/g,
-        /([A-Z]{6}).*?(\d{2,3}(?:\.\d{1,2})?)%.*?(\d{2,3}(?:\.\d{1,2})?)%/g,
       ];
       for(const [i,pat] of patterns.entries()){
         const matches=[...html.matchAll(pat)];
         for(const m of matches){
           const sym=m[1];
-          let longPct=parseFloat(i===1?m[3]:m[2]);
-          let shortPct=parseFloat(i===1?m[2]:m[3]);
-          if(i===2&&(longPct+shortPct<90||longPct+shortPct>110)) continue;
+          const longPct=parseFloat(i===1?m[3]:m[2]);
+          const shortPct=parseFloat(i===1?m[2]:m[3]);
+          if(!isFinite(longPct)||!isFinite(shortPct)) continue;
           sentByPair[sym]={long:longPct,short:shortPct};
         }
         if(Object.keys(sentByPair).length>=4) break;
