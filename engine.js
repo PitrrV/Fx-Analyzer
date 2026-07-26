@@ -2661,6 +2661,19 @@ async function fetchActionRetail(){
   return null;
 }
 function getCanonicalSent(){ return (_RETAIL_LATEST&&_RETAIL_LATEST.ccy)||null; }
+// Odkud pro daný pár pochází retail číslo — pro štítek v UI.
+//   "direct"    = skutečně měřeno providerem (dnes 14 z 28 párů)
+//   "estimated" = dopočet (ccy[báze] + (100−ccy[kvóta]))/2; průměrování stlačuje
+//                 rozptyl ~50 %, takže extrémů 70/30 skoro nedosáhne
+//   null        = žádná data
+function getRetailSource(pair,retailLatest){
+  const rl=retailLatest||_RETAIL_LATEST; if(!rl) return null;
+  const p=String(pair||"").toUpperCase();
+  if(rl.pairs&&rl.pairs[p]&&isFinite(rl.pairs[p].l)) return "direct";
+  const b=p.slice(0,3),q=p.slice(3,6);
+  if(rl.ccy&&rl.ccy[b]!=null&&rl.ccy[q]!=null) return "estimated";
+  return null;
+}
 function _pxPair(pair){return (typeof pair==="string")?STANDARD_PAIRS.find(x=>x.pair===pair):pair;}
 function _pxFrom(rates,p){ if(!rates) return null; const b=rates[p.base],q=rates[p.quote]; return (b&&q)?q/b:null; }
 function getPairPrice(pair){ const p=_pxPair(pair); if(!p||!_PRICES) return null; return _pxFrom(_PRICES.rates,p); }
@@ -2887,10 +2900,17 @@ function scanOpportunities(pairs,scores,retailLatest,opts){
   for(const p of pairs){
     const diffAbs=Math.abs(+p.diff||0); if(diffAbs<diffMin) continue;
     const dir=p.dir;
-    let rl=null;
-    if(rp&&rp[p.pair]&&isFinite(rp[p.pair].l)) rl=rp[p.pair].l;
+    let rl=null,rlDirect=false;
+    if(rp&&rp[p.pair]&&isFinite(rp[p.pair].l)){ rl=rp[p.pair].l; rlDirect=true; }
     else if(rc&&rc[p.base]!=null&&rc[p.quote]!=null) rl=Math.round((rc[p.base]+(100-rc[p.quote]))/2);
     if(rl==null) continue;
+    // Kontrariánský signál stavíme JEN na skutečně měřeném retailu. Dopočet
+    // (průměr dvou měnových sil) stlačuje rozptyl ~50 %, takže prahu 70/30
+    // skoro nedosáhne — a když ho dosáhne, bývá to falešně: měřeno na vlastní
+    // historii proti reálným myfxbook datům vyšlo u AUDCAD 32 % falešných
+    // signálů. Panel tvrdí "dav ≥70 %", což u odvozeného čísla doložit nejde.
+    // allowEstimated:true vrátí i odvozené (označené retailEstimated).
+    if(!rlDirect&&!(opts&&opts.allowEstimated)) continue;
     const cotB=(scores[p.base]&&scores[p.base].cot_score)||0, cotQ=(scores[p.quote]&&scores[p.quote].cot_score)||0;
     const cotNet=cotB-cotQ;
     const conv=p.conviction!=null?p.conviction:(p.conv!=null?p.conv:null);
@@ -2900,7 +2920,8 @@ function scanOpportunities(pairs,scores,retailLatest,opts){
     if(!crowd) continue;
     const crowdPct=crowd==="long"?rl:(100-rl); // % na straně, kde je dav přeplněný
     out.push({pair:p.pair,base:p.base,quote:p.quote,dir,diff:+(+p.diff).toFixed(1),retailLong:rl,cotNet:+cotNet.toFixed(1),conviction:conv,
-      reason:"Dav "+crowdPct+"% "+crowd+" · COT "+(cotNet>=0?"long":"short")+" · fundament "+dir+" (diff "+((+p.diff)>=0?"+":"")+(+p.diff).toFixed(1)+")"});
+      retailEstimated:!rlDirect,
+      reason:(rlDirect?"":"⚠ odhad · ")+"Dav "+crowdPct+"% "+crowd+" · COT "+(cotNet>=0?"long":"short")+" · fundament "+dir+" (diff "+((+p.diff)>=0?"+":"")+(+p.diff).toFixed(1)+")"});
   }
   return out.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
 }
