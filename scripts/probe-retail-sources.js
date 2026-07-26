@@ -1,119 +1,68 @@
-// DIAGNOSTIKA (dispatch-only, není součást žádného cronu): hledá použitelný zdroj
-// retail sentimentu PŘÍMO Z GITHUB ACTIONS runneru — jediného prostředí, kde na tom
-// záleží (sandbox i prohlížeč se chovají jinak, viz CFTC .htm 403 vs. Socrata OK).
+// DIAGNOSTIKA (dispatch-only, není součást žádného cronu).
 //
-// KOLO 1 zjistilo: FXSSI a FXBlue vrací 200 (neblokované), Myfxbook/DailyFX/
-// ForexClientSentiment 403 (Cloudflare). FXSSI stránka odkazuje na c.fxssi.com/api/.
-// KOLO 2 (tenhle skript) hledá konkrétní datový endpoint za tou subdoménou.
+// KOLO 1: FXSSI a FXBlue z GH Actions vrací 200; Myfxbook/DailyFX/ForexClientSentiment 403.
+// KOLO 2: nalezen funkční veřejný endpoint bez přihlášení —
+//         https://c.fxssi.com/api/current-ratio → 200, application/json,
+//         agreguje 10 brokerů (myfxbook, oanda, dukascopy, fxblue, IG, XM, …).
+// KOLO 3 (tenhle skript): vypsat kompletní strukturu odpovědi, ať se dá napsat parser.
 const UA = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
+  "Accept": "application/json, text/plain, */*",
+  "Referer": "https://fxssi.com/tools/current-ratio",
+  "Origin": "https://fxssi.com",
 };
 
-async function get(url, extraHeaders) {
-  const r = await fetch(url, { headers: { ...UA, ...(extraHeaders || {}) }, redirect: "follow", signal: AbortSignal.timeout(25000) });
-  const t = await r.text();
-  return { status: r.status, ctype: r.headers.get("content-type") || "?", t };
-}
-
-// Vypíše okolí každého výskytu jehly — chci vidět, jak se URL skládá v JS.
-function showContext(text, needle, radius, max) {
-  const out = [];
-  let i = -1;
-  while ((i = text.indexOf(needle, i + 1)) !== -1 && out.length < max) {
-    out.push(text.slice(Math.max(0, i - radius), i + needle.length + radius).replace(/\s+/g, " "));
+function summarize(v, depth = 0, key = "") {
+  const pad = "  ".repeat(depth);
+  if (Array.isArray(v)) {
+    console.log(`${pad}${key}: Array(${v.length})`);
+    if (v.length) summarize(v[0], depth + 1, "[0]");
+    return;
   }
-  return out;
-}
-
-async function stage1_fxssiPage() {
-  console.log("\n=== 1) FXSSI stránka: kontext kolem c.fxssi.com/api ===");
-  const { status, t } = await get("https://fxssi.com/tools/current-ratio");
-  console.log(`   status=${status} len=${t.length}`);
-
-  for (const needle of ["c.fxssi.com", "fxssi.com/api"]) {
-    const ctx = showContext(t, needle, 220, 6);
-    console.log(`\n   --- kontext "${needle}" (${ctx.length} výskytů) ---`);
-    ctx.forEach((c, i) => console.log(`   [${i}] …${c}…`));
-  }
-
-  // Skripty stránky — v nich bývá skutečné volání API.
-  const scripts = [...t.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => m[1])
-    .filter((u) => /fxssi|ratio|sentiment|app|main|bundle/i.test(u) && !/google|gtag|analytics|recaptcha/i.test(u));
-  console.log(`\n   --- vlastní skripty (${scripts.length}) ---`);
-  scripts.slice(0, 15).forEach((s) => console.log("      " + s));
-  return scripts;
-}
-
-async function stage2_scanScripts(scripts) {
-  console.log("\n\n=== 2) Skeny JS souborů na volání API ===");
-  for (const src of scripts.slice(0, 10)) {
-    const url = src.startsWith("http") ? src : src.startsWith("//") ? "https:" + src : "https://fxssi.com" + (src.startsWith("/") ? "" : "/") + src;
-    try {
-      const { status, t } = await get(url);
-      const hits = [...t.matchAll(/["'`]([^"'`\s]*\/api\/[^"'`\s]*)["'`]/g)].map((m) => m[1]);
-      const uniq = [...new Set(hits)].slice(0, 15);
-      console.log(`\n   ${url}\n   status=${status} len=${t.length} · api cest: ${uniq.length}`);
-      uniq.forEach((h) => console.log("      → " + h));
-      if (!uniq.length) {
-        const ctx = showContext(t, "c.fxssi", 160, 3);
-        ctx.forEach((c) => console.log("      ~ …" + c + "…"));
-      }
-    } catch (e) {
-      console.log(`\n   ${url}\n   ⛔ ${e.message}`);
+  if (v && typeof v === "object") {
+    const keys = Object.keys(v);
+    console.log(`${pad}${key}: Object{${keys.length}} → ${keys.slice(0, 14).join(", ")}${keys.length > 14 ? ", …" : ""}`);
+    if (depth < 3) {
+      for (const k of keys.slice(0, 3)) summarize(v[k], depth + 1, k);
     }
+    return;
   }
-}
-
-async function stage3_guessEndpoints() {
-  console.log("\n\n=== 3) Přímé tipy na FXSSI datové endpointy ===");
-  const guesses = [
-    "https://c.fxssi.com/api/current-ratio",
-    "https://c.fxssi.com/api/current-ratio/data",
-    "https://c.fxssi.com/api/ratios",
-    "https://c.fxssi.com/api/sentiment",
-    "https://c.fxssi.com/api/v1/current-ratio",
-    "https://fxssi.com/api/current-ratio",
-    "https://fxssi.com/wp-admin/admin-ajax.php?action=current_ratio",
-  ];
-  for (const url of guesses) {
-    try {
-      const { status, ctype, t } = await get(url, { "Referer": "https://fxssi.com/tools/current-ratio", "Origin": "https://fxssi.com" });
-      console.log(`\n   ${url}\n   status=${status} ctype=${ctype} len=${t.length}`);
-      if (status < 400 && t.length) console.log("   ukázka: " + t.slice(0, 400).replace(/\s+/g, " "));
-    } catch (e) {
-      console.log(`\n   ${url}\n   ⛔ ${e.message}`);
-    }
-  }
-}
-
-async function stage4_dukascopyWithReferer() {
-  console.log("\n\n=== 4) Dukascopy freeserv s Referer (403 bez něj) ===");
-  const urls = [
-    "https://freeserv.dukascopy.com/2.0/index.php?path=sentiment/sentiment&instrument=EUR/USD",
-    "https://freeserv.dukascopy.com/2.0/index.php?path=common/instruments",
-    "https://freeserv.dukascopy.com/2.0/core.js",
-  ];
-  for (const url of urls) {
-    try {
-      const { status, ctype, t } = await get(url, { "Referer": "https://www.dukascopy.com/", "Origin": "https://www.dukascopy.com" });
-      console.log(`\n   ${url}\n   status=${status} ctype=${ctype} len=${t.length}`);
-      if (status < 400 && t.length) {
-        console.log("   ukázka: " + t.slice(0, 300).replace(/\s+/g, " "));
-        const hits = [...t.matchAll(/["'`]([^"'`\s]*(?:sentiment|swfx)[^"'`\s]*)["'`]/gi)].map((m) => m[1]);
-        [...new Set(hits)].slice(0, 10).forEach((h) => console.log("      → " + h));
-      }
-    } catch (e) {
-      console.log(`\n   ${url}\n   ⛔ ${e.message}`);
-    }
-  }
+  console.log(`${pad}${key}: ${typeof v} = ${JSON.stringify(v)}`);
 }
 
 (async () => {
-  const scripts = await stage1_fxssiPage();
-  await stage2_scanScripts(scripts);
-  await stage3_guessEndpoints();
-  await stage4_dukascopyWithReferer();
+  const url = "https://c.fxssi.com/api/current-ratio";
+  console.log("=== FXSSI current-ratio: kompletní struktura ===\n" + url + "\n");
+  const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(25000) });
+  const raw = await r.text();
+  console.log(`status=${r.status} ctype=${r.headers.get("content-type")} len=${raw.length}\n`);
+
+  let j;
+  try { j = JSON.parse(raw); } catch (e) {
+    console.log("⛔ nelze parsovat JSON: " + e.message);
+    console.log(raw.slice(0, 2000));
+    return;
+  }
+
+  console.log("--- STROM ---");
+  summarize(j, 0, "root");
+
+  // Detailní pohled na to, kde jsou reálná long/short čísla per pár.
+  console.log("\n--- HLEDÁM DATA PER PÁR ---");
+  for (const [k, v] of Object.entries(j)) {
+    if (!v || typeof v !== "object") continue;
+    const keys = Object.keys(v);
+    const pairLike = keys.filter((x) => /^[A-Z]{6}$/.test(x) || /^[A-Z]{3}\/[A-Z]{3}$/.test(x));
+    if (pairLike.length >= 4) {
+      console.log(`\n✅ "${k}" obsahuje ${pairLike.length} párů: ${pairLike.slice(0, 12).join(", ")}`);
+      const sample = pairLike.slice(0, 3);
+      for (const p of sample) {
+        console.log(`\n   ${p} =\n   ${JSON.stringify(v[p]).slice(0, 900)}`);
+      }
+    }
+  }
+
+  console.log("\n\n--- CELÝ JSON (prvních 4500 znaků) ---");
+  console.log(raw.slice(0, 4500));
   console.log("\nHotovo.");
-})();
+})().catch((e) => { console.error("FATAL", e); process.exit(1); });
