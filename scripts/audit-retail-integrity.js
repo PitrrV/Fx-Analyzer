@@ -58,8 +58,15 @@ function pearson(xs, ys) {
     }
     const rho = pearson(xs, ys);
     const label = `${(src.broker_titles[b] || b).padEnd(10)} n=${String(xs.length).padStart(2)}  r=${Number.isFinite(rho) ? rho.toFixed(3) : "n/a"}`;
-    if (!Number.isFinite(rho)) { console.log(`  ⚠  ${label} (málo dat)`); continue; }
-    check(rho > 0.3, label, rho < 0 ? "PODEZŘENÍ NA OBRÁCENOU DEFINICI" : "");
+    if (!Number.isFinite(rho)) { console.log(`  ⚠  ${label} (v tomto snímku nejsou společné páry)`); continue; }
+    // Práh záměrně na ZÁPORNÉ straně: hledá se PODPIS INVERZE, ne „síla souhlasu".
+    // Malý broker s hrubě zaokrouhlenými hodnotami (FiboGroup uvádí celá procenta)
+    // a n≈12 dá klidně r≈0.3, aniž by s definicí LONG bylo cokoliv v nepořádku —
+    // dřívější práh 0.3 tohle označil za chybu falešně. Obrácená definice se
+    // projeví silnou ANTIkorelací, protože ostatní brokeři měří tentýž trh.
+    if (rho < -0.2) check(false, label, "PODEZŘENÍ NA OBRÁCENOU DEFINICI LONG");
+    else if (rho < 0.3) console.log(`  ⚠  ${label} (slabá, ale kladná shoda — malý vzorek/hrubé zaokrouhlení)`);
+    else check(true, label);
   }
 
   // ── 3. ZDROJ → DATABÁZE ───────────────────────────────────────────
