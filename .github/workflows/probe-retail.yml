@@ -1,0 +1,17 @@
+name: Probe Retail Sources
+
+# Dispatch-only diagnostika — žádný cron, nic necommituje. Slouží jen k ověření,
+# které zdroje retail sentimentu jsou dostupné z GitHub Actions runneru.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Otestovat kandidátní zdroje
+        run: node scripts/probe-retail-sources.js
