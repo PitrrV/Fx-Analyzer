@@ -1590,7 +1590,7 @@ function loadFavoritePairs(){
   try{const a=JSON.parse(localStorage.getItem(FAV_PAIRS_KEY)||"[]");return Array.isArray(a)?a:[];}catch(e){return[];}
 }
 function saveFavoritePairs(arr){
-  try{localStorage.setItem(FAV_PAIRS_KEY,JSON.stringify((arr||[]).filter(Boolean)));}catch(e){}
+  try{localStorage.setItem(FAV_PAIRS_KEY,JSON.stringify((arr||[]).filter(Boolean)));localStorage.setItem("v5_fav_pairs_ts",String(Date.now()));}catch(e){}
 }
 
 // ── IMPORT / EXPORT historie (CSV + JSON adaptéry) ──────────────────

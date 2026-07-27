@@ -12,8 +12,8 @@
   catch(e){ console.warn("Supabase init selhal:",e); }
 
   // localStorage klíče k synchronizaci
-  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","or_coach_model","oanda_token","oanda_env","cot_data","cot_meta","sent_data","positions_ts"];
-  const KEYS_ARR=["v5_ff_hist","journal","v5_fav_pairs"];                               // pole → sloučit
+  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","or_coach_model","oanda_token","oanda_env","cot_data","cot_meta","sent_data","positions_ts","v5_fav_pairs_ts"];
+  const KEYS_ARR=["v5_ff_hist","journal","v5_fav_pairs"];                               // pole → sloučit (v5_fav_pairs viz výjimka ve smartMerge)
   const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","positions","bias_state","engine_log","forecast_log","v5_cb_rates"]; // objekty → sloučit
   // TRANSIENT klíče se NIKDY nesynchronizují — a stripTransient() je navíc aktivně
   // odstraňuje ze slitých dat (applyLocal by jinak zapsal i staré kopie z cloudu
@@ -54,7 +54,6 @@
       });
       return Object.values(m);
     }
-    if(key==="v5_fav_pairs"){return [...new Set([...a,...b].filter(x=>typeof x==="string"&&x))];} // prostá množina symbolů
     const m=new Map();[...a,...b].forEach(e=>{const k=ffKey(e);const p=m.get(k);if(!p||(!p.actual&&e.actual))m.set(k,e);});return [...m.values()]; // v5_ff_hist: dedupe, preferuj s actual
   }
   function mergeObj(key,a,b){
@@ -98,7 +97,14 @@
     if(!cloud) return local;
     const out={_scalar:{},_arr:{},_obj:{}};
     out._scalar={...(cloud._scalar||{}),...(local._scalar||{})}; // lokál vyhrává, cloud doplní chybějící
-    new Set([...Object.keys(local._arr||{}),...Object.keys(cloud._arr||{})]).forEach(k=>{ out._arr[k]=mergeArr(k,(local._arr||{})[k],(cloud._arr||{})[k]); });
+    // v5_fav_pairs: NEslévat (odebrání z oblíbených musí propagovat, ne se vracet
+    // union-em ze starší cloud kopie) → celá novější verze dle v5_fav_pairs_ts vyhrává,
+    // stejný princip jako u "positions" níže.
+    const lft=+((local._scalar||{}).v5_fav_pairs_ts||0), cft=+((cloud._scalar||{}).v5_fav_pairs_ts||0);
+    new Set([...Object.keys(local._arr||{}),...Object.keys(cloud._arr||{})]).forEach(k=>{
+      if(k==="v5_fav_pairs"){ out._arr[k]= lft>=cft ? ((local._arr||{})[k]||[]) : ((cloud._arr||{})[k]||[]); }
+      else out._arr[k]=mergeArr(k,(local._arr||{})[k],(cloud._arr||{})[k]);
+    });
     // positions: NEslévat (zavření = smazání musí propagovat) → celá novější verze dle positions_ts vyhrává
     const lpt=+((local._scalar||{}).positions_ts||0), cpt=+((cloud._scalar||{}).positions_ts||0);
     new Set([...Object.keys(local._obj||{}),...Object.keys(cloud._obj||{})]).forEach(k=>{
