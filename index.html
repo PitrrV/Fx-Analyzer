@@ -960,14 +960,14 @@ class FXApp extends React.Component{
             h('div',{style:{position:'absolute',left:0,top:0,bottom:0,width:'20%',background:T.green+'1a',borderRadius:'5px 0 0 5px'}}),
             h('div',{style:{position:'absolute',right:0,top:0,bottom:0,width:'20%',background:T.red+'1a',borderRadius:'0 5px 5px 0'}}),
             h('div',{style:{position:'absolute',top:-3,left:'calc('+(rp.rp*100)+'% - 7px)',width:14,height:16,borderRadius:5,background:T.accent,border:'2px solid #0b0e15'}})),
-          h('div',{style:{fontSize:10,color:T.faint,marginTop:7}},rpZoneLbl+' · 10 dní'));
+          h('div',{style:{fontSize:11.5,fontWeight:700,color:T.dim,marginTop:7}},rpZoneLbl+' · 10 dní'));
         const erBar=er&&h('div',null,
           h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:8}},h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:T.dim}},'ER · EFFICIENCY RATIO'),h('span',{style:self.mono({fontSize:12,fontWeight:800,color:T.text})},er.er.toFixed(2))),
           h('div',{style:{position:'relative',height:10,borderRadius:5,background:'#1b2130'}},
             h('div',{style:{position:'absolute',left:'20%',top:0,bottom:0,width:'45%',background:T.yellow+'14'}}),
             [0.2,0.5,0.65].map(t=>h('div',{key:t,style:{position:'absolute',left:(t*100)+'%',top:0,bottom:0,width:1,background:'#3a4256'}})),
             h('div',{style:{position:'absolute',top:-3,left:'calc('+(er.er*100)+'% - 7px)',width:14,height:16,borderRadius:5,background:T.yellow,border:'2px solid #0b0e15'}})),
-          h('div',{style:{fontSize:10,color:T.faint,marginTop:7}},erLbl+' · 10 dní'));
+          h('div',{style:{fontSize:11.5,fontWeight:700,color:T.dim,marginTop:7}},erLbl+' · 10 dní'));
         return h('div',{style:self.card({padding:'18px 20px',background:verdict.bg,borderColor:sig?verdict.c+'33':'#1b2130',borderLeft:sig?'3px solid '+verdict.c:'1px solid #1b2130'})},
           h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:16,flexWrap:'wrap'}},
             self.ptitle('RP + ER — exhaustion signál','Technický fade + kontrola fundamentu'),
