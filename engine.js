@@ -2044,6 +2044,28 @@ function calcCBDI(){
   const cbdi=n1*0.30+n2*0.25+n3*0.25+n4*0.20;
   return Math.round(cbdi);
 }
+
+// ── PÁROVÁ CB DIVERGENCE — 0–100 ──────────────────────────────
+// calcCBDI() výše je za CELÝ koš 8 měn a je STEJNÉ číslo bez ohledu na to,
+// který pár se dívá — appka ho ale dřív zobrazovala i v detailu KAŽDÉHO
+// páru jako by to bylo info k danému páru (reálný nález: uživatel viděl
+// "44/100" identicky u USDCHF i všude jinde). Tenhle pár konkrétních měn
+// může mít vlastní silnou CB divergenci i v období, kdy je globální CBDI
+// nízký (zbytek koše je na plateau) — a naopak. Stejná normalizační
+// maxima jako u calcCBDI (rate spread ~6 %, real yield spread ~8 %), jen
+// bez STD členu (u dvou hodnot je STD = spread/2, tj. redundantní).
+function calcPairCBDI(base,quote){
+  const rb=CENTRAL_BANK_RATES[base]||0, rq=CENTRAL_BANK_RATES[quote]||0;
+  const pb=(CB_POLICY_DATA[base]&&CB_POLICY_DATA[base].score)||0, pq=(CB_POLICY_DATA[quote]&&CB_POLICY_DATA[quote].score)||0;
+  const cb=REAL_CPI_DATA[base]||2, cq=REAL_CPI_DATA[quote]||2;
+  const rateDiff=Math.abs(rb-rq);
+  const policyDiff=Math.abs(pb-pq); // 0–4 (policy score −2..+2 za měnu)
+  const ryDiff=Math.abs((rb-cb)-(rq-cq));
+  const n1=Math.min(100,rateDiff/6*100);
+  const n3=Math.min(100,policyDiff/4*100);
+  const n4=Math.min(100,ryDiff/8*100);
+  return Math.round(n1*0.35+n3*0.35+n4*0.30);
+}
 function getHoursToHighImpact(base,quote,upcoming){
   try{
     const now=Date.now();
@@ -3150,9 +3172,11 @@ function buildPairDossier(pairSym,scores,calData,upcoming,aiAnalyses,opts){
     let oil=null; if(base==="CAD"||quote==="CAD"){ try{ const os=getOilStatus(); if(os) oil={price:os.price,direction:os.direction,mom4w:os.mom4w,cadAdj:os.cadAdj}; }catch(e){} }
     const ai=(aiAnalyses||{})[pairSym]||null;
     const cmp=(field)=>({base:+((sB[field]||0)).toFixed(2),quote:+((sQ[field]||0)).toFixed(2)});
+    let pairCBDI=null; try{ pairCBDI=calcPairCBDI(base,quote); }catch(e){}
     return {
       pair:pairSym,base,quote,dir,diff,
       components:{fund:cmp("fund_score"),policy:cmp("policy_adj"),yield:cmp("yield_adj"),cot:cmp("cot_score"),sent:cmp("sent_score"),season:cmp("season_score")},
+      pairCBDI,
       cotPercentile:{base:sB.cot_pct??null,quote:sQ.cot_pct??null},
       conviction:{stars:conv.stars,reasons:conv.reasons},
       forecast,dailyBrief:daily,biasFlip:flip,oilCorrection:oil,
@@ -3188,7 +3212,7 @@ const COACH_GROUNDING_RULES=`PRAVIDLA PRO PŘESNOST ČÍSEL (hodně se to plete,
 - retail/sent = % retailových long pozic (0–100).
 - score/fund/policy/yield/season = typicky v rozsahu −10 až +10.
 Nikdy tato pole nezaměňuj a nikdy si číslo nevymýšlej — když ho v datech níže nevidíš, řekni, že ho nemáš, nehádej ho.
-DOSSIER KONKRÉTNÍHO PÁRU: pokud data obsahují "focusPairDossier", u otázek na TENTO pár cituj VÝHRADNĚ čísla z něj (components.fund/policy/yield/cot/sent/season pro base i quote, cotPercentile, conviction.stars/reasons, forecast.prob/dir, dailyBrief.level, biasFlip, oilCorrection) — nic nepřepočítávej, nic nedomýšlej, drž se přesně těchto hodnot. Strukturuj odpověď: Fundamenty (base vs quote) → COT → Retail → Conviction → 14d forecast (uveď, pokud nesouhlasí se směrem biasu) → Denní brief/bias flip (pokud relevantní) → Shrnutí pro uživatele. Pokud focusPairDossier chybí a uživatel se ptá na konkrétní pár, řekni, že teď pro něj nemáš detailní data, místo abys je vymyslel.
+DOSSIER KONKRÉTNÍHO PÁRU: pokud data obsahují "focusPairDossier", u otázek na TENTO pár cituj VÝHRADNĚ čísla z něj (components.fund/policy/yield/cot/sent/season pro base i quote, pairCBDI — CB divergence JEN téhle dvojice měn, jiné číslo než globální cbdi v datech, viz KNOWLEDGE BASE — cotPercentile, conviction.stars/reasons, forecast.prob/dir, dailyBrief.level, biasFlip, oilCorrection) — nic nepřepočítávej, nic nedomýšlej, drž se přesně těchto hodnot. Strukturuj odpověď: Fundamenty (base vs quote) → COT → Retail → Conviction → 14d forecast (uveď, pokud nesouhlasí se směrem biasu) → Denní brief/bias flip (pokud relevantní) → Shrnutí pro uživatele. Pokud focusPairDossier chybí a uživatel se ptá na konkrétní pár, řekni, že teď pro něj nemáš detailní data, místo abys je vymyslel.
 ZMĚNA SKÓRE (scoreChanges v datech): scoreChanges[MĚNA] = appkou už spočítaný rozklad DNEŠNÍ změny skóre té měny proti poslednímu zapsanému dni — {since: datum posledního zápisu, totalDelta: celková změna skóre, parts: [{label, delta}] setříděné od největšího dopadu}. Na otázky typu "co dnes změnilo skóre X", "proč se X hnulo/nehnulo" VŽDY cituj přesně tyhle položky (label + delta), nic si nepočítej ani nedomýšlej. Vzor odpovědi: "Skóre {MĚNA} se od {since} změnilo o {totalDelta}, protože {part1.label} {part1.delta}, {part2.label} {part2.delta}…". Pokud scoreChanges pro danou měnu chybí nebo je prázdné, řekni, že se dnes žádná komponenta znatelně nehnula (nebo že historie na srovnání ještě není k dispozici) — nevymýšlej důvod.
 FORMÁT ODPOVĚDI: piš VÝHRADNĚ česky. Nikdy nezobrazuj svoje uvažování, plán odpovědi ani jakýkoli text v angličtině (např. "we need to…", "let's produce…") — jen rovnou finální odpověď pro uživatele, bez meta-komentářů o tom, jak ji skládáš.`;
 
@@ -3278,7 +3302,7 @@ Počet NEZÁVISLÝCH faktorů, které souhlasí se směrem páru (CB politika, r
 Odhad, že se pár pohne ve forecastovaném směru na základě NADCHÁZEJÍCÍCH (ne proběhlých) dat. Appka ho schválně drží v konzervativním rozmezí, nikdy blízko 0 % nebo 100 % — je to odhad, ne slib. Může nesouhlasit s dlouhodobým biasem (appka to označí "≠ bias") — to je varovný signál, že nadcházející data můžou jít proti dosavadnímu náklonu, ne chyba appky.
 
 CBDI / DIVERGENCE (ukazatel na dashboardu, 0–100)
-Globální číslo za CELÝ koš měn (ne za jeden pár/měnu) — měří, jak moc se centrální banky světa dnes liší směrem politiky (někdo hikuje, někdo cutuje) vs. dělají všichni to samé. Vysoké číslo = lepší podmínky pro tenhle typ fundamentální analýzy (jasná divergence táhne trendy), nízké = opatrnost, signály budou slabší/šumovější. Neplést s tím, jak silná je JEDNA měna — to je Skóre/Síla měn.
+Globální číslo za CELÝ koš měn (ne za jeden pár/měnu) — měří, jak moc se centrální banky světa dnes liší směrem politiky (někdo hikuje, někdo cutuje) vs. dělají všichni to samé. Vysoké číslo = lepší podmínky pro tenhle typ fundamentální analýzy (jasná divergence táhne trendy), nízké = opatrnost, signály budou slabší/šumovější. Neplést s tím, jak silná je JEDNA měna — to je Skóre/Síla měn. Neplést ani s "CBDI páru" u konkrétního páru (viz focusPairDossier.pairCBDI) — to je JINÉ číslo, počítané jen ze dvou měn toho páru (base vs quote), takže se liší pár od páru, i když globální CBDI je jedno číslo pro celou appku.
 
 REAL YIELD (reálný výnos)
 Nominální sazba centrální banky minus inflace (CPI). Vyšší reálný výnos = měna atraktivnější k držení. Počítá se ze sazeb/CPI (mění se po zasedáních CB a inflačních datech), ne z kalendářních překvapení jako fundamentální skóre.

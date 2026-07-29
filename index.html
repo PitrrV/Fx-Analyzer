@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260728a"></script>
+<script src="engine.js?v=20260728b"></script>
 <script src="sync.js?v=20260727a"></script>
 <style>
 *{box-sizing:border-box}
@@ -943,6 +943,10 @@ class FXApp extends React.Component{
       const tail=' → '+(ccyBull?'silnější ':'slabší ')+d.ccy+' → '+(pairUp?'tlačí '+p.pair+' nahoru ▲':'tlačí '+p.pair+' dolů ▼');
       return supports?{txt:'✓ '+head+tail+' · podporuje '+p.dir+' bias',col:T.green}:{txt:'⚠ '+head+tail+' · jde PROTI '+p.dir+' biasu',col:T.red}; };
     const isCAD=p.base==='CAD'||p.quote==='CAD';
+    // Párová CB divergence (jen base vs quote) — NENÍ totéž co globální CBDI
+    // (this.cbdi), který je stejný pro všechny páry a dřív appka omylem
+    // zobrazovala právě jeho, identicky, v detailu úplně každého páru.
+    let pairCbdi=null; try{ pairCbdi=calcPairCBDI(p.base,p.quote); }catch(e){}
     const fac=[{l:'Fundamenty',ok:p.diff>=2,d:'diff '+p.diff.toFixed(1)},{l:'CB Policy',ok:Math.abs(sb.policy-sq.policy)>0.05,d:sb.cb+' × '+sq.cb},{l:'COT',ok:Math.abs(sb.cot-sq.cot)>0.3,d:'diff '+self.sgn(sb.cot-sq.cot)},{l:'Real Yield',ok:Math.abs(sb.yield-sq.yield)>0.2,d:self.sgn(sb.yield-sq.yield)+'%'}];
     const okN=fac.filter(f=>f.ok).length;
     const verdict=okN>=3?{t:'SOUHLASÍ',c:T.green,bg:'rgba(46,211,160,.06)',msg:'Většina faktorů shodně '+p.dir+' — silná confluence'}:okN>=2?{t:'ČÁSTEČNĚ',c:T.amber,bg:'rgba(232,171,63,.06)',msg:'Částečná shoda '+p.dir}:{t:'SLABÉ',c:T.faint,bg:'rgba(120,130,150,.05)',msg:'Faktory nesouhlasí — slabý signál'};
@@ -954,7 +958,7 @@ class FXApp extends React.Component{
           h('div',{style:{display:'flex',alignItems:'center',gap:14}},h('div',{style:self.mono({fontSize:22,fontWeight:700,letterSpacing:'-.02em',color:'#eef1f6',background:'#0b0e15',border:'1px solid #232b3d',borderRadius:12,padding:'8px 14px'})},p.pair),
             h('div',null,h('div',{style:{fontSize:13,color:T.dim}},(self.NAMES[p.base]||p.base)+' / '+(self.NAMES[p.quote]||p.quote)),h('div',{style:{display:'flex',alignItems:'center',gap:8,marginTop:5}},h('span',{style:{fontFamily:"'JetBrains Mono',monospace",fontSize:12,fontWeight:700,color:ac,background:buy?'rgba(46,211,160,.12)':'rgba(242,96,110,.12)',border:'1px solid '+(buy?'rgba(46,211,160,.3)':'rgba(242,96,110,.3)'),borderRadius:7,padding:'3px 10px'}},p.dir),h('span',{style:{fontSize:11,color:self.statusColor(p.status)}},'● '+self.statusLabel(p.status))))),
           h('div',{style:{textAlign:'right'}},h('div',{style:self.mono({fontSize:40,fontWeight:700,color:ac,lineHeight:.9})},(buy?'+':'−')+p.diff.toFixed(1)),h('div',{style:{fontSize:10.5,color:T.faint,marginTop:4,letterSpacing:'.04em'}},'SKÓRE DIFERENCIÁL'))),
-        h('div',{style:{display:'flex',borderTop:'1px solid #1b2130'}},stat('Conviction',h('span',{style:{color:T.amber,letterSpacing:'1px'}},stars(p.conv)),null,p.conv+' / 5 faktorů'),stat('14d výhled',p.prob+'%',probC,p.fdir+(p.fdir!==p.dir?' (≠ bias)':' výhled')),stat('CBDI',this.cbdi+'/100',this.cbdi>60?T.green:T.amber,'Podmínky'),stat(p.base+' skóre',self.sgn(sb.score),self.scol(sb.score),sb.cb),stat(p.quote+' skóre',self.sgn(sq.score),self.scol(sq.score),sq.cb))),
+        h('div',{style:{display:'flex',borderTop:'1px solid #1b2130'}},stat('Conviction',h('span',{style:{color:T.amber,letterSpacing:'1px'}},stars(p.conv)),null,p.conv+' / 5 faktorů'),stat('14d výhled',p.prob+'%',probC,p.fdir+(p.fdir!==p.dir?' (≠ bias)':' výhled')),stat('CBDI páru',(pairCbdi!=null?pairCbdi:'—')+'/100',(pairCbdi!=null&&pairCbdi>60)?T.green:T.amber,'CB divergence '+p.base+' vs '+p.quote+' (ne celý koš)'),stat(p.base+' skóre',self.sgn(sb.score),self.scol(sb.score),sb.cb),stat(p.quote+' skóre',self.sgn(sq.score),self.scol(sq.score),sq.cb))),
       (()=>{ let cf={state:'unknown',mom:null},lp=null; try{cf=getBiasConfirmation(p.pair,p.dir);lp=getPairPrice(p.pair);}catch(e){}
         const map={confirms:{c:T.green,ic:'✓',t:'Trh POTVRZUJE '+p.dir,m:'Cena se hýbe ve směru biasu — konfluence.'},
           diverges:{c:T.red,ic:'⚠',t:'Trh DIVERGUJE',m:'Cena jde proti biasu — počkej na potvrzení, nehoň cenu.'},
