@@ -61,7 +61,7 @@ class FXApp extends React.Component{
     super(p);
     const h=React.createElement; this.h=h;
     this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'',
-      seasFullPath:null, seasFullBusy:false, seasFullErr:'', seasFullYears:20,
+      seasFullPath:null, seasFullBusy:false, seasFullErr:'', seasFullYears:20, seasFullChartModal:false,
       // Výchozí okno = celý aktuální kalendářní měsíc (1. → poslední den) —
       // přepočítá se samo při každém otevření appky podle dnešního data,
       // takže v srpnu naskočí 1.8.–31.8. bez ručního překlikávání.
@@ -81,7 +81,7 @@ class FXApp extends React.Component{
     // skutečném mountu/unmountu (přepnutí na záložku Coach a zpět).
     this.setCoachScrollEl=(el)=>{ this._coachScrollEl=el; if(el) el.scrollTop=el.scrollHeight; };
     this.smooth=(pts)=>{ if(pts.length<2) return pts.length?`M ${pts[0][0]} ${pts[0][1]}`:''; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=0;i<pts.length-1;i++){ const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2; const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6,c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6; d+=` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2[0]} ${p2[1]}`; } return d; };
-    this.buildGauge(); this.buildCotModal(); this.buildHoverChart(); this.buildChartModal(); this.buildPriceMeasureChart(); this.buildWinChartModal();
+    this.buildGauge(); this.buildCotModal(); this.buildHoverChart(); this.buildChartModal(); this.buildPriceMeasureChart(); this.buildWinChartModal(); this.buildSeasonalCurveChart(); this.buildSeasYearChartModal();
   }
   componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000);
     this.maybeLoadFullYearSeasonality();
@@ -810,6 +810,91 @@ class FXApp extends React.Component{
           h(self.PriceMeasureChart,{dates:dates,closes:closes,height:520,highlights:highlights})));
     };
   }
+  // Roční sezónní křivka (cum = kumulativní % pole) jako interaktivní graf —
+  // stejná táhni-a-měř interakce jako PriceMeasureChart, ale místo relativní
+  // % změny ceny (close2/close1-1) počítá PŘÍMÝ rozdíl dvou bodů na % křivce
+  // (cum[b]-cum[a]) — přesně "vzdálenost v procentech od bodu k bodu", ne
+  // aproximace přes syntetickou cenu. Bez zoomu/panu (roční okno je fixní,
+  // na rozdíl od víceleté denní historie u Sezónního okna).
+  buildSeasonalCurveChart(){ const self=this,h=this.h;
+    this.SeasonalCurveChart=({cum,dates,height})=>{
+      const T=self.tok;
+      const n=cum.length;
+      const W=1000,H=height||220,PL=10,PR=44,PT=20,PB=28;
+      const svgRef=React.useRef(null);
+      const lo0=Math.min(0,...cum), hi0=Math.max(0,...cum), pad=((hi0-lo0)||1)*0.15;
+      const lo=lo0-pad, hi=hi0+pad, span=(hi-lo)||1;
+      const X=i=>PL+(W-PL-PR)*(i/(n-1)), Y=v=>PT+(H-PT-PB)*(1-(v-lo)/span);
+      const [drag,setDrag]=React.useState(null);
+      const [hoverIdx,setHoverIdx]=React.useState(null);
+      const pxOfEvt=e=>{ const r=svgRef.current.getBoundingClientRect(); return (e.clientX-r.left)/r.width*W; };
+      const pxToIdx=px=>Math.max(0,Math.min(n-1,Math.round((px-PL)/(W-PL-PR)*(n-1))));
+      const onDown=e=>{ const i=pxToIdx(pxOfEvt(e)); setDrag({startIdx:i,endIdx:i,dragging:true}); setHoverIdx(null); };
+      const onMove=e=>{ const i=pxToIdx(pxOfEvt(e)); if(drag&&drag.dragging){ setDrag(d=>d?Object.assign({},d,{endIdx:i}):d); } else { setHoverIdx(i); } };
+      const onUp=()=>{ setDrag(d=>d?Object.assign({},d,{dragging:false}):d); };
+      const onLeave=()=>{ setHoverIdx(null); setDrag(d=>d?Object.assign({},d,{dragging:false}):d); };
+      const pathD=self.smooth(cum.map((v,i)=>[X(i),Y(v)]));
+      const zeroY=Y(0), endUp=cum[n-1]>=0, col=endUp?T.green:T.red;
+      const MON=['Led','Úno','Bře','Dub','Kvě','Čvn','Čvc','Srp','Zář','Říj','Lis','Pro'];
+      const monthTicks=[]; let lastMon=-1;
+      (dates||[]).forEach((ds,i)=>{ const dd=new Date(ds+'T00:00:00'); if(isNaN(dd))return; const mo=dd.getMonth(); if(mo!==lastMon){ monthTicks.push({i,label:MON[mo]}); lastMon=mo; } });
+      const doy=d=>{ const s=new Date(d.getFullYear(),0,0); return Math.floor((d-s)/86400000); };
+      const now=new Date(), nowDOY=doy(now);
+      let todayIdx=0,bestDiff=Infinity;
+      (dates||[]).forEach((ds,i)=>{ const dd=new Date(ds+'T00:00:00'); if(isNaN(dd))return; const diff=Math.abs(doy(dd)-nowDOY); if(diff<bestDiff){bestDiff=diff;todayIdx=i;} });
+      const todayX=X(todayIdx), todayY=Y(cum[todayIdx]!=null?cum[todayIdx]:0);
+      const dfmt=d=>{ const dt=new Date(d); return isNaN(dt)?'':(dt.getDate()+'.'+(dt.getMonth()+1)+'.'); };
+      let measure=null;
+      if(drag&&drag.startIdx!==drag.endIdx){
+        const a=Math.min(drag.startIdx,drag.endIdx), b=Math.max(drag.startIdx,drag.endIdx);
+        measure={a,b,pct:+((cum[b]-cum[a]).toFixed(2))};
+      }
+      const showHover=hoverIdx!=null&&!(drag&&drag.dragging);
+      return h('svg',{ref:svgRef,viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',cursor:'crosshair',userSelect:'none',touchAction:'none',overflow:'visible'},
+        onMouseDown:onDown,onMouseMove:onMove,onMouseUp:onUp,onMouseLeave:onLeave},
+        zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'#2a3242',strokeWidth:1}),
+        h('text',{x:W-PR+6,y:zeroY+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},'0%'),
+        h('path',{d:pathD+' L '+X(n-1)+' '+zeroY+' L '+X(0)+' '+zeroY+' Z',fill:col,fillOpacity:.12}),
+        h('path',{d:pathD,fill:'none',stroke:col,strokeWidth:2.4,strokeLinecap:'round',strokeLinejoin:'round'}),
+        h('line',{x1:todayX,x2:todayX,y1:PT,y2:H-PB,stroke:T.amber,strokeWidth:1.4,strokeDasharray:'4 3'}),
+        h('text',{x:todayX,y:PT-7,fontSize:9,fontWeight:800,textAnchor:'middle',fill:T.amber},'DNES'),
+        h('circle',{cx:todayX,cy:todayY,r:3.6,fill:T.amber,stroke:'#0b0d13',strokeWidth:1.4}),
+        monthTicks.map((t,k)=>h('text',{key:k,x:X(t.i),y:H-PB+15,fontSize:9,textAnchor:'middle',fill:T.faint},t.label)),
+        measure&&h('rect',{x:X(measure.a),y:PT,width:Math.max(1,X(measure.b)-X(measure.a)),height:H-PT-PB,fill:measure.pct>=0?T.green:T.red,fillOpacity:.12}),
+        drag&&h('line',{x1:X(drag.startIdx),x2:X(drag.startIdx),y1:PT,y2:H-PB,stroke:T.accent,strokeWidth:1,strokeDasharray:'3 3'}),
+        drag&&h('line',{x1:X(drag.endIdx),x2:X(drag.endIdx),y1:PT,y2:H-PB,stroke:T.accent,strokeWidth:1,strokeDasharray:'3 3'}),
+        drag&&h('circle',{cx:X(drag.startIdx),cy:Y(cum[drag.startIdx]),r:3.5,fill:T.accent,stroke:'#0b0d13',strokeWidth:1.2}),
+        drag&&h('circle',{cx:X(drag.endIdx),cy:Y(cum[drag.endIdx]),r:3.5,fill:measure?(measure.pct>=0?T.green:T.red):T.accent,stroke:'#0b0d13',strokeWidth:1.2}),
+        measure&&(()=>{ const boxW=196,boxH=54; const bx=Math.min(W-PR-boxW,Math.max(PL,X(measure.b)+10)); const by=PT+6;
+          return h('g',{style:{pointerEvents:'none'}},
+            h('rect',{x:bx,y:by,width:boxW,height:boxH,rx:8,fill:'#11151d',stroke:'#2a3242'}),
+            h('text',{x:bx+10,y:by+19,fontSize:9.5,fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},(dates[drag.startIdx]?dfmt(dates[drag.startIdx]):'')+' → '+(dates[drag.endIdx]?dfmt(dates[drag.endIdx]):'')),
+            h('text',{x:bx+10,y:by+40,fontSize:16,fontWeight:800,fill:measure.pct>=0?T.green:T.red,fontFamily:"'JetBrains Mono',monospace"},(measure.pct>0?'+':'')+measure.pct+'%')); })(),
+        showHover&&(()=>{ const hx=X(hoverIdx),hy=Y(cum[hoverIdx]); const boxW=112,boxH=32; let bx=Math.min(W-PR-boxW,Math.max(PL,hx-boxW/2)); let by=hy-boxH-10; if(by<PT) by=hy+10; if(by>H-PB-boxH) by=H-PB-boxH;
+          return h('g',{style:{pointerEvents:'none'}},
+            h('line',{x1:hx,x2:hx,y1:PT,y2:H-PB,stroke:'#2a3242',strokeWidth:1,strokeDasharray:'2 3'}),
+            h('circle',{cx:hx,cy:hy,r:3,fill:T.accent,stroke:'#0b0d13',strokeWidth:1}),
+            h('rect',{x:bx,y:by,width:boxW,height:boxH,rx:6,fill:'#11151d',stroke:'#2a3242'}),
+            h('text',{x:bx+8,y:by+14,fontSize:9.5,fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},dates[hoverIdx]?dfmt(dates[hoverIdx]):''),
+            h('text',{x:bx+8,y:by+27,fontSize:10.5,fontWeight:700,fill:T.text,fontFamily:"'JetBrains Mono',monospace"},(cum[hoverIdx]>=0?'+':'')+cum[hoverIdx].toFixed(2)+'%')); })(),
+        !measure&&!showHover&&h('text',{x:PL+8,y:PT+16,fontSize:10.5,fill:T.faint},'Táhni pro měření vzdálenosti v % mezi dvěma body · najeď pro hodnotu bodu.'));
+    };
+  }
+  buildSeasYearChartModal(){ const self=this,h=this.h;
+    this.SeasYearChartModal=({pair,years,n,cum,dates})=>{
+      const T=self.tok;
+      const close=()=>self.setState({seasFullChartModal:false});
+      React.useEffect(()=>{ const k=e=>{ if(e.key==='Escape') self.setState({seasFullChartModal:false}); }; window.addEventListener('keydown',k); return ()=>window.removeEventListener('keydown',k); },[]);
+      return h('div',{onClick:close,style:{position:'fixed',inset:0,background:'rgba(7,8,12,.82)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:120,padding:'24px',animation:'fxfade .2s ease'}},
+        h('div',{onClick:e=>e.stopPropagation(),style:{width:'min(1200px,96vw)',maxHeight:'92vh',overflow:'auto',background:'#0f1218',border:'1px solid #27304a',borderRadius:16,padding:'22px 26px',boxShadow:'0 30px 80px rgba(0,0,0,.55)'}},
+          h('div',{style:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:14,flexWrap:'wrap',marginBottom:18}},
+            h('div',null,
+              h('div',{style:self.mono({fontSize:18,fontWeight:800})},'Roční sezónní křivka — '+pair),
+              h('div',{style:{fontSize:12.5,color:T.dim,marginTop:5}},'Průměr '+n+' let · táhni mezi dvěma body pro % vzdálenost · Esc pro zavření')),
+            h('button',{type:'button',onClick:close,style:{width:34,height:34,borderRadius:9,border:'1px solid #2a3242',background:'#161b27',color:T.dim,fontSize:18,cursor:'pointer',lineHeight:1}},'×')),
+          h(self.SeasonalCurveChart,{cum:cum,dates:dates,height:520})));
+    };
+  }
   CotHistChart(c,limit,category){ const self=this,h=this.h,T=this.tok; let s={dates:[],values:[]}; try{s=getCOTNetSeries(c,limit,category==='asset'?'asset':'lev');}catch(e){}
     const vals=s.values||[]; if(vals.length<2) return h('div',{style:{fontSize:11,color:T.faint,padding:'18px 6px',textAlign:'center'}},'Málo COT historie — nasbírá se týdně, nebo importuj v klasické verzi.');
     const W=300,H=84,PL=4,PR=4,PT=8,PB=8; const mn=Math.min(...vals),mx=Math.max(...vals),rng=(mx-mn)||1; const n=vals.length;
@@ -1330,40 +1415,15 @@ class FXApp extends React.Component{
       return h('div',{style:self.card({padding:'18px 22px'})},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:10}},
           self.ptitle('Roční sezónní křivka — '+cur,'Den po dni, celý rok · zdroj Stooq (zdarma, bez klíče)'),
-          h('div',{style:{display:'flex',gap:5}},[3,5,10,15,20].map(y=>h('button',{key:y,type:'button',onClick:()=>self.setState({seasFullYears:y}),style:{border:'1px solid '+(st.seasFullYears===y?T.accent:'#1b2130'),background:st.seasFullYears===y?'rgba(94,124,251,.14)':'#0a0d13',color:st.seasFullYears===y?T.text:T.dim,borderRadius:8,padding:'6px 10px',fontFamily:'inherit',fontSize:11.5,fontWeight:700,cursor:'pointer'}},y+' let')))),
+          h('div',{style:{display:'flex',gap:9,alignItems:'center',flexWrap:'wrap'}},
+            h('div',{style:{display:'flex',gap:5}},[3,5,10,15,20].map(y=>h('button',{key:y,type:'button',onClick:()=>self.setState({seasFullYears:y}),style:{border:'1px solid '+(st.seasFullYears===y?T.accent:'#1b2130'),background:st.seasFullYears===y?'rgba(94,124,251,.14)':'#0a0d13',color:st.seasFullYears===y?T.text:T.dim,borderRadius:8,padding:'6px 10px',fontFamily:'inherit',fontSize:11.5,fontWeight:700,cursor:'pointer'}},y+' let'))),
+            ready&&h('button',{type:'button',onClick:()=>self.setState({seasFullChartModal:true}),title:'Zvětšit na celou obrazovku',style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:8,padding:'6px 11px',fontSize:11,fontFamily:'inherit',cursor:'pointer'}},'⤢ Zvětšit'))),
         busy&&h('div',{style:{fontSize:12,color:T.faint,marginTop:14}},'⏳ Počítám roční průměr…'),
         st.seasFullErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:11,lineHeight:1.5}},'⚠ '+st.seasFullErr),
         !busy&&!ready&&!st.seasFullErr&&h('div',{style:{fontSize:12,color:T.faint,marginTop:14}},'Načítám…'),
-        ready&&(()=>{
-          const cum=FP.avg, dates=FP.dates||[];
-          const W=900,H=220,PL=10,PR=14,PT=20,PB=28;
-          const lo0=Math.min(0,...cum), hi0=Math.max(0,...cum), pad=((hi0-lo0)||1)*0.15;
-          const lo=lo0-pad, hi=hi0+pad, span=(hi-lo)||1;
-          const X=i=>PL+(W-PL-PR)*(i/(cum.length-1)), Y=v=>PT+(H-PT-PB)*(1-(v-lo)/span);
-          const pathD=self.smooth(cum.map((v,i)=>[X(i),Y(v)]));
-          const zeroY=Y(0), endUp=cum[cum.length-1]>=0, col=endUp?T.green:T.red;
-          // Měsíční tiky na ose X — první bod v datech pro daný měsíc.
-          const monthTicks=[]; let lastMon=-1;
-          dates.forEach((ds,i)=>{ const dd=new Date(ds+'T00:00:00'); if(isNaN(dd))return; const mo=dd.getMonth(); if(mo!==lastMon){ monthTicks.push({i,label:MON[mo]}); lastMon=mo; } });
-          // DNES — nejbližší den v roce (den+měsíc; referenční rok v datech je
-          // poslední KOMPLETNÍ rok, takže se hledá podle dne v roce, ne přesného data).
-          const doy=d=>{ const s=new Date(d.getFullYear(),0,0); return Math.floor((d-s)/86400000); };
-          const now=new Date(), nowDOY=doy(now);
-          let todayIdx=0,bestDiff=Infinity;
-          dates.forEach((ds,i)=>{ const dd=new Date(ds+'T00:00:00'); if(isNaN(dd))return; const diff=Math.abs(doy(dd)-nowDOY); if(diff<bestDiff){bestDiff=diff;todayIdx=i;} });
-          const todayX=X(todayIdx), todayY=Y(cum[todayIdx]!=null?cum[todayIdx]:0);
-          return h('div',{style:{marginTop:14}},
-            h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',overflow:'visible'}},
-              zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'#2a3242',strokeWidth:1}),
-              h('text',{x:W-PR+4,y:zeroY+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},'0%'),
-              h('path',{d:pathD+' L '+X(cum.length-1)+' '+zeroY+' L '+X(0)+' '+zeroY+' Z',fill:col,fillOpacity:.12}),
-              h('path',{d:pathD,fill:'none',stroke:col,strokeWidth:2.4,strokeLinecap:'round',strokeLinejoin:'round'}),
-              h('line',{x1:todayX,x2:todayX,y1:PT,y2:H-PB,stroke:T.amber,strokeWidth:1.4,strokeDasharray:'4 3'}),
-              h('text',{x:todayX,y:PT-7,fontSize:9,fontWeight:800,textAnchor:'middle',fill:T.amber},'DNES'),
-              h('circle',{cx:todayX,cy:todayY,r:3.6,fill:T.amber,stroke:'#0b0d13',strokeWidth:1.4}),
-              monthTicks.map((t,k)=>h('text',{key:k,x:X(t.i),y:H-PB+15,fontSize:9,textAnchor:'middle',fill:T.faint},t.label))),
-            h('div',{style:{fontSize:10.5,color:T.faint,marginTop:6,lineHeight:1.5}},'Kumulativní % pohyb den po dni od 1. ledna, zprůměrovaný přes posledních '+FP.n+' kompletních let (n='+FP.n+') — oranžová čára ukazuje, kde na téhle křivce leží dnešní datum ('+now.toLocaleDateString('cs-CZ')+'). Tendence z historie, ne předpověď.'));
-        })());
+        ready&&h('div',{style:{marginTop:14}},
+          h(self.SeasonalCurveChart,{cum:FP.avg,dates:FP.dates,height:220}),
+          h('div',{style:{fontSize:10.5,color:T.faint,marginTop:6,lineHeight:1.5}},'Kumulativní % pohyb den po dni od 1. ledna, zprůměrovaný přes posledních '+FP.n+' kompletních let (n='+FP.n+') — oranžová čára ukazuje, kde na téhle křivce leží dnešní datum ('+new Date().toLocaleDateString('cs-CZ')+'). Táhni myší mezi dvěma body pro přesnou % vzdálenost. Tendence z historie, ne předpověď.')));
     })();
     return h('div',{style:{maxWidth:1080,display:'flex',flexDirection:'column',gap:16}},
       fullYearCard,
@@ -1573,6 +1633,7 @@ class FXApp extends React.Component{
         const hl=(st.winResult&&st.winResult.pair===dd.pair)?st.winResult.results.map(r=>({from:r.from,to:r.to})):null;
         return h(self.WinChartModal,{pair:dd.pair,dates:dd.dates.slice(cutIdx),closes:dd.closes.slice(cutIdx),highlights:hl});
       })(),
+      st.seasFullChartModal&&st.seasFullPath&&h(self.SeasYearChartModal,{pair:st.seasFullPath.pair,years:st.seasFullPath.years,n:st.seasFullPath.n,cum:st.seasFullPath.avg,dates:st.seasFullPath.dates}),
       !st.loaded&&h('div',{style:{position:'fixed',inset:0,background:'rgba(7,8,12,.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:99,fontSize:14,color:T.dim}},'⏳ Načítám živá data…'));
   }
 }
