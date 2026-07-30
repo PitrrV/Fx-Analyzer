@@ -885,8 +885,18 @@ class FXApp extends React.Component{
       for(let i=i0;i<=i1;i++){ const ds=dates&&dates[i]; if(!ds) continue; const dd=new Date(ds+'T00:00:00'); if(isNaN(dd))continue; const mo=dd.getMonth(); if(mo!==lastMon){ monthTicks.push({i,label:MON[mo]}); lastMon=mo; } }
       const doy=d=>{ const s=new Date(d.getFullYear(),0,0); return Math.floor((d-s)/86400000); };
       const now=new Date(), nowDOY=doy(now);
-      let todayIdx=0,bestDiff=Infinity;
-      (dates||[]).forEach((ds,i)=>{ const dd=new Date(ds+'T00:00:00'); if(isNaN(dd))return; const diff=Math.abs(doy(dd)-nowDOY); if(diff<bestDiff){bestDiff=diff;todayIdx=i;} });
+      // DNES = dnešní den, nebo pokud dnešek v datech chybí (víkend/svátek —
+      // referenční rok nemusí mít obchodní den přesně na dnešní datum), NEJBLIŽŠÍ
+      // PŘEDCHOZÍ obchodní den — nikdy budoucí. Dřív se bral prostě nejbližší podle
+      // absolutní vzdálenosti, což mohlo značku posunout o den DOPŘEDU (reálný nález:
+      // dnes 30.7., značka na 31.7.) — matoucí, appka tím naznačovala data, která
+      // "ještě nenastala".
+      let todayIdx=0,bestPast=-Infinity;
+      (dates||[]).forEach((ds,i)=>{ const dd=new Date(ds+'T00:00:00'); if(isNaN(dd))return; const dv=doy(dd); if(dv<=nowDOY&&dv>bestPast){bestPast=dv;todayIdx=i;} });
+      if(bestPast===-Infinity){
+        let bestDiff=Infinity;
+        (dates||[]).forEach((ds,i)=>{ const dd=new Date(ds+'T00:00:00'); if(isNaN(dd))return; const diff=Math.abs(doy(dd)-nowDOY); if(diff<bestDiff){bestDiff=diff;todayIdx=i;} });
+      }
       const todayVisible=todayIdx>=i0&&todayIdx<=i1;
       const todayX=X(todayIdx), todayY=Y(cum[todayIdx]!=null?cum[todayIdx]:0);
       const dfmt=d=>{ const dt=new Date(d); return isNaN(dt)?'':(dt.getDate()+'.'+(dt.getMonth()+1)+'.'); };
