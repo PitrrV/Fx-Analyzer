@@ -1,0 +1,19 @@
+name: Probe COT Legacy USD
+
+# Dispatch-only diagnostika — žádný cron, nic necommituje. Porovnává appku
+# (TFF report) s Legacy COT reportem pro USD Index, aby šlo ověřit, jestli
+# rozdíl proti Honzově nástroji (jiná kategorizace CFTC dat) sedí na reálná
+# čísla.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Najít Legacy COT USD Index data
+        run: node scripts/probe-cot-legacy.js
