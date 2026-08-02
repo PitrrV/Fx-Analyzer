@@ -6,9 +6,22 @@
 // bez ručního importu z classic.html.
 const fs = require("fs");
 const CFTC_TFF_DATASET = "gpe5-46if";
+// USD Index (ICE Futures U.S., ticker DX, cftc_contract_market_code 098662) —
+// appka dřív USD počítala jen synteticky (opačný průměr ostatních 7 měn),
+// protože filtr vyžadoval burzu "CHICAGO MERCANTILE" u všech měn a USD Index
+// je na ICE, ne CME. Živě ověřeno (probe-cot-usd.js): aktuální název v CFTC
+// TFF datasetu je "USD INDEX - ICE FUTURES U.S." (starší "U.S. DOLLAR INDEX"
+// varianta má poslední data 2022-02-01 — CFTC kontrakt přejmenovala, stejný
+// cftc_contract_market_code, tj. stejný nástroj).
 const COT_MARKETS = {
-  EUR: "EURO FX", GBP: "BRITISH POUND", JPY: "JAPANESE YEN", AUD: "AUSTRALIAN DOLLAR",
-  CAD: "CANADIAN DOLLAR", CHF: "SWISS FRANC", NZD: "NZ DOLLAR",
+  EUR: { name: "EURO FX", exch: "CHICAGO MERCANTILE" },
+  GBP: { name: "BRITISH POUND", exch: "CHICAGO MERCANTILE" },
+  JPY: { name: "JAPANESE YEN", exch: "CHICAGO MERCANTILE" },
+  AUD: { name: "AUSTRALIAN DOLLAR", exch: "CHICAGO MERCANTILE" },
+  CAD: { name: "CANADIAN DOLLAR", exch: "CHICAGO MERCANTILE" },
+  CHF: { name: "SWISS FRANC", exch: "CHICAGO MERCANTILE" },
+  NZD: { name: "NZ DOLLAR", exch: "CHICAGO MERCANTILE" },
+  USD: { name: "USD INDEX", exch: "ICE FUTURES U.S." },
 };
 const COT_DEFAULT = Object.fromEntries(Object.keys(COT_MARKETS).map((c) => [c, 0]));
 
@@ -38,7 +51,7 @@ function scoreWeek(rows) {
   for (const [ccy, market] of Object.entries(COT_MARKETS)) {
     const row = rows.find((r) => {
       const nm = String(r.market_and_exchange_names || r.contract_market_name || "").toUpperCase();
-      return nm.includes(market) && nm.includes("CHICAGO MERCANTILE");
+      return nm.includes(market.name) && nm.includes(market.exch);
     });
     if (!row) continue;
     const assetLong = cftcNum(row, ["asset_mgr_positions_long", "asset_mgr_positions_long_all"]);
@@ -53,14 +66,19 @@ function scoreWeek(rows) {
     const assetChange = (cftcNum(row, ["change_in_asset_mgr_long", "change_in_asset_mgr_long_all"]) || 0) - (cftcNum(row, ["change_in_asset_mgr_short", "change_in_asset_mgr_short_all"]) || 0);
     const flow = levChange * 0.70 + assetChange * 0.30;
     out[ccy] = score;
-    raw[ccy] = { market, assetLong, assetShort, levLong, levShort, assetNet: asset.net, levNet: lev.net, levRatio: lev.ratio, assetRatio: asset.ratio,
+    raw[ccy] = { market: market.name, assetLong, assetShort, levLong, levShort, assetNet: asset.net, levNet: lev.net, levRatio: lev.ratio, assetRatio: asset.ratio,
       levScore, assetScore, score, levChange, assetChange, flow: Math.round(flow), extreme: cotExtremeFromRatio(lev.ratio) };
   }
-  const vals = Object.values(out).filter((v) => typeof v === "number" && !isNaN(v));
-  if (vals.length < 5) return null;
-  out.USD = parseFloat((-vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1));
-  const flows = Object.values(raw).map((r) => r.flow || 0);
-  raw.USD = { market: "syntetický USD koš", note: "opačný průměr dostupných non-USD COT měn", score: out.USD, flow: flows.length ? Math.round(-flows.reduce((a, b) => a + b, 0) / flows.length) : 0, extreme: { level: "SYNTH", label: "syntetický koš", color: "#8b949e" } };
+  // Non-USD hodnoty ZVLÁŠŤ — USD teď typicky přijde z reálného řádku výše (USD
+  // Index), ne z tohohle průměru. Syntetický odhad zůstává jen jako fallback,
+  // kdyby řádek USD Indexu chyběl (výpadek/změna schématu na straně CFTC).
+  const nonUsdVals = Object.entries(out).filter(([k, v]) => k !== "USD" && typeof v === "number" && !isNaN(v)).map(([, v]) => v);
+  if (nonUsdVals.length < 5) return null;
+  if (out.USD === undefined) {
+    out.USD = parseFloat((-nonUsdVals.reduce((a, b) => a + b, 0) / nonUsdVals.length).toFixed(1));
+    const flows = Object.entries(raw).filter(([k]) => k !== "USD").map(([, r]) => r.flow || 0);
+    raw.USD = { market: "syntetický USD koš (fallback)", note: "CFTC USD Index řádek nenalezen, opačný průměr ostatních měn", score: out.USD, flow: flows.length ? Math.round(-flows.reduce((a, b) => a + b, 0) / flows.length) : 0, extreme: { level: "SYNTH", label: "syntetický koš", color: "#8b949e" } };
+  }
   return { scores: { ...COT_DEFAULT, ...out }, raw };
 }
 
