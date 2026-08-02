@@ -6,27 +6,27 @@
 // tohle číslo sedí na skutečná CFTC data (a tím i to, že náš TFF fix je
 // konzistentní s jiným reportem stejného trhu, jen jinak kategorizovaným).
 (async () => {
-  // 1) Vylistovat VŠECHNY datasety na publicreporting.cftc.gov (bez q filtru —
-  // full-text search v předchozí iteraci vrátil 0 výsledků) a najít Legacy
-  // Futures-Only ručně podle jména.
-  const catalogUrl = "https://api.us.socrata.com/api/catalog/v1?domains=publicreporting.cftc.gov&limit=200";
-  const cat = await fetch(catalogUrl, { signal: AbortSignal.timeout(30000) });
-  console.log("catalog HTTP", cat.status);
-  const catJson = await cat.json();
-  console.log("resultSetSize:", catJson.resultSetSize, "results.length:", (catJson.results || []).length);
-  const results = (catJson.results || []).map((r) => ({
-    id: r.resource && r.resource.id,
-    name: r.resource && r.resource.name,
-  }));
-  console.log("=== Nalezené datasety (name -> id) ===");
-  for (const r of results) console.log(" ", r.name, "->", r.id);
-
-  const legacy = results.find((r) => /legacy/i.test(r.name || "") && /futures.only/i.test(r.name || ""))
-    || results.find((r) => /legacy/i.test(r.name || ""));
-  if (!legacy) { console.log("Legacy Futures-Only dataset nenalezen v katalogu, končím."); return; }
-  console.log("\nPoužívám dataset:", legacy.name, legacy.id);
-
-  const base = "https://publicreporting.cftc.gov/resource/" + legacy.id + ".json";
+  // Socrata catalog API (s q= i bez) vrátil 0 výsledků pro tuhle doménu — zkusíme
+  // rovnou pár známých/odhadovaných dataset ID CFTC Legacy COT (Futures Only) a
+  // podle přítomnosti typických polí (noncomm_positions_long_all apod.) ověříme,
+  // které je správné.
+  const candidates = ["6dca-aqww", "jun7-fc8e", "72hh-3qpy"];
+  let base = null, usedId = null;
+  for (const id of candidates) {
+    const testUrl = "https://publicreporting.cftc.gov/resource/" + id + ".json?$limit=1";
+    const tr = await fetch(testUrl, { signal: AbortSignal.timeout(20000) });
+    console.log("kandidát", id, "-> HTTP", tr.status);
+    if (!tr.ok) continue;
+    const trows = await tr.json();
+    if (!Array.isArray(trows) || !trows.length) { console.log("  0 řádků"); continue; }
+    const cols = Object.keys(trows[0]);
+    const isLegacy = cols.some((c) => /^noncomm_positions_long/i.test(c)) && cols.some((c) => /^comm_positions_long/i.test(c));
+    console.log("  sloupce (ukázka):", cols.slice(0, 12).join(", "));
+    console.log("  vypadá jako Legacy report:", isLegacy);
+    if (isLegacy) { base = "https://publicreporting.cftc.gov/resource/" + id + ".json"; usedId = id; break; }
+  }
+  if (!base) { console.log("\nŽádný kandidát nevypadá jako Legacy report, končím."); return; }
+  console.log("\nPoužívám dataset:", usedId);
   for (const name of ["USD INDEX - ICE FUTURES U.S.", "U.S. DOLLAR INDEX - ICE FUTURES U.S."]) {
     const where = encodeURIComponent("market_and_exchange_names = '" + name + "'");
     const r = await fetch(base + "?$where=" + where + "&$order=report_date_as_yyyy_mm_dd DESC&$limit=2", { signal: AbortSignal.timeout(30000) });
