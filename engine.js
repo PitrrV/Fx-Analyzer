@@ -2758,11 +2758,35 @@ function getEfficiencyRatio(pair,days=10){
   return {er:parseFloat(er.toFixed(3)),days};
 }
 
+// ── VIX RISK REGIME (data/vix.json, cron ~15 min) ──────────────────────
+// Primární zdroj pro computeAutoRiskSentiment() níže — VIX je přímé měřítko
+// tržního strachu/klidu, přesnější než dosavadní jediný zdroj (FX cenové
+// momentum AUDJPY/NZDJPY, ponecháno jako fallback). Historie z FRED (VIXCLS,
+// denní close) + poslední hodnota přepsaná živou cenou z CBOE/Yahoo — viz
+// scripts/fetch-vix.js. Stejný princip, zdroje i prahy jako sesterská appka
+// Fundamet-app (scripts/market-regime.mjs), kde bylo živě ověřeno, že FRED
+// samotné umí ukazovat hodnotu 1-2 dny starou.
+let _VIX_LATEST=null;
+async function fetchActionVix(){
+  try{
+    const r=await fetch("data/vix.json?h="+Math.floor(Date.now()/900000),{cache:"no-store"});
+    if(r.ok){ const j=await r.json(); if(j&&typeof j.vix==="number"&&j.regime){ _VIX_LATEST=j; return j; } }
+  }catch(e){}
+  return null;
+}
 // ── AUTO RISK SENTIMENT (nahrazuje zapomenutý ruční přepínač) ─────────
-// Risk-on/off z cenové akce klasických barometrů AUDJPY/NZDJPY za ~5 dní.
+// Primárně VIX (viz výše) — spadne zpět na cenové momentum AUDJPY/NZDJPY jen
+// když VIX data chybí nebo jsou starší než 96 h (pokrývá běžný 3denní víkend
+// + pondělní svátek, kdy se VIX nehýbe, ale appka pořád běží).
 // Ruční volba má přednost: v5_risk_sent_manual==="1" auto detekci vypne.
 function computeAutoRiskSentiment(){
   try{
+    if(_VIX_LATEST&&_VIX_LATEST.updated){
+      const ageH=(Date.now()-new Date(_VIX_LATEST.updated).getTime())/3600000;
+      if(ageH>=0&&ageH<96){
+        return _VIX_LATEST.regime==="RISK_ON"?1:_VIX_LATEST.regime==="RISK_OFF"?-1:0;
+      }
+    }
     const a=getPriceMomentum("AUDJPY",5), n=getPriceMomentum("NZDJPY",5);
     if(a==null&&n==null) return null;
     const m=(((a!=null?a:n)+(n!=null?n:a))/2);
@@ -2874,6 +2898,7 @@ function getEngineDiagnostics(){
     fundConf:Math.round((g_fundConfidence||0)*100),
     risk:g_riskSentiment,
     riskMode:riskManual?"MANUAL":"AUTO",
+    riskSrc:(_VIX_LATEST&&_VIX_LATEST.updated&&(Date.now()-new Date(_VIX_LATEST.updated).getTime())/3600000<96)?("VIX "+_VIX_LATEST.vix):"momentum (VIX N/A)",
     regime,
     cotAsOf,
     cbRates:rates,
@@ -3329,7 +3354,7 @@ DIVERGUJE / POTVRZUJE (banner technického potvrzení biasu, panel u páru)
 Srovnává posledních ~5 dní cenového momenta se směrem fundamentálního biasu páru. "POTVRZUJE" = cena se poslední dny hýbe stejným směrem jako bias; "DIVERGUJE" = cena jde zatím proti biasu. POZOR na neintuitivní vztah k RP: appka to sama vysvětluje tak, že "POTVRZUJE" bývá často spíš technicky nevýhodná (breakout, honíš cenu už vysoko/nízko) zóna, zatímco "DIVERGUJE" bývá často výhodnější (pullback, levnější vstup) zóna — vždy doporuč porovnat s panelem Pozice v rozpětí místo brát DIVERGUJE jako varování a POTVRZUJE jako zelenou.
 
 RISK SENTIMENT (risk-on/risk-off)
-Appka automaticky odvozuje globální náladu trhu (risk-on = chuť k riziku, risk-off = útěk do bezpečí) z momenta rizikově citlivých párů, s možností ruční úpravy. Promítá se jako malá korekce hlavně do AUD/NZD (risk-on jim historicky pomáhá) a JPY/CHF (risk-off jim historicky pomáhá) skóre — je to kontext, ne samostatný obchodní signál.
+Appka automaticky odvozuje globální náladu trhu (risk-on = chuť k riziku, risk-off = útěk do bezpečí) primárně z VIX (index volatility, FRED historie + živá cena z CBOE/Yahoo — viz "vix" v datech, pokud je k dispozici: value/change5d/regime/asOf), s možností ruční úpravy. Když VIX data chybí nebo jsou starší než 4 dny, appka spadne zpět na cenové momentum rizikově citlivých párů (AUDJPY/NZDJPY) — to samo appka nerozlišuje navenek, jen v datech "vix" (null = zrovna běží fallback). Promítá se jako malá korekce hlavně do AUD/NZD (risk-on jim historicky pomáhá) a JPY/CHF (risk-off jim historicky pomáhá) skóre — je to kontext, ne samostatný obchodní signál.
 
 CONTRARIAN SCANNER ("příležitosti", tab COT & Sentiment)
 Hledá páry, kde je dav (retail) hodně na jedné straně, ALE instituce (COT) i fundament ukazují opačně — přesně situace, kdy kontrariánský přístup historicky funguje nejlíp.

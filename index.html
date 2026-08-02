@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260728b"></script>
+<script src="engine.js?v=20260802a"></script>
 <script src="sync.js?v=20260727a"></script>
 <style>
 *{box-sizing:border-box}
@@ -130,6 +130,7 @@ class FXApp extends React.Component{
       const av=(localStorage.getItem('av')||'').trim(); if(av){ try{ await fetchOilPrice(av); }catch(e){} }
       try{ await fetchActionOil(); }catch(e){}
       try{ await fetchActionPrices(); }catch(e){}
+      try{ await fetchActionVix(); }catch(e){}
       try{ applyAutoRiskSentiment(); }catch(e){}
       try{ await fetchActionCOTHistory(); }catch(e){}
       // Živý COT fetch jen když je i SERVEROVÁ historie stará (>9 dní; týdenní report
@@ -461,7 +462,8 @@ class FXApp extends React.Component{
     }catch(e){}
     let pairNote=null; try{ if(focusPair&&this.state.notes&&this.state.notes[focusPair]) pairNote=this.state.notes[focusPair]; }catch(e){}
     let riskSentiment='NEUTRÁLNÍ'; try{ riskSentiment=g_riskSentiment>0?'RISK-ON':g_riskSentiment<0?'RISK-OFF':'NEUTRÁLNÍ'; }catch(e){}
-    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',riskSentiment,centralBanks:cb,currencyScores:sc,scoreChanges:scoreChanges,topPairs:top,econEvents:econEvents,focusPairDossier:focusPairDossier,pairNote:pairNote,journalEdge:journalEdgeSummary,openPositions:openPositions}; }
+    let vix=null; try{ if(typeof _VIX_LATEST!=='undefined'&&_VIX_LATEST) vix={value:_VIX_LATEST.vix,change5d:_VIX_LATEST.vix5dChange,regime:_VIX_LATEST.regime,asOf:_VIX_LATEST.updated}; }catch(e){}
+    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',riskSentiment,vix,centralBanks:cb,currencyScores:sc,scoreChanges:scoreChanges,topPairs:top,econEvents:econEvents,focusPairDossier:focusPairDossier,pairNote:pairNote,journalEdge:journalEdgeSummary,openPositions:openPositions}; }
   async runVision(){ const file=this._aiFile; if(!file){ this.setState({aiErr:'Nejprve nahrej screenshot grafu.'}); return; }
     const orKey=(localStorage.getItem('or_key')||'').trim(); if(!orKey){ this.setState({aiErr:'Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).'}); return; }
     this.setState({aiBusy:true,aiErr:'',aiResult:null});
@@ -1610,7 +1612,7 @@ class FXApp extends React.Component{
         return h('div',{style:self.card({padding:'16px 20px',marginBottom:16})},self.ptitle('📡 Stav dat','Stáří zdrojů · zelená čerstvé, jantar pozor, červená zastaralé'),
           h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:8}},fr.map(x=>h('div',{key:x.label,title:hint[x.label]||'',style:{display:'flex',alignItems:'center',gap:7,fontSize:11.5}},h('span',{style:{width:8,height:8,borderRadius:'50%',background:col(x.level),flex:'none'}}),h('span',{style:{color:T.dim}},x.label),h('b',{style:self.mono({fontSize:11,color:col(x.level),marginLeft:'auto'})},fmt(x))))),
           dg&&h('div',{title:'Diagnostika enginu — při rozdílu skóre mezi PC a mobilem/druhým zařízením porovnej tenhle řádek na obou; liší-li se "kal hist", je to hlavní příčina (různě dlouhá nashromážděná historie kalendáře v tomto prohlížeči)',style:self.mono({fontSize:10,color:T.faint,marginTop:11,paddingTop:9,borderTop:'1px solid #161b27',lineHeight:1.6,wordBreak:'break-all'})},
-            'DIAG · zdroj '+dg.calSource+' · fund '+dg.fundConf+'% · risk '+(dg.risk>0?'ON':dg.risk<0?'OFF':'0')+'/'+dg.riskMode+' · regime '+dg.regime+' · COT '+dg.cotAsOf+' · CB '+dg.cbRates+' · kal '+dg.ffLen+' ev / hist '+dg.ffWeeks+' t · COT '+dg.cotWeeks+' t · retail '+dg.sentSrc));
+            'DIAG · zdroj '+dg.calSource+' · fund '+dg.fundConf+'% · risk '+(dg.risk>0?'ON':dg.risk<0?'OFF':'0')+'/'+dg.riskMode+' ('+dg.riskSrc+') · regime '+dg.regime+' · COT '+dg.cotAsOf+' · CB '+dg.cbRates+' · kal '+dg.ffLen+' ev / hist '+dg.ffWeeks+' t · COT '+dg.cotWeeks+' t · retail '+dg.sentSrc));
       })(),
       h('div',{style:self.card({padding:'22px 24px'})},
         self.ptitle('☁️ Cloud sync'+(sess?' · přihlášen':''),'E-mail + heslo · stejné na PC i v mobilu'),
