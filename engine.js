@@ -378,9 +378,20 @@ function getDiffBand(diff){
 // ── COT & RETAIL SENTIMENT (auto + fallback localStorage) ─────────
 const COT_DEFAULT=Object.fromEntries(CURRENCIES.map(c=>[c,0]));
 const SENT_DEFAULT=Object.fromEntries(CURRENCIES.map(c=>[c,50]));
+// USD Index (ICE Futures U.S., ticker DX, cftc_contract_market_code 098662) —
+// appka dřív USD počítala jen synteticky (opačný průměr ostatních 7 měn),
+// protože filtr vyžadoval burzu "CHICAGO MERCANTILE" u všech měn a USD Index
+// je na ICE, ne CME. Aktuální název v CFTC TFF datasetu je "USD INDEX - ICE
+// FUTURES U.S." (viz scripts/fetch-cot.js pro zdroj ověření).
 const COT_MARKETS={
-  EUR:"EURO FX",GBP:"BRITISH POUND",JPY:"JAPANESE YEN",AUD:"AUSTRALIAN DOLLAR",
-  CAD:"CANADIAN DOLLAR",CHF:"SWISS FRANC",NZD:"NZ DOLLAR"
+  EUR:{name:"EURO FX",exch:"CHICAGO MERCANTILE"},
+  GBP:{name:"BRITISH POUND",exch:"CHICAGO MERCANTILE"},
+  JPY:{name:"JAPANESE YEN",exch:"CHICAGO MERCANTILE"},
+  AUD:{name:"AUSTRALIAN DOLLAR",exch:"CHICAGO MERCANTILE"},
+  CAD:{name:"CANADIAN DOLLAR",exch:"CHICAGO MERCANTILE"},
+  CHF:{name:"SWISS FRANC",exch:"CHICAGO MERCANTILE"},
+  NZD:{name:"NZ DOLLAR",exch:"CHICAGO MERCANTILE"},
+  USD:{name:"USD INDEX",exch:"ICE FUTURES U.S."}
 };
 
 function loadCOT(){
@@ -541,7 +552,7 @@ function parseNonReportableFromCOT(txt){
   // Non-reportable = malí spekulanti = retail tradeři
   const lines=txt.split(/\r?\n/); const out={};
   for(const [ccy,market] of Object.entries(COT_MARKETS)){
-    const idx=lines.findIndex(l=>l.toUpperCase().includes(market)&&l.toUpperCase().includes("CHICAGO MERCANTILE EXCHANGE"));
+    const idx=lines.findIndex(l=>l.toUpperCase().includes(market.name)&&l.toUpperCase().includes("CHICAGO MERCANTILE EXCHANGE"));
     if(idx<0) continue;
     const posIdx=lines.findIndex((l,i)=>i>idx&&i<idx+14&&l.trim().toLowerCase()==="positions");
     if(posIdx<0) continue;
@@ -719,7 +730,7 @@ function firstNumericLine(lines,from,to){
 function parseCOTFinancialText(txt){
   const lines=txt.split(/\r?\n/);const out={};const raw={};
   for(const [ccy,market] of Object.entries(COT_MARKETS)){
-    const idx=lines.findIndex(l=>l.toUpperCase().includes(market) && l.toUpperCase().includes("CHICAGO MERCANTILE EXCHANGE"));
+    const idx=lines.findIndex(l=>l.toUpperCase().includes(market.name) && l.toUpperCase().includes(market.exch));
     if(idx<0) continue;
     const posIdx=lines.findIndex((l,i)=>i>idx&&i<idx+14&&l.trim().toLowerCase()==="positions");
     if(posIdx<0) continue;
@@ -735,14 +746,19 @@ function parseCOTFinancialText(txt){
     const assetChange=(ch.length>=6?((ch[3]||0)-(ch[4]||0)):0);
     const flow=levChange*0.70+assetChange*0.30;
     out[ccy]=score;
-    raw[ccy]={market,assetLong,assetShort,levLong,levShort,assetNet:asset.net,levNet:lev.net,levRatio:lev.ratio,assetRatio:asset.ratio,
+    raw[ccy]={market:market.name,assetLong,assetShort,levLong,levShort,assetNet:asset.net,levNet:lev.net,levRatio:lev.ratio,assetRatio:asset.ratio,
       levScore,assetScore,score,levChange,assetChange,flow:Math.round(flow),extreme:cotExtremeFromRatio(lev.ratio)};
   }
-  const vals=Object.values(out).filter(v=>typeof v==="number"&&!isNaN(v));
-  out.USD=vals.length?parseFloat((-vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1)):0;
-  const flows=Object.values(raw).map(r=>r.flow||0);
-  raw.USD={market:"syntetický USD koš",note:"opačný průměr dostupných non-USD COT měn",score:out.USD,flow:flows.length?Math.round(-flows.reduce((a,b)=>a+b,0)/flows.length):0,extreme:{level:"SYNTH",label:"syntetický koš",color:"#8b949e"}};
-  if(vals.length<5) throw new Error("COT parser našel jen "+vals.length+" měn. Zdroj změnil formát nebo proxy vrátila nekompletní text.");
+  // Non-USD hodnoty ZVLÁŠŤ — USD teď typicky přijde z reálného řádku výše (USD
+  // Index, ICE), ne z opačného průměru. Syntetický odhad zůstává jen jako
+  // fallback, kdyby řádek USD Indexu v textu chyběl.
+  const nonUsdVals=Object.entries(out).filter(([k,v])=>k!=="USD"&&typeof v==="number"&&!isNaN(v)).map(([,v])=>v);
+  if(nonUsdVals.length<5) throw new Error("COT parser našel jen "+nonUsdVals.length+" měn. Zdroj změnil formát nebo proxy vrátila nekompletní text.");
+  if(out.USD===undefined){
+    out.USD=parseFloat((-nonUsdVals.reduce((a,b)=>a+b,0)/nonUsdVals.length).toFixed(1));
+    const flows=Object.entries(raw).filter(([k])=>k!=="USD").map(([,r])=>r.flow||0);
+    raw.USD={market:"syntetický USD koš (fallback)",note:"CFTC USD Index řádek nenalezen, opačný průměr ostatních měn",score:out.USD,flow:flows.length?Math.round(-flows.reduce((a,b)=>a+b,0)/flows.length):0,extreme:{level:"SYNTH",label:"syntetický koš",color:"#8b949e"}};
+  }
   return{scores:{...COT_DEFAULT,...out},raw};
 }
 // Parse-cache (viz _cachedParse): mutátoři (saveCOTSnapshot, fetchActionCOTHistory…)
@@ -944,7 +960,7 @@ async function fetchCOTViaAPI(){
   const week=rows.filter(r=>String(r.report_date_as_yyyy_mm_dd||"")===maxDate);
   const out={},raw={};
   for(const [ccy,market] of Object.entries(COT_MARKETS)){
-    const row=week.find(r=>{const nm=String(r.market_and_exchange_names||r.contract_market_name||"").toUpperCase();return nm.includes(market)&&nm.includes("CHICAGO MERCANTILE");});
+    const row=week.find(r=>{const nm=String(r.market_and_exchange_names||r.contract_market_name||"").toUpperCase();return nm.includes(market.name)&&nm.includes(market.exch);});
     if(!row) continue;
     const assetLong=cftcNum(row,["asset_mgr_positions_long","asset_mgr_positions_long_all"]);
     const assetShort=cftcNum(row,["asset_mgr_positions_short","asset_mgr_positions_short_all"]);
@@ -958,14 +974,20 @@ async function fetchCOTViaAPI(){
     const assetChange=(cftcNum(row,["change_in_asset_mgr_long","change_in_asset_mgr_long_all"])||0)-(cftcNum(row,["change_in_asset_mgr_short","change_in_asset_mgr_short_all"])||0);
     const flow=levChange*0.70+assetChange*0.30;
     out[ccy]=score;
-    raw[ccy]={market,assetLong,assetShort,levLong,levShort,assetNet:asset.net,levNet:lev.net,levRatio:lev.ratio,assetRatio:asset.ratio,
+    raw[ccy]={market:market.name,assetLong,assetShort,levLong,levShort,assetNet:asset.net,levNet:lev.net,levRatio:lev.ratio,assetRatio:asset.ratio,
       levScore,assetScore,score,levChange,assetChange,flow:Math.round(flow),extreme:cotExtremeFromRatio(lev.ratio)};
   }
-  const vals=Object.values(out).filter(v=>typeof v==="number"&&!isNaN(v));
-  if(vals.length<5) throw new Error("CFTC API: namapováno jen "+vals.length+" měn (změna schématu?)");
-  out.USD=parseFloat((-vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1));
-  const flows=Object.values(raw).map(r=>r.flow||0);
-  raw.USD={market:"syntetický USD koš",note:"opačný průměr dostupných non-USD COT měn",score:out.USD,flow:flows.length?Math.round(-flows.reduce((a,b)=>a+b,0)/flows.length):0,extreme:{level:"SYNTH",label:"syntetický koš",color:"#8b949e"}};
+  // Non-USD hodnoty ZVLÁŠŤ — USD teď typicky přijde z reálného řádku výše (USD
+  // Index, ICE), ne z opačného průměru. Syntetický odhad zůstává jen jako
+  // fallback, kdyby řádek USD Indexu chyběl (výpadek/změna schématu na
+  // straně CFTC).
+  const nonUsdVals=Object.entries(out).filter(([k,v])=>k!=="USD"&&typeof v==="number"&&!isNaN(v)).map(([,v])=>v);
+  if(nonUsdVals.length<5) throw new Error("CFTC API: namapováno jen "+nonUsdVals.length+" měn (změna schématu?)");
+  if(out.USD===undefined){
+    out.USD=parseFloat((-nonUsdVals.reduce((a,b)=>a+b,0)/nonUsdVals.length).toFixed(1));
+    const flows=Object.entries(raw).filter(([k])=>k!=="USD").map(([,r])=>r.flow||0);
+    raw.USD={market:"syntetický USD koš (fallback)",note:"CFTC USD Index řádek nenalezen, opačný průměr ostatních měn",score:out.USD,flow:flows.length?Math.round(-flows.reduce((a,b)=>a+b,0)/flows.length):0,extreme:{level:"SYNTH",label:"syntetický koš",color:"#8b949e"}};
+  }
   return{scores:{...COT_DEFAULT,...out},raw,asOf};
 }
 // Kontrola věrohodnosti syrových COT dat: reálné TFF pozicování NIKDY nemá
@@ -1106,7 +1128,7 @@ function parseCOTHistoricalText(text){
   const byDate={};
   for(const row of rows.slice(1)){
     const market=String(row[idx.market]||"").toUpperCase();
-    const ccy=Object.entries(COT_MARKETS).find(([,m])=>market.includes(m))?.[0];
+    const ccy=Object.entries(COT_MARKETS).find(([,m])=>market.includes(m.name))?.[0];
     if(!ccy) continue;
     let date=String(row[idx.date]||"").trim();
     if(/^\d{6}$/.test(date)) date=`20${date.slice(0,2)}-${date.slice(2,4)}-${date.slice(4,6)}`;
@@ -1114,13 +1136,17 @@ function parseCOTHistoricalText(text){
     byDate[date]=byDate[date]||{scores:{},raw:{}};
     const r=scoreFromHistoricalRow(row,idx);
     byDate[date].scores[ccy]=r.score;
-    byDate[date].raw[ccy]={market:COT_MARKETS[ccy],score:r.score,levNet:r.levNet,assetNet:r.assetNet,levRatio:r.levRatio,assetRatio:r.assetRatio,flow:0,extreme:r.extreme};
+    byDate[date].raw[ccy]={market:COT_MARKETS[ccy].name,score:r.score,levNet:r.levNet,assetNet:r.assetNet,levRatio:r.levRatio,assetRatio:r.assetRatio,flow:0,extreme:r.extreme};
   }
   const dates=Object.keys(byDate).sort();
   for(const date of dates){
-    const vals=Object.values(byDate[date].scores).filter(v=>typeof v==="number"&&!isNaN(v));
-    byDate[date].scores.USD=vals.length?parseFloat((-vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1)):0;
-    byDate[date].raw.USD={market:"syntetický USD koš",score:byDate[date].scores.USD,flow:0,extreme:{level:"SYNTH",label:"syntetický koš",color:"#8b949e"}};
+    // USD Index se mapuje přímo (viz COT_MARKETS.USD výše), pokud řádek v
+    // importovaném souboru existuje — syntetický odhad je jen fallback.
+    if(byDate[date].scores.USD===undefined){
+      const vals=Object.values(byDate[date].scores).filter(v=>typeof v==="number"&&!isNaN(v));
+      byDate[date].scores.USD=vals.length?parseFloat((-vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1)):0;
+      byDate[date].raw.USD={market:"syntetický USD koš (fallback)",score:byDate[date].scores.USD,flow:0,extreme:{level:"SYNTH",label:"syntetický koš",color:"#8b949e"}};
+    }
   }
   // dopočítat weekly flow z netu LF
   const prev={};
