@@ -1,0 +1,36 @@
+name: VIX Risk Regime
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # každých 15 min, stejný interval jako kalendář — VIX se týká risk sentimentu pro všechny páry
+  workflow_dispatch:          # ruční/API spuštění
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vix
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Stáhnout VIX (FRED historie + živá cena CBOE/Yahoo)
+        run: node scripts/fetch-vix.js
+      - name: Commit při změně
+        run: |
+          git config user.name "vix-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/vix.json)" ]; then
+            git add data/vix.json
+            git commit -m "chore: update VIX risk regime [skip ci]"
+            git pull --rebase origin main
+            git push
+          else
+            echo "Beze změny."
+          fi

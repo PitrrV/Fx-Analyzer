@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260728b"></script>
+<script src="engine.js?v=20260802a"></script>
 <script src="sync.js?v=20260727a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -166,6 +166,7 @@ async function loadDataMobile(){
   if(av){ try{ await fetchOilPrice(av); }catch(e){} }
   try{ await fetchActionOil(); }catch(e){}
   try{ await fetchActionPrices(); }catch(e){}
+  try{ await fetchActionVix(); }catch(e){}
   try{ applyAutoRiskSentiment(); }catch(e){}
   try{ await fetchActionCOTHistory(); }catch(e){}
   let retailLatest=null, retailHist=[]; try{ const rj=await fetchActionRetail(); if(rj&&Array.isArray(rj.points)&&rj.points.length){ retailHist=rj.points; retailLatest=rj.points[rj.points.length-1]; } }catch(e){}
