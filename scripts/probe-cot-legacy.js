@@ -6,11 +6,14 @@
 // tohle číslo sedí na skutečná CFTC data (a tím i to, že náš TFF fix je
 // konzistentní s jiným reportem stejného trhu, jen jinak kategorizovaným).
 (async () => {
-  // 1) Najít accession/dataset ID Legacy COT reportu (Futures Only) přes Socrata catalog.
-  const catalogUrl = "https://api.us.socrata.com/api/catalog/v1?domains=publicreporting.cftc.gov&q=" + encodeURIComponent("Commitments of Traders") + "&limit=50";
+  // 1) Vylistovat VŠECHNY datasety na publicreporting.cftc.gov (bez q filtru —
+  // full-text search v předchozí iteraci vrátil 0 výsledků) a najít Legacy
+  // Futures-Only ručně podle jména.
+  const catalogUrl = "https://api.us.socrata.com/api/catalog/v1?domains=publicreporting.cftc.gov&limit=200";
   const cat = await fetch(catalogUrl, { signal: AbortSignal.timeout(30000) });
   console.log("catalog HTTP", cat.status);
   const catJson = await cat.json();
+  console.log("resultSetSize:", catJson.resultSetSize, "results.length:", (catJson.results || []).length);
   const results = (catJson.results || []).map((r) => ({
     id: r.resource && r.resource.id,
     name: r.resource && r.resource.name,
@@ -18,7 +21,8 @@
   console.log("=== Nalezené datasety (name -> id) ===");
   for (const r of results) console.log(" ", r.name, "->", r.id);
 
-  const legacy = results.find((r) => /legacy/i.test(r.name || "") && /futures only/i.test(r.name || ""));
+  const legacy = results.find((r) => /legacy/i.test(r.name || "") && /futures.only/i.test(r.name || ""))
+    || results.find((r) => /legacy/i.test(r.name || ""));
   if (!legacy) { console.log("Legacy Futures-Only dataset nenalezen v katalogu, končím."); return; }
   console.log("\nPoužívám dataset:", legacy.name, legacy.id);
 
