@@ -1,0 +1,18 @@
+name: Probe COT USD
+
+# Dispatch-only diagnostika — žádný cron, nic necommituje. Zjišťuje přesný
+# market_and_exchange_names pro USD Index v CFTC TFF datasetu, aby šlo
+# scripts/fetch-cot.js rozšířit o skutečná (ne syntetická) USD COT data.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Najít USD Index v CFTC datasetu
+        run: node scripts/probe-cot-usd.js
