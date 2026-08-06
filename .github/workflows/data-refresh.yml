@@ -1,0 +1,118 @@
+name: Data Refresh (kalendář + VIX + ropa + AI radar)
+
+# Sloučení 4 dřív samostatných workflow (calendar.yml, vix.yml, oil.yml,
+# radar.yml) — všechny na cron */15 * * * *. GitHub měl na účtu s víc
+# repozitáři a víc naplánovaných cronů reálně naplánovaná spouštění silně
+# nespolehlivá (pozorováno: appka i Fundament-app dostávaly "Všechny úlohy
+# byly zrušeny", a hodinový cron FX Prices se ve skutečnosti spouštěl jen
+# ~jednou za 2-2,5 h místo jednou za hodinu) — problém není kolize mezi
+# konkrétními workflow na stejné minutě, ale celkový POČET registrovaných
+# scheduled triggerů na účtu. Sloučením 4 triggerů do 1 appka dělá stejnou
+# práci, ale GitHubu eviduje jen jedno naplánované spuštění místo čtyř.
+#
+# Každý krok si zachovává PŮVODNÍ chování 1:1 — vlastní fetch skript, vlastní
+# soubor(y), vlastní commit se stejnou zprávou jako předtím. continue-on-error
+# na fetch krocích: selhání jednoho zdroje (např. výpadek ForexFactory) nesmí
+# zablokovat commit ostatních tří — přesně jako když běžely jako 4 nezávislé
+# workflow. timeout-minutes jako pojistka proti zaseknutému fetchi, co by
+# jinak zdržel zbytek běhu (běžná doba jednoho kroku je řádově desítky vteřin).
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-refresh
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Stáhnout kalendář
+        timeout-minutes: 5
+        continue-on-error: true
+        run: node scripts/fetch-calendar.js
+      - name: "Commit: kalendář při změně"
+        if: always()
+        run: |
+          git config user.name "calendar-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/calendar.json)" ]; then
+            git add data/calendar.json
+            git commit -m "chore: update calendar [skip ci]"
+            git pull --rebase origin main
+            git push
+          else
+            echo "Kalendář beze změny, nic necommituju."
+          fi
+
+      - name: Stáhnout VIX (FRED historie + živá cena CBOE/Yahoo)
+        timeout-minutes: 5
+        continue-on-error: true
+        run: node scripts/fetch-vix.js
+      - name: "Commit: VIX při změně"
+        if: always()
+        run: |
+          git config user.name "vix-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/vix.json)" ]; then
+            git add data/vix.json
+            git commit -m "chore: update VIX risk regime [skip ci]"
+            git pull --rebase origin main
+            git push
+          else
+            echo "VIX beze změny."
+          fi
+
+      - name: Stáhnout cenu ropy (WTI)
+        timeout-minutes: 5
+        continue-on-error: true
+        run: node scripts/fetch-oil.js
+      - name: "Commit: ropa při změně"
+        if: always()
+        run: |
+          git config user.name "oil-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/oil.json)" ]; then
+            git add data/oil.json
+            git commit -m "chore: update oil price [skip ci]"
+            git pull --rebase origin main
+            git push
+          else
+            echo "Ropa beze změny."
+          fi
+
+      - name: Stáhnout a analyzovat zprávy (AI Market Radar)
+        timeout-minutes: 8
+        continue-on-error: true
+        env:
+          GEMINI_KEY: ${{ secrets.RADAR_GEMINI_KEY }}
+          FINNHUB_KEY: ${{ secrets.RADAR_FINNHUB_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.RADAR_TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.RADAR_TELEGRAM_CHAT_ID }}
+        run: node scripts/fetch-radar.js
+      - name: "Commit: AI radar při změně"
+        if: always()
+        run: |
+          git config user.name "radar-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          FILES="data/radar_feed.json data/radar_hist.json data/radar_cache.json data/radar_reports.json"
+          EXISTING=""
+          for f in $FILES; do [ -f "$f" ] && EXISTING="$EXISTING $f"; done
+          if [ -n "$EXISTING" ] && [ -n "$(git status --porcelain $EXISTING)" ]; then
+            git add $EXISTING
+            git commit -m "chore: update AI Market Radar feed [skip ci]"
+            git pull --rebase origin main
+            git push
+          else
+            echo "AI radar beze změny, nic necommituju."
+          fi
