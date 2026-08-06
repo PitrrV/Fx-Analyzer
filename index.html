@@ -885,7 +885,14 @@ class FXApp extends React.Component{
       const MON=['Led','Úno','Bře','Dub','Kvě','Čvn','Čvc','Srp','Zář','Říj','Lis','Pro'];
       const monthTicks=[]; let lastMon=-1;
       for(let i=i0;i<=i1;i++){ const ds=dates&&dates[i]; if(!ds) continue; const dd=new Date(ds+'T00:00:00'); if(isNaN(dd))continue; const mo=dd.getMonth(); if(mo!==lastMon){ monthTicks.push({i,label:MON[mo]}); lastMon=mo; } }
-      const doy=d=>{ const s=new Date(d.getFullYear(),0,0); return Math.floor((d-s)/86400000); };
+      // UTC, ne lokální Date — lokální "s new Date(rok,0,0)" počítal den-v-roce
+      // přes rozdíl dvou lokálních půlnocí, které mohou ležet v RŮZNÉM
+      // letním/zimním čase (leden=SEČ, srpen=SELČ) → rozdíl není přesný násobek
+      // 86400000 ms, Math.floor pak den ukazoval o 1 posunutý podle hodiny dne,
+      // kdy appku otevřeš (reálně nahlášeno: dnes 6.8., značka na 7.8., jen
+      // dopoledne/odpoledne — ráno kolem půlnoci to náhodou vyšlo správně).
+      // Date.UTC nemá letní čas vůbec, takže den je vždy přesně 86400000 ms.
+      const doy=d=>{ const s=Date.UTC(d.getFullYear(),0,0),t=Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()); return Math.round((t-s)/86400000); };
       const now=new Date(), nowDOY=doy(now);
       // DNES = dnešní den, nebo pokud dnešek v datech chybí (víkend/svátek —
       // referenční rok nemusí mít obchodní den přesně na dnešní datum), NEJBLIŽŠÍ
