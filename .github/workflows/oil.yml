@@ -2,7 +2,11 @@ name: Oil Price (WTI)
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # každých 15 min (commit jen při změně ceny) — CAD reaguje na ropu rychle
+    - cron: "7-59/15 * * * *"   # každých 15 min, posunuto o 7 min proti kalendáři/VIX/radaru
+    # (commit jen při změně ceny) — CAD reaguje na ropu rychle. Posun viz
+    # commit "rozhodit minuty čtyř */15 cronů" — čtyři workflow na stejné
+    # minutě soutěžily o jednu GitHub Actions frontu a appka dostávala
+    # e-maily "Všechny úlohy byly zrušeny".
   workflow_dispatch:          # ruční/API spuštění
 
 permissions:

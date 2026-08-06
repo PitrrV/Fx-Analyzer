@@ -2,7 +2,11 @@ name: VIX Risk Regime
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # každých 15 min, stejný interval jako kalendář — VIX se týká risk sentimentu pro všechny páry
+    - cron: "2-59/15 * * * *"   # každých 15 min, posunuto o 2 min proti kalendáři/ropě/radaru
+    # (viz commit "rozhodit minuty čtyř */15 cronů") — všechny čtyři na stejné
+    # minutě (0/15/30/45) soutěžily o stejnou GitHub Actions frontu, appka
+    # dostávala e-maily "Všechny úlohy byly zrušeny" (fronta = jen 1 čekající
+    # běh na concurrency group, cancel-in-progress:false čeká/zahazuje starší).
   workflow_dispatch:          # ruční/API spuštění
 
 permissions:

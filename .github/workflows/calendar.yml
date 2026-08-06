@@ -2,7 +2,11 @@ name: Economic Calendar
 
 on:
   schedule:
-    - cron: "*/15 * * * *"  # každých 15 min (GitHub část přeskočí; commit jen při změně)
+    - cron: "*/15 * * * *"  # každých 15 min, minuta 0 = kotva pro VIX/ropu/radar
+    # (GitHub část přeskočí; commit jen při změně). Ostatní tři */15 workflow
+    # (vix/oil/radar) jsou schválně posunuté o 2/7/11 min, ať nesoutěží o
+    # stejnou GitHub Actions frontu ve stejnou minutu — viz commit "rozhodit
+    # minuty čtyř */15 cronů".
   workflow_dispatch:        # ruční/API spuštění
 
 permissions:
