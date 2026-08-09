@@ -49,8 +49,12 @@ jobs:
           if [ -n "$(git status --porcelain data/calendar.json)" ]; then
             git add data/calendar.json
             git commit -m "chore: update calendar [skip ci]"
-            git pull --rebase origin main
-            git push
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
           else
             echo "Kalendář beze změny, nic necommituju."
           fi
@@ -67,8 +71,12 @@ jobs:
           if [ -n "$(git status --porcelain data/vix.json)" ]; then
             git add data/vix.json
             git commit -m "chore: update VIX risk regime [skip ci]"
-            git pull --rebase origin main
-            git push
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
           else
             echo "VIX beze změny."
           fi
@@ -85,8 +93,12 @@ jobs:
           if [ -n "$(git status --porcelain data/oil.json)" ]; then
             git add data/oil.json
             git commit -m "chore: update oil price [skip ci]"
-            git pull --rebase origin main
-            git push
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
           else
             echo "Ropa beze změny."
           fi
@@ -111,8 +123,12 @@ jobs:
           if [ -n "$EXISTING" ] && [ -n "$(git status --porcelain $EXISTING)" ]; then
             git add $EXISTING
             git commit -m "chore: update AI Market Radar feed [skip ci]"
-            git pull --rebase origin main
-            git push
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
           else
             echo "AI radar beze změny, nic necommituju."
           fi

@@ -38,8 +38,12 @@ jobs:
           if [ -n "$(git status --porcelain data/calendar_hist.json data/calendar_hist_validation.json)" ]; then
             git add data/calendar_hist.json data/calendar_hist_validation.json
             git commit -m "chore: calendar backfill + validation [skip ci]"
-            git pull --rebase origin main
-            git push
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
           else
             echo "Beze změny."
           fi
