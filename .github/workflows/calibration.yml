@@ -29,7 +29,12 @@ jobs:
           if [ -n "$(git status --porcelain data/calibration.json)" ]; then
             git add data/calibration.json
             git commit -m "chore: update backtest calibration [skip ci]"
-            git push
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
           else
             echo "Beze změny."
           fi

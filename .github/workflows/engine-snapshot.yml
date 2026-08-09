@@ -33,8 +33,12 @@ jobs:
             git commit -m "chore: update engine snapshot [skip ci]"
             # rebase před push — jiný datový cron mohl mezitím commitnout na main
             # (reálný nález: první běh spadl na souběhu s kalibračním cronem)
-            git pull --rebase origin main
-            git push
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
           else
             echo "Beze změny."
           fi
