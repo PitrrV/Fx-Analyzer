@@ -1404,7 +1404,7 @@ class FXApp extends React.Component{
     const surprise=e=>{const a=parseFloat(e.actual),f=parseFloat(e.estimate??e.forecast);if(isNaN(a)||isNaN(f))return null;const meta=(typeof getEventMeta==='function')?getEventMeta(e.event||''):null;const dir=meta?eventDirection({...e,estimate:f}):(a>f?1:a<f?-1:0);return dir>0?'beat':dir<0?'miss':'inline';};
     const sc=s=>s==='beat'?T.green:s==='miss'?T.red:T.faint;
     const selStyle={background:'#0a0d13',border:'1px solid #1b2130',borderRadius:8,color:T.text,padding:'7px 10px',fontSize:12,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"};
-    return h('div',{style:{maxWidth:1600}},this.renderMacroSnapshot(),h('div',{style:self.card({padding:'20px 22px'})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:6,flexWrap:'wrap'}},self.ptitle('Fundamentální kalendář',win.label+' · Actual / Forecast / Previous / Surprise'),h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},h('span',{style:{fontSize:11,fontWeight:800,color:T.red,background:'rgba(242,96,110,.12)',border:'1px solid rgba(242,96,110,.3)',borderRadius:999,padding:'5px 11px'}},'HIGH '+list.filter(e=>impUp(e.impact)==='HIGH').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.amber,background:'rgba(232,171,63,.12)',border:'1px solid rgba(232,171,63,.3)',borderRadius:999,padding:'5px 11px'}},'MEDIUM '+list.filter(e=>impUp(e.impact)==='MEDIUM').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.yellow,background:'rgba(227,210,31,.12)',border:'1px solid rgba(227,210,31,.3)',borderRadius:999,padding:'5px 11px'}},'LOW '+list.filter(e=>impUp(e.impact)==='LOW').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.accent,background:'rgba(94,124,251,.1)',border:'1px solid rgba(94,124,251,.28)',borderRadius:999,padding:'5px 11px'}},'EVENTS '+list.length),h('button',{onClick:()=>self.forceLiveCalendarRefresh(),disabled:!!st.calBusy,style:{fontSize:11,fontWeight:800,color:T.text,background:'rgba(94,124,251,.14)',border:'1px solid rgba(94,124,251,.4)',borderRadius:999,padding:'5px 11px',cursor:st.calBusy?'default':'pointer'}},st.calBusy?'⏳ Aktualizuji…':'🔄 Refresh teď'))),
+    const calCard=h('div',{style:self.card({padding:'20px 22px'})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:6,flexWrap:'wrap'}},self.ptitle('Fundamentální kalendář',win.label+' · Actual / Forecast / Previous / Surprise'),h('div',{style:{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}},h('span',{style:{fontSize:11,fontWeight:800,color:T.red,background:'rgba(242,96,110,.12)',border:'1px solid rgba(242,96,110,.3)',borderRadius:999,padding:'5px 11px'}},'HIGH '+list.filter(e=>impUp(e.impact)==='HIGH').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.amber,background:'rgba(232,171,63,.12)',border:'1px solid rgba(232,171,63,.3)',borderRadius:999,padding:'5px 11px'}},'MEDIUM '+list.filter(e=>impUp(e.impact)==='MEDIUM').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.yellow,background:'rgba(227,210,31,.12)',border:'1px solid rgba(227,210,31,.3)',borderRadius:999,padding:'5px 11px'}},'LOW '+list.filter(e=>impUp(e.impact)==='LOW').length),h('span',{style:{fontSize:11,fontWeight:800,color:T.accent,background:'rgba(94,124,251,.1)',border:'1px solid rgba(94,124,251,.28)',borderRadius:999,padding:'5px 11px'}},'EVENTS '+list.length),h('button',{onClick:()=>self.forceLiveCalendarRefresh(),disabled:!!st.calBusy,style:{fontSize:11,fontWeight:800,color:T.text,background:'rgba(94,124,251,.14)',border:'1px solid rgba(94,124,251,.4)',borderRadius:999,padding:'5px 11px',cursor:st.calBusy?'default':'pointer'}},st.calBusy?'⏳ Aktualizuji…':'🔄 Refresh teď'))),
       h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}},
         h('select',{value:st.calWindow,onChange:e=>self.setState({calWindow:e.target.value}),style:selStyle},Object.entries(WINDOWS).map(([k,v])=>h('option',{key:k,value:k},v.label))),
         h('select',{value:st.calCcy,onChange:e=>self.setState({calCcy:e.target.value}),style:selStyle},[h('option',{key:'all',value:'all'},'Všechny měny')].concat(this.CUR.map(c=>h('option',{key:c,value:c},c)))),
@@ -1415,7 +1415,45 @@ class FXApp extends React.Component{
       h('div',{style:{maxHeight:720,overflowY:'auto'}},
         list.length?list.map((e,i)=>{const dt=new Date(parseEventTime(e.time));const dlabel=dt.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric',weekday:'long'});const dayHdr=dlabel!==lastDay;lastDay=dlabel;const s=surprise(e);
           return h('div',{key:i},dayHdr&&h('div',{style:self.mono({fontSize:10.5,fontWeight:700,color:T.dim,letterSpacing:'.04em',padding:'13px 0 7px',marginTop:i?4:0})},dlabel),h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,alignItems:'center',padding:'10px 0',boxShadow:'0 1px 0 #14182333'}},h('span',{style:self.mono({fontSize:11.5,color:T.dim})},dt.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})),h('span',{style:self.mono({fontSize:12,fontWeight:700})},ev2ccy(e)),h('span',{style:{fontSize:12.5,color:T.text}},e.event),h('span',{style:{fontSize:9,fontWeight:700,color:ic(impUp(e.impact)),background:ic(impUp(e.impact))+'1c',border:'1px solid '+ic(impUp(e.impact))+'40',borderRadius:5,padding:'3px 7px',justifySelf:'start'}},impUp(e.impact)),h('span',{title:'Klikni pro ruční doplnění Actual',onClick:()=>self.setManualActual(e),style:self.mono({fontSize:12,fontWeight:700,color:e._manual?T.amber:(e.actual?T.text:T.faint),textAlign:'right',cursor:'pointer',textDecoration:'underline dotted'})},(e._manual?'✎ ':'')+(e.actual||'—')),h('span',{style:self.mono({fontSize:12,color:T.dim,textAlign:'right'})},(e.estimate||e.forecast)||'—'),h('span',{style:self.mono({fontSize:12,color:T.faint,textAlign:'right'})},(e.prev||e.previous)||'—'),h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:sc(s),textAlign:'right'})},s?(s==='beat'?'BEAT ▲':s==='miss'?'MISS ▼':'INLINE'):'PENDING')));
-        }):h('div',{style:{fontSize:12,color:T.faint,padding:'20px 0'}},'Žádné události neodpovídají filtru.'))));
+        }):h('div',{style:{fontSize:12,color:T.faint,padding:'20px 0'}},'Žádné události neodpovídají filtru.')));
+    return h('div',{style:{maxWidth:1920}},this.renderMacroSnapshot(),h('div',{style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) 300px',gap:16,alignItems:'start'}},calCard,self.renderCalendarSidebar(full)));
+  }
+  // Pravý panel kalendáře — "Tento týden" (HIGH/MEDIUM/LOW), nejvíc zatížené
+  // měny a varování na kolizi víc HIGH událostí ve stejný den. Nezávislé na
+  // filtrech nahoře (calWindow/calCcy/calImp) — vždycky ukazuje aktuální
+  // kalendářní týden (po–ne), ať filtry nahoře řeší cokoliv jiného.
+  renderCalendarSidebar(full){ const self=this,h=this.h,T=this.tok;
+    const now=new Date(); const dow=(now.getDay()+6)%7;
+    const monStart=new Date(now); monStart.setHours(0,0,0,0); monStart.setDate(monStart.getDate()-dow);
+    const weekFrom=monStart.getTime(), weekTo=weekFrom+7*86400000;
+    const weekList=(full||[]).filter(e=>{const t=parseEventTime(e.time);return !isNaN(t)&&t>=weekFrom&&t<weekTo;});
+    const cnt=lvl=>weekList.filter(e=>impUp(e.impact)===lvl).length;
+    const highN=cnt('HIGH'),medN=cnt('MEDIUM'),lowN=cnt('LOW');
+    const byCcy={}; weekList.forEach(e=>{const c=ev2ccy(e); byCcy[c]=(byCcy[c]||0)+1;});
+    const ccyRank=Object.entries(byCcy).sort((a,b)=>b[1]-a[1]);
+    const maxCcy=ccyRank.length?ccyRank[0][1]:0;
+    const dayLabel=e=>new Date(parseEventTime(e.time)).toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'numeric'});
+    const byDay={}; weekList.filter(e=>impUp(e.impact)==='HIGH').forEach(e=>{const k=dayLabel(e); (byDay[k]=byDay[k]||[]).push(e);});
+    const collisions=Object.entries(byDay).filter(([,arr])=>arr.length>=2).sort((a,b)=>parseEventTime(a[1][0].time)-parseEventTime(b[1][0].time));
+    const statChip=(label,n,col)=>h('div',{key:label,style:{textAlign:'center',flex:1}},h('div',{style:self.mono({fontSize:20,fontWeight:800,color:col})},n),h('div',{style:{fontSize:9.5,color:T.faint,marginTop:2}},label));
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:16,width:300,flex:'none'}},
+      h('div',{style:self.card({padding:'16px 18px'})},
+        h('div',{style:{fontSize:11,fontWeight:800,letterSpacing:'.05em',color:T.dim,marginBottom:4}},'TENTO TÝDEN'),
+        h('div',{style:{fontSize:10,color:T.faint,marginBottom:12}},monStart.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric'})+' – '+new Date(weekTo-86400000).toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric'})),
+        h('div',{style:{display:'flex',gap:4}},statChip('HIGH',highN,T.red),statChip('MEDIUM',medN,T.amber),statChip('LOW',lowN,T.yellow))),
+      h('div',{style:self.card({padding:'16px 18px'})},
+        h('div',{style:{fontSize:11,fontWeight:800,letterSpacing:'.05em',color:T.dim,marginBottom:12}},'NEJVÍC ZATÍŽENÉ MĚNY'),
+        ccyRank.length?ccyRank.map(([c,n])=>h('div',{key:c,style:{display:'flex',alignItems:'center',gap:8,padding:'5px 0'}},
+          h('span',{style:self.mono({fontSize:11.5,fontWeight:700,width:36})},c),
+          h('div',{style:{flex:1,height:6,background:'#0a0d13',borderRadius:3,overflow:'hidden'}},h('div',{style:{height:'100%',width:(maxCcy?n/maxCcy*100:0)+'%',background:T.accent,borderRadius:3}})),
+          h('span',{style:self.mono({fontSize:10.5,color:T.dim,width:16,textAlign:'right'})},n)))
+        :h('div',{style:{fontSize:11,color:T.faint}},'Žádné události tento týden.')),
+      h('div',{style:self.card({padding:'16px 18px',border:'1px solid '+(collisions.length?'rgba(242,96,110,.35)':'#1b2130')})},
+        h('div',{style:{fontSize:11,fontWeight:800,letterSpacing:'.05em',color:collisions.length?T.red:T.dim,marginBottom:collisions.length?10:2}},(collisions.length?'⚠ ':'')+'POZOR'),
+        collisions.length?collisions.map(([day,arr])=>h('div',{key:day,style:{marginBottom:10}},
+          h('div',{style:self.mono({fontSize:11,fontWeight:700,color:T.text,marginBottom:4})},day+' · '+arr.length+' HIGH'),
+          arr.map((e,i)=>h('div',{key:i,style:{fontSize:10.5,color:T.dim,paddingLeft:6}},ev2ccy(e)+' — '+e.event))))
+        :h('div',{style:{fontSize:11,color:T.faint,lineHeight:1.5}},'Žádná kolize více HIGH událostí ve stejný den — tenhle týden.')));
   }
   renderAIAnalysis(){ const self=this,h=this.h,T=this.tok,st=this.state; const R=st.aiResult; const p=this.pairObj(st.sel)||{};
     const biasC=R&&R.bias==='BULLISH'?T.green:R&&R.bias==='BEARISH'?T.red:T.amber;
@@ -1453,12 +1491,45 @@ class FXApp extends React.Component{
     return parts.map((p,i)=>(p.startsWith('**')&&p.endsWith('**')&&p.length>4)?h('b',{key:i,style:{color:'#eef1f6'}},p.slice(2,-2)):h('span',{key:i},p)); }
   renderAICoach(){ const self=this,h=this.h,T=this.tok,st=this.state; const chips=['Top setupy dnes?','Co dnes změnilo skóre?','Rozeber nejbližší velký report','Otočil se dnes někde bias?','Co s mými otevřenými pozicemi?'];
     const send=text=>self.sendCoach(text);
-    return h('div',{style:{maxWidth:1400,margin:'0 auto'}},h('div',{style:self.card({padding:0,overflow:'hidden',display:'flex',flexDirection:'column',height:'calc(100vh - 150px)',minHeight:520})},
+    const chatCard=h('div',{style:self.card({padding:0,overflow:'hidden',display:'flex',flexDirection:'column',height:'calc(100vh - 150px)',minHeight:520,flex:1,minWidth:0})},
       h('div',{style:{display:'flex',alignItems:'center',gap:12,padding:'15px 20px',borderBottom:'1px solid #1b2130'}},h('div',{style:self.mono({width:38,height:38,borderRadius:11,background:'linear-gradient(150deg,#10131c,#0a0c12)',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13})},'AT'),h('div',{style:{flex:1}},h('div',{style:{fontSize:14,fontWeight:800}},'AI Coach'),h('div',{style:{fontSize:11,color:T.green,display:'flex',alignItems:'center',gap:6}},h('span',{style:{width:6,height:6,borderRadius:50,background:T.green}}),'Vidí tvé živé skóre, COT a pozice')),
         h('select',{value:st.coachPair,onChange:e=>self.setState({coachPair:e.target.value}),title:'Zaměřit na pár',style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'8px 10px',fontSize:12,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"}},[h('option',{key:'',value:''},'Všechny páry')].concat(this.PAIRS.map(p=>h('option',{key:p.pair,value:p.pair},p.pair)))),
         h('button',{type:'button',onClick:()=>self.clearCoach(),title:'Nový chat',style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:9,padding:'8px 11px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer'}},'↺ Nový')),
       h('div',{ref:self.setCoachScrollEl,style:{flex:1,overflow:'auto',padding:'20px',display:'flex',flexDirection:'column',gap:14}},st.coachMsgs.map((m,i)=>{const me=m.role==='user';return h('div',{key:i,style:{display:'flex',justifyContent:me?'flex-end':'flex-start'}},h('div',{style:{maxWidth:me?'76%':780,display:'flex',gap:10,flexDirection:me?'row-reverse':'row',alignItems:'flex-end'}},!me&&h('div',{style:self.mono({width:28,height:28,borderRadius:9,background:'#10131c',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:10,flex:'none',color:T.dim})},'AT'),h('div',{style:{fontSize:13,lineHeight:1.55,padding:'11px 14px',borderRadius:me?'14px 14px 4px 14px':'14px 14px 14px 4px',whiteSpace:'pre-wrap',color:me?'#eaf0ff':T.text,background:me?'linear-gradient(180deg,rgba(94,124,251,.22),rgba(94,124,251,.12))':'linear-gradient(180deg,#0f131c,#0b0e14)',border:'1px solid '+(me?'rgba(94,124,251,.32)':'#1b2130')}},me?m.text:self.formatCoachMsg(m.text))));}),st.coachBusy&&h('div',{style:{fontSize:12,color:T.faint,paddingLeft:38}},'⏳ Coach přemýšlí…')),
-      h('div',{style:{padding:'12px 16px',borderTop:'1px solid #1b2130'}},h('div',{style:{display:'flex',gap:7,flexWrap:'wrap',marginBottom:11}},chips.map(c=>h('button',{key:c,type:'button',onClick:()=>send(c),style:{fontSize:11,color:T.dim,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:999,padding:'6px 12px',cursor:'pointer',fontFamily:'inherit'}},c))),h('div',{style:{display:'flex',gap:9}},h('input',{value:st.coachInput,onChange:e=>this.setState({coachInput:e.target.value}),onKeyDown:e=>{if(e.key==='Enter')send(null);},placeholder:'Zeptej se na setup, riziko, korelace…',style:{flex:1,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:11,color:T.text,padding:'12px 14px',fontSize:13,fontFamily:"'Manrope',sans-serif",outline:'none'}}),h('button',{type:'button',disabled:st.coachBusy,onClick:()=>send(null),style:{border:'none',borderRadius:11,padding:'0 18px',fontFamily:'inherit',fontSize:13,fontWeight:800,color:'#06140f',cursor:st.coachBusy?'default':'pointer',opacity:st.coachBusy?.6:1,background:'linear-gradient(180deg,#4be0a8,'+T.green+')'}},'Odeslat')))));
+      h('div',{style:{padding:'12px 16px',borderTop:'1px solid #1b2130'}},h('div',{style:{display:'flex',gap:7,flexWrap:'wrap',marginBottom:11}},chips.map(c=>h('button',{key:c,type:'button',onClick:()=>send(c),style:{fontSize:11,color:T.dim,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:999,padding:'6px 12px',cursor:'pointer',fontFamily:'inherit'}},c))),h('div',{style:{display:'flex',gap:9}},h('input',{value:st.coachInput,onChange:e=>this.setState({coachInput:e.target.value}),onKeyDown:e=>{if(e.key==='Enter')send(null);},placeholder:'Zeptej se na setup, riziko, korelace…',style:{flex:1,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:11,color:T.text,padding:'12px 14px',fontSize:13,fontFamily:"'Manrope',sans-serif",outline:'none'}}),h('button',{type:'button',disabled:st.coachBusy,onClick:()=>send(null),style:{border:'none',borderRadius:11,padding:'0 18px',fontFamily:'inherit',fontSize:13,fontWeight:800,color:'#06140f',cursor:st.coachBusy?'default':'pointer',opacity:st.coachBusy?.6:1,background:'linear-gradient(180deg,#4be0a8,'+T.green+')'}},'Odeslat'))));
+    return h('div',{style:{maxWidth:1680,margin:'0 auto',display:'flex',gap:16,alignItems:'flex-start'}},chatCard,self.renderCoachContextPanel());
+  }
+  // Panel "Co Coach právě vidí" — stejný kontext, jaký se posílá do promptu
+  // (viz buildCoachContext), jen zhuštěný na pár řádků, ať je vidět, na jak
+  // živých datech Coach vlastně odpovídá (a kdy je něco starší/nenačtené).
+  renderCoachContextPanel(){ const self=this,h=this.h,T=this.tok,st=this.state;
+    let cotMeta={},histN=0; try{cotMeta=loadCOTMeta()||{};}catch(e){} try{histN=Object.keys(loadCOTHistory()||{}).length;}catch(e){}
+    const cotAge=cotMeta&&cotMeta.asOf?Math.round((Date.now()-new Date(cotMeta.asOf).getTime())/86400000):null;
+    const retailPt=(this._retailHist||[]).slice(-1)[0]||null;
+    const retailAgeH=(retailPt&&retailPt.t)?Math.round((Date.now()-retailPt.t)/3600000):null;
+    const cal=this._cal||[],up=this._up||[]; let full=[]; try{full=mergeEvents(cal,up)||[];}catch(e){full=up;}
+    const weekEnd=Date.now()+7*86400000;
+    const nextHigh=full.filter(e=>{const t=parseEventTime(e.time);return !isNaN(t)&&t>=Date.now()&&t<=weekEnd&&impUp(e.impact)==='HIGH';}).length;
+    const posN=Object.values(st.pos||{}).filter(s=>s&&s!=='none').length;
+    const journalN=(this.journal&&this.journal.trades)||0;
+    let vixTxt='nenačteno',vixDot='bad'; try{ if(typeof _VIX_LATEST!=='undefined'&&_VIX_LATEST){ vixTxt=_VIX_LATEST.vix.toFixed(1)+' · '+(_VIX_LATEST.regime==='RISK_ON'?'risk-on':_VIX_LATEST.regime==='RISK_OFF'?'risk-off':'neutrální'); vixDot='ok'; } }catch(e){}
+    const rows=[
+      {label:'Skóre měn',value:this.CUR.length+' měn živě',dot:'ok'},
+      {label:'COT pozicování',value:cotAge!=null?(cotAge+' d staré · '+histN+'t historie'):'nenačteno',dot:cotAge==null?'bad':cotAge<=9?'ok':'warn'},
+      {label:'Retail sentiment',value:retailAgeH!=null?('před '+retailAgeH+' h'):'nenačteno',dot:retailAgeH==null?'bad':retailAgeH<=6?'ok':'warn'},
+      {label:'Kalendář — 7 dní',value:nextHigh+' HIGH událostí',dot:nextHigh>0?'warn':'ok'},
+      {label:'Risk režim (VIX)',value:vixTxt,dot:vixDot},
+      {label:'Otevřené pozice',value:posN+'×',dot:posN?'warn':'ok'},
+      {label:'Deník obchodů',value:journalN+' zápisů',dot:'ok'},
+      {label:'Zaměřený pár',value:st.coachPair||'všechny páry',dot:'ok'},
+    ];
+    const dotCol=d=>d==='ok'?T.green:d==='warn'?T.amber:T.red;
+    return h('div',{style:self.card({padding:'16px 18px',width:284,flex:'none',height:'calc(100vh - 150px)',minHeight:520,overflow:'auto'})},
+      h('div',{style:{fontSize:11,fontWeight:800,letterSpacing:'.05em',color:T.dim,marginBottom:12}},'CO COACH PRÁVĚ VIDÍ'),
+      rows.map((r,i)=>h('div',{key:r.label,style:{padding:'9px 0',borderTop:i?'1px solid #161b27':'none'}},
+        h('div',{style:{display:'flex',alignItems:'center',gap:7,marginBottom:3}},h('span',{style:{width:6,height:6,borderRadius:50,background:dotCol(r.dot),flex:'none'}}),h('span',{style:{fontSize:10.5,color:T.faint}},r.label)),
+        h('div',{style:self.mono({fontSize:12.5,fontWeight:700,color:T.text,paddingLeft:13})},r.value))),
+      h('div',{style:{fontSize:9.5,color:T.faint,lineHeight:1.5,marginTop:10,paddingTop:10,borderTop:'1px solid #161b27'}},'Přesně tohle (skóre, COT, retail, kalendář, pozice a deník) jde do promptu při každé zprávě — Coach neodpovídá z obecných znalostí.'));
   }
   renderBiasCard(){ const self=this,h=this.h,T=this.tok; const top=this.PAIRS[0]; if(!top) return null; const conf=Math.min(100,Math.round(top.diff/12*100)); const posEntries=Object.entries(this.state.pos).filter(([,s])=>s&&s!=='none'); const dc=top.dir==='BUY'?T.green:T.red;
     // Risk regime tile — VIX (primární zdroj, viz computeAutoRiskSentiment v
