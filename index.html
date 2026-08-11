@@ -655,7 +655,9 @@ class FXApp extends React.Component{
       const T=self.tok;
       const close=()=>self.setState({chartModal:null});
       React.useEffect(()=>{ const k=e=>{ if(e.key==='Escape') self.setState({chartModal:null}); }; window.addEventListener('keydown',k); return ()=>window.removeEventListener('keydown',k); },[]);
-      const mode=(self.state.scoreChartMode==='diff')?'diff':'dual';
+      // Výchozí zobrazení = "Rozdíl" (žlutá souhrnná čára) — dřív to bylo "2 měny"
+      // a po každém načtení/refreshi appky se to muselo ručně přepínat.
+      const mode=(self.state.scoreChartMode==='dual')?'dual':'diff';
       const active=variants?(variants[mode]||variants.dual):null;
       const S=active?active.series:series, YMN=active?active.yMin:yMin, YMX=active?active.yMax:yMax;
       const enough=Array.isArray(S)&&S.length&&S[0].vals&&S[0].vals.length>=2;
@@ -1077,7 +1079,10 @@ class FXApp extends React.Component{
     const sdates=Object.keys(sh).sort((a,b)=>new Date(a)-new Date(b)).filter(inWin);
     const scoreSeries=[{name:p.base,col:T.accent,vals:sdates.map(d=>+(sh[d][p.base]||0))},{name:p.quote,col:T.violet,vals:sdates.map(d=>+(sh[d][p.quote]||0))}];
     const diffSeries=[{name:p.base+'−'+p.quote,col:T.yellow,vals:sdates.map(d=>+(((+(sh[d][p.base]||0))-(+(sh[d][p.quote]||0))).toFixed(2)))}];
-    const scMode=(this.state.scoreChartMode==='diff')?'diff':'dual';
+    // Výchozí zobrazení = "Rozdíl" (žlutá souhrnná čára), "2 měny" zůstává jako
+    // přepínací volba — na výslovnou žádost, ať se to nemusí přepínat po
+    // každém načtení/refreshi appky.
+    const scMode=(this.state.scoreChartMode==='dual')?'dual':'diff';
     const scActive=scMode==='diff'?diffSeries:scoreSeries;
     const scYMin=scMode==='diff'?null:-10, scYMax=scMode==='diff'?null:10;
     const scoreToggle=h('div',{onClick:e=>e.stopPropagation(),style:{display:'flex',gap:3}},['dual','diff'].map(m=>{const on=scMode===m;return h('button',{key:m,type:'button',onClick:e=>{e.stopPropagation();self.setState({scoreChartMode:m});},style:self.mono({border:'1px solid '+(on?T.yellow+'88':'#1b2130'),background:on?'rgba(227,210,31,.14)':'#0c0f16',color:on?'#f0e79a':T.faint,borderRadius:6,padding:'2px 7px',fontSize:9,fontWeight:700,cursor:'pointer'})},m==='dual'?'2 měny':'Rozdíl');}));
