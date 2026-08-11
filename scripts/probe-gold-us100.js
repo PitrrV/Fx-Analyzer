@@ -91,7 +91,12 @@
   }
 
   console.log("\n=== 5) Stooq cenová historie (zdarma, appka to už používá pro FX/ropu) ===");
-  const tickers = ["xauusd", "xauusd.f", "ndx", "^ndx", "us100", "nq.f"];
+  // gc.f = COMEX Gold continuous futures (stejná konvence jako cl.f pro ropu,
+  // co appka už reálně používá ve fetch-oil.js). Sekvenčně s pauzou mezi
+  // dotazy — appka sama v poznámce u fetch-seasonality-daily.js přiznává, že
+  // Stooq umí datacentrové IP (GitHub Actions) občas dočasně blokovat, když
+  // se z ní stříli víc dotazů rychle za sebou.
+  const tickers = ["gc.f", "xauusd", "ndq.us", "^ndq", "nq.f"];
   for (const t of tickers) {
     try {
       const r = await fetch("https://stooq.com/q/d/l/?s=" + encodeURIComponent(t) + "&i=d", {
@@ -104,11 +109,12 @@
         "  ticker '" + t + "' -> HTTP", r.status,
         "· řádků:", lines.length,
         "· vypadá jako platná CSV:", looksValid,
-        looksValid ? ("· poslední řádek: " + lines[lines.length - 1]) : ("· ukázka: " + txt.slice(0, 80).replace(/\n/g, " "))
+        looksValid ? ("· poslední řádek: " + lines[lines.length - 1]) : ("· ukázka: " + txt.slice(0, 90).replace(/\n/g, " "))
       );
     } catch (e) {
       console.log("  ticker '" + t + "' -> chyba:", e.message);
     }
+    await new Promise((res) => setTimeout(res, 4000)); // pauza mezi dotazy, ať to nevypadá jako bot burst
   }
 })().catch((e) => {
   console.error("FATAL", e.message);
