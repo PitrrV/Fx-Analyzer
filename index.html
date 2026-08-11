@@ -1681,12 +1681,26 @@ class FXApp extends React.Component{
               h('text',{x:X(i),y:H-PB+15,fontSize:9,textAnchor:'middle',fill:T.faint},MON[i])))),
           h('div',{style:{fontSize:10.5,color:T.faint,marginTop:6,lineHeight:1.5}},'Ukazuje, KDY v roce '+D.from+D.to+' historicky tíhne nahoru/dolů — tendence z průměru '+(D.years?D.years.length:0)+' let, ne předpověď.'));
       })(),
-      D&&h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Průměrný měsíc — '+D.from+D.to,'Sezónní tendence (průměr všech let)'),
-        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(12,1fr)',gap:5,alignItems:'end',height:120,marginTop:6}},D.avg.map((v,m)=>{const hv=v==null?0:v;const mx=Math.max(...D.avg.map(x=>Math.abs(x||0)))||1;const hpx=Math.round(Math.abs(hv)/mx*46);return h('div',{key:m,style:{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-end',height:'100%'}},h('div',{style:self.mono({fontSize:8.5,color:hv>=0?T.green:T.red,marginBottom:2})},v==null?'':(hv>0?'+':'')+hv.toFixed(1)),h('div',{style:{width:'70%',height:Math.max(2,hpx)+'px',background:hv>=0?T.green:T.red,opacity:.8,borderRadius:'3px 3px 0 0',alignSelf:hv>=0?'flex-end':'flex-start'}}),h('div',{style:{fontSize:9,color:T.dim,marginTop:4}},MON[m]));}))),
-      D&&h('div',{style:self.card({padding:'18px 20px',overflowX:'auto'})},self.ptitle('Heatmapa měsíc × rok','Zelená = zhodnocení '+D.from+', červená = oslabení'),
-        h('div',{style:{minWidth:520}},
-          h('div',{style:{display:'grid',gridTemplateColumns:'44px repeat('+years.length+',1fr) 52px',gap:4,marginBottom:4}},h('span',null),years.map(y=>h('span',{key:y,style:self.mono({fontSize:10,color:T.faint,textAlign:'center'})},y)),h('span',{style:self.mono({fontSize:10,fontWeight:700,color:T.accent,textAlign:'center'})},'Ø')),
-          MON.map((mn,m)=>h('div',{key:m,style:{display:'grid',gridTemplateColumns:'44px repeat('+years.length+',1fr) 52px',gap:4,marginBottom:4}},h('span',{style:self.mono({fontSize:10.5,color:T.dim,display:'flex',alignItems:'center'})},mn),years.map(y=>{const v=D.ret[y]&&D.ret[y][m];const c=cell(v==null?null:v);return h('span',{key:y,style:Object.assign(self.mono({fontSize:10,fontWeight:700,textAlign:'center',padding:'7px 0',borderRadius:5}),c)},v==null?'·':(v>0?'+':'')+v.toFixed(1));}),(()=>{const a=D.avg[m];const c=cell(a==null?null:a);return h('span',{style:Object.assign(self.mono({fontSize:10,fontWeight:800,textAlign:'center',padding:'7px 0',borderRadius:5,border:'1px solid #232b3d'}),c)},a==null?'·':(a>0?'+':'')+a.toFixed(1));})())))));
+      D&&(()=>{
+        // Heatmapa + "Průměrný měsíc" vedle sebe (hlavní obsah + 300px panel) —
+        // stejné rozložení jako Kalendář/AI Coach panely níž v appce, jen
+        // Průměrný měsíc teď jako vodorovné pruhy (délka = síla sezónní
+        // tendence) místo sloupcového grafu, ať se dá rychle přehlédnout.
+        const heatmapCard=h('div',{style:self.card({padding:'18px 20px',overflowX:'auto'})},self.ptitle('Heatmapa měsíc × rok','Zelená = zhodnocení '+D.from+', červená = oslabení'),
+          h('div',{style:{minWidth:520,marginTop:4}},
+            h('div',{style:{display:'grid',gridTemplateColumns:'44px repeat('+years.length+',1fr) 52px',gap:4,marginBottom:4}},h('span',null),years.map(y=>h('span',{key:y,style:self.mono({fontSize:10,color:T.faint,textAlign:'center'})},y)),h('span',{style:self.mono({fontSize:10,fontWeight:700,color:T.accent,textAlign:'center'})},'Ø')),
+            MON.map((mn,m)=>h('div',{key:m,style:{display:'grid',gridTemplateColumns:'44px repeat('+years.length+',1fr) 52px',gap:4,marginBottom:4}},h('span',{style:self.mono({fontSize:10.5,color:T.dim,display:'flex',alignItems:'center'})},mn),years.map(y=>{const v=D.ret[y]&&D.ret[y][m];const c=cell(v==null?null:v);return h('span',{key:y,style:Object.assign(self.mono({fontSize:10,fontWeight:700,textAlign:'center',padding:'7px 0',borderRadius:5}),c)},v==null?'·':(v>0?'+':'')+v.toFixed(1));}),(()=>{const a=D.avg[m];const c=cell(a==null?null:a);return h('span',{style:Object.assign(self.mono({fontSize:10,fontWeight:800,textAlign:'center',padding:'7px 0',borderRadius:5,border:'1px solid #232b3d'}),c)},a==null?'·':(a>0?'+':'')+a.toFixed(1));})()))));
+        const avgMax=Math.max(...D.avg.map(x=>Math.abs(x||0)))||1;
+        const avgSidebar=h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Průměrný měsíc','Sezónní tendence · průměr '+(D.years?D.years.length:0)+' let'),
+          h('div',{style:{marginTop:12}},D.avg.map((v,m)=>{
+            const hv=v==null?0:v, pct=v==null?0:Math.min(100,Math.abs(hv)/avgMax*100), col=hv>=0?T.green:T.red;
+            return h('div',{key:m,style:{display:'flex',alignItems:'center',gap:8,padding:'5px 0'}},
+              h('span',{style:self.mono({fontSize:11,color:T.dim,width:28,flex:'none'})},MON[m]),
+              h('div',{style:{flex:1,height:6,background:'#0a0d13',borderRadius:3,overflow:'hidden'}},h('div',{style:{height:'100%',width:pct+'%',background:col,opacity:.85,borderRadius:3}})),
+              h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:col,width:46,textAlign:'right',flex:'none'})},v==null?'—':(hv>0?'+':'')+hv.toFixed(1)+'%'));
+          })));
+        return h('div',{style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) 300px',gap:16,alignItems:'start'}},heatmapCard,avgSidebar);
+      })());
   }
   renderSettings(){ const self=this,h=this.h,T=this.tok,st=this.state; const avail=window.Sync&&window.Sync.ready; const sess=st.syncSess;
     const fld={width:'100%',padding:'10px 13px',background:'#0a0d13',border:'1px solid #1b2130',borderRadius:10,color:T.text,fontSize:13,fontFamily:"'Manrope',sans-serif",marginBottom:9,display:'block',outline:'none'};
