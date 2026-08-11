@@ -409,7 +409,8 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
   const [pos,setPos]=useState(()=>{try{return getPosition(p.pair);}catch(e){return"none";}});
   const [note,setNote]=useState(()=>{try{return (loadNotes()||{})[p.pair]||"";}catch(e){return"";}});
   const [zoom,setZoom]=useState(null);
-  const [scMode,setScMode]=useState("dual");
+  // Výchozí zobrazení = "Rozdíl" (žlutá souhrnná čára) — stejně jako na PC.
+  const [scMode,setScMode]=useState("diff");
   const scToggle=<div onClick={e=>e.stopPropagation()} style={{display:"flex",gap:3}}>{["dual","diff"].map(m=>{const on=scMode===m;return (
     <button key={m} onClick={e=>{e.stopPropagation();setScMode(m);}} style={{border:"1px solid "+(on?"#e3d21f88":"#1b2130"),background:on?"rgba(227,210,31,.14)":"#0c0f16",color:on?"#f0e79a":"var(--faint)",borderRadius:6,padding:"2px 6px",fontSize:8.5,fontWeight:700}}>{m==="dual"?"2 měny":"Rozdíl"}</button>
   );})}</div>;
