@@ -1,0 +1,19 @@
+name: Probe Gold + US100 Data Sources
+
+# Dispatch-only diagnostika — žádný cron, nic necommituje. Ověřuje, jestli
+# jde reálně najít CFTC COT data pro zlato (Disaggregated report) a Nasdaq-100
+# (TFF report, stejný dataset jako appka už používá pro FX), plus jestli
+# Stooq nabízí zdarma cenovou historii pro oba nástroje.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Najít zdroje pro zlato + US100
+        run: node scripts/probe-gold-us100.js
