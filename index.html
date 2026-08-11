@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260802c"></script>
-<script src="sync.js?v=20260727a"></script>
+<script src="engine.js?v=20260811a"></script>
+<script src="sync.js?v=20260811a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -71,7 +71,7 @@ class FXApp extends React.Component{
       winYears:20, winBusy:false, winErr:'', winResult:null, winAvgPath:null, winDaily:null, winChartModal:false };
     this.CUR=(typeof CURRENCIES!=='undefined')?CURRENCIES:['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
     this.NAMES=(typeof NAMES!=='undefined')?NAMES:{};
-    this.D={}; this.PAIRS=[]; this.series={}; this.dates=[]; this.daily=[]; this.cbdi=50; this.PRICES={};
+    this.D={}; this.PAIRS=[]; this.series={}; this.dates=[]; this.daily=[]; this.cbdi=50; this.PRICES={}; this.US100=null;
     this.journal={wr:0,pf:0,trades:0,avgR:0,bestR:0,buckets:[],rows:[]}; this.equity=[0]; this.equityMeta=[{date:null,pair:null,r:0}];
     this.CUR.forEach(c=>{this.D[c]={score:0,fund:0,policy:0,yield:0,cot:0,sent:0,season:0,cotPct:50,chg7:0,cb:'—',inst:0,retail:50};this.series[c]=[0,0];});
     this._coachScrollEl=null;
@@ -163,6 +163,11 @@ class FXApp extends React.Component{
         inst:Math.round(Math.max(-100,Math.min(100,(cot[c]||0)*12))),
         cotLong:(()=>{try{const ls=getCOTLongShort(c);return ls?ls.long:null;}catch(e){return null;}})(),
         retail:Math.round(sent[c]!=null?sent[c]:50) }; });
+      // US100 (Nasdaq-100) — samostatný nástroj, vlastní data/funkce (viz engine.js),
+      // nedotýká se ničeho výš (this.D/sc/cot/sent) ani žádné funkce pro 8 měn.
+      try{ await fetchActionUS100Cot(); }catch(e){}
+      try{ await fetchActionUS100Retail(); }catch(e){}
+      try{ this.US100=scoreUS100(); saveUS100ScoreHistory(this.US100); }catch(e){ this.US100=null; }
       // PAIRS
       const fcLog={};
       // Plné rozlišení stavů z getPairDailyState (conflict/confirm/upcoming/done/tomorrow/none)
@@ -1106,7 +1111,8 @@ class FXApp extends React.Component{
   statusLabel(s){ return s==='conflict'?'Konflikt':s==='upcoming'?'Přijde dnes':s==='tomorrow'?'Zítra data':s==='done'?'Dnes proběhlo':s==='confirm'?'Potvrzeno':'Bez fundamentů'; }
   today(){ return new Date().toLocaleDateString('cs-CZ',{day:'numeric',month:'long',year:'numeric'}); }
 
-  renderDetail(){ const self=this,h=this.h,T=this.tok, p=this.pairObj(this.state.sel); if(!p) return null;
+  renderDetail(){ if(this.state.sel==='US100') return this.renderUS100Detail();
+    const self=this,h=this.h,T=this.tok, p=this.pairObj(this.state.sel); if(!p) return null;
     const buy=p.dir==='BUY', ac=buy?T.green:T.red, sb=this.D[p.base], sq=this.D[p.quote]; const probC=p.prob>=65?T.green:p.prob<=35?T.red:T.amber;
     const stars=n=>'★'.repeat(n)+'☆'.repeat(5-n);
     const stat=(label,val,col,sub)=>h('div',{style:{padding:'13px 16px',borderLeft:'1px solid #1b2130',flex:1}},h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:6,letterSpacing:'.02em'}},label),h('div',{style:self.mono({fontSize:18,fontWeight:700,color:col||T.text,lineHeight:1})},val),sub&&h('div',{style:{fontSize:10,color:T.dim,marginTop:5}},sub));
@@ -1232,6 +1238,69 @@ class FXApp extends React.Component{
             h('div',{style:{fontSize:11,color:T.dim,marginTop:6}},iSide==='NEUTRÁL'?'Instituce nemají výraznou pozici.':'Smart money drží net '+iSide+' ('+p.base+' vs '+p.quote+').')),
           h('div',{style:{display:'flex',alignItems:'center',gap:9,background:v.c+'12',border:'1px solid '+v.c+'33',borderRadius:10,padding:'10px 13px'}},h('span',{style:{fontSize:15}},opp?'🎯':iSide===rSide&&iSide!=='NEUTRÁL'?'⚠️':'•'),h('span',{style:{fontSize:12.5,color:T.text,lineHeight:1.5}},v.m)));
       })())
+    );
+  }
+  // US100 (Nasdaq-100) detail — samostatný panel, NEsdílí this.D/pairObj s FX
+  // páry (viz engine.js komentář u scoreUS100). Stejné komponenty (COT bar,
+  // retail bar, vývoj skóre) jako appka ukazuje u páru, jen napojené na
+  // vlastní US100 data.
+  renderUS100Detail(){ const self=this,h=this.h,T=this.tok;
+    const D=this.US100||{score:0,cotScore:0,sentScore:0,cot:null,cotAsOf:null,retailPct:null,retailAsOf:null};
+    const buy=D.score>=0, dc=buy?T.green:T.red;
+    const cotHist=(typeof loadUS100CotHistory==='function')?loadUS100CotHistory():{};
+    const cotDates=Object.keys(cotHist).sort();
+    const scoreHist=(typeof loadUS100ScoreHistory==='function')?loadUS100ScoreHistory():{};
+    const scoreDates=Object.keys(scoreHist).sort();
+    const retailHist=(typeof loadUS100RetailHistory==='function')?loadUS100RetailHistory():[];
+    const ageTxt=iso=>{ if(!iso) return 'nenačteno'; const h_=Math.round((Date.now()-new Date(iso).getTime())/3600000); return h_<1?'právě teď':h_<48?('před '+h_+' h'):('před '+Math.round(h_/24)+' dny'); };
+    // Kompaktní SVG čára — stejný princip jako appka používá jinde (sezónní
+    // křivka, COT graf), jen jednodušší (bez zoomu/měření), ať se vejde do
+    // malé karty.
+    const miniLine=(vals,dates,height,label)=>{
+      if(!vals||vals.length<2) return h('div',{style:{fontSize:11,color:T.faint,padding:'16px 0',textAlign:'center'}},'Zatím málo dat pro graf.');
+      const W=640,H=height||110,PL=8,PR=8,PT=10,PB=10;
+      const lo0=Math.min(0,...vals),hi0=Math.max(0,...vals),pad=((hi0-lo0)||1)*0.15;
+      const lo=lo0-pad,hi=hi0+pad,span=(hi-lo)||1;
+      const X=i=>PL+(W-PL-PR)*(i/(vals.length-1)),Y=v=>PT+(H-PT-PB)*(1-(v-lo)/span);
+      const pathD=self.smooth(vals.map((v,i)=>[X(i),Y(v)]));
+      const zeroY=Y(0),endUp=vals[vals.length-1]>=0,col=endUp?T.green:T.red;
+      return h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',overflow:'visible'}},
+        zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'#2a3242',strokeWidth:1}),
+        h('path',{d:pathD+' L '+X(vals.length-1)+' '+zeroY+' L '+X(0)+' '+zeroY+' Z',fill:col,fillOpacity:.12}),
+        h('path',{d:pathD,fill:'none',stroke:col,strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}),
+        h('circle',{cx:X(vals.length-1),cy:Y(vals[vals.length-1]),r:3,fill:col,stroke:'#0b0d13',strokeWidth:1.2}));
+    };
+    const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
+    const split=(l,s)=>h('div',{style:{position:'relative',height:22,borderRadius:7,overflow:'hidden',display:'flex',border:'1px solid #161b27',background:'#0a0d13'}},
+      h('div',{style:{width:l+'%',background:'linear-gradient(90deg,'+T.green+'cc,'+T.green+'88)',display:'flex',alignItems:'center',justifyContent:'flex-start',paddingLeft:7}},h('span',{style:self.mono({fontSize:9.5,fontWeight:800,color:'#06140f'})},l+'%')),
+      h('div',{style:{width:s+'%',background:'linear-gradient(90deg,'+T.red+'88,'+T.red+'cc)',display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:7}},h('span',{style:self.mono({fontSize:9.5,fontWeight:800,color:'#2a0a0c'})},s+'%')));
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+      h('div',{style:self.card({padding:'18px 20px'})},
+        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}},
+          h('div',null,h('div',{style:{display:'flex',alignItems:'baseline',gap:10}},h('span',{style:self.mono({fontSize:22,fontWeight:800})},'US100'),h('span',{style:{fontSize:12,color:T.faint}},'Nasdaq-100')),
+            h('div',{style:{fontSize:11,color:T.faint,marginTop:4}},'Index — skóre jen z COT + retail (bez fundamentálního kalendáře, ten na index nesedí)')),
+          h('div',{style:{textAlign:'right'}},h('div',{style:self.mono({fontSize:28,fontWeight:800,color:dc})},(D.score>0?'+':'')+D.score.toFixed(1)),h('div',{style:{fontSize:10.5,fontWeight:700,color:dc,letterSpacing:'.04em'}},buy?'BULLISH BIAS':'BEARISH BIAS'))),
+        h('div',{style:{display:'flex',gap:20,marginTop:14,paddingTop:12,borderTop:'1px solid #161b27',flexWrap:'wrap'}},
+          h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'COT komponenta'),h('div',{style:self.mono({fontSize:15,fontWeight:700,color:self.scol(D.cotScore)})},self.sgn(D.cotScore))),
+          h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'Retail komponenta'),h('div',{style:self.mono({fontSize:15,fontWeight:700,color:self.scol(D.sentScore)})},self.sgn(D.sentScore))),
+          h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'COT stáří'),h('div',{style:self.mono({fontSize:12,fontWeight:700})},ageTxt(D.cotAsOf))),
+          h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'Retail stáří'),h('div',{style:self.mono({fontSize:12,fontWeight:700})},ageTxt(D.retailAsOf))))),
+      h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Vývoj skóre','Denní historie (COT + retail), stejný princip jako u párů'),
+        h('div',{style:{marginTop:8}},miniLine(scoreDates.map(d=>scoreHist[d].score),scoreDates,120))),
+      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:14}},
+        h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('🏛 COT pozicování','CFTC TFF · Leveraged Funds 70 % + Asset Managers 30 %, stejný vzorec jako appka používá pro FX'),
+          D.cot?h('div',{style:{marginTop:10}},
+            h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:8}},h('span',{style:{fontSize:11,color:T.dim}},'Leveraged Funds net'),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:D.cot.levNet>=0?T.green:T.red})},(D.cot.levNet>0?'+':'')+D.cot.levNet.toLocaleString('cs-CZ'))),
+            h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:12}},h('span',{style:{fontSize:11,color:T.dim}},'Asset Managers net'),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:D.cot.assetNet>=0?T.green:T.red})},(D.cot.assetNet>0?'+':'')+D.cot.assetNet.toLocaleString('cs-CZ'))),
+            miniLine(cotDates.map(d=>cotHist[d].levNet),cotDates,90),
+            h('div',{style:{fontSize:10,color:T.faint,marginTop:8}},'Graf: vývoj Leveraged Funds net pozice · '+cotDates.length+' týdnů historie'))
+            :h('div',{style:{fontSize:11.5,color:T.faint,marginTop:10}},'COT data se ještě nenačetla — objeví se po nejbližším týdenním cronu.')),
+        h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('🧍 Retail sentiment','FXSSI Current Ratio (NAS100) · contrarian — appka to takhle čte i u FX'),
+          lastRetail?h('div',{style:{marginTop:10}},
+            split(lastRetail.l,lastRetail.s),
+            h('div',{style:{fontSize:11,color:T.dim,marginTop:9,lineHeight:1.5}},
+              lastRetail.l>=80?'Dav extrémně LONG → kontrariánsky bearish signál.':lastRetail.l<=20?'Dav extrémně SHORT → kontrariánsky bullish signál.':lastRetail.l>=70?'Dav silně LONG → mírný kontrariánský tlak dolů.':lastRetail.l<=30?'Dav silně SHORT → mírný kontrariánský tlak nahoru.':'Dav rozdělený — bez extrému.'))
+            :h('div',{style:{fontSize:11.5,color:T.faint,marginTop:10}},'Retail data se ještě nenačetla — objeví se po nejbližším refreshi (~30 min).')))
     );
   }
   renderOilPanel(p){ const self=this,h=this.h,T=this.tok; let oilSt=null; try{oilSt=getOilStatus();}catch(e){}
@@ -1801,6 +1870,21 @@ class FXApp extends React.Component{
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}},h('div',{style:{display:'flex',alignItems:'center',gap:9}},h('span',{style:{width:7,height:7,borderRadius:'50%',background:this.statusColor(p.status),boxShadow:'0 0 9px '+this.statusColor(p.status)}}),h('span',{style:self.mono({fontWeight:700,fontSize:14,letterSpacing:'.01em',color:'#eef1f6'})},p.pair),self.flipInfo(p.pair)&&h('span',{title:'Bias se nedávno otočil — viz detail',style:{fontSize:12,fontWeight:800,color:T.amber,marginLeft:'-2px'}},'⚡'),h('span',{style:{color:T.amber,fontSize:10,letterSpacing:'.5px'}},'★'.repeat(p.conv)+'☆'.repeat(5-p.conv))),h('div',{style:{display:'flex',alignItems:'center',gap:5}},h('span',{title:isFav?'Odebrat z oblíbených':'Přidat do oblíbených',role:'button',onClick:e=>{e.stopPropagation();self.toggleFav(p.pair);},style:{fontSize:14,cursor:'pointer',color:isFav?'#f0b429':(st.hoverFav===p.pair?'rgba(240,180,41,0.45)':'transparent'),userSelect:'none',lineHeight:1,transition:'color .15s'}},isFav?'★':'☆'),h('span',{style:self.mono({fontWeight:700,fontSize:10.5,letterSpacing:'.06em',color:dc,background:buy?'rgba(46,211,160,.1)':'rgba(242,96,110,.1)',border:'1px solid '+(buy?'rgba(46,211,160,.28)':'rgba(242,96,110,.28)'),borderRadius:6,padding:'2px 7px'})},p.dir))),
         h('div',{style:{display:'flex',alignItems:'baseline',gap:10,marginTop:11}},h('span',{style:self.mono({fontSize:23,fontWeight:700,color:dc,lineHeight:1})},(buy?'+':'−')+p.diff.toFixed(1)),h('span',{title:(typeof BAND_DISCLAIMER!=='undefined')?BAND_DISCLAIMER:'',style:{fontSize:9,fontWeight:700,letterSpacing:'.1em',color:band[1],background:band[2],borderRadius:5,padding:'3px 7px',cursor:'help'}},band[0]),isCADrow&&oilSt&&h('span',{title:'WTI ropa '+oilSt.direction+' · 4t '+(oilSt.mom4w>0?'+':'')+oilSt.mom4w+'%',style:self.mono({fontSize:9,fontWeight:700,letterSpacing:'.04em',color:oilSt.color,background:oilSt.color+'1c',border:'1px solid '+oilSt.color+'44',borderRadius:5,padding:'3px 7px'})},'🛢 $'+oilSt.price.toFixed(1)),d24&&h('span',{title:'Změna skóre páru (rozdíl base−quote) za posledních ~24h',style:self.mono({display:'inline-flex',alignItems:'center',gap:4,fontSize:12.5,fontWeight:800,letterSpacing:'.02em',color:d24.color,background:d24.color+'22',border:'1.5px solid '+d24.color+'66',borderRadius:7,padding:'4px 9px'})},h('span',{style:{fontSize:14}},d24.arrow),(d24.d>0?'+':'')+d24.d.toFixed(1)),rpEr&&h('span',{title:'RP+ER exhaustion signál — potvrzeno technikou i fundamentem, viz detail páru',style:self.mono({display:'inline-flex',alignItems:'center',gap:4,fontSize:11.5,fontWeight:800,letterSpacing:'.02em',color:rpEr.type==='SHORT'?T.red:T.green,background:(rpEr.type==='SHORT'?T.red:T.green)+'22',border:'1.5px solid '+(rpEr.type==='SHORT'?T.red:T.green)+'66',borderRadius:7,padding:'4px 9px'})},rpEr.type==='SHORT'?'⇩':'⇧','SILNÝ '+rpEr.type),h('span',{style:self.mono({marginLeft:'auto',fontSize:11,color:T.dim})},p.prob+'%')),
         h('div',{style:{display:'flex',gap:13,marginTop:10,fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:'#6b7384'}},h('span',null,p.base+' ',h('b',{style:{color:self.scol(sb.score),fontWeight:600}},self.sgn(sb.score))),h('span',null,p.quote+' ',h('b',{style:{color:self.scol(sq.score),fontWeight:600}},self.sgn(sq.score))),h('span',{style:{marginLeft:'auto'}},'COT ',h('b',{style:{color:ext?T.amber:T.dim,fontWeight:600}},sb.cotPct+'p'))));};
+    // US100 (Nasdaq-100) — vlastní karta pod seznamem 28 párů, mimo
+    // strong/sweet/favs/hledání filtry (ty jsou postavené na p.diff/p.pair,
+    // co US100 nemá). Vždycky viditelná, ať se filtruje cokoliv nahoře.
+    const us100Card=()=>{
+      const D=this.US100; if(!D) return null;
+      const buy=D.score>=0,dc=buy?T.green:T.red,sel=st.sel==='US100';
+      return h('div',{key:'US100'},
+        h('div',{style:self.mono({fontSize:9.5,fontWeight:800,letterSpacing:'.14em',color:'#454f63',padding:'14px 4px 8px'})},'INDEXY'),
+        h('button',{type:'button',onClick:()=>this.setState({sel:'US100'}),style:{display:'block',width:'100%',textAlign:'left',border:'1px solid '+(sel?T.accent:'#191e2b'),background:sel?'linear-gradient(180deg,rgba(94,124,251,.12),rgba(11,13,19,.7))':'linear-gradient(180deg,#0d1017,#0a0c12)',borderRadius:13,padding:'12px 13px',marginBottom:8,cursor:'pointer',fontFamily:'inherit',boxShadow:sel?'0 0 0 1px '+T.accent+'40,0 10px 26px rgba(94,124,251,.12)':'none'}},
+          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}},
+            h('div',{style:{display:'flex',alignItems:'center',gap:9}},h('span',{style:self.mono({fontWeight:700,fontSize:14,letterSpacing:'.01em',color:'#eef1f6'})},'US100'),h('span',{style:{fontSize:10.5,color:T.faint}},'Nasdaq-100')),
+            h('span',{style:self.mono({fontWeight:700,fontSize:10.5,letterSpacing:'.06em',color:dc,background:buy?'rgba(46,211,160,.1)':'rgba(242,96,110,.1)',border:'1px solid '+(buy?'rgba(46,211,160,.28)':'rgba(242,96,110,.28)'),borderRadius:6,padding:'2px 7px'})},buy?'BULLISH':'BEARISH')),
+          h('div',{style:{display:'flex',alignItems:'baseline',gap:10,marginTop:11}},h('span',{style:self.mono({fontSize:23,fontWeight:700,color:dc,lineHeight:1})},(D.score>0?'+':'')+D.score.toFixed(1))),
+          h('div',{style:{display:'flex',gap:13,marginTop:10,fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:'#6b7384'}},h('span',null,'COT ',h('b',{style:{color:self.scol(D.cotScore),fontWeight:600}},self.sgn(D.cotScore))),h('span',null,'Retail ',h('b',{style:{color:self.scol(D.sentScore),fontWeight:600}},self.sgn(D.sentScore))))));
+    };
     const leftSection=h('section',{className:'fx-left',style:self.card({padding:'16px 15px',position:'sticky',top:84,maxHeight:'calc(100vh - 104px)',display:'flex',flexDirection:'column'})},
       h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:11}},h('div',null,h('div',{style:{fontSize:14,fontWeight:800,letterSpacing:'-.01em'}},'Měnové páry'),h('div',{style:self.mono({fontSize:10.5,color:T.faint,marginTop:2})},'Seřazeno dle síly signálu')),h('span',{style:self.mono({fontSize:11,color:T.dim,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:8,padding:'4px 9px'})},list.length+'/'+this.PAIRS.length+' párů')),
       h('div',{style:{position:'relative',marginBottom:11}},
@@ -1811,7 +1895,8 @@ class FXApp extends React.Component{
         list.length===0
           ?h('div',{style:{color:T.dim,fontSize:12,textAlign:'center',marginTop:20,lineHeight:1.6}},
               st.pairSearch?('Žádný pár neodpovídá hledání „'+st.pairSearch+'".'):(st.filter==='favs'?'Zatím žádné oblíbené.'+'\n'+'Najeď na pár a klikni ☆.':'Žádné páry.'))
-          :list.map(pairCard)));
+          :list.map(pairCard),
+        us100Card()));
     const main=h('main',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column'}},header,
       st.tab==='dashboard'?h('div',{style:{padding:'18px 22px 40px'}},h('div',{className:'fx-grid',style:{display:'grid',gridTemplateColumns:'374px minmax(0,1fr) 350px',gap:16,alignItems:'start'}},leftSection,h('section',{style:{minWidth:0}},this.renderDetail()),h('section',{className:'fx-right',style:{position:'sticky',top:84}},this.renderRight())))
         :h('div',{style:{padding:'18px 22px 48px',animation:'fxfade .3s ease'}},st.tab==='strength'?this.renderStrength():st.tab==='cot'?this.renderCOT():st.tab==='season'?this.renderSeasonality():st.tab==='calendar'?this.renderCalendar():st.tab==='ai'?this.renderAIAnalysis():st.tab==='coach'?this.renderAICoach():st.tab==='journal'?this.renderJournal():st.tab==='settings'?this.renderSettings():null));

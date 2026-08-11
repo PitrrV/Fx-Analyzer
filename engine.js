@@ -3439,3 +3439,78 @@ OTEVŘENÉ POZICE (openPositions v datech): pokud má uživatel na páru otevře
 POZNÁMKY U PÁRU: pokud uživatel má u sledovaného páru vlastní poznámku, ber ji jako jeho vlastní tezi/plán — pokud se aktuální data appky s poznámkou rozchází, na to uprozorni.
 
 HRANICE: personalizace se omezuje výhradně na obchodní vzorce a kontext appky (deník, pozice, poznámky, sledované páry). Nikdy nepoužívej ani nezmiňuj nic mimo tenhle rámec.`;
+
+/* ============================================================================
+   US100 (Nasdaq-100) — SAMOSTATNÝ nástroj, MIMO STANDARD_PAIRS/CURRENCIES.
+   ============================================================================
+   Index nemá vlastní zemi/centrální banku (viz CURRENCY_COUNTRIES výš), takže
+   fundamentální/CB-kalendářní skóre appky na něj nejde napasovat stejně jako
+   na měnu — místo toho jede jen z COT + retail sentimentu, stejnou logikou a
+   škálou appka už používá pro FX (cotNetScore vzorec, kontrariánský retail),
+   jen na vlastních, oddělených datech:
+     - data/us100_cot.json / data/us100_retail.json (server crony —
+       scripts/fetch-us100-cot.js + scripts/fetch-us100-retail.js — NEZASAHUJÍ
+       do fetch-cot.js/fetch-retail.js ani jejich výstupních souborů)
+     - localStorage klíče us100_cot_hist / us100_retail_hist / us100_score_hist
+       (NE cot_hist/retail_hist/score_hist, co používá 8 měn)
+   Nic z tohohle bloku nevolá ani neupravuje žádnou funkci výš v souboru, co
+   počítá skóre pro CURRENCIES/STANDARD_PAIRS — přidání/výpadek US100 dat proto
+   nemůže ovlivnit FX skórování. */
+const US100_INSTRUMENT={symbol:"US100",name:"Nasdaq-100",retailSymbol:"NAS100"};
+
+async function fetchActionUS100Cot(){
+  const r=await fetch("data/us100_cot.json?t="+Date.now());
+  if(!r.ok) throw new Error("us100_cot.json HTTP "+r.status);
+  const j=await r.json();
+  if(!j||!j.hist||typeof j.hist!=="object") throw new Error("us100_cot.json: chybí hist");
+  let local={}; try{ const v=JSON.parse(localStorage.getItem("us100_cot_hist")||"{}"); if(v&&typeof v==="object") local=v; }catch(e){}
+  const merged={...local,...j.hist};
+  const dates=Object.keys(merged).sort().slice(-150);
+  const trimmed={}; dates.forEach(d=>trimmed[d]=merged[d]);
+  localStorage.setItem("us100_cot_hist",JSON.stringify(trimmed));
+  return trimmed;
+}
+function loadUS100CotHistory(){ try{ const v=JSON.parse(localStorage.getItem("us100_cot_hist")||"{}"); return (v&&typeof v==="object")?v:{}; }catch(e){ return {}; } }
+
+async function fetchActionUS100Retail(){
+  const r=await fetch("data/us100_retail.json?t="+Date.now());
+  if(!r.ok) throw new Error("us100_retail.json HTTP "+r.status);
+  const j=await r.json();
+  if(!j||!Array.isArray(j.points)) throw new Error("us100_retail.json: chybí points");
+  let local=[]; try{ const v=JSON.parse(localStorage.getItem("us100_retail_hist")||"[]"); if(Array.isArray(v)) local=v; }catch(e){}
+  const seen=new Set(local.map(p=>p.t));
+  const merged=local.concat(j.points.filter(p=>!seen.has(p.t))).sort((a,b)=>new Date(a.t)-new Date(b.t)).slice(-1100);
+  localStorage.setItem("us100_retail_hist",JSON.stringify(merged));
+  return merged;
+}
+function loadUS100RetailHistory(){ try{ const v=JSON.parse(localStorage.getItem("us100_retail_hist")||"[]"); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
+
+// Skóre US100 — COT (stejný 70 % Leveraged Funds / 30 % Asset Managers blend
+// jako appka počítá pro FX, viz scripts/fetch-us100-cot.js) + kontrariánský
+// retail (stejná pravidla jako getSentimentScore výš). Bez fundamentálního/CB
+// komponentu — index žádný vlastní nemá.
+function scoreUS100(){
+  const cotHist=loadUS100CotHistory();
+  const cotDates=Object.keys(cotHist).sort();
+  const lastCotDate=cotDates[cotDates.length-1];
+  const cot=lastCotDate?cotHist[lastCotDate]:null;
+  const retailHist=loadUS100RetailHistory();
+  const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
+  const sentScore=lastRetail?(lastRetail.l>=80?-1:lastRetail.l>=70?-0.5:lastRetail.l<=20?1:lastRetail.l<=30?0.5:0):0;
+  const cotScore=cot?cot.score:0;
+  const score=+(cotScore+sentScore).toFixed(1);
+  return {score,cotScore,sentScore,cot,cotAsOf:lastCotDate||null,retailPct:lastRetail?lastRetail.l:null,retailAsOf:lastRetail?lastRetail.t:null};
+}
+
+function saveUS100ScoreHistory(scoreObj){
+  if(!scoreObj) return;
+  const today=new Date().toISOString().split("T")[0];
+  try{
+    const hist=JSON.parse(localStorage.getItem("us100_score_hist")||"{}");
+    hist[today]={score:scoreObj.score,cot:scoreObj.cotScore,sent:scoreObj.sentScore};
+    const dates=Object.keys(hist).sort().slice(-260);
+    const trimmed={}; dates.forEach(d=>trimmed[d]=hist[d]);
+    localStorage.setItem("us100_score_hist",JSON.stringify(trimmed));
+  }catch(e){}
+}
+function loadUS100ScoreHistory(){ try{ const v=JSON.parse(localStorage.getItem("us100_score_hist")||"{}"); return (v&&typeof v==="object")?v:{}; }catch(e){ return {}; } }
