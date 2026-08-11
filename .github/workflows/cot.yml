@@ -48,3 +48,27 @@ jobs:
           else
             echo "Beze změny."
           fi
+      # US100 (Nasdaq-100) COT — samostatný krok, vlastní soubor
+      # (data/us100_cot.json), nezávislý na kroku výš. continue-on-error, ať
+      # případný výpadek tohohle kroku nezkazí zelený běh FX COT kroku nad ním.
+      - name: "Stáhnout COT: US100"
+        continue-on-error: true
+        run: node scripts/fetch-us100-cot.js
+      - name: "Commit: US100 COT při změně"
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name "cot-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/us100_cot.json)" ]; then
+            git add data/us100_cot.json
+            git commit -m "chore: update US100 COT [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Beze změny."
+          fi

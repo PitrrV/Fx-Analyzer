@@ -44,3 +44,27 @@ jobs:
           else
             echo "Beze změny."
           fi
+      # US100 (Nasdaq-100) retail sentiment — samostatný krok, vlastní soubor
+      # (data/us100_retail.json), nezávislý na kroku výš. continue-on-error, ať
+      # případný výpadek tohohle kroku nezkazí zelený běh FX retail kroku nad ním.
+      - name: "Stáhnout retail: US100"
+        continue-on-error: true
+        run: node scripts/fetch-us100-retail.js
+      - name: "Commit: US100 retail při změně"
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name "retail-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/us100_retail.json)" ]; then
+            git add data/us100_retail.json
+            git commit -m "chore: update US100 retail sentiment [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Beze změny."
+          fi
