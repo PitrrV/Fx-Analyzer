@@ -194,7 +194,17 @@ async function loadDataMobile(){
   const months=(calSource==="fmp"||calSource==="finnhub")?15:ffHistorySpanMonths(cal);
   const fc={}; ranked.forEach(p=>{ try{ fc[p.pair]=buildForecastV5(p,sc,calScoring,up); }catch(e){} });
   try{ if(typeof logForecastSnapshot==='function') logForecastSnapshot(fc); }catch(e){}
-  return { scores:sc, D, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(), retailLatest, retailHist,
+  // US100 (Nasdaq-100) — samostatný nástroj, stejná data appka stahuje pro PC
+  // (data/us100_cot.json, data/us100_retail.json), jen tenhle mobilní load
+  // musí ty samé fetch/score funkce zavolat sám (m.html je nezávislý na
+  // index.html — viz CLAUDE.md). Nedotýká se ničeho výš (sc/D/ranked).
+  let us100=null;
+  try{
+    try{ await fetchActionUS100Cot(); }catch(e){}
+    try{ await fetchActionUS100Retail(); }catch(e){}
+    us100=scoreUS100(); saveUS100ScoreHistory(us100);
+  }catch(e){}
+  return { scores:sc, D, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(), retailLatest, retailHist, us100,
     calMeta:{source:calSource||"none",months,count:cal.length,conf:Math.round((g_fundConfidence||0)*100)} };
 }
 
@@ -228,6 +238,30 @@ function PairCard({p,f,daily,onTap,isFav,onToggleFav}){
           {d24&&<span title="Změna skóre páru (rozdíl base−quote) za posledních ~24h" style={{display:"inline-flex",alignItems:"center",gap:4,fontFamily:"'JetBrains Mono',monospace",fontSize:12.5,fontWeight:800,letterSpacing:".02em",color:d24.color,background:d24.color+"22",border:"1.5px solid "+d24.color+"66",borderRadius:7,padding:"4px 9px"}}><span style={{fontSize:14}}>{d24.arrow}</span>{(d24.d>0?"+":"")+d24.d.toFixed(1)}</span>}
           <span className="chip">{p.base} {fmtNum(p.s1)}</span>
           <span className="chip">{p.quote} {fmtNum(p.s2)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+// US100 (Nasdaq-100) — mini karta pod seznamem párů, mimo strong/sweet/favs
+// filtry (ty jsou postavené na p.diff/p.pair, co US100 nemá).
+function US100CardM({us100,onTap}){
+  if(!us100) return null;
+  const buy=us100.score>=0, col=buy?"#2ed3a0":"#f2606e";
+  return (
+    <div className="card" onClick={onTap} style={{borderColor:buy?"#1f5c34":"#5c2626"}}>
+      <div className="between">
+        <div className="row" style={{gap:6}}>
+          <span style={{fontWeight:900,fontSize:16}}>US100</span>
+          <span className="muted" style={{fontSize:12}}>Nasdaq-100</span>
+        </div>
+        <span className={"pill "+(buy?"buy":"sell")}>{buy?"BULLISH":"BEARISH"}</span>
+      </div>
+      <div className="between" style={{marginTop:8}}>
+        <span style={{fontSize:13}}><span className="muted">skóre </span><b style={{color:cScore(us100.score)}}>{(us100.score>0?"+":"")+us100.score.toFixed(1)}</b></span>
+        <div className="row" style={{gap:6}}>
+          <span className="chip">COT {fmtNum(us100.cotScore)}</span>
+          <span className="chip">Retail {fmtNum(us100.sentScore)}</span>
         </div>
       </div>
     </div>
@@ -635,6 +669,82 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
     </div>
   );
 }
+// ── DETAIL US100 (Nasdaq-100) ────────────────────────────────
+// Samostatný, NEsdílí data s PairDetail (žádné p.base/p.quote) — vlastní
+// historie (us100_cot_hist/us100_retail_hist/us100_score_hist), stejné
+// komponenty (BigChart) jako appka ukazuje u páru.
+function US100DetailM({data,onClose}){
+  const us100=(data&&data.us100)||{score:0,cotScore:0,sentScore:0,cot:null,cotAsOf:null,retailPct:null,retailAsOf:null};
+  const buy=us100.score>=0, col=buy?"#2ed3a0":"#f2606e";
+  const cotHist=(typeof loadUS100CotHistory==="function")?loadUS100CotHistory():{};
+  const cotDates=Object.keys(cotHist).sort();
+  const scoreHist=(typeof loadUS100ScoreHistory==="function")?loadUS100ScoreHistory():{};
+  const scoreDates=Object.keys(scoreHist).sort();
+  const retailHist=(typeof loadUS100RetailHistory==="function")?loadUS100RetailHistory():[];
+  const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
+  const ageTxt=iso=>{ if(!iso) return "nenačteno"; const h=Math.round((Date.now()-new Date(iso).getTime())/3600000); return h<1?"právě teď":h<48?("před "+h+" h"):("před "+Math.round(h/24)+" dny"); };
+  const scoreSeries=[{name:"Skóre",color:"#e3d21f",vals:scoreDates.map(d=>+(scoreHist[d].score||0))}];
+  const retailSeries=[{name:"Long",color:"#2ed3a0",vals:retailHist.map(pt=>pt.l)},{name:"Short",color:"#f2606e",vals:retailHist.map(pt=>pt.s)}];
+  const cotLS=(()=>{ const lng=[],sht=[]; cotDates.forEach(d=>{ const r=cotHist[d]; const l=(r&&+r.levLong)||0,s=(r&&+r.levShort)||0,tot=l+s; lng.push(tot?Math.round(l/tot*100):50); sht.push(tot?Math.round(s/tot*100):50); }); return [{name:"Long",color:"#2ed3a0",vals:lng},{name:"Short",color:"#f2606e",vals:sht}]; })();
+  return (
+    <div className="ovl">
+      <div className="topbar" style={{margin:"0 -12px"}}>
+        <button className="btn sec" style={{width:"auto",padding:"7px 12px"}} onClick={onClose}>← Zpět</button>
+        <h1>US100</h1>
+        <span className={"pill "+(buy?"buy":"sell")}>{buy?"BULLISH":"BEARISH"}</span>
+      </div>
+      <div style={{paddingTop:12}}>
+        <div className="card">
+          <div className="between">
+            <div><div className="muted" style={{fontSize:12}}>Nasdaq-100 — skóre</div><div className="bignum" style={{color:col}}>{(us100.score>0?"+":"")+us100.score.toFixed(1)}</div></div>
+            <div style={{textAlign:"right"}}>
+              <div className="muted" style={{fontSize:10.5}}>COT {fmtNum(us100.cotScore)} · Retail {fmtNum(us100.sentScore)}</div>
+              <div className="muted" style={{fontSize:10.5,marginTop:2}}>COT {ageTxt(us100.cotAsOf)} · Retail {ageTxt(us100.retailAsOf)}</div>
+            </div>
+          </div>
+          <div className="muted" style={{fontSize:11,marginTop:8,lineHeight:1.5}}>Index — skóre jen z COT + retail (bez fundamentálního kalendáře, ten na index nesedí).</div>
+        </div>
+
+        <div className="card">
+          <div style={{fontWeight:800,fontSize:13,marginBottom:6}}>Vývoj skóre</div>
+          <BigChart series={scoreSeries} dates={scoreDates} height={130} mid={0} fmt={v=>(v>0?"+":"")+v.toFixed(1)} big={true}/>
+        </div>
+
+        <div className="card">
+          <div className="between" style={{marginBottom:6}}>
+            <span style={{fontWeight:800,fontSize:13}}>🏛 COT pozicování</span>
+            <span className="muted" style={{fontSize:10.5}}>Leveraged Funds L/S</span>
+          </div>
+          {us100.cot?(<>
+            <div className="between" style={{marginBottom:8}}>
+              <span className="muted" style={{fontSize:11}}>Leveraged Funds net</span>
+              <b className="mono" style={{fontSize:12,color:us100.cot.levNet>=0?"#2ed3a0":"#f2606e"}}>{(us100.cot.levNet>0?"+":"")+us100.cot.levNet.toLocaleString("cs-CZ")}</b>
+            </div>
+            <BigChart series={cotLS} dates={cotDates} height={130} yMin={0} yMax={100} mid={50} fmt={v=>Math.round(v)+"%"} big={true}/>
+            <div className="muted" style={{fontSize:10,marginTop:6}}>CFTC TFF · Nasdaq-100 Consolidated · {cotDates.length} týdnů historie</div>
+          </>):(<div className="muted" style={{fontSize:11.5}}>COT data se ještě nenačetla — objeví se po nejbližším týdenním cronu.</div>)}
+        </div>
+
+        <div className="card">
+          <div className="between" style={{marginBottom:6}}>
+            <span style={{fontWeight:800,fontSize:13}}>🧍 Retail sentiment</span>
+            <span className="muted" style={{fontSize:10.5}}>NAS100 · FXSSI</span>
+          </div>
+          {lastRetail?(<>
+            <div style={{height:22,borderRadius:7,overflow:"hidden",display:"flex",border:"1px solid #161b27",background:"var(--inp)",marginBottom:8}}>
+              <div style={{width:lastRetail.l+"%",background:"linear-gradient(90deg,#2ed3a0dd,#2ed3a099)",display:"flex",alignItems:"center",paddingLeft:8}}>{lastRetail.l>=18&&<span className="mono" style={{fontSize:10.5,fontWeight:700,color:"#04140e"}}>L {lastRetail.l}%</span>}</div>
+              <div style={{width:lastRetail.s+"%",background:"linear-gradient(90deg,#f2606e99,#f2606edd)",display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8}}>{lastRetail.s>=18&&<span className="mono" style={{fontSize:10.5,fontWeight:700,color:"#1c0609"}}>{lastRetail.s}% S</span>}</div>
+            </div>
+            <BigChart series={retailSeries} dates={retailHist.map(pt=>pt.t)} height={130} yMin={0} yMax={100} mid={50} fmt={v=>Math.round(v)+"%"} big={true}/>
+            <div className="muted" style={{fontSize:11,marginTop:8,lineHeight:1.5}}>
+              {lastRetail.l>=80?"Dav extrémně LONG → kontrariánsky bearish signál.":lastRetail.l<=20?"Dav extrémně SHORT → kontrariánsky bullish signál.":lastRetail.l>=70?"Dav silně LONG → mírný kontrariánský tlak dolů.":lastRetail.l<=30?"Dav silně SHORT → mírný kontrariánský tlak nahoru.":"Dav rozdělený — bez extrému."}
+            </div>
+          </>):(<div className="muted" style={{fontSize:11.5}}>Retail data se ještě nenačetla — objeví se po nejbližším refreshi (~30 min).</div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── ZÁLOŽKA: SIGNÁLY ────────────────────────────────────────
 function SignalsTab({data,onTap,favs,onToggleFav}){
@@ -654,6 +764,8 @@ function SignalsTab({data,onTap,favs,onToggleFav}){
       {shown.length===0&&filter==="favs"&&<div className="card muted" style={{textAlign:"center"}}>Zatím žádné oblíbené. Klikni ☆ na páru.</div>}
       {shown.map(p=><PairCard key={p.pair} p={p} f={data.forecasts[p.pair]} daily={getPairDailyState(p,data.scores,data.cal,data.upcoming)} onTap={()=>onTap(p)} isFav={favs&&favs.has(p.pair)} onToggleFav={onToggleFav}/>)}
       {!pairs.length&&<div className="card muted">Žádné páry. Zkus Refresh.</div>}
+      {data.us100&&<div style={{padding:"10px 12px 0",fontSize:11,fontWeight:800,letterSpacing:".08em",color:"#5a6273"}}>INDEXY</div>}
+      <US100CardM us100={data.us100} onTap={()=>onTap("US100")}/>
     </div>
   );
 }
@@ -1301,7 +1413,8 @@ function MApp(){
           ))}
         </div>
       </div>}
-      {sel&&data&&<PairDetail p={sel} scores={data.scores} D={data.D} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} calData={data.cal} upcoming={data.upcoming} retailHist={data.retailHist} onClose={()=>setSel(null)}/>}
+      {sel==="US100"&&data&&<US100DetailM data={data} onClose={()=>setSel(null)}/>}
+      {sel&&sel!=="US100"&&data&&<PairDetail p={sel} scores={data.scores} D={data.D} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} calData={data.cal} upcoming={data.upcoming} retailHist={data.retailHist} onClose={()=>setSel(null)}/>}
     </div>
   );
 }
