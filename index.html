@@ -1244,7 +1244,7 @@ class FXApp extends React.Component{
   // páry (viz engine.js komentář u scoreUS100). Stejné komponenty (COT bar,
   // retail bar, vývoj skóre) jako appka ukazuje u páru, jen napojené na
   // vlastní US100 data.
-  renderUS100Detail(){ const self=this,h=this.h,T=this.tok;
+  renderUS100Detail(){ const self=this,h=this.h,T=this.tok,st=this.state;
     const D=this.US100||{score:0,cotScore:0,sentScore:0,cot:null,cotAsOf:null,retailPct:null,retailAsOf:null};
     const buy=D.score>=0, dc=buy?T.green:T.red;
     const cotHist=(typeof loadUS100CotHistory==='function')?loadUS100CotHistory():{};
@@ -1253,27 +1253,25 @@ class FXApp extends React.Component{
     const scoreDates=Object.keys(scoreHist).sort();
     const retailHist=(typeof loadUS100RetailHistory==='function')?loadUS100RetailHistory():[];
     const ageTxt=iso=>{ if(!iso) return 'nenačteno'; const h_=Math.round((Date.now()-new Date(iso).getTime())/3600000); return h_<1?'právě teď':h_<48?('před '+h_+' h'):('před '+Math.round(h_/24)+' dny'); };
-    // Kompaktní SVG čára — stejný princip jako appka používá jinde (sezónní
-    // křivka, COT graf), jen jednodušší (bez zoomu/měření), ať se vejde do
-    // malé karty.
-    const miniLine=(vals,dates,height,label)=>{
-      if(!vals||vals.length<2) return h('div',{style:{fontSize:11,color:T.faint,padding:'16px 0',textAlign:'center'}},'Zatím málo dat pro graf.');
-      const W=640,H=height||110,PL=8,PR=8,PT=10,PB=10;
-      const lo0=Math.min(0,...vals),hi0=Math.max(0,...vals),pad=((hi0-lo0)||1)*0.15;
-      const lo=lo0-pad,hi=hi0+pad,span=(hi-lo)||1;
-      const X=i=>PL+(W-PL-PR)*(i/(vals.length-1)),Y=v=>PT+(H-PT-PB)*(1-(v-lo)/span);
-      const pathD=self.smooth(vals.map((v,i)=>[X(i),Y(v)]));
-      const zeroY=Y(0),endUp=vals[vals.length-1]>=0,col=endUp?T.green:T.red;
-      return h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',overflow:'visible'}},
-        zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'#2a3242',strokeWidth:1}),
-        h('path',{d:pathD+' L '+X(vals.length-1)+' '+zeroY+' L '+X(0)+' '+zeroY+' Z',fill:col,fillOpacity:.12}),
-        h('path',{d:pathD,fill:'none',stroke:col,strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}),
-        h('circle',{cx:X(vals.length-1),cy:Y(vals[vals.length-1]),r:3,fill:col,stroke:'#0b0d13',strokeWidth:1.2}));
-    };
     const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
-    const split=(l,s)=>h('div',{style:{position:'relative',height:22,borderRadius:7,overflow:'hidden',display:'flex',border:'1px solid #161b27',background:'#0a0d13'}},
-      h('div',{style:{width:l+'%',background:'linear-gradient(90deg,'+T.green+'cc,'+T.green+'88)',display:'flex',alignItems:'center',justifyContent:'flex-start',paddingLeft:7}},h('span',{style:self.mono({fontSize:9.5,fontWeight:800,color:'#06140f'})},l+'%')),
-      h('div',{style:{width:s+'%',background:'linear-gradient(90deg,'+T.red+'88,'+T.red+'cc)',display:'flex',alignItems:'center',justifyContent:'flex-end',paddingRight:7}},h('span',{style:self.mono({fontSize:9.5,fontWeight:800,color:'#2a0a0c'})},s+'%')));
+    // Grafy — STEJNÁ komponenta (HoverChart) + zoom-modal + přepínač období, jaké
+    // appka používá u FX párů (viz renderPairCharts) — jen napojené na US100
+    // vlastní historii (us100_score_hist/us100_cot_hist/us100_retail_hist).
+    // Vlastní stavový klíč (us100Range), ať se nepere s gr/gridRange u FX párů.
+    const gr=st.us100Range||'1M'; const days=({'14D':14,'1M':30,'3M':90,'6M':180,'ALL':4000})[gr]||30; const cut=Date.now()-days*86400000;
+    const inWin=iso=>{ const t=new Date(iso).getTime(); return !isNaN(t)&&t>=cut; };
+    const sdatesW=scoreDates.filter(inWin);
+    const scoreSeries=[{name:'Skóre',col:T.yellow,vals:sdatesW.map(d=>+(scoreHist[d].score||0))}];
+    const rptsW=retailHist.filter(pt=>inWin(pt.t));
+    const rdatesW=rptsW.map(pt=>pt.t);
+    const retailSeries=[{name:'Long',col:T.green,vals:rptsW.map(pt=>pt.l)},{name:'Short',col:T.red,vals:rptsW.map(pt=>pt.s)}];
+    const cdatesW=cotDates.filter(inWin);
+    const cotLS=(()=>{ const lng=[],sht=[]; cdatesW.forEach(d=>{ const r=cotHist[d]; const l=(r&&+r.levLong)||0,s=(r&&+r.levShort)||0,tot=l+s; lng.push(tot?Math.round(l/tot*100):50); sht.push(tot?Math.round(s/tot*100):50); }); return [{name:'Long',col:T.green,vals:lng},{name:'Short',col:T.red,vals:sht}]; })();
+    const pctFmt=v=>Math.round(v)+'%';
+    const rng=['14D','1M','3M','6M','ALL'];
+    const cell=(title,sub,subCol,enough,body,zoom)=>h('div',{onClick:(enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(enough&&zoom)?'Klikni pro zvětšení':undefined,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,cursor:(enough&&zoom)?'pointer':'default'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),h('div',{style:{display:'flex',alignItems:'center',gap:6}},sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,(enough&&zoom)?h('span',{style:{fontSize:11,color:T.faint}},'⤢'):null)),
+      enough?body:h('div',{style:{fontSize:10.5,color:T.faint,padding:'24px 4px',textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
     return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
       h('div',{style:self.card({padding:'18px 20px'})},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}},
@@ -1285,22 +1283,16 @@ class FXApp extends React.Component{
           h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'Retail komponenta'),h('div',{style:self.mono({fontSize:15,fontWeight:700,color:self.scol(D.sentScore)})},self.sgn(D.sentScore))),
           h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'COT stáří'),h('div',{style:self.mono({fontSize:12,fontWeight:700})},ageTxt(D.cotAsOf))),
           h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'Retail stáří'),h('div',{style:self.mono({fontSize:12,fontWeight:700})},ageTxt(D.retailAsOf))))),
-      h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Vývoj skóre','Denní historie (COT + retail), stejný princip jako u párů'),
-        h('div',{style:{marginTop:8}},miniLine(scoreDates.map(d=>scoreHist[d].score),scoreDates,120))),
-      h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(320px,1fr))',gap:14}},
-        h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('🏛 COT pozicování','CFTC TFF · Leveraged Funds 70 % + Asset Managers 30 %, stejný vzorec jako appka používá pro FX'),
-          D.cot?h('div',{style:{marginTop:10}},
-            h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:8}},h('span',{style:{fontSize:11,color:T.dim}},'Leveraged Funds net'),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:D.cot.levNet>=0?T.green:T.red})},(D.cot.levNet>0?'+':'')+D.cot.levNet.toLocaleString('cs-CZ'))),
-            h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:12}},h('span',{style:{fontSize:11,color:T.dim}},'Asset Managers net'),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:D.cot.assetNet>=0?T.green:T.red})},(D.cot.assetNet>0?'+':'')+D.cot.assetNet.toLocaleString('cs-CZ'))),
-            miniLine(cotDates.map(d=>cotHist[d].levNet),cotDates,90),
-            h('div',{style:{fontSize:10,color:T.faint,marginTop:8}},'Graf: vývoj Leveraged Funds net pozice · '+cotDates.length+' týdnů historie'))
-            :h('div',{style:{fontSize:11.5,color:T.faint,marginTop:10}},'COT data se ještě nenačetla — objeví se po nejbližším týdenním cronu.')),
-        h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('🧍 Retail sentiment','FXSSI Current Ratio (NAS100) · contrarian — appka to takhle čte i u FX'),
-          lastRetail?h('div',{style:{marginTop:10}},
-            split(lastRetail.l,lastRetail.s),
-            h('div',{style:{fontSize:11,color:T.dim,marginTop:9,lineHeight:1.5}},
-              lastRetail.l>=80?'Dav extrémně LONG → kontrariánsky bearish signál.':lastRetail.l<=20?'Dav extrémně SHORT → kontrariánsky bullish signál.':lastRetail.l>=70?'Dav silně LONG → mírný kontrariánský tlak dolů.':lastRetail.l<=30?'Dav silně SHORT → mírný kontrariánský tlak nahoru.':'Dav rozdělený — bez extrému.'))
-            :h('div',{style:{fontSize:11.5,color:T.faint,marginTop:10}},'Retail data se ještě nenačetla — objeví se po nejbližším refreshi (~30 min).')))
+      h('div',{style:self.card({padding:'14px 16px'})},
+        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:4}},
+          self.ptitle('US100 — grafy','Vývoj skóre · Retail · COT — stejný princip jako u FX párů'),
+          h('div',{style:{display:'flex',gap:5}},rng.map(r=>{const on=gr===r;return h('button',{key:r,type:'button',onClick:()=>self.setState({us100Range:r}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:7,padding:'4px 9px',fontSize:10,fontWeight:700,cursor:'pointer'})},r);}))),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginTop:8}},
+          cell('Vývoj skóre',D.score!=null?self.sgn(D.score):null,dc,sdatesW.length>=2,h(self.HoverChart,{key:'sc-us100-'+gr,dates:sdatesW,series:scoreSeries,height:128,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0}),{title:'US100 — Vývoj skóre',subtitle:'COT + retail · '+gr,dates:sdatesW,series:scoreSeries,mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)}),
+          cell('Retail L/S',lastRetail?('L '+lastRetail.l+'% · S '+lastRetail.s+'%'):null,T.green,rptsW.length>=2,h(self.HoverChart,{key:'rt-us100-'+gr,dates:rdatesW,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'US100 — Retail Long/Short',subtitle:'NAS100 · FXSSI Current Ratio · '+gr,dates:rdatesW,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
+          cell('COT Leveraged Funds L/S',D.cot?((D.cot.levNet>=0?'net +':'net ')+D.cot.levNet.toLocaleString('cs-CZ')):null,D.cot&&D.cot.levNet>=0?T.green:T.red,cdatesW.length>=2,h(self.HoverChart,{key:'cot-us100-'+gr,dates:cdatesW,series:cotLS,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'US100 — COT Leveraged Funds Long/Short',subtitle:'CFTC TFF · Nasdaq-100 Consolidated · '+gr,dates:cdatesW,series:cotLS,yMin:0,yMax:100,mid:50,fmt:pctFmt})),
+        lastRetail&&h('div',{style:{fontSize:11,color:T.dim,marginTop:10,lineHeight:1.5}},
+          lastRetail.l>=80?'Dav extrémně LONG → kontrariánsky bearish signál.':lastRetail.l<=20?'Dav extrémně SHORT → kontrariánsky bullish signál.':lastRetail.l>=70?'Dav silně LONG → mírný kontrariánský tlak dolů.':lastRetail.l<=30?'Dav silně SHORT → mírný kontrariánský tlak nahoru.':'Dav rozdělený — bez extrému.'))
     );
   }
   renderOilPanel(p){ const self=this,h=this.h,T=this.tok; let oilSt=null; try{oilSt=getOilStatus();}catch(e){}
