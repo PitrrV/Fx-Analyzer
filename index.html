@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260811a"></script>
-<script src="sync.js?v=20260811a"></script>
+<script src="engine.js?v=20260813a"></script>
+<script src="sync.js?v=20260813a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -167,6 +167,7 @@ class FXApp extends React.Component{
       // nedotýká se ničeho výš (this.D/sc/cot/sent) ani žádné funkce pro 8 měn.
       try{ await fetchActionUS100Cot(); }catch(e){}
       try{ await fetchActionUS100Retail(); }catch(e){}
+      try{ await fetchActionUS100Macro(); }catch(e){}
       try{ this.US100=scoreUS100(); saveUS100ScoreHistory(this.US100); }catch(e){ this.US100=null; }
       // PAIRS
       const fcLog={};
@@ -1250,7 +1251,7 @@ class FXApp extends React.Component{
   // retail bar, vývoj skóre) jako appka ukazuje u páru, jen napojené na
   // vlastní US100 data.
   renderUS100Detail(){ const self=this,h=this.h,T=this.tok,st=this.state;
-    const D=this.US100||{score:0,cotScore:0,sentScore:0,cot:null,cotAsOf:null,retailPct:null,retailAsOf:null};
+    const D=this.US100||{score:0,cotScore:0,sentScore:0,macroScore:0,usdScore:0,usdRaw:null,riskScore:0,riskRegime:null,yieldScore:0,dxyScore:0,fedScore:0,cot:null,macro:null,cotAsOf:null,retailPct:null,retailAsOf:null};
     const buy=D.score>=0, dc=buy?T.green:T.red;
     const cotHist=(typeof loadUS100CotHistory==='function')?loadUS100CotHistory():{};
     const cotDates=Object.keys(cotHist).sort();
@@ -1281,13 +1282,20 @@ class FXApp extends React.Component{
       h('div',{style:self.card({padding:'18px 20px'})},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}},
           h('div',null,h('div',{style:{display:'flex',alignItems:'baseline',gap:10}},h('span',{style:self.mono({fontSize:22,fontWeight:800})},'US100'),h('span',{style:{fontSize:12,color:T.faint}},'Nasdaq-100')),
-            h('div',{style:{fontSize:11,color:T.faint,marginTop:4}},'Index — skóre jen z COT + retail (bez fundamentálního kalendáře, ten na index nesedí)')),
+            h('div',{style:{fontSize:11,color:T.faint,marginTop:4}},'Index — skóre z COT + retail + makro směr (USD, VIX risk, výnosy, dolar, Fed funds); bez fundamentálního kalendáře, ten na index nesedí')),
           h('div',{style:{textAlign:'right'}},h('div',{style:self.mono({fontSize:28,fontWeight:800,color:dc})},(D.score>0?'+':'')+D.score.toFixed(1)),h('div',{style:{fontSize:10.5,fontWeight:700,color:dc,letterSpacing:'.04em'}},buy?'BULLISH BIAS':'BEARISH BIAS'))),
         h('div',{style:{display:'flex',gap:20,marginTop:14,paddingTop:12,borderTop:'1px solid #161b27',flexWrap:'wrap'}},
           h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'COT komponenta'),h('div',{style:self.mono({fontSize:15,fontWeight:700,color:self.scol(D.cotScore)})},self.sgn(D.cotScore))),
           h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'Retail komponenta'),h('div',{style:self.mono({fontSize:15,fontWeight:700,color:self.scol(D.sentScore)})},self.sgn(D.sentScore))),
           h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'COT stáří'),h('div',{style:self.mono({fontSize:12,fontWeight:700})},ageTxt(D.cotAsOf))),
-          h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'Retail stáří'),h('div',{style:self.mono({fontSize:12,fontWeight:700})},ageTxt(D.retailAsOf))))),
+          h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'Retail stáří'),h('div',{style:self.mono({fontSize:12,fontWeight:700})},ageTxt(D.retailAsOf)))),
+        h('div',{style:{display:'flex',gap:20,marginTop:12,paddingTop:12,borderTop:'1px solid #161b27',flexWrap:'wrap'}},
+          h('div',{title:'Součet USD + Risk + Výnosy + Dolar + Fed funds — fundamentální směr, viz komponenty níže'},h('div',{style:{fontSize:10,color:T.faint}},'Makro komponenta'),h('div',{style:self.mono({fontSize:15,fontWeight:700,color:self.scol(D.macroScore)})},self.sgn(D.macroScore,2))),
+          h('div',{title:'Inverzní živé USD skóre appky (silný dolar = tlak dolů na US100)'+(D.usdRaw!=null?(' · USD skóre '+self.sgn(D.usdRaw)):'')},h('div',{style:{fontSize:10,color:T.faint}},'USD (inverzně)'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:self.scol(D.usdScore)})},self.sgn(D.usdScore,2))),
+          h('div',{title:'Risk-on/off regime z VIX (stejná appka funkce jako u FX) — risk-off = tlak dolů na akciový index'},h('div',{style:{fontSize:10,color:T.faint}},'Risk (VIX)'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:D.riskRegime==='RISK_ON'?T.green:D.riskRegime==='RISK_OFF'?T.red:T.faint})},D.riskRegime==='RISK_ON'?'RISK-ON':D.riskRegime==='RISK_OFF'?'RISK-OFF':D.riskRegime==='NEUTRAL'?'neutrál':'—')),
+          h('div',{title:'FRED DGS10, 20denní změna — klesající výnosy = bullish pro Nasdaq-100'+(D.macro&&D.macro.dgs10?(' · '+D.macro.dgs10.value.toFixed(2)+'% ('+(D.macro.dgs10.chg20d>=0?'+':'')+D.macro.dgs10.chg20d+' 20d)'):'')},h('div',{style:{fontSize:10,color:T.faint}},'Výnosy 10Y'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:self.scol(D.yieldScore)})},self.sgn(D.yieldScore,2))),
+          h('div',{title:'FRED DTWEXBGS (Broad Dollar Index), 20denní změna'+(D.macro&&D.macro.dxy?(' · '+D.macro.dxy.value.toFixed(2)+' ('+(D.macro.dxy.chg20d>=0?'+':'')+D.macro.dxy.chg20d+' 20d)'):'')},h('div',{style:{fontSize:10,color:T.faint}},'Dolar (DXY)'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:self.scol(D.dxyScore)})},self.sgn(D.dxyScore,2))),
+          h('div',{title:'FRED DFF (efektivní Fed funds rate), 20denní změna'+(D.macro&&D.macro.fedfunds?(' · '+D.macro.fedfunds.value.toFixed(2)+'% ('+(D.macro.fedfunds.chg20d>=0?'+':'')+D.macro.fedfunds.chg20d+' 20d)'):'')},h('div',{style:{fontSize:10,color:T.faint}},'Fed funds'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:self.scol(D.fedScore)})},self.sgn(D.fedScore,2))))),
       h('div',{style:self.card({padding:'14px 16px'})},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:4}},
           self.ptitle('US100 — grafy','Vývoj skóre · Retail · COT — stejný princip jako u FX párů'),

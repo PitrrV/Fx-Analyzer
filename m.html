@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260811a"></script>
-<script src="sync.js?v=20260811a"></script>
+<script src="engine.js?v=20260813a"></script>
+<script src="sync.js?v=20260813a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -202,6 +202,7 @@ async function loadDataMobile(){
   try{
     try{ await fetchActionUS100Cot(); }catch(e){}
     try{ await fetchActionUS100Retail(); }catch(e){}
+    try{ await fetchActionUS100Macro(); }catch(e){}
     us100=scoreUS100(); saveUS100ScoreHistory(us100);
   }catch(e){}
   return { scores:sc, D, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(), retailLatest, retailHist, us100,
@@ -675,7 +676,7 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
 // historie (us100_cot_hist/us100_retail_hist/us100_score_hist), stejné
 // komponenty (BigChart) jako appka ukazuje u páru.
 function US100DetailM({data,onClose}){
-  const us100=(data&&data.us100)||{score:0,cotScore:0,sentScore:0,cot:null,cotAsOf:null,retailPct:null,retailAsOf:null};
+  const us100=(data&&data.us100)||{score:0,cotScore:0,sentScore:0,macroScore:0,usdScore:0,usdRaw:null,riskScore:0,riskRegime:null,yieldScore:0,dxyScore:0,fedScore:0,cot:null,macro:null,cotAsOf:null,retailPct:null,retailAsOf:null};
   const buy=us100.score>=0, col=buy?"#2ed3a0":"#f2606e";
   const cotHist=(typeof loadUS100CotHistory==="function")?loadUS100CotHistory():{};
   const cotDates=Object.keys(cotHist).sort();
@@ -703,7 +704,37 @@ function US100DetailM({data,onClose}){
               <div className="muted" style={{fontSize:10.5,marginTop:2}}>COT {ageTxt(us100.cotAsOf)} · Retail {ageTxt(us100.retailAsOf)}</div>
             </div>
           </div>
-          <div className="muted" style={{fontSize:11,marginTop:8,lineHeight:1.5}}>Index — skóre jen z COT + retail (bez fundamentálního kalendáře, ten na index nesedí).</div>
+          <div className="muted" style={{fontSize:11,marginTop:8,lineHeight:1.5}}>Index — skóre z COT + retail + makro směr (USD, VIX risk, výnosy, dolar, Fed funds); bez fundamentálního kalendáře, ten na index nesedí.</div>
+        </div>
+
+        <div className="card">
+          <div className="between" style={{marginBottom:8}}>
+            <span style={{fontWeight:800,fontSize:13}}>🧭 Makro komponenta</span>
+            <b className="mono" style={{fontSize:13,color:us100.macroScore>=0?"#2ed3a0":"#f2606e"}}>{(us100.macroScore>0?"+":"")+us100.macroScore.toFixed(2)}</b>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div>
+              <div className="muted" style={{fontSize:10}}>USD (inverzně){us100.usdRaw!=null?(" · "+fmtNum(us100.usdRaw)):""}</div>
+              <div className="mono" style={{fontSize:12.5,fontWeight:700,color:us100.usdScore>=0?"#2ed3a0":"#f2606e"}}>{(us100.usdScore>0?"+":"")+us100.usdScore.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:10}}>Risk (VIX)</div>
+              <div className="mono" style={{fontSize:12.5,fontWeight:700,color:us100.riskRegime==="RISK_ON"?"#2ed3a0":us100.riskRegime==="RISK_OFF"?"#f2606e":"#6b7688"}}>{us100.riskRegime==="RISK_ON"?"RISK-ON":us100.riskRegime==="RISK_OFF"?"RISK-OFF":us100.riskRegime==="NEUTRAL"?"neutrál":"—"}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:10}}>Výnosy 10Y{us100.macro&&us100.macro.dgs10?(" · "+us100.macro.dgs10.value.toFixed(2)+"%"):""}</div>
+              <div className="mono" style={{fontSize:12.5,fontWeight:700,color:us100.yieldScore>=0?"#2ed3a0":"#f2606e"}}>{(us100.yieldScore>0?"+":"")+us100.yieldScore.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:10}}>Dolar (DXY){us100.macro&&us100.macro.dxy?(" · "+us100.macro.dxy.value.toFixed(1)):""}</div>
+              <div className="mono" style={{fontSize:12.5,fontWeight:700,color:us100.dxyScore>=0?"#2ed3a0":"#f2606e"}}>{(us100.dxyScore>0?"+":"")+us100.dxyScore.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:10}}>Fed funds{us100.macro&&us100.macro.fedfunds?(" · "+us100.macro.fedfunds.value.toFixed(2)+"%"):""}</div>
+              <div className="mono" style={{fontSize:12.5,fontWeight:700,color:us100.fedScore>=0?"#2ed3a0":"#f2606e"}}>{(us100.fedScore>0?"+":"")+us100.fedScore.toFixed(2)}</div>
+            </div>
+          </div>
+          <div className="muted" style={{fontSize:10,marginTop:8,lineHeight:1.5}}>FRED (výnosy/dolar/Fed) + živé USD skóre appky + VIX risk regime — 20denní trend, tlumené váhy.</div>
         </div>
 
         <div className="card">
