@@ -132,3 +132,28 @@ jobs:
           else
             echo "AI radar beze změny, nic necommituju."
           fi
+
+      # US100 (Nasdaq-100) makro komponenty — vlastní soubor (data/us100_macro.json),
+      # nezávislý na krocích výš. FRED data se mění nanejvýš 1× denně, na 15min
+      # cronu to prostě většinu běhů skončí na "beze změny" (idempotentní, levné).
+      - name: "Stáhnout US100 makro (FRED: výnosy, dolar, sazby)"
+        timeout-minutes: 5
+        continue-on-error: true
+        run: node scripts/fetch-us100-macro.js
+      - name: "Commit: US100 makro při změně"
+        if: always()
+        run: |
+          git config user.name "us100-macro-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/us100_macro.json)" ]; then
+            git add data/us100_macro.json
+            git commit -m "chore: update US100 macro data [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "US100 makro beze změny."
+          fi

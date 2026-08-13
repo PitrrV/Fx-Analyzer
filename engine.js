@@ -3485,10 +3485,37 @@ async function fetchActionUS100Retail(){
 }
 function loadUS100RetailHistory(){ try{ const v=JSON.parse(localStorage.getItem("us100_retail_hist")||"[]"); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
 
+// Makro komponenty (výnosy, dolar, Fed funds) — data/us100_macro.json, viz
+// scripts/fetch-us100-macro.js (FRED, bez klíče, appka stejný zdroj/vzorec
+// už ověřeně používá pro VIX). Vlastní localStorage klíč (us100_macro), ne
+// object-shaped historie jako COT/retail — appka drží jen poslední snímek +
+// 20denní změnu, tu už spočítal server.
+async function fetchActionUS100Macro(){
+  const r=await fetch("data/us100_macro.json?t="+Date.now());
+  if(!r.ok) throw new Error("us100_macro.json HTTP "+r.status);
+  const j=await r.json();
+  if(!j) throw new Error("us100_macro.json: prázdná odpověď");
+  localStorage.setItem("us100_macro",JSON.stringify(j));
+  return j;
+}
+function loadUS100Macro(){ try{ const v=JSON.parse(localStorage.getItem("us100_macro")||"null"); return (v&&typeof v==="object")?v:null; }catch(e){ return null; } }
+
+const clamp=(lo,hi,v)=>Math.max(lo,Math.min(hi,v));
+
 // Skóre US100 — COT (stejný 70 % Leveraged Funds / 30 % Asset Managers blend
 // jako appka počítá pro FX, viz scripts/fetch-us100-cot.js) + kontrariánský
-// retail (stejná pravidla jako getSentimentScore výš). Bez fundamentálního/CB
-// komponentu — index žádný vlastní nemá.
+// retail (stejná pravidla jako getSentimentScore výš) + makro blok (fundamentální
+// směr): inverzní USD skóre appky, risk regime (VIX), výnosy/dolar/sazby
+// z FRED. Bez ekonomického KALENDÁŘE (NFP/CPI/ISM) — u akcií platí "dobrá
+// zpráva je špatná zpráva" (moc silná data = strach ze zvýšení sazeb), takže
+// přímé převzetí currency pravidel (EVENT_RULES) by dávalo zavádějící signál.
+// Viz komentář v docs/US100_FUNDAMENTAL_ROADMAP.md pro návrh, jak tohle (a
+// zisky mega-cap firem) přidat později, až budou pravidla pořádně navržená.
+//
+// Váhy jsou tržní konvence (směr vztahu), NE zpětně testované — stejný
+// princip jako appka už používá u VIX prahů (classifyRegime ve
+// scripts/fetch-vix.js). Každá komponenta je zvlášť tlumená (malá váha),
+// ať jedna vstupní řada nemůže sama zlomit celkové skóre.
 function scoreUS100(){
   const cotHist=loadUS100CotHistory();
   const cotDates=Object.keys(cotHist).sort();
@@ -3498,8 +3525,45 @@ function scoreUS100(){
   const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
   const sentScore=lastRetail?(lastRetail.l>=80?-1:lastRetail.l>=70?-0.5:lastRetail.l<=20?1:lastRetail.l<=30?0.5:0):0;
   const cotScore=cot?cot.score:0;
-  const score=+(cotScore+sentScore).toFixed(1);
-  return {score,cotScore,sentScore,cot,cotAsOf:lastCotDate||null,retailPct:lastRetail?lastRetail.l:null,retailAsOf:lastRetail?lastRetail.t:null};
+
+  // USD inverzní — appka už počítá živé USD skóre (score_hist), nulová nová
+  // data. Slabý USD fundament (nízké/záporné skóre) = mírný bonus pro US100.
+  let usdRaw=null,usdScore=0;
+  try{
+    const sh=loadScoreHistory()||{};
+    const dates=Object.keys(sh).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    const last=dates[dates.length-1];
+    if(last&&sh[last]&&typeof sh[last].USD==="number"){ usdRaw=sh[last].USD; usdScore=clamp(-1,1,-0.1*usdRaw); }
+  }catch(e){}
+
+  // Risk regime (VIX) — appka ho už počítá pro FX (computeAutoRiskSentiment).
+  // U akciového indexu je vztah přímočarý (ne ta FX-specifická asymetrie
+  // AUD/CHF z appčina auditu): risk-off = obecně špatné pro akcie.
+  let riskRegime=null,riskScore=0;
+  try{
+    const v=(typeof computeAutoRiskSentiment==="function")?computeAutoRiskSentiment():null;
+    riskRegime=v===1?"RISK_ON":v===-1?"RISK_OFF":v===0?"NEUTRAL":null;
+    riskScore=v===1?0.6:v===-1?-0.6:0;
+  }catch(e){}
+
+  // Makro (FRED): výnosy/dolar/sazby — rostoucí = bearish pro growth/tech
+  // (vyšší diskontní sazba/silnější dolar/přísnější politika), proto mínus.
+  const macro=loadUS100Macro();
+  let yieldScore=0,dxyScore=0,fedScore=0;
+  if(macro){
+    if(macro.dgs10&&typeof macro.dgs10.chg20d==="number") yieldScore=clamp(-1,1,-2.5*macro.dgs10.chg20d);
+    if(macro.dxy&&typeof macro.dxy.chg20d==="number") dxyScore=clamp(-0.6,0.6,-0.15*macro.dxy.chg20d);
+    if(macro.fedfunds&&typeof macro.fedfunds.chg20d==="number") fedScore=clamp(-0.5,0.5,-1.0*macro.fedfunds.chg20d);
+  }
+
+  const macroScore=+(usdScore+riskScore+yieldScore+dxyScore+fedScore).toFixed(2);
+  const score=+(cotScore+sentScore+macroScore).toFixed(1);
+  return {
+    score,cotScore,sentScore,macroScore,
+    usdScore,usdRaw,riskScore,riskRegime,yieldScore,dxyScore,fedScore,
+    cot,macro,
+    cotAsOf:lastCotDate||null,retailPct:lastRetail?lastRetail.l:null,retailAsOf:lastRetail?lastRetail.t:null,
+  };
 }
 
 function saveUS100ScoreHistory(scoreObj){
