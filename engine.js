@@ -1259,7 +1259,33 @@ async function loadCOTHistoryFromLocalFiles(fileList){
 
 
 // COT score: -3..+3, ideálně automaticky z CFTC TFF reportu, ruční slider zůstává jako fallback.
+// Výchozí (7/8 měn): appkou počítaný follow blend 70 % Leveraged Funds + 30 %
+// Asset Managers (viz scripts/fetch-cot.js) — cotData[currency] přichází už
+// takhle spočítané z uložené historie.
+//
+// JPY výjimka: COUNTER_AUDIT_2026-07 (§ "Asset manažeři jsou kontrariánský
+// indikátor") ukázal, že plošný follow blend je pro JPY statisticky nepodložený,
+// zatímco FADE (kontrariánský) signál jen z Asset Managers samostatně přežívá i
+// nejpřísnější FDR korekci (q=0,05, stabilní 8/8 testovaných tržních režimů) —
+// jeden z nejsilnějších jednotlivých nálezů celého auditu, vedle VIX/AUD. COT
+// tab appky to už dřív přiznávala zvlášť (percentil "AM" sloupec vedle blendu),
+// ale samotné SKÓRE currency dál počítalo follow → fundamentální směr pro JPY
+// mohl být systematicky zkreslený. CHF má v auditu jen slabší/nestabilní nález
+// (a navíc na kategorii "commercials", kterou appka z CFTC TFF datasetu vůbec
+// nestahuje) — zůstává proto na plošném vzorci, dokud pro ni nebude vlastní
+// ověřená cesta (viz docs/COUNTER_AUDIT_2026-07.md).
 function getCOTScore(currency,cotData){
+  if(currency==="JPY"){
+    try{
+      const hist=loadCOTHistory();
+      const dates=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b));
+      const last=dates[dates.length-1];
+      const r=last&&hist[last]&&hist[last].raw&&hist[last].raw[currency];
+      if(r&&Number.isFinite(r.assetRatio)) return parseFloat((-Math.max(-3,Math.min(3,r.assetRatio*6))).toFixed(1));
+    }catch(e){}
+    // Fallback na plošný blend, pokud raw historie (assetRatio) ještě chybí
+    // (čerstvá appka bez naimportované COT historie) — lepší než tvrdá 0.
+  }
   return parseFloat((cotData[currency]||0).toFixed(1));
 }
 // Retail sentiment score: contrarian — 80%+ long = bearish, 20%- long = bullish. Rozsah držíme -1..+1 dle Trading Analyzer logiky.
@@ -2008,7 +2034,7 @@ function getAutoUpdateStatus(){
     return{ts,log,ago,agoLabel:ago<60?ago+"m":Math.round(ago/60)+"h"};
   }catch(e){return null;}
 }
-function getDynamicWeights(cotPct,regime){
+function getDynamicWeights(cotPct){
   // Audit výsledek: sezónnost při váze 8% škodí výsledkům (+0.6% WR bez ní).
   // Redukováno na 2%. CB Policy zvýšena.
   // POZOR: dřívější claim "Backtest 2022-2024: WR diff2-3=65.5% PF=2.039" NEBYL
@@ -2022,7 +2048,13 @@ function getDynamicWeights(cotPct,regime){
   // zesilování COT váhy na extrému (0.45→0.80 / 0.35→0.70) tedy skóre soustavně
   // škodilo → zrušeno; cotPct v signatuře zůstává kvůli volajícím. Percentil dál
   // žije ve forecastu (penalizace crowded směru, s daty konzistentní) a v UI.
-  if(regime==="BULLISH"||regime==="BEARISH") return{fund:0.55,cot:0.35,sent:0.08,sea:0.02};
+  //
+  // Dřívější BULLISH/BEARISH větev (fund 0.55/cot 0.35) čtená z "v5_regime" byla
+  // odstraněna — ten klíč neměl od V5 žádný zapisovač (mrtvý kód, viz komentář u
+  // v5_state_fix_20260702 výš), regime byl vždy "NEUTRAL", větev se tedy nikdy
+  // reálně nepoužila. Appka ale v UI/textech působila, že se vahám umí adaptivně
+  // přizpůsobit — což nedělala. Radši nulové riziko (jedna pevná sada vah) než
+  // tichá cesta, kterou by mohl znovu otevřít starý cloud-synced stav.
   return{fund:0.42,cot:0.45,sent:0.11,sea:0.02};
 }
 
@@ -2337,9 +2369,7 @@ function scoreCurrency(events,currency,cotData,sentData){
   const cotPct=getCOTPercentile(currency);
   const momentumAdj=getCurrencyMomentum(currency);
   const oilAdj=getOilMomentumScore(currency); // CAD/USD only
-  let regime="NEUTRAL";
-  try{const r=JSON.parse(localStorage.getItem("v5_regime")||"{}" );regime=r[currency]||"NEUTRAL";}catch(e){}
-  const wt=getDynamicWeights(cotPct,regime);
+  const wt=getDynamicWeights(cotPct);
   const riskAdj=getRiskSentimentAdj(currency);
   // POZN. K VÁHÁM: fund+cot+sent+sea = 1.0 (normalizované váhy); risk/oil jsou
   // ZÁMĚRNĚ aditivní korekce mimo váhový systém s vlastními stropy (±1.2 / ±2.0)
