@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260813a"></script>
-<script src="sync.js?v=20260813a"></script>
+<script src="engine.js?v=20260814a"></script>
+<script src="sync.js?v=20260814a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -184,7 +184,9 @@ async function loadDataMobile(){
     cotPctDelta:(()=>{try{return getCOTPercentileChange(c);}catch(e){return null;}})(),
     chg7:(()=>{try{return getScoreChange(c,7);}catch(e){return 0;}})()||0,
     cb:(typeof CB_POLICY_DATA!=="undefined"&&CB_POLICY_DATA[c]&&CB_POLICY_DATA[c].label)||"—",
-    inst:Math.round(Math.max(-100,Math.min(100,(cot[c]||0)*12))),
+    // s.cot_score (ne raw cot[c]) — u JPY jde přes getCOTScore() fade override,
+    // ať tenhle panel neukazuje jinou institucionální stranu než skutečné COT skóre.
+    inst:Math.round(Math.max(-100,Math.min(100,(s.cot_score||0)*12))),
     cotLong:(()=>{try{const ls=getCOTLongShort(c);return ls?ls.long:null;}catch(e){return null;}})(),
     retail:Math.round(sent[c]!=null?sent[c]:50) }; });
   const ranked=rankPairs(sc,{});
@@ -842,7 +844,7 @@ function CotTab({data,onRefreshCot,onRefreshRetail,cotLoading,retailLoading,msg,
       {/* COT skóre + percentil */}
       <div className="card">
         <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>📊 COT skóre & percentil <span className="muted" style={{fontWeight:400,fontSize:11}}>(okno 104 týdnů)</span></div>
-        <div className="muted" style={{fontSize:10.5,marginBottom:8,lineHeight:1.5}}>p = kde je dnešní COT skóre v historii (0–100), kombinace 70 % leveraged funds + 30 % asset managers. Δ v závorce = posun oproti minulému staženému COT (týdenní). <span style={{color:"#bf4cff"}}>AM</span> = percentil jen z asset managers samostatně (u JPY je tohle kategorie s ověřeným kontrariánským signálem, ne blend vlevo). Skóre vpravo = aktuální síla měny podle COT (−10…+10), ne změna.</div>
+        <div className="muted" style={{fontSize:10.5,marginBottom:8,lineHeight:1.5}}>p = kde je dnešní COT skóre v historii (0–100), kombinace 70 % leveraged funds + 30 % asset managers. Δ v závorce = posun oproti minulému staženému COT (týdenní). <span style={{color:"#bf4cff"}}>AM</span> = percentil jen z asset managers samostatně (u JPY je tohle kategorie s ověřeným kontrariánským signálem). Percentil vlevo (p) pořád počítá z blendu pro všechny měny stejně, ale samotné <b>COT skóre</b> pro JPY (i v celkovém skóre) už z tohohle FADE signálu vychází, ne z blendu. Skóre vpravo = aktuální síla měny podle COT (−10…+10), ne změna.</div>
         {CURRENCIES.map(c=>{const d=D[c]||{};const ext=d.cotPct>=85||d.cotPct<=15;const col=ext?"var(--amber)":"var(--dim)";const dl=d.cotPctDelta;let amPct=null;try{amPct=getCOTCategoryPercentile(c,"asset");}catch(e){}const amExt=amPct!=null&&(amPct>=85||amPct<=15);return (
           <div key={c} style={{display:"grid",gridTemplateColumns:"54px 1fr 78px 60px 44px",alignItems:"center",gap:6,padding:"6px 0"}}>
             <span className="mono" style={{fontSize:12,fontWeight:700}}>{FLAGS[c]} {c}</span>
