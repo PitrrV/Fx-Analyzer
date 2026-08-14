@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260814a"></script>
-<script src="sync.js?v=20260814a"></script>
+<script src="engine.js?v=20260814b"></script>
+<script src="sync.js?v=20260814b"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -224,7 +224,7 @@ function PairCard({p,f,daily,onTap,isFav,onToggleFav}){
           <span style={{fontSize:18,fontWeight:900}}>{FLAGS[p.base]}{FLAGS[p.quote]}</span>
           <span style={{fontWeight:900,fontSize:16}}>{p.pair}</span>
           {daily&&daily.dot&&<span style={{fontSize:13}}>{daily.dot}</span>}
-          {p.conviction>=3&&<span style={{color:"#e8ab3f",fontSize:12}}>{"★".repeat(Math.min(5,p.conviction))}</span>}
+          {p.conviction>=3&&<span title={(p.convictionReasons||[]).join(" · ")} style={{color:"#e8ab3f",fontSize:12}}>{(p.crowdedLate?"⚠ ":"")+"★".repeat(Math.min(5,p.conviction))}</span>}
         </div>
         <div className="row" style={{gap:5}}>
           <span title={isFav?"Odebrat z oblíbených":"Přidat do oblíbených"} onClick={e=>{e.stopPropagation();onToggleFav&&onToggleFav(p.pair);}} style={{fontSize:18,cursor:"pointer",color:isFav?"#f0b429":"#2a3348",userSelect:"none",lineHeight:1,padding:"0 2px"}}>{isFav?"★":"☆"}</span>
