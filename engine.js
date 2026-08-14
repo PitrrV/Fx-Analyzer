@@ -2328,12 +2328,32 @@ function calcConvictionScore(pair,scores,aiAnalyses){
       if(oilMatchesTrade){stars++;reasons.push("WTI Ropa: "+(oilSt?.direction||"")+" ("+( oilSt?.mom4w?.toFixed(1)||"?")+"% 4t)");}
     }
   }
+  // ── CROWDING BRZDA ───────────────────────────────────────────────────
+  // ARCHITECTURE_AUDIT_2026-07 §10 (replay 2010–2026): pásmo extrémního diffu
+  // (BAND_THRESHOLDS.strong = 3+) mělo PF 0.64–0.87 — HORŠÍ než slabší pásma,
+  // ne lepší, i když faktor 3 výš dává hvězdičku už od diffu 2.0 jako by šlo o
+  // čistou odměnu. Extrémní diff SÁM O SOBĚ není důvod penalizovat (může to
+  // být čerstvá, opravdu silná fundamentální divergence) — brzda proto sepne
+  // jen na přesně tu konjunkci, kterou audit navrhl jako podpis pozdního/
+  // přeplněného tradu: extrémní diff + COT už nakřivo extrémně ve směru
+  // obchodu na některé noze páru + risk-on komplacence (nízké VIX riziko).
+  // Odečte hvězdičku (floor 0) a nechá důvod v reasons, ať appka u takového
+  // páru konvicci sníží, ne zvýší — přesně formulace auditu.
+  const cotPctQ=scores[pair.quote]?.cot_pct;
+  const cotExtremeSameDir=isBuy
+    ?((cotB!=null&&cotB>=88)||(cotPctQ!=null&&cotPctQ<=12))
+    :((cotB!=null&&cotB<=12)||(cotPctQ!=null&&cotPctQ>=88));
+  const crowdedLate=pair.diff>=BAND_THRESHOLDS.strong&&cotExtremeSameDir&&g_riskSentiment>0;
+  if(crowdedLate){
+    stars=Math.max(0,stars-1);
+    reasons.push("⚠ Crowded: extrémní diff ("+pair.diff.toFixed(1)+") + COT extrém + risk-on — možný pozdní/přeplněný trade");
+  }
   // Faktorů je interně 6 (CB, yield, fundamenty, COT, AI, ropa), ale hvězdičková
   // škála v UI je všude 0–5 ("X / 5") — CAD pár s plnou konfluencí vracel 6 a
   // '☆'.repeat(5-6) shazoval render (RangeError v classic). Clamp TADY, v jediném
   // místě pravdy — reasons zůstávají všechny (tooltip smí vypsat i 6 důvodů);
   // šestý souhlasný faktor funguje jako pojistka dorovnávající chybějící jiný.
-  return{stars:Math.min(5,stars),reasons};
+  return{stars:Math.min(5,stars),reasons,crowdedLate};
 }
 
 function scoreCurrency(events,currency,cotData,sentData){
@@ -2618,7 +2638,7 @@ function rankPairs(scores,aiAnalyses){
       diff:parseFloat(Math.abs(diff).toFixed(2)),s1:sB,s2:sQ,
       corrGroup:corrGroup||null,cotCrowded,yieldLabel,cotPctBase:cotPctB,cotPctQuote:cotPctQ};
     const cv=calcConvictionScore(pairObj,scores,aiAnalyses||{});
-    return{...pairObj,conviction:cv.stars,convictionReasons:cv.reasons};
+    return{...pairObj,conviction:cv.stars,convictionReasons:cv.reasons,crowdedLate:!!cv.crowdedLate};
   }).sort((a,b)=>b.diff-a.diff);
   const seen=new Set();
   return ranked.map((p,i)=>{
