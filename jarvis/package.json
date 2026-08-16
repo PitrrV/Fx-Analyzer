@@ -1,0 +1,16 @@
+{
+  "name": "jarvis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Osobní AI agent — orchestrace, tool layer, memory a HUD rozhraní.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server/index.mjs",
+    "dev": "node --watch server/index.mjs",
+    "check": "node --check server/index.mjs && node scripts/selftest.mjs"
+  },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^0.70.0"
+  }
+}

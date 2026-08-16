@@ -1,0 +1,4 @@
+node_modules/
+server/memory/store/
+jarvis.config.local.json
+.env
