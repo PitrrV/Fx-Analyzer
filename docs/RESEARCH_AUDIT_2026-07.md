@@ -2,6 +2,8 @@
 
 *Datum: 2026-07-20 · Reprodukce: `node scripts/fetch-research-data.js` (Actions) → `python3 scripts/research-audit.py` · Výsledky: `data/research/audit_results.json`*
 
+> **Oprava 2026-08-15**: nález "vysoký VIX → AUD **následný** rebound" (řádek níže) byl formulovaný správně — je to DOPŘEDNÝ vztah (VIX týdne T → return AUD týdne T+1..T+4), ne kontemporální. Problém byl v aplikaci: `getRiskSentimentAdj` v `engine.js` se volá s KONTEMPORÁLNÍM vstupem (`computeAutoRiskSentiment`/`classifyRegime` = "jaké je VIX teď/za posledních 5 dní"), ne dopředným — a AUD/CHF znaménko z tohodle auditu tam bylo použité, jako by šlo o kontemporální vztah. Nezávislé přepočítání (appčiny vlastní ceny 2006–2026) i nezávislá revize sesterské appky Fundamet-app shodně potvrzují: kontemporálně AUD risk-off SLÁBNE (IC −0,39), CHF risk-off POSILUJE (IC +0,27) — konvenční směr. `getRiskSentimentAdj` vrácen na konvenční znaménko pro AUD/CHF, viz komentář u funkce v `engine.js`. GBP beze změny (souhlasí oběma způsoby).
+
 ---
 
 ## 1. Executive Summary
