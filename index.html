@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260814b"></script>
-<script src="sync.js?v=20260814b"></script>
+<script src="engine.js?v=20260815a"></script>
+<script src="sync.js?v=20260815a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -1620,7 +1620,7 @@ class FXApp extends React.Component{
       h('div',{style:self.card({padding:'14px 16px'})},h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},h('span',{style:{fontSize:10,color:T.faint,letterSpacing:'.1em'}},'RISK REGIME'),h('span',{style:self.mono({fontSize:9.5,fontWeight:800,letterSpacing:'.03em',color:rCol,background:rCol+'1c',border:'1px solid '+rCol+'44',borderRadius:6,padding:'2px 7px'})},rLabel)),
         vixData?h('div',null,
           h('div',{style:{display:'flex',alignItems:'baseline',gap:8}},h('span',{style:self.mono({fontSize:22,fontWeight:700,color:T.text})},vixData.vix.toFixed(1)),h('span',{style:{fontSize:10.5,color:T.faint}},'VIX'),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:vixData.vix5dChange>=0?T.red:T.green,marginLeft:'auto'})},(vixData.vix5dChange>=0?'+':'')+vixData.vix5dChange+' · 5d')),
-          h('div',{style:{fontSize:9.5,color:T.faint,marginTop:8,lineHeight:1.4}},'Při risk-off: AUD ↑ (rebound, dle auditu appky) · GBP/CHF ↓ · JPY/NZD/CAD konvenčně ↑/↓ · '+new Date(vixData.updated).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})))
+          h('div',{style:{fontSize:9.5,color:T.faint,marginTop:8,lineHeight:1.4}},'Při risk-off: AUD/GBP/NZD/CAD ↓ · CHF/JPY ↑ (safe haven) · '+new Date(vixData.updated).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})))
         :h('div',{style:{fontSize:11,color:T.faint,lineHeight:1.5}},'VIX zatím nenačten — režim odvozen z cenového momenta AUDJPY/NZDJPY.')),
       h('div',{style:self.card({padding:'14px 16px'})},h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},h('span',{style:{fontSize:10,color:T.faint,letterSpacing:'.1em'}},'MOJE POZICE'),h('span',{style:self.mono({fontSize:10,color:T.dim})},posEntries.length+' open')),posEntries.length?posEntries.map(([pair,side])=>{const buy=side==='LONG';return h('div',{key:pair,style:{display:'flex',alignItems:'center',gap:9,padding:'7px 0'}},h('span',{style:{width:6,height:6,borderRadius:50,background:buy?T.green:T.red}}),h('span',{style:self.mono({fontSize:12,fontWeight:700,flex:1})},pair),h('span',{style:{fontSize:10.5,fontWeight:700,color:buy?T.green:T.red}},side),h('button',{type:'button',title:'Zavřít pozici',onClick:()=>self.setPos(pair,'none'),style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.faint,borderRadius:6,width:20,height:20,lineHeight:'16px',fontSize:12,cursor:'pointer',padding:0,marginLeft:4}},'✕'));}):h('div',{style:{fontSize:11,color:T.faint}},'Žádné otevřené pozice')));
   }

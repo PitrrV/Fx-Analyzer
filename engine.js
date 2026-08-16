@@ -2264,28 +2264,40 @@ function getCBPolicyScore(currency){
 }
 
 // ── RISK SENTIMENT ADJUSTMENT ─────────────────────────────────
-// AUD a CHF opraveny podle vlastního 20letého auditu appky (viz
-// docs/RESEARCH_AUDIT_2026-07.md §3 + docs/COUNTER_AUDIT_2026-07.md, řádek
-// "VIX funguje lépe než risk_adj") — obě měly PŮVODNĚ konvenční, ale empiricky
-// VYVRÁCENÉ znaménko:
-//   AUD: vysoký VIX/risk-off → AUD historicky POSILUJE (risk premium/rebound),
-//        ne slábne jak by napovídala konvence. Nejsilnější jednotlivý nález
-//        celého auditu (IC +0,200), přežívá nejpřísnější FDR korekci (q=0,05),
-//        stabilní v 8/8 tržních režimů (krize, QE, covid, hiking, cutting).
-//   CHF: vysoký VIX/risk-off → CHF historicky SLÁBNE (unwind haven flows PO
-//        stresu), ne posiluje — přes konvenční pověst "safe haven". IC −0,098,
-//        slabší evidence (FDR jen q=0,20, 6/8 režimů), ale směr potvrzen i
-//        out-of-sample (poctivý train/test split).
-//   GBP: nově přidán (dřív v mapě chyběl úplně) — vysoký VIX/risk-off → GBP
-//        historicky SLÁBNE (IC −0,127, síla podobná CHF).
+// AUD/CHF znaménko OPRAVENO ZPĚT na konvenční 2026-08-15, po zjištění, že
+// původní "vyvrácení" (2026-07 audit, viz docs/RESEARCH_AUDIT_2026-07.md §3 +
+// docs/COUNTER_AUDIT_2026-07.md) měřilo jiný jev, než jak se tahle funkce
+// používá. `computeAutoRiskSentiment`/classifyRegime (fetch-vix.js) dává
+// KONTEMPORÁLNÍ stav ("jaké je VIX teď/za posledních 5 dní"), ale audit AUD/CHF
+// testoval DOPŘEDNÝ vztah (VIX úroveň týdne T → return AUD/CHF týdne T+1..T+4,
+// scripts/research-audit.py: "signál z týdne T → return T→T+h") — jiná otázka.
+//
+// Nezávislé přepočítání 2026-08-15 na appčiných vlastních cenách
+// (data/fx_daily/*.json, 2006–2026, weekly log-return basket) ukázalo obě
+// vrstvy zvlášť a obě jsou reálné, jen odpovídají na jinou otázku:
+//   AUD kontemporálně: IC −0,39 (padá TEN SAMÝ týden, co VIX roste — konvenční
+//        risk-on chování, přesně jak popisují nezávislé zdroje FXStreet/
+//        Babypips/HowToTrade/A1Trading) · dopředně: IC +0,09 až +0,20 (mírné
+//        zotavení PO týdnu se zvýšeným VIX — tohle měřil 2026-07 audit).
+//   CHF kontemporálně: IC +0,27 (posiluje TEN SAMÝ týden jako klasický safe
+//        haven) · dopředně: IC −0,06 (mírné odevzdání zisku po — funding-měna
+//        unwind, tohle měřil 2026-07 audit).
+// `getRiskSentimentAdj` se volá s KONTEMPORÁLNÍM regime vstupem → musí použít
+// kontemporální znaménko, ne dopředné, jinak jde vnitřně proti vlastnímu vstupu.
+// Sesterská appka (Fundamet-app, scripts/market-regime.mjs) došla nezávisle na
+// appce ke stejnému závěru téhož dne (FXStreet/Babypips/HowToTrade/A1Trading) a
+// AUD/CHF směr appky NEpřevzala — jen GBP, kde appčin audit i nezávislé zdroje
+// souhlasí. Magnitudy AUD/CHF ponechány z appčina auditu (jen znaménko flip) —
+// nejde o naslepo převzaté číslo odjinud, appčin vlastní |IC| odhad zůstává.
+//   GBP: vysoký VIX/risk-off → GBP historicky SLÁBNE (IC −0,127) — appčin audit
+//        i nezávislé zdroje i Fundamet-app se shodují, beze změny.
 // JPY/CAD/NZD ponechány beze změny — audit pro ně vix_lvl jako robustní faktor
 // nenašel (měly jiné robustní faktory), takže tu není důkaz PROTI konvenčnímu
-// předpokladu, jen ho netestoval. Magnitudy škálované poměrem |IC| k AUD
-// (nejsilnější nález = kotva na ±1,0/0,8; GBP/CHF ~poloviční až dvoutřetinová).
+// předpokladu, jen ho netestoval.
 function getRiskSentimentAdj(currency){
   if(g_riskSentiment===0)return 0;
-  const riskOn={AUD:-0.8,GBP:0.5,NZD:0.7,CAD:0.5,JPY:-0.5,CHF:0.4};
-  const riskOff={AUD:1.0,GBP:-0.65,NZD:-1.0,CAD:-0.6,JPY:1.2,CHF:-0.5};
+  const riskOn={AUD:0.8,GBP:0.5,NZD:0.7,CAD:0.5,JPY:-0.5,CHF:-0.4};
+  const riskOff={AUD:-1.0,GBP:-0.65,NZD:-1.0,CAD:-0.6,JPY:1.2,CHF:0.5};
   const map=g_riskSentiment>0?riskOn:riskOff;
   return parseFloat((map[currency]||0).toFixed(2));
 }
@@ -3448,12 +3460,13 @@ DIVERGUJE / POTVRZUJE (banner technického potvrzení biasu, panel u páru)
 Srovnává posledních ~5 dní cenového momenta se směrem fundamentálního biasu páru. "POTVRZUJE" = cena se poslední dny hýbe stejným směrem jako bias; "DIVERGUJE" = cena jde zatím proti biasu. POZOR na neintuitivní vztah k RP: appka to sama vysvětluje tak, že "POTVRZUJE" bývá často spíš technicky nevýhodná (breakout, honíš cenu už vysoko/nízko) zóna, zatímco "DIVERGUJE" bývá často výhodnější (pullback, levnější vstup) zóna — vždy doporuč porovnat s panelem Pozice v rozpětí místo brát DIVERGUJE jako varování a POTVRZUJE jako zelenou.
 
 RISK SENTIMENT (risk-on/risk-off)
-Appka automaticky odvozuje globální náladu trhu (risk-on = chuť k riziku/nízký VIX, risk-off = útěk do bezpečí/vysoký VIX) primárně z VIX (index volatility, FRED historie + živá cena z CBOE/Yahoo — viz "vix" v datech, pokud je k dispozici: value/change5d/regime/asOf), s možností ruční úpravy. Když VIX data chybí nebo jsou starší než 4 dny, appka spadne zpět na cenové momentum rizikově citlivých párů (AUDJPY/NZDJPY) — to samo appka nerozlišuje navenek, jen v datech "vix" (null = zrovna běží fallback). Promítá se jako malá korekce do skóre, znaménka podle appčina vlastního 20letého auditu (docs/RESEARCH_AUDIT_2026-07.md), NE podle intuitivní konvence:
-- AUD: risk-off (vysoký VIX) = POSILUJE (rebound/risk-premium efekt) — nejsilnější a nejjistější nález celého auditu, opak intuice.
-- GBP a CHF: risk-off = SLÁBNOU (u CHF jde o unwind "safe haven" toků po stresu, taky proti intuici).
+Appka automaticky odvozuje globální náladu trhu (risk-on = chuť k riziku/nízký VIX, risk-off = útěk do bezpečí/vysoký VIX) primárně z VIX (index volatility, FRED historie + živá cena z CBOE/Yahoo — viz "vix" v datech, pokud je k dispozici: value/change5d/regime/asOf), s možností ruční úpravy. Když VIX data chybí nebo jsou starší než 4 dny, appka spadne zpět na cenové momentum rizikově citlivých párů (AUDJPY/NZDJPY) — to samo appka nerozlišuje navenek, jen v datech "vix" (null = zrovna běží fallback). Promítá se jako malá korekce do skóre, konvenčním směrem (ověřeno 2026-08-15 proti appčiným vlastním 20letým cenovým datům + nezávisle proti sesterské appce Fundamet-app):
+- AUD: risk-off (vysoký VIX) = SLÁBNE, risk-on = POSILUJE — konvenční risk-on měna. (2026-07 audit tvrdil opak, ale měřil jiný, dopředný jev — kontemporální vztah je jasně opačný, IC −0,39.)
+- CHF: risk-off = POSILUJE (klasický safe haven), risk-on = mírně slábne (funding měna). (2026-07 audit tvrdil opak ze stejného důvodu jako u AUD.)
+- GBP: risk-off = SLÁBNE, risk-on = POSILUJE — konvenční, potvrzeno auditem i nezávislými zdroji, beze změny.
 - NZD/CAD: risk-on jim historicky pomáhá, risk-off škodí (konvenční směr, VIX vztah přímo netestován).
 - JPY: risk-off mu historicky pomáhá (konvenční safe-haven předpoklad, VIX vztah přímo netestován).
-Je to kontext, ne samostatný obchodní signál — pokud se uživatel zeptá, PROČ appka počítá AUD/CHF/GBP "obráceně", než by čekal, tohle je důvod a je to podložené, ne bug.
+Je to kontext, ne samostatný obchodní signál.
 
 CONTRARIAN SCANNER ("příležitosti", tab COT & Sentiment)
 Hledá páry, kde je dav (retail) hodně na jedné straně, ALE instituce (COT) i fundament ukazují opačně — přesně situace, kdy kontrariánský přístup historicky funguje nejlíp.
