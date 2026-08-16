@@ -32,6 +32,27 @@ async function sendTelegramMessage(token, chatId, text) {
     console.log("Diagnostika getMe:", JSON.stringify(meBody));
   } catch (e) { console.log("Diagnostika getMe selhala:", e.message); }
 
+  // getUpdates PŘÍMO z tohoto tokenu (ne z ručně přečteného screenshotu) — ukáže
+  // přesně, jaké chaty tenhle konkrétní bot vůbec kdy zaznamenal. chat.id není
+  // citlivý údaj (je to jen Telegram user ID), bezpečné vypsat celé.
+  try {
+    const upd = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+    const updBody = await upd.json();
+    if (updBody.ok && Array.isArray(updBody.result)) {
+      const chats = updBody.result.map((u) => {
+        const m = u.message || u.my_chat_member || u.channel_post || {};
+        const chat = m.chat || (u.my_chat_member && u.my_chat_member.chat) || {};
+        return { chat_id: chat.id, type: chat.type, username: chat.username, text: m.text };
+      });
+      console.log(`Diagnostika getUpdates: ${updBody.result.length} záznam(ů):`, JSON.stringify(chats));
+      if (updBody.result.length === 0) {
+        console.log("Diagnostika: getUpdates je PRÁZDNÉ — tenhle bot (podle tokenu výš) nikdy nedostal žádnou zprávu. Pošli /start na t.me/AT_FX_Analyzer_bot znovu a zkus to hned zas.");
+      }
+    } else {
+      console.log("Diagnostika getUpdates chyba:", JSON.stringify(updBody));
+    }
+  } catch (e) { console.log("Diagnostika getUpdates selhala:", e.message); }
+
   const intro = "🧪 <b>Testovací zpráva</b> — takhle bude vypadat ostrý alert, žádný skutečný pohyb skóre:";
   const sample = `📈 <b>${escapeTgHtml("EURUSD")}</b> skóre diff +1.2 → +2.7 (+1.5)\nNový bias: BUY (EUR silnější)`;
 
