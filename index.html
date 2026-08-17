@@ -56,11 +56,19 @@ function jStat(list){
   return {n:list.length,w,l,be,wr,sumR,avgR,pf};
 }
 
+// Admin-only vzhled — jen tenhle přihlášený e-mail (Cloud sync, sync.js) dostane
+// jinou paletu (viz get tok() níž). Čistě kosmetické a jen client-side (appka je
+// statický web bez backendu), takže to není bezpečnostní hranice — funkčně to ale
+// uvidí jen ten, kdo se přihlásí přesně pod tímhle e-mailem; ostatní appku vidí
+// beze změny.
+const ADMIN_EMAIL='p.vospalek@gmail.com';
+
 class FXApp extends React.Component{
   constructor(p){
     super(p);
     const h=React.createElement; this.h=h;
-    this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D', cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'',
+    this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D',
+      adminSkin:(()=>{try{return localStorage.getItem('fx_admin_skin')!=='0';}catch(e){return true;}})(), cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'',
       seasFullPath:null, seasFullBusy:false, seasFullErr:'', seasFullYears:20, seasFullChartModal:false,
       // Výchozí okno = celý aktuální kalendářní měsíc (1. → poslední den) —
       // přepočítá se samo při každém otevření appky podle dnešního data,
@@ -324,7 +332,15 @@ class FXApp extends React.Component{
     };
   }
 
-  get tok(){ const a=this.props.accent||'#5e7cfb'; return {bg:'#07080c',line:'#1b2130',line2:'#262d3d',text:'#eaedf3',dim:'#8b93a3',faint:'#5a6273',green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:a,violet:'#9d7bff'}; }
+  get isAdmin(){ const s=this.state.syncSess; return !!(s&&s.user&&s.user.email&&String(s.user.email).trim().toLowerCase()===ADMIN_EMAIL); }
+  get tok(){
+    // Admin skin: jen přihlášený ADMIN_EMAIL + zapnutý přepínač v Nastavení
+    // (výchozí zapnuto). Mění accent/violet — ty se používají napříč grafy,
+    // tlačítky i zvýrazněními, takže i tahle malá změna přebarví appku jako celek.
+    if(this.isAdmin&&this.state.adminSkin) return {bg:'#07080c',line:'#1b2130',line2:'#262d3d',text:'#eaedf3',dim:'#8b93a3',faint:'#5a6273',green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:'#d4a72c',violet:'#ff6b9d'};
+    const a=this.props.accent||'#5e7cfb'; return {bg:'#07080c',line:'#1b2130',line2:'#262d3d',text:'#eaedf3',dim:'#8b93a3',faint:'#5a6273',green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:a,violet:'#9d7bff'};
+  }
+  toggleAdminSkin(){ const on=!this.state.adminSkin; try{localStorage.setItem('fx_admin_skin',on?'1':'0');}catch(e){} this.setState({adminSkin:on}); }
   card(extra){ return Object.assign({background:'linear-gradient(180deg,#0f121a,#0b0d13)',border:'1px solid #1b2130',borderRadius:18,boxShadow:'0 18px 40px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04)'},extra||{}); }
   mono(extra){ return Object.assign({fontFamily:"'JetBrains Mono',monospace"},extra||{}); }
   ptitle(t,sub){ const h=this.h,T=this.tok; return h('div',{style:{marginBottom:14}}, h('div',{style:{fontSize:13.5,fontWeight:800,letterSpacing:'-.01em'}},t), sub&&h('div',{style:this.mono({fontSize:10.5,color:T.faint,marginTop:3,letterSpacing:'.02em'})},sub)); }
@@ -1804,9 +1820,12 @@ class FXApp extends React.Component{
           h('button',{type:'button',disabled:st.syncBusy,onClick:()=>self.loginOrRegister(),style:btn},'🔐 Přihlásit / Vytvořit účet'),
           h('button',{type:'button',disabled:st.syncBusy,onClick:()=>self.resetPw(),style:sec},'Zapomenuté heslo')),
         avail&&sess&&h('div',null,
-          h('div',{style:{fontSize:12,color:T.dim,marginBottom:10}},'Přihlášen: ',h('b',{style:{color:T.text}},sess.user&&sess.user.email)),
+          h('div',{style:{fontSize:12,color:T.dim,marginBottom:10}},'Přihlášen: ',h('b',{style:{color:T.text}},sess.user&&sess.user.email),self.isAdmin&&h('span',{style:{marginLeft:8,fontSize:10.5,fontWeight:700,color:T.accent}},'👑 admin')),
           h('button',{type:'button',disabled:st.syncBusy,onClick:()=>self.doSync(true),style:btn},'🔄 Synchronizovat teď'),
-          h('button',{type:'button',onClick:()=>self.logoutSync(),style:sec},'Odhlásit')),
+          h('button',{type:'button',onClick:()=>self.logoutSync(),style:sec},'Odhlásit'),
+          self.isAdmin&&h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12,paddingTop:12,borderTop:'1px solid #1b2130'}},
+            h('div',null,h('div',{style:{fontSize:12,fontWeight:700,color:T.text}},'🎨 Admin vzhled'),h('div',{style:{fontSize:10.5,color:T.faint,marginTop:2}},'Jiná paleta jen pro tebe — ostatní appku vidí beze změny.')),
+            h('button',{type:'button',onClick:()=>self.toggleAdminSkin(),style:{border:'1px solid '+(st.adminSkin?T.accent:'#1b2130'),background:st.adminSkin?'rgba(212,167,44,.14)':'#0c0f16',color:st.adminSkin?T.accent:T.dim,borderRadius:8,padding:'6px 12px',fontSize:11.5,fontWeight:700,cursor:'pointer',fontFamily:'inherit',flex:'none'}},st.adminSkin?'Zapnuto':'Vypnuto'))),
         st.syncMsg&&h('div',{style:{fontSize:11.5,marginTop:10,color:st.syncMsg[0]==='⚠'?T.red:T.green,lineHeight:1.5}},st.syncMsg)),
       h('div',{style:self.card({padding:'22px 24px',marginTop:14})},
         self.ptitle('🔑 API klíče','Ukládají se lokálně + sync do cloudu'),
