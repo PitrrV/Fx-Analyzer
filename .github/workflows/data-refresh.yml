@@ -157,3 +157,33 @@ jobs:
           else
             echo "US100 makro beze změny."
           fi
+
+      # Telegram alert na výrazný pohyb skóre páru (|Δdiff| >= 1.0 od posledního
+      # alertu) — počítá živé skóre ze stejného enginu jako appka nad daty, co
+      # tenhle běh krok výš už osvěžil (kalendář/VIX/ropa), takže chytí i pohyb
+      # UVNITŘ dne, ne jen jednou večer. Samostatný bot/chat (SCORE_TELEGRAM_*),
+      # jiné secrets než Market Radar (RADAR_TELEGRAM_*).
+      - name: "Skóre alert (Telegram, práh 1.0 od posledního alertu)"
+        timeout-minutes: 3
+        continue-on-error: true
+        env:
+          SCORE_TELEGRAM_BOT_TOKEN: ${{ secrets.SCORE_TELEGRAM_BOT_TOKEN }}
+          SCORE_TELEGRAM_CHAT_ID: ${{ secrets.SCORE_TELEGRAM_CHAT_ID }}
+        run: node scripts/score-alerts.js
+      - name: "Commit: stav skóre alertů při změně"
+        if: always()
+        run: |
+          git config user.name "score-alert-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/score_alert_state.json)" ]; then
+            git add data/score_alert_state.json
+            git commit -m "chore: update score alert state [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Score alert state beze změny."
+          fi
