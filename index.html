@@ -63,12 +63,44 @@ function jStat(list){
 // beze změny.
 const ADMIN_EMAIL='p.vospalek@gmail.com';
 
+// ── AI Smart Alerts — no-code natural-language monitoring ──────────────────
+// Admin napíše větu ("Upozorni mě, až retail sentiment na AUDUSD klesne z 80 %
+// short na 70 % short."), OpenRouter LLM ji rozparsuje na STRUKTUROVANÉ
+// pravidlo {metric,targetType,target,op,value}. Appka nemá backend, takže
+// samotné sledování na pozadí běží stejně jako Telegram skóre alerty —
+// scripts/smart-alerts.js na cronu v data-refresh.yml (15 min), nad
+// data/smart_alerts.json. Prohlížeč do toho souboru zapisuje přímo přes
+// GitHub Contents API (gh_pat token v Nastavení, admin-only) — stejný no-op
+// pro appku jako ostatní API klíče, jen s zápisovým přístupem k tomuhle repu.
+const GH_REPO='PitrrV/Fx-Analyzer';
+const SMART_ALERT_METRICS=['score','retail_long_pct','retail_short_pct'];
+function buildSmartAlertSystemPrompt(){
+  const pairList=STANDARD_PAIRS.map(p=>p.pair).join(', ');
+  const curList=CURRENCIES.join(', ');
+  return 'Jsi parser přirozeného jazyka pro "AI Smart Alerts" v FX analytické appce (AT Trading FX Command Center). Uživatel (admin appky) napíše česky nebo anglicky větu popisující, na co chce být upozorněn. Buď z ní sestav STRUKTUROVANÉ pravidlo, nebo — pokud věta neumožňuje jednoznačné sestavení — polož JEDNU konkrétní upřesňující otázku (česky). Nikdy nehádej, radši se zeptej.\n\n'
+    +'DOSTUPNÉ METRIKY:\n'
+    +'- "score" — fundamentální skóre (škála přibližně −10 až +10). targetType "currency" (target = jedna z: '+curList+') NEBO targetType "pair" (target = kód páru — rozdíl skóre base−quote, tj. bias páru).\n'
+    +'- "retail_long_pct" / "retail_short_pct" — % retailových obchodníků long/short na páru (škála 0–100). targetType vždy "pair".\n\n'
+    +'DOSTUPNÉ PÁRY (přesně tyto kódy, nic jiného): '+pairList+'\n\n'
+    +'PODMÍNKA (op/value):\n'
+    +'- "op":"lte","value":X — spustí se, když hodnota KLESNE POD X (nebo na X).\n'
+    +'- "op":"gte","value":X — spustí se, když hodnota VZROSTE NAD X (nebo na X).\n'
+    +'Pokud uživatel řekne "klesne z 80 % na 70 %", počáteční hodnota (80) je jen kontext pro tebe — do pravidla dej jen cílovou: "op":"lte","value":70.\n\n'
+    +'"repeat": true jen pokud uživatel výslovně chce OPAKOVANÉ upozorňování ("pokaždé když…", "vždycky když…") — jinak false (jednorázově, appka pak sama pravidlo pozastaví).\n\n'
+    +'Odpověz VÝHRADNĚ JSON, žádný další text, žádné markdown bloky (bez ```):\n'
+    +'- Rozumíš jednoznačně: {"ok":true,"metric":"score|retail_long_pct|retail_short_pct","targetType":"currency|pair","target":"...","op":"gte|lte","value":number,"repeat":false,"summary":"jedna věta česky — lidsky čitelné shrnutí pravidla"}\n'
+    +'- Potřebuješ upřesnit: {"ok":false,"question":"konkrétní otázka česky"}\n\n'
+    +'Příklad: "Upozorni mě, až retail sentiment na AUDUSD klesne z 80 % short na 70 % short." → {"ok":true,"metric":"retail_short_pct","targetType":"pair","target":"AUDUSD","op":"lte","value":70,"repeat":false,"summary":"Upozornit, až podíl short retail obchodníků na AUDUSD klesne pod 70 %."}';
+}
+
 class FXApp extends React.Component{
   constructor(p){
     super(p);
     const h=React.createElement; this.h=h;
     this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D',
-      adminSkin:(()=>{try{return localStorage.getItem('fx_admin_skin')!=='0';}catch(e){return true;}})(), cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'',
+      adminSkin:(()=>{try{return localStorage.getItem('fx_admin_skin')!=='0';}catch(e){return true;}})(),
+      smartInput:'', smartConvo:[], smartDraft:null, smartBusy:false, smartErr:'', smartRules:[], smartRulesLoaded:false, smartEditingId:null,
+      cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'',
       seasFullPath:null, seasFullBusy:false, seasFullErr:'', seasFullYears:20, seasFullChartModal:false,
       // Výchozí okno = celý aktuální kalendářní měsíc (1. → poslední den) —
       // přepočítá se samo při každém otevření appky podle dnešního data,
@@ -93,6 +125,7 @@ class FXApp extends React.Component{
   }
   componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000);
     this.maybeLoadFullYearSeasonality();
+    this.loadSmartAlerts();
     if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s){ this._didInitSync=true; window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); } }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(!s){ this._didInitSync=false; return; } if(event==='SIGNED_IN'&&!this._didInitSync){ this._didInitSync=true; this.doSync(false); } }); } }
   componentWillUnmount(){ clearInterval(this._t); clearInterval(this._clk); }
   componentDidUpdate(prevProps,prevState){
@@ -341,6 +374,129 @@ class FXApp extends React.Component{
     const a=this.props.accent||'#5e7cfb'; return {bg:'#07080c',line:'#1b2130',line2:'#262d3d',text:'#eaedf3',dim:'#8b93a3',faint:'#5a6273',green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:a,violet:'#9d7bff'};
   }
   toggleAdminSkin(){ const on=!this.state.adminSkin; try{localStorage.setItem('fx_admin_skin',on?'1':'0');}catch(e){} this.setState({adminSkin:on}); }
+
+  // ── AI Smart Alerts ─────────────────────────────────────────────────────
+  b64EncodeUtf8(str){ return btoa(unescape(encodeURIComponent(str))); }
+  b64DecodeUtf8(str){ return decodeURIComponent(escape(atob(str))); }
+  loadSmartAlerts(){
+    fetch('data/smart_alerts.json?h='+Math.floor(Date.now()/900000),{cache:'no-store'})
+      .then(r=>r.ok?r.json():{rules:[]}).then(j=>{ this.setState({smartRules:Array.isArray(j.rules)?j.rules:[],smartRulesLoaded:true}); })
+      .catch(()=>{ this.setState({smartRulesLoaded:true}); });
+  }
+  async ghSmartAlertsGet(){
+    const r=await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/data/smart_alerts.json',{headers:{'Accept':'application/vnd.github+json'}});
+    if(r.status===404) return {rules:[],sha:null};
+    if(!r.ok) throw new Error('GitHub čtení selhalo: '+r.status);
+    const j=await r.json();
+    let data={rules:[]}; try{ data=JSON.parse(this.b64DecodeUtf8((j.content||'').replace(/\n/g,'')))||{rules:[]}; }catch(e){}
+    if(!Array.isArray(data.rules)) data.rules=[];
+    return {rules:data.rules,sha:j.sha};
+  }
+  async ghSmartAlertsPut(rules,sha,message){
+    const token=(localStorage.getItem('gh_pat')||'').trim();
+    if(!token) throw new Error('Chybí GitHub token — přidej ho v Nastavení (sekce Admin).');
+    const body={message:message||'chore: update smart alerts [skip ci]',content:this.b64EncodeUtf8(JSON.stringify({rules})),branch:'main'};
+    if(sha) body.sha=sha;
+    const r=await fetch('https://api.github.com/repos/'+GH_REPO+'/contents/data/smart_alerts.json',{method:'PUT',headers:{'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){ const t=await r.text().catch(()=>''); throw new Error('GitHub zápis selhal ('+r.status+'): '+t.slice(0,220)); }
+    return await r.json();
+  }
+  // Read-modify-write s jedním retry na čerstvých datech — kdyby mezitím
+  // cron (scripts/smart-alerts.js) commitnul aktualizovaný lastValue/status.
+  async ghSmartAlertsMutate(mutateFn,message){
+    const first=await this.ghSmartAlertsGet();
+    try{ const next=mutateFn(first.rules.slice()); await this.ghSmartAlertsPut(next,first.sha,message); return next; }
+    catch(e){ const fresh=await this.ghSmartAlertsGet(); const next=mutateFn(fresh.rules.slice()); await this.ghSmartAlertsPut(next,fresh.sha,message); return next; }
+  }
+  computeSmartValue(rule){
+    try{
+      if(rule.metric==='score'){
+        if(rule.targetType==='currency'){ const d=this.D[rule.target]; return d?parseFloat(d.score.toFixed(2)):null; }
+        const p=STANDARD_PAIRS.find(x=>x.pair===rule.target); if(!p) return null;
+        const sb=this.D[p.base],sq=this.D[p.quote]; if(!sb||!sq) return null;
+        return parseFloat((sb.score-sq.score).toFixed(2));
+      }
+      if(rule.metric==='retail_long_pct'||rule.metric==='retail_short_pct'){
+        const p=STANDARD_PAIRS.find(x=>x.pair===rule.target); if(!p) return null;
+        const sentData={}; this.CUR.forEach(c=>{sentData[c]=this.D[c]?this.D[c].retail:50;});
+        const rd=getRetailPairData(p,sentData);
+        return rule.metric==='retail_long_pct'?rd.retailLong:rd.retailShort;
+      }
+    }catch(e){}
+    return null;
+  }
+  validateSmartRule(r){
+    if(!r||typeof r!=='object') return false;
+    if(!SMART_ALERT_METRICS.includes(r.metric)) return false;
+    if(r.metric!=='score'&&r.targetType!=='pair') return false;
+    if(r.targetType==='currency'&&!this.CUR.includes(r.target)) return false;
+    if(r.targetType==='pair'&&!STANDARD_PAIRS.some(p=>p.pair===r.target)) return false;
+    if(r.op!=='gte'&&r.op!=='lte') return false;
+    if(typeof r.value!=='number'||!isFinite(r.value)) return false;
+    return true;
+  }
+  async parseSmartAlertSentence(sentence){
+    const orKey=(localStorage.getItem('or_key')||'').trim();
+    if(!orKey) throw new Error('Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).');
+    const convo=this.state.smartConvo.concat([{role:'user',text:sentence}]);
+    const apiMsgs=convo.map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
+    const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:buildSmartAlertSystemPrompt()}].concat(apiMsgs),max_tokens:500,temperature:0.1});
+    const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Smart Alerts'};
+    const models=[(localStorage.getItem('or_coach_model')||'').trim()||'openrouter/free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free','google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
+    let raw='';
+    for(const m of models){ try{ const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:body(m)}); const d=await r.json(); if(!d.error&&d.choices&&d.choices[0]&&d.choices[0].message){raw=d.choices[0].message.content;break;} }catch(e){} }
+    if(!raw) throw new Error('Žádný free model momentálně neodpověděl. Zkus to za chvíli.');
+    const mj=raw.match(/\{[\s\S]*\}/);
+    if(!mj) throw new Error('AI odpověď nešla přečíst jako JSON.');
+    let parsed; try{ parsed=JSON.parse(mj[0]); }catch(e){ throw new Error('AI odpověď nešla přečíst jako JSON.'); }
+    return {parsed,convo};
+  }
+  async submitSmartAlert(){
+    const t=(this.state.smartInput||'').trim(); if(!t||this.state.smartBusy) return;
+    this.setState({smartBusy:true,smartErr:''});
+    try{
+      const {parsed,convo}=await this.parseSmartAlertSentence(t);
+      if(parsed.ok&&this.validateSmartRule(parsed)){
+        const val=this.computeSmartValue(parsed);
+        const met=val==null?false:(parsed.op==='gte'?val>=parsed.value:val<=parsed.value);
+        const draft={id:'sa_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:t,summary:parsed.summary||'',metric:parsed.metric,targetType:parsed.targetType,target:parsed.target,op:parsed.op,value:parsed.value,repeat:!!parsed.repeat,curValue:val,curMet:met};
+        this.setState({smartDraft:draft,smartConvo:[],smartInput:'',smartBusy:false});
+      }else if(parsed.ok===false&&parsed.question){
+        this.setState({smartConvo:convo.concat([{role:'assistant',text:parsed.question}]),smartInput:'',smartBusy:false});
+      }else{
+        this.setState({smartConvo:convo.concat([{role:'assistant',text:'Nerozuměl jsem přesně — zkus to prosím popsat jinak (jaká měna/pár, jaká metrika, jaká hodnota).'}]),smartInput:'',smartBusy:false});
+      }
+    }catch(e){ this.setState({smartErr:(e&&e.message)||String(e),smartBusy:false}); }
+  }
+  async confirmSmartAlert(){
+    const d=this.state.smartDraft; if(!d||this.state.smartBusy) return;
+    this.setState({smartBusy:true,smartErr:''});
+    const nowIso=new Date().toISOString(); const editingId=this.state.smartEditingId;
+    const rule={id:editingId||d.id,text:d.text,summary:d.summary,metric:d.metric,targetType:d.targetType,target:d.target,op:d.op,value:d.value,repeat:d.repeat,status:'active',createdAt:nowIso,updatedAt:nowIso,lastValue:d.curValue,lastMet:d.curMet,lastCheckedAt:nowIso,firedAt:null,firedValue:null};
+    try{
+      const next=await this.ghSmartAlertsMutate(rules=>{ const f=rules.filter(r=>r.id!==rule.id); f.push(rule); return f; },(editingId?'chore: upravit AI alert — ':'chore: nový AI alert — ')+rule.target+' [skip ci]');
+      this.setState({smartRules:next,smartDraft:null,smartEditingId:null,smartBusy:false,smartErr:''});
+    }catch(e){ this.setState({smartErr:(e&&e.message)||String(e),smartBusy:false}); }
+  }
+  cancelSmartDraft(){ this.setState({smartDraft:null,smartConvo:[],smartEditingId:null}); }
+  editSmartRule(rule){ this.setState({smartInput:rule.text,smartEditingId:rule.id,smartConvo:[],smartDraft:null}); }
+  async setSmartRuleStatus(rule,status){
+    if(this.state.smartBusy) return; this.setState({smartBusy:true,smartErr:''});
+    try{
+      const patch={status};
+      if(status==='active'){ const val=this.computeSmartValue(rule); const met=val==null?false:(rule.op==='gte'?val>=rule.value:val<=rule.value); patch.lastValue=val; patch.lastMet=met; patch.lastCheckedAt=new Date().toISOString(); }
+      const next=await this.ghSmartAlertsMutate(rules=>rules.map(r=>r.id===rule.id?Object.assign({},r,patch,{updatedAt:new Date().toISOString()}):r),'chore: AI alert stav → '+status+' ('+rule.target+') [skip ci]');
+      this.setState({smartRules:next,smartBusy:false});
+    }catch(e){ this.setState({smartErr:(e&&e.message)||String(e),smartBusy:false}); }
+  }
+  async deleteSmartRule(rule){
+    if(this.state.smartBusy) return; if(!confirm('Smazat alert „'+rule.text+'"?')) return;
+    this.setState({smartBusy:true,smartErr:''});
+    try{
+      const next=await this.ghSmartAlertsMutate(rules=>rules.filter(r=>r.id!==rule.id),'chore: smazat AI alert ('+rule.target+') [skip ci]');
+      this.setState({smartRules:next,smartBusy:false});
+    }catch(e){ this.setState({smartErr:(e&&e.message)||String(e),smartBusy:false}); }
+  }
   card(extra){ return Object.assign({background:'linear-gradient(180deg,#0f121a,#0b0d13)',border:'1px solid #1b2130',borderRadius:18,boxShadow:'0 18px 40px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04)'},extra||{}); }
   mono(extra){ return Object.assign({fontFamily:"'JetBrains Mono',monospace"},extra||{}); }
   ptitle(t,sub){ const h=this.h,T=this.tok; return h('div',{style:{marginBottom:14}}, h('div',{style:{fontSize:13.5,fontWeight:800,letterSpacing:'-.01em'}},t), sub&&h('div',{style:this.mono({fontSize:10.5,color:T.faint,marginTop:3,letterSpacing:'.02em'})},sub)); }
@@ -1827,6 +1983,13 @@ class FXApp extends React.Component{
             h('div',null,h('div',{style:{fontSize:12,fontWeight:700,color:T.text}},'🎨 Admin vzhled'),h('div',{style:{fontSize:10.5,color:T.faint,marginTop:2}},'Jiná paleta jen pro tebe — ostatní appku vidí beze změny.')),
             h('button',{type:'button',onClick:()=>self.toggleAdminSkin(),style:{border:'1px solid '+(st.adminSkin?T.accent:'#1b2130'),background:st.adminSkin?'rgba(212,167,44,.14)':'#0c0f16',color:st.adminSkin?T.accent:T.dim,borderRadius:8,padding:'6px 12px',fontSize:11.5,fontWeight:700,cursor:'pointer',fontFamily:'inherit',flex:'none'}},st.adminSkin?'Zapnuto':'Vypnuto'))),
         st.syncMsg&&h('div',{style:{fontSize:11.5,marginTop:10,color:st.syncMsg[0]==='⚠'?T.red:T.green,lineHeight:1.5}},st.syncMsg)),
+      self.isAdmin&&h('div',{style:self.card({padding:'22px 24px',marginTop:14})},
+        self.ptitle('🔐 GitHub token','Jen pro AI Smart Alerts — jen lokálně v tomhle prohlížeči, NEsynchronizuje se do cloudu'),
+        h('div',{style:{fontSize:11,color:T.faint,lineHeight:1.6,marginBottom:10}},
+          'Appka nemá backend, takže sledování pravidel na pozadí (cron) potřebuje pravidla vidět v GitHubu. Bez tohohle tokenu jde AI Smart Alerts jen číst, ne vytvářet/upravit/mazat. ',
+          h('a',{href:'https://github.com/settings/personal-access-tokens/new',target:'_blank',rel:'noopener',style:{color:T.accent}},'github.com/settings/personal-access-tokens/new'),
+          ' → Repository access: „Only select repositories" → ',h('b',null,'PitrrV/Fx-Analyzer'),' → Permissions → Contents: ',h('b',null,'Read and write'),'. Nic jiného nepovoluj.'),
+        h('input',{defaultValue:(localStorage.getItem('gh_pat')||''),onBlur:e=>self.setKey('gh_pat',e.target.value),placeholder:'github_pat_… (fine-grained, jen tenhle repo)',type:'password',autoCapitalize:'off',autoCorrect:'off',spellCheck:false,style:fld})),
       h('div',{style:self.card({padding:'22px 24px',marginTop:14})},
         self.ptitle('🔑 API klíče','Ukládají se lokálně + sync do cloudu'),
         (()=>{ const lab=(t,extra)=>h('label',{style:{fontSize:11,color:T.dim,display:'block',marginBottom:4,marginTop:4}},t,extra&&h('span',{style:{color:T.green,marginLeft:6,fontWeight:700}},extra));
@@ -1854,12 +2017,80 @@ class FXApp extends React.Component{
           h('div',null,'COT/Retail stáhneš v záložce ',h('b',{style:{color:T.accent}},'COT & Sentiment'),'.'))));
   }
 
+  renderSmartAlerts(){
+    const self=this,h=this.h,T=this.tok,st=this.state;
+    if(!self.isAdmin) return h('div',{style:self.card({padding:'30px',textAlign:'center'})},h('div',{style:{color:T.faint,fontSize:13}},'Tahle sekce je jen pro admina.'));
+    const fld={width:'100%',padding:'10px 13px',background:'#0a0d13',border:'1px solid #1b2130',borderRadius:10,color:T.text,fontSize:13,fontFamily:"'Manrope',sans-serif",display:'block',outline:'none',boxSizing:'border-box',resize:'vertical'};
+    const btn={padding:'11px 18px',background:'linear-gradient(180deg,#5e7cfb,#4c63d9)',border:'1px solid '+T.accent,borderRadius:10,color:'#fff',fontSize:13,fontWeight:700,fontFamily:'inherit',cursor:'pointer'};
+    const sec=Object.assign({},btn,{background:'#0c0f16',border:'1px solid #232b3d',color:T.dim});
+    const hasToken=!!(localStorage.getItem('gh_pat')||'').trim();
+    const metricLabel=r=>r.metric==='score'?'Skóre':r.metric==='retail_long_pct'?'Retail long %':'Retail short %';
+    const opLabel=r=>(r.op==='gte'?'≥ ':'≤ ')+r.value+(r.metric==='score'?'':' %');
+    const statusBadge=s=>{
+      const map={active:['AKTIVNÍ',T.green],paused:['POZASTAVENO',T.faint],fired:['SPUŠTĚNO',T.amber]};
+      const pair=map[s]||['?',T.dim];
+      return h('span',{style:self.mono({fontSize:9.5,fontWeight:800,letterSpacing:'.06em',color:pair[1],background:pair[1]+'1c',border:'1px solid '+pair[1]+'44',borderRadius:5,padding:'2px 7px'})},pair[0]);
+    };
+    const ruleRow=r=>h('div',{key:r.id,style:self.card({padding:'14px 16px',marginBottom:9})},
+      h('div',{style:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:10,flexWrap:'wrap'}},
+        h('div',{style:{flex:1,minWidth:220}},
+          h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:5}},
+            statusBadge(r.status),
+            h('span',{style:self.mono({fontSize:11,fontWeight:700,color:T.accent})},r.target),
+            h('span',{style:self.mono({fontSize:10.5,color:T.dim})},metricLabel(r)+' '+opLabel(r)),
+            r.repeat&&h('span',{style:self.mono({fontSize:9.5,color:T.violet})},'↻ opakovaně')),
+          h('div',{style:{fontSize:12.5,color:T.text,lineHeight:1.5,marginBottom:4}},r.summary||r.text),
+          h('div',{style:self.mono({fontSize:10,color:T.faint})},'„'+r.text+'"'),
+          h('div',{style:self.mono({fontSize:10,color:T.faint,marginTop:5})},
+            (r.lastValue!=null?('Poslední hodnota: '+r.lastValue+(r.metric==='score'?'':' %')+(r.lastCheckedAt?' · '+new Date(r.lastCheckedAt).toLocaleString('cs-CZ'):'')):'Zatím nekontrolováno')
+            +(r.firedAt?(' · 🔔 spuštěno '+new Date(r.firedAt).toLocaleString('cs-CZ')):''))),
+        h('div',{style:{display:'flex',flexDirection:'column',gap:5,flex:'none'}},
+          r.status==='active'&&h('button',{type:'button',disabled:st.smartBusy,onClick:()=>self.setSmartRuleStatus(r,'paused'),style:Object.assign({},sec,{padding:'6px 10px',fontSize:11})},'⏸ Pauza'),
+          r.status!=='active'&&h('button',{type:'button',disabled:st.smartBusy,onClick:()=>self.setSmartRuleStatus(r,'active'),style:Object.assign({},sec,{padding:'6px 10px',fontSize:11,color:T.green,border:'1px solid '+T.green+'66'})},'▶ '+(r.status==='fired'?'Znovu sledovat':'Aktivovat')),
+          h('button',{type:'button',disabled:st.smartBusy,onClick:()=>self.editSmartRule(r),style:Object.assign({},sec,{padding:'6px 10px',fontSize:11})},'✏ Upravit'),
+          h('button',{type:'button',disabled:st.smartBusy,onClick:()=>self.deleteSmartRule(r),style:Object.assign({},sec,{padding:'6px 10px',fontSize:11,color:T.red,border:'1px solid '+T.red+'44'})},'🗑 Smazat'))));
+    const rules=st.smartRules||[];
+    const active=rules.filter(r=>r.status==='active'), paused=rules.filter(r=>r.status==='paused'), fired=rules.filter(r=>r.status==='fired');
+    const draft=st.smartDraft;
+    return h('div',{style:{maxWidth:760,margin:'0 auto'}},
+      !hasToken&&h('div',{style:self.card({padding:'14px 18px',marginBottom:16,border:'1px solid '+T.amber+'44'})},
+        h('div',{style:{fontSize:12,color:T.amber,lineHeight:1.6}},'⚠ Chybí GitHub token — nová/upravená/smazaná pravidla se zatím jen ukážou, ale NEULOŽÍ se (appka je bez backendu, potřebuje pravidla zapsat do repa, ať je vidí sledovací cron). Přidej ho v ',h('a',{onClick:()=>self.setState({tab:'settings'}),style:{color:T.amber,cursor:'pointer',textDecoration:'underline'}},'Nastavení'),'.')),
+      h('div',{style:self.card({padding:'20px 22px',marginBottom:18})},
+        self.ptitle('🔔 Napiš, na co chceš být upozorněn','Přirozenou větou — appka to sama pochopí a bude sledovat na pozadí'),
+        st.smartConvo.length>0&&h('div',{style:{marginBottom:12,display:'flex',flexDirection:'column',gap:8}},
+          st.smartConvo.map((m,i)=>h('div',{key:i,style:{alignSelf:m.role==='user'?'flex-end':'flex-start',maxWidth:'85%',background:m.role==='user'?'rgba(94,124,251,.12)':'#0c0f16',border:'1px solid '+(m.role==='user'?T.accent+'44':'#232b3d'),borderRadius:12,padding:'9px 13px',fontSize:12.5,color:T.text,lineHeight:1.5}},m.text))),
+        st.smartEditingId&&h('div',{style:{fontSize:11,color:T.violet,marginBottom:7}},'✏ Upravuješ existující alert — uprav větu a znovu potvrď.'),
+        h('textarea',{value:st.smartInput,onChange:e=>self.setState({smartInput:e.target.value}),onKeyDown:e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();self.submitSmartAlert();}},placeholder:'Např.: Upozorni mě, až retail sentiment na AUDUSD klesne z 80 % short na 70 % short.',style:Object.assign({},fld,{minHeight:64})}),
+        h('div',{style:{display:'flex',gap:9,marginTop:10}},
+          h('button',{type:'button',disabled:st.smartBusy||!st.smartInput.trim(),onClick:()=>self.submitSmartAlert(),style:btn},st.smartBusy?'⏳ Přemýšlím…':'✦ Rozumět větě'),
+          st.smartEditingId&&h('button',{type:'button',onClick:()=>self.setState({smartInput:'',smartEditingId:null,smartConvo:[]}),style:sec},'Zrušit úpravu')),
+        st.smartErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:9,lineHeight:1.5}},'⚠ '+st.smartErr)),
+      draft&&h('div',{style:self.card({padding:'18px 20px',marginBottom:18,border:'1px solid '+T.accent+'66'})},
+        self.ptitle('Rozumím takhle — potvrdíš?'),
+        h('div',{style:{fontSize:13,color:T.text,lineHeight:1.6,marginBottom:8}},draft.summary),
+        h('div',{style:self.mono({fontSize:11,color:T.dim,lineHeight:1.7})},
+          h('div',null,'Sleduje: ',h('b',{style:{color:T.accent}},draft.target),' · ',metricLabel(draft),' ',opLabel(draft)),
+          h('div',null,'Aktuální hodnota: ',h('b',{style:{color:T.text}},draft.curValue==null?'neznámá':(draft.curValue+(draft.metric==='score'?'':' %'))),
+            draft.curMet&&h('span',{style:{color:T.amber,marginLeft:6}},'(podmínka už teď platí — spustí se hned při první kontrole)')),
+          draft.repeat&&h('div',null,'↻ Bude upozorňovat opakovaně, ne jen jednou.')),
+        h('div',{style:{display:'flex',gap:9,marginTop:14}},
+          h('button',{type:'button',disabled:st.smartBusy,onClick:()=>self.confirmSmartAlert(),style:btn},st.smartBusy?'⏳ Ukládám…':'✓ Potvrdit a sledovat'),
+          h('button',{type:'button',onClick:()=>self.cancelSmartDraft(),style:sec},'Zrušit'))),
+      h('div',null,
+        h('div',{style:{fontSize:13,fontWeight:800,marginBottom:10}},'Aktivní ('+active.length+')'),
+        active.length?active.map(ruleRow):h('div',{style:{fontSize:12,color:T.faint,marginBottom:16}},'Zatím žádný aktivní alert.'),
+        paused.length>0&&h('div',{style:{fontSize:13,fontWeight:800,margin:'18px 0 10px'}},'Pozastavené ('+paused.length+')'),
+        paused.map(ruleRow),
+        fired.length>0&&h('div',{style:{fontSize:13,fontWeight:800,margin:'18px 0 10px'}},'Spuštěné ('+fired.length+')'),
+        fired.map(ruleRow)));
+  }
+
   render(){
     const self=this,h=this.h,T=this.tok, st=this.state;
     const clock=new Date().toLocaleTimeString('cs-CZ');
     // Skupiny levého menu — stejné rozdělení jako v UX konceptu (Analýza / Kontext /
     // Moje), 9 rovnocenných položek vedle sebe bylo těžší rychle přehledat.
-    const tabs=[{id:'dashboard',label:'Dashboard',gly:'◆',group:'Analýza'},{id:'strength',label:'Síla měn',gly:'≡',group:'Analýza'},{id:'cot',label:'COT & Sentiment',gly:'⇄',group:'Analýza'},{id:'season',label:'Sezónnost',gly:'❄',group:'Kontext'},{id:'calendar',label:'Kalendář',gly:'▦',group:'Kontext'},{id:'ai',label:'AI Analýza',gly:'✦',group:'Kontext'},{id:'coach',label:'AI Coach',gly:'◎',group:'Moje'},{id:'journal',label:'Trading deník',gly:'▤',group:'Moje'},{id:'settings',label:'Nastavení',gly:'⚙',group:'Moje'}];
+    const tabs=[{id:'dashboard',label:'Dashboard',gly:'◆',group:'Analýza'},{id:'strength',label:'Síla měn',gly:'≡',group:'Analýza'},{id:'cot',label:'COT & Sentiment',gly:'⇄',group:'Analýza'},{id:'season',label:'Sezónnost',gly:'❄',group:'Kontext'},{id:'calendar',label:'Kalendář',gly:'▦',group:'Kontext'},{id:'ai',label:'AI Analýza',gly:'✦',group:'Kontext'},{id:'coach',label:'AI Coach',gly:'◎',group:'Moje'},{id:'journal',label:'Trading deník',gly:'▤',group:'Moje'},{id:'smart',label:'AI Smart Alerts',gly:'🔔',group:'Moje',adminOnly:true},{id:'settings',label:'Nastavení',gly:'⚙',group:'Moje'}].filter(t=>!t.adminOnly||self.isAdmin);
     const NAV_GROUPS=['Analýza','Kontext','Moje'];
     // Obrysové SVG ikonky u položek menu (místo textových znaků) — stejná sada
     // tvarů jako v UX konceptu (bublina pro Coach, mřížka pro Kalendář atd.),
@@ -1874,9 +2105,10 @@ class FXApp extends React.Component{
       coach:'<path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/>',
       journal:'<path d="M5 4h13a2 2 0 0 1 2 2v14H7a2 2 0 0 1-2-2z"/><path d="M9 9h7M9 13h7"/>',
       settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+      smart:'<path d="M12 3a5 5 0 0 0-5 5c0 5-2 6-2 8h14c0-2-2-3-2-8a5 5 0 0 0-5-5z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
     };
-    const titles={dashboard:'AT Trading FX Command Center',strength:'Síla měn',cot:'COT & Sentiment',season:'Sezónnost',calendar:'Fundamentální kalendář',ai:'AI Analýza grafu',coach:'AI Coach',journal:'Trading deník',settings:'Nastavení'};
-    const subs={dashboard:'Fundamentální bias · skóre, COT, sentiment, sezónnost',strength:'Ranking 8 měn na škále −10 až +10',cot:'Instituce vs retail · contrarian příležitosti',season:'Reálná měsíční výkonnost z historických cen',calendar:'Příštích 14 dní · HIGH / MEDIUM / LOW impact',ai:'Foto grafu → ICT/SMC rozbor (v mobilu)',coach:'Tvůj parťák — vidí skóre, COT i pozice',journal:'Statistiky, edge a historie obchodů',settings:'Cloud sync · stav dat'};
+    const titles={dashboard:'AT Trading FX Command Center',strength:'Síla měn',cot:'COT & Sentiment',season:'Sezónnost',calendar:'Fundamentální kalendář',ai:'AI Analýza grafu',coach:'AI Coach',journal:'Trading deník',smart:'AI Smart Alerts',settings:'Nastavení'};
+    const subs={dashboard:'Fundamentální bias · skóre, COT, sentiment, sezónnost',strength:'Ranking 8 měn na škále −10 až +10',cot:'Instituce vs retail · contrarian příležitosti',season:'Reálná měsíční výkonnost z historických cen',calendar:'Příštích 14 dní · HIGH / MEDIUM / LOW impact',ai:'Foto grafu → ICT/SMC rozbor (v mobilu)',coach:'Tvůj parťák — vidí skóre, COT i pozice',journal:'Statistiky, edge a historie obchodů',smart:'Napiš větu, appka ji sama sleduje a pošle Telegram — jen ty (👑 admin)',settings:'Cloud sync · stav dat'};
     let list=this.PAIRS.slice(); if(st.filter==='strong')list=list.filter(p=>p.diff>=3); else if(st.filter==='sweet')list=list.filter(p=>p.diff>=2&&p.diff<3); else if(st.filter==='favs')list=list.filter(p=>st.favs.has(p.pair));
     const pairQ=(st.pairSearch||'').trim().toUpperCase(); if(pairQ)list=list.filter(p=>p.pair.includes(pairQ)||p.base.includes(pairQ)||p.quote.includes(pairQ));
     let oilSt=null; try{oilSt=getOilStatus();}catch(e){}
@@ -1926,7 +2158,7 @@ class FXApp extends React.Component{
         us100Card()));
     const main=h('main',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column'}},header,
       st.tab==='dashboard'?h('div',{style:{padding:'18px 22px 40px'}},h('div',{className:'fx-grid',style:{display:'grid',gridTemplateColumns:'374px minmax(0,1fr) 350px',gap:16,alignItems:'start'}},leftSection,h('section',{style:{minWidth:0}},this.renderDetail()),h('section',{className:'fx-right',style:{position:'sticky',top:84}},this.renderRight())))
-        :h('div',{style:{padding:'18px 22px 48px',animation:'fxfade .3s ease'}},st.tab==='strength'?this.renderStrength():st.tab==='cot'?this.renderCOT():st.tab==='season'?this.renderSeasonality():st.tab==='calendar'?this.renderCalendar():st.tab==='ai'?this.renderAIAnalysis():st.tab==='coach'?this.renderAICoach():st.tab==='journal'?this.renderJournal():st.tab==='settings'?this.renderSettings():null));
+        :h('div',{style:{padding:'18px 22px 48px',animation:'fxfade .3s ease'}},st.tab==='strength'?this.renderStrength():st.tab==='cot'?this.renderCOT():st.tab==='season'?this.renderSeasonality():st.tab==='calendar'?this.renderCalendar():st.tab==='ai'?this.renderAIAnalysis():st.tab==='coach'?this.renderAICoach():st.tab==='journal'?this.renderJournal():st.tab==='smart'?this.renderSmartAlerts():st.tab==='settings'?this.renderSettings():null));
     return h('div',{className:'fx-root',style:{minHeight:'100vh',display:'flex',background:'radial-gradient(1100px 620px at 80% -10%, rgba(94,124,251,.10), transparent 58%), radial-gradient(900px 520px at 4% 2%, rgba(46,211,160,.055), transparent 54%), #07080c'}},
       aside,main,
       st.cotModal&&h(self.CotModal,{key:st.cotModal,c:st.cotModal,range:st.cotRange,category:st.cotCategory}),
