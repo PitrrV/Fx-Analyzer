@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260815a"></script>
-<script src="sync.js?v=20260815a"></script>
+<script src="engine.js?v=20260818a"></script>
+<script src="sync.js?v=20260818a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -419,7 +419,11 @@ class FXApp extends React.Component{
       if(rule.metric==='retail_long_pct'||rule.metric==='retail_short_pct'){
         const p=STANDARD_PAIRS.find(x=>x.pair===rule.target); if(!p) return null;
         const sentData={}; this.CUR.forEach(c=>{sentData[c]=this.D[c]?this.D[c].retail:50;});
-        const rd=getRetailPairData(p,sentData);
+        // Přímá data páru (data/retail_hist.json), když existují — stejné jako
+        // dashboard chart widget (jinak appka ukazuje jiné číslo pro stejný pár
+        // na dvou místech, viz komentář u getRetailPairData v engine.js).
+        const latest=(this._retailHist&&this._retailHist.length)?this._retailHist[this._retailHist.length-1]:null;
+        const rd=getRetailPairData(p,sentData,latest&&latest.pairs);
         return rule.metric==='retail_long_pct'?rd.retailLong:rd.retailShort;
       }
     }catch(e){}

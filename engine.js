@@ -2730,14 +2730,26 @@ function getCOTCategoryPercentile(currency,category='lev',limit=104){
     return Math.round((h2.filter(s=>s<=cur).length/h2.length)*100);
   }catch(e){return null;}
 }
-function getRetailPairData(pair,sentData={}){
-  const bLong=Number(sentData?.[pair.base] ?? 50);
-  const qLong=Number(sentData?.[pair.quote] ?? 50);
-  const retailLong=Math.round(Math.max(0,Math.min(100,(bLong+(100-qLong))/2)));
+// directPairsData = data/retail_hist.json posledního bodu .pairs objekt (přímo
+// naměřená data providerem pro KONKRÉTNÍ pár, 14/28 párů). Když existuje, MUSÍ
+// mít přednost před odhadem z per-měnových čísel — jinak appka ukazuje jiné
+// číslo pro stejný pár na dvou místech (dashboard widget, co odhad používal
+// jako fallback vždycky, ukazoval přímá data správně; tahle funkce ne — reálný
+// nález: NZDUSD widget 70 % short / tahle funkce 62 % short pro stejný okamžik).
+function getRetailPairData(pair,sentData={},directPairsData=null){
+  const d=directPairsData&&directPairsData[pair.pair];
+  let retailLong;
+  if(d&&Number.isFinite(d.l)){
+    retailLong=Math.round(Math.max(0,Math.min(100,d.l)));
+  }else{
+    const bLong=Number(sentData?.[pair.base] ?? 50);
+    const qLong=Number(sentData?.[pair.quote] ?? 50);
+    retailLong=Math.round(Math.max(0,Math.min(100,(bLong+(100-qLong))/2)));
+  }
   const retailShort=100-retailLong;
   const crowdBias=retailLong>=60?"LONG":retailShort>=60?"SHORT":"NEUTRAL";
   const crowded=retailLong>=75||retailShort>=75;
-  return{retailLong,retailShort,crowdBias,crowded};
+  return{retailLong,retailShort,crowdBias,crowded,source:(d&&Number.isFinite(d.l))?"direct":"estimated"};
 }
 
 // ── KALENDÁŘ Z GITHUB ACTION (forexfactory web, má actual + plné pokrytí) ──

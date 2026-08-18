@@ -69,7 +69,7 @@ function computeLiveState() {
   const sentData = {};
   for (const c of E.CURRENCIES) sentData[c] = sent && sent[c] != null ? sent[c] : 50;
 
-  return { scores, sentData, pairs: E.STANDARD_PAIRS, getRetailPairData: E.getRetailPairData };
+  return { scores, sentData, pairs: E.STANDARD_PAIRS, getRetailPairData: E.getRetailPairData, directPairs: (retailLatest && retailLatest.pairs) || null };
 }
 
 function evalMetric(rule, live) {
@@ -87,7 +87,7 @@ function evalMetric(rule, live) {
   if (rule.metric === "retail_long_pct" || rule.metric === "retail_short_pct") {
     const p = live.pairs.find((x) => x.pair === rule.target);
     if (!p) return null;
-    const rd = live.getRetailPairData(p, live.sentData);
+    const rd = live.getRetailPairData(p, live.sentData, live.directPairs);
     return rule.metric === "retail_long_pct" ? rd.retailLong : rd.retailShort;
   }
   return null;
