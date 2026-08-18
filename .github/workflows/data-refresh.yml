@@ -187,3 +187,32 @@ jobs:
           else
             echo "Score alert state beze změny."
           fi
+
+      # AI Smart Alerts — no-code pravidla z přirozeného jazyka (admin je píše
+      # v index.html → OpenRouter → data/smart_alerts.json přes GitHub Contents
+      # API). Tenhle krok jen VYHODNOCUJE (žádné psaní pravidel), stejný bot
+      # jako skóre alert výš (SCORE_TELEGRAM_*).
+      - name: "AI Smart Alerts (Telegram, no-code pravidla z přirozeného jazyka)"
+        timeout-minutes: 3
+        continue-on-error: true
+        env:
+          SCORE_TELEGRAM_BOT_TOKEN: ${{ secrets.SCORE_TELEGRAM_BOT_TOKEN }}
+          SCORE_TELEGRAM_CHAT_ID: ${{ secrets.SCORE_TELEGRAM_CHAT_ID }}
+        run: node scripts/smart-alerts.js
+      - name: "Commit: stav AI Smart Alerts při změně"
+        if: always()
+        run: |
+          git config user.name "smart-alerts-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/smart_alerts.json)" ]; then
+            git add data/smart_alerts.json
+            git commit -m "chore: update AI smart alerts state [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "AI smart alerts beze změny."
+          fi
