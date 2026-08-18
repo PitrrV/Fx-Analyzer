@@ -1980,7 +1980,7 @@ class FXApp extends React.Component{
           h('button',{type:'button',disabled:st.syncBusy,onClick:()=>self.doSync(true),style:btn},'🔄 Synchronizovat teď'),
           h('button',{type:'button',onClick:()=>self.logoutSync(),style:sec},'Odhlásit'),
           self.isAdmin&&h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12,paddingTop:12,borderTop:'1px solid #1b2130'}},
-            h('div',null,h('div',{style:{fontSize:12,fontWeight:700,color:T.text}},'🎨 Admin vzhled'),h('div',{style:{fontSize:10.5,color:T.faint,marginTop:2}},'Jiná paleta jen pro tebe — ostatní appku vidí beze změny.')),
+            h('div',null,h('div',{style:{fontSize:12,fontWeight:700,color:T.text}},'🎨 Barevné schéma'),h('div',{style:{fontSize:10.5,color:T.faint,marginTop:2}},'Jiná paleta jen pro tebe (Admin) — ostatní appku vidí beze změny.')),
             h('button',{type:'button',onClick:()=>self.toggleAdminSkin(),style:{border:'1px solid '+(st.adminSkin?T.accent:'#1b2130'),background:st.adminSkin?'rgba(212,167,44,.14)':'#0c0f16',color:st.adminSkin?T.accent:T.dim,borderRadius:8,padding:'6px 12px',fontSize:11.5,fontWeight:700,cursor:'pointer',fontFamily:'inherit',flex:'none'}},st.adminSkin?'Zapnuto':'Vypnuto'))),
         st.syncMsg&&h('div',{style:{fontSize:11.5,marginTop:10,color:st.syncMsg[0]==='⚠'?T.red:T.green,lineHeight:1.5}},st.syncMsg)),
       self.isAdmin&&h('div',{style:self.card({padding:'22px 24px',marginTop:14})},
