@@ -158,6 +158,37 @@ jobs:
             echo "US100 makro beze změny."
           fi
 
+      # Snapshot komponent skóre do data/engine_hist.json — dřív běžel jen 1×
+      # denně (engine-snapshot.yml, 21:30 UTC), takže graf "Vývoj skóre" ukazoval
+      # dnešní pohyb až večer, i když appka sama skóre přepočítává průběžně celý
+      # den. scripts/snapshot-engine.js PŘEPISUJE (ne přidává) záznam pro dnešek
+      # při každém běhu — takže na 15min cronu graf ukazuje aktuální dnešní
+      # hodnotu prakticky live, starší dny zůstávají netknuté (viz komentář ve
+      # skriptu). Přesunuto z vlastního workflow, ať se drží stejná zásada jako
+      # kalendář/VIX/ropa/AI radar výš — jeden scheduled trigger na účtu, ne
+      # další (GitHub s víc registrovanými cronů měl reálně nespolehlivé spouštění).
+      - name: "Snapshot komponent skóre (Vývoj skóre graf, intraday)"
+        timeout-minutes: 3
+        continue-on-error: true
+        run: node scripts/snapshot-engine.js
+      - name: "Commit: snapshot skóre při změně"
+        if: always()
+        run: |
+          git config user.name "engine-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/engine_hist.json)" ]; then
+            git add data/engine_hist.json
+            git commit -m "chore: update engine snapshot [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Engine snapshot beze změny."
+          fi
+
       # Telegram alert na výrazný pohyb skóre páru (|Δdiff| >= 1.0 od posledního
       # alertu) — počítá živé skóre ze stejného enginu jako appka nad daty, co
       # tenhle běh krok výš už osvěžil (kalendář/VIX/ropa), takže chytí i pohyb

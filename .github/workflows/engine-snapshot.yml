@@ -1,11 +1,12 @@
-name: Engine Snapshot
+name: Engine Snapshot (ruční/debug)
 
+# Vlastní denní cron (21:30 UTC) zrušen — krok "Snapshot komponent skóre" teď
+# běží na 15min cronu přímo v data-refresh.yml (piggyback na existující
+# trigger, ať appka drží zásadu z komentářů tam: víc registrovaných scheduled
+# triggerů na účtu = GitHub je reálně nespouští spolehlivě). Tenhle workflow
+# zůstává jen pro ruční/API spuštění při debugu.
 on:
-  schedule:
-    # Denně po datových cronech (kalendář/ceny/ropa/retail běží přes den,
-    # COT pá/so/ne/po/út). 21:30 UTC po-pá = po US session, data za den kompletní.
-    - cron: "30 21 * * 1-5"
-  workflow_dispatch:        # ruční/API spuštění
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Denní snapshot komponent skóre
+      - name: Snapshot komponent skóre
         run: node scripts/snapshot-engine.js
       - name: Commit při změně
         run: |
@@ -31,8 +32,6 @@ jobs:
           if [ -n "$(git status --porcelain data/engine_hist.json)" ]; then
             git add data/engine_hist.json
             git commit -m "chore: update engine snapshot [skip ci]"
-            # rebase před push — jiný datový cron mohl mezitím commitnout na main
-            # (reálný nález: první běh spadl na souběhu s kalibračním cronem)
             for i in 1 2 3 4 5; do
               git pull --rebase origin main
               git push && break
