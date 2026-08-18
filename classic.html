@@ -8,9 +8,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260815a"></script>
+<script src="engine.js?v=20260818a"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="sync.js?v=20260815a"></script>
+<script src="sync.js?v=20260818a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -801,7 +801,10 @@ function COTRetailPairPanel({pair,cotMeta,cotData,sentData}){
   const cot=getCOTNetSeries(pair.base,104);
   const quoteCot=getCOTNetSeries(pair.quote,104);
   const cotDiff=cot.values.map((v,i)=>v-(quoteCot.values[i]??0));
-  const retail=getRetailPairData(pair,sentData||{});
+  // Přímá data páru (_RETAIL_LATEST.pairs), když providerem naměřená —
+  // stejný fix jako index.html, ať appka pro stejný pár neukazuje jinde
+  // jinou hodnotu (viz komentář u getRetailPairData v engine.js).
+  const retail=getRetailPairData(pair,sentData||{},(typeof _RETAIL_LATEST!=='undefined'&&_RETAIL_LATEST)?_RETAIL_LATEST.pairs:null);
 
   // ── REÁLNÁ retailová série z uložené historie ──────────────
   const rawRetailSeries=getRetailSeries(pair,104);
