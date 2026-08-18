@@ -1,1 +1,1 @@
-{"rules":[{"id":"sa_msyjvxph188du","text":"Upozorni mě až u NZDUSD klesnou Retail Short ze 70% na 65%","summary":"Upozornit, až podíl short retail obchodníků na NZDUSD klesne pod 65 %.","metric":"retail_short_pct","targetType":"pair","target":"NZDUSD","op":"lte","value":65,"repeat":false,"status":"active","createdAt":"2026-08-18T10:59:34.000Z","updatedAt":"2026-08-18T10:59:34.000Z","lastValue":62,"lastMet":true,"lastCheckedAt":"2026-08-18T10:59:34.000Z","firedAt":null,"firedValue":null}]}
+{"rules":[]}
