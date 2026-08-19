@@ -46,7 +46,7 @@ function computeLiveState() {
     "CURRENCIES", "STANDARD_PAIRS", "FUND_HIST_WINDOW_WEEKS",
     "mapFFEvent", "capEventsWindow", "scoreCurrency",
     "getLatestCOTScores", "loadCOT", "loadSentiment",
-    "autoUpdateFromCalendar", "applyAutoRiskSentiment", "getRetailPairData",
+    "autoUpdateFromCalendar", "applyAutoRiskSentiment", "getRetailPairData", "getEfficiencyRatio",
   ].join(",");
   const factory = new Function(
     "window", "localStorage", "__prices",
@@ -69,7 +69,11 @@ function computeLiveState() {
   const sentData = {};
   for (const c of E.CURRENCIES) sentData[c] = sent && sent[c] != null ? sent[c] : 50;
 
-  return { scores, sentData, pairs: E.STANDARD_PAIRS, getRetailPairData: E.getRetailPairData, directPairs: (retailLatest && retailLatest.pairs) || null };
+  return {
+    scores, sentData, pairs: E.STANDARD_PAIRS,
+    getRetailPairData: E.getRetailPairData, getEfficiencyRatio: E.getEfficiencyRatio,
+    directPairs: (retailLatest && retailLatest.pairs) || null,
+  };
 }
 
 function evalMetric(rule, live) {
@@ -90,7 +94,22 @@ function evalMetric(rule, live) {
     const rd = live.getRetailPairData(p, live.sentData, live.directPairs);
     return rule.metric === "retail_long_pct" ? rd.retailLong : rd.retailShort;
   }
+  if (rule.metric === "efficiency_ratio") {
+    const p = live.pairs.find((x) => x.pair === rule.target);
+    if (!p) return null;
+    const er = live.getEfficiencyRatio(p.pair, 10);
+    return er ? er.er : null;
+  }
   return null;
+}
+
+// Stejná OR-sémantika jako smartRuleMet() v index.html (drženo ručně v syncu —
+// prohlížeč a tenhle skript běží v oddělených runtime, žádný sdílený modul).
+function ruleMet(rule, v) {
+  if (v == null) return false;
+  const test = (op, val) => (op === "gte" ? v >= val : v <= val);
+  if (rule.op2 != null && rule.value2 != null) return test(rule.op, rule.value) || test(rule.op2, rule.value2);
+  return test(rule.op, rule.value);
 }
 
 function escapeTgHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -121,7 +140,7 @@ async function sendTelegramMessage(token, chatId, text) {
     const val = evalMetric(rule, live);
     if (val == null) continue;
     checked++;
-    const met = rule.op === "gte" ? val >= rule.value : val <= rule.value;
+    const met = ruleMet(rule, val);
     const prevMet = !!rule.lastMet;
     rule.lastValue = val;
     rule.lastCheckedAt = nowIso;
@@ -132,7 +151,7 @@ async function sendTelegramMessage(token, chatId, text) {
       rule.firedAt = nowIso;
       rule.firedValue = val;
       if (token && chatId) {
-        const unit = rule.metric === "score" ? "" : " %";
+        const unit = (rule.metric === "retail_long_pct" || rule.metric === "retail_short_pct") ? " %" : "";
         const text = `🔔 <b>AI Smart Alert</b>\n„${escapeTgHtml(rule.text)}"\n\n${escapeTgHtml(rule.summary || "")}\nAktuální hodnota: <b>${val}${unit}</b>`;
         await sendTelegramMessage(token, chatId, text);
       }
