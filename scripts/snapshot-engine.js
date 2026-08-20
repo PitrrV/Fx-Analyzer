@@ -47,7 +47,11 @@ const factory = new Function(
 const E = factory({}, localStorageStub, prices);
 
 // ── Výpočet přesně jako frontend refreshData() ────────────────────────
-const cal = readJSON("data/calendar.json");
+// Akumulovaná historie (data/calendar_hist.json), ne jen rolling ~8týdenní
+// okno — viz stejný komentář ve scripts/score-alerts.js.
+let cal = null;
+try { const h = readJSON("data/calendar_hist.json"); if (h && Array.isArray(h.events) && h.events.length) cal = h; } catch (e) {}
+if (!cal) cal = readJSON("data/calendar.json");
 const events = cal.events.map(E.mapFFEvent);
 try { E.autoUpdateFromCalendar(events); } catch (e) {}
 try { E.applyAutoRiskSentiment(); } catch (e) {}

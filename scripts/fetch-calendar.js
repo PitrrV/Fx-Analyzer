@@ -93,4 +93,38 @@ function norm(e) {
   fs.mkdirSync("data", { recursive: true });
   fs.writeFileSync("data/calendar.json", JSON.stringify({ updated: new Date().toISOString(), source: "forexfactory-web", count: events.length, withActual, events }));
   console.log("Zapsáno data/calendar.json");
+
+  // ── Akumulovaná historie (data/calendar_hist.json) ──────────────────────
+  // data/calendar.json je jen ROLLING okno (~8 týdnů, tenhle cron ho každý běh
+  // přepíše) — server-side skripty, co z něj počítaly skóre (score-alerts.js,
+  // snapshot-engine.js, smart-alerts.js), tak měly k dispozici jen zlomek
+  // FUND_HIST_WINDOW_WEEKS (80 týdnů/~18 měsíců), zatímco appka v prohlížeči
+  // si stejná data průběžně slučuje do vlastní dlouhodobé historie
+  // (mergeFFHistory v engine.js, FF_STORE_MONTHS=36) — odsud reálný nález:
+  // appka v prohlížeči a Telegram alert ukazovaly různé skóre pro stejný pár
+  // ve stejnou chvíli. Tenhle blok dělá server-side to samé co mergeFFHistory
+  // — slučuje čerstvá data do dlouhodobé historie místo přepisu, stejný klíč
+  // (title|country|den) jako scripts/backfill-calendar.js, ať se soubory
+  // nerozejdou. Historie tu už byla jednorázově naplněná od 2024-03
+  // (calendar-backfill.yml) — tenhle blok ji jen udržuje průběžně čerstvou.
+  const HIST_MONTHS = 22, HIST_CAP = 20000;
+  const evKey = (e) => e.title + "|" + e.country + "|" + String(e.date).slice(0, 10);
+  let hist = { source: "forexfactory-web backfill (historické týdny)", events: [] };
+  try { const prev = JSON.parse(fs.readFileSync("data/calendar_hist.json", "utf8")); if (prev && Array.isArray(prev.events)) hist = prev; } catch (e) {}
+  const histMap = new Map();
+  for (const e of hist.events) histMap.set(evKey(e), e);
+  for (const e of events) {
+    const k = evKey(e), prev = histMap.get(k);
+    if (!prev || (!prev.actual && e.actual) || (!prev.forecast && e.forecast) || (!prev.previous && e.previous)) histMap.set(k, e);
+  }
+  let histEvents = [...histMap.values()];
+  const cutoff = Date.now() - HIST_MONTHS * 30 * 86400000;
+  histEvents = histEvents.filter((e) => { const t = new Date(e.date).getTime(); return isNaN(t) || t >= cutoff; });
+  histEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (histEvents.length > HIST_CAP) histEvents = histEvents.slice(histEvents.length - HIST_CAP);
+  hist.events = histEvents;
+  hist.updated = new Date().toISOString();
+  hist.eventsTotal = histEvents.length;
+  fs.writeFileSync("data/calendar_hist.json", JSON.stringify(hist));
+  console.log("Zapsáno data/calendar_hist.json (" + histEvents.length + " událostí, akumulovaná historie).");
 })().catch((e) => { console.error("FATAL", e); process.exit(1); });

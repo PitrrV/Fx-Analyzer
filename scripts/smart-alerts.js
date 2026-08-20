@@ -54,7 +54,10 @@ function computeLiveState() {
   );
   const E = factory({}, localStorageStub, prices);
 
-  const cal = readJSON("data/calendar.json", { events: [] });
+  // Akumulovaná historie (data/calendar_hist.json), ne jen rolling ~8týdenní
+  // okno — viz stejný komentář ve scripts/score-alerts.js.
+  const calHist = readJSON("data/calendar_hist.json", null);
+  const cal = (calHist && Array.isArray(calHist.events) && calHist.events.length) ? calHist : readJSON("data/calendar.json", { events: [] });
   const events = (cal.events || []).map(E.mapFFEvent);
   try { E.autoUpdateFromCalendar(events); } catch (e) {}
   try { E.applyAutoRiskSentiment(); } catch (e) {}
