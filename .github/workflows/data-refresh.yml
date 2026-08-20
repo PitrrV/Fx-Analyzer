@@ -46,8 +46,8 @@ jobs:
         run: |
           git config user.name "calendar-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain data/calendar.json)" ]; then
-            git add data/calendar.json
+          if [ -n "$(git status --porcelain data/calendar.json data/calendar_hist.json)" ]; then
+            git add data/calendar.json data/calendar_hist.json
             git commit -m "chore: update calendar [skip ci]"
             for i in 1 2 3 4 5; do
               git pull --rebase origin main
