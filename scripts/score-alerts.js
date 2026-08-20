@@ -174,13 +174,21 @@ function dominantComponent(m) {
     // vypadalo jako spam a nebylo hned vidět, že spolu souvisí — typicky
     // sdílenou měnou). Telegram limit ~4096 znaků na zprávu — bezpečně
     // rozděl po blocích, kdyby jich bylo hodně.
+    // Formát navržen tak, aby na první pohled (i na malém mobilním displeji,
+    // kde se dřívější "diff +0.9 → +2 (+1.1)" lámalo uprostřed čísel) bylo
+    // jasné, KTERÉ číslo je aktuální skóre TEĎ — to je otázka, na kterou
+    // uživatel u předchozího formátu neuměl rychle odpovědět. "Skóre teď" je
+    // proto na vlastním, tučném řádku; dřívější hodnota/delta/stáří baseline
+    // je až za ní jako doplňkový kontext.
+    const fmtNum = (n) => { const r = +n.toFixed(2); return (r >= 0 ? "+" : "") + r; };
     const blocks = moves.map((m) => {
       const dir = m.diffNow >= 0 ? "BUY" : "SELL", strong = m.diffNow >= 0 ? m.base : m.quote;
       const arrow = m.delta > 0 ? "📈" : "📉";
       const dom = dominantComponent(m);
-      const domLine = dom ? `\nHlavní příčina: ${escapeTgHtml(COMPONENT_LABELS[dom.key] || dom.key)} ${dom.delta >= 0 ? "+" : ""}${dom.delta}` : "";
-      return `${arrow} <b>${escapeTgHtml(m.pair)}</b> skóre diff ${m.diffPrev >= 0 ? "+" : ""}${m.diffPrev} → ${m.diffNow >= 0 ? "+" : ""}${m.diffNow} (${m.delta >= 0 ? "+" : ""}${m.delta})\n`
-        + `Nový bias: ${dir} (${escapeTgHtml(strong)} silnější) · základna stará ${ageLabel(m.prevTs)}${domLine}`;
+      const domLine = dom ? `\nHlavní příčina: ${escapeTgHtml(COMPONENT_LABELS[dom.key] || dom.key)} ${fmtNum(dom.delta)}` : "";
+      return `${arrow} <b>${escapeTgHtml(m.pair)}</b>\n`
+        + `Skóre teď: <b>${fmtNum(m.diffNow)}</b> · dřív ${fmtNum(m.diffPrev)} (Δ ${fmtNum(m.delta)})\n`
+        + `Bias: ${dir} (${escapeTgHtml(strong)} silnější) · základna ${ageLabel(m.prevTs)} stará${domLine}`;
     });
     const header = moves.length > 1 ? `🔔 <b>${moves.length} párů překročilo práh ${ALERT_THRESHOLD}:</b>\n\n` : "";
     const chunks = [];
