@@ -100,6 +100,7 @@ input[type=range]{accent-color:var(--cmd-accent)}
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useCallback,useRef}=React;
+const ADMIN_EMAIL='p.vospalek@gmail.com';
 
 // ── KONFIGURACE ──────────────────────────────────────────
 // ── ENGINE ── veškerá logika je ve sdíleném souboru engine.js
@@ -3356,8 +3357,46 @@ window.onerror=function(msg,src,line,col,err){
   if(el)el.innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:monospace;white-space:pre-wrap;font-size:12px">CHYBA: '+msg+'\nLine: '+line+'\n'+(err&&err.stack?err.stack:'')+'</div>';
   return false;
 };
+// ── Přístupová brána (uzavřený test — jen ADMIN_EMAIL) ─────────────────────
+// Stejný princip a stejný účet jako v index.html — viz komentář tam. Appka
+// nemá backend, tohle NENÍ skutečná bezpečnost, jen brání běžnému otevření.
+function AppGate(){
+  const [checking,setChecking]=useState(true);
+  const [authorized,setAuthorized]=useState(false);
+  const [email,setEmail]=useState(""), [pw,setPw]=useState("");
+  const [busy,setBusy]=useState(false), [msg,setMsg]=useState("");
+  useEffect(()=>{
+    if(!(window.Sync&&window.Sync.ready)){ setChecking(false); setAuthorized(false); setMsg("⚠ Přihlašovací systém se nenačetl (internet/Supabase). Zkus obnovit stránku."); return; }
+    const check=(s)=>{ const e=s&&s.user&&s.user.email?String(s.user.email).trim().toLowerCase():null; setChecking(false); setAuthorized(e===ADMIN_EMAIL); };
+    window.Sync.session().then(check).catch(()=>{ setChecking(false); setAuthorized(false); });
+    window.Sync.onAuth((s)=>check(s));
+  },[]);
+  async function login(){
+    if(!email.trim()||pw.length<6){ setMsg("Zadej e-mail a heslo (min. 6 znaků)."); return; }
+    setBusy(true); setMsg("⏳ Přihlašuji…");
+    try{ await window.Sync.signInPassword(email,pw); } // úspěch → onAuth výš přepne authorized sám
+    catch(e){ setBusy(false); setMsg("⚠ "+(e&&e.message||e)); }
+  }
+  const wrap={minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#07080c",fontFamily:"'Manrope',sans-serif"};
+  if(checking) return <div style={{...wrap,color:"#8b93a3",fontSize:13}}>Načítám…</div>;
+  if(authorized) return <ErrorBoundary><App/></ErrorBoundary>;
+  const fld={width:"100%",padding:"11px 14px",background:"#0a0d13",border:"1px solid #1b2130",borderRadius:10,color:"#eaedf3",fontSize:13,fontFamily:"'Manrope',sans-serif",marginBottom:10,display:"block",outline:"none",boxSizing:"border-box"};
+  const btn={width:"100%",padding:"12px",background:"linear-gradient(180deg,#5e7cfb,#4c63d9)",border:"1px solid #d4a72c",borderRadius:10,color:"#fff",fontSize:13,fontWeight:700,fontFamily:"inherit",cursor:"pointer"};
+  return (
+    <div style={{...wrap,padding:20}}>
+      <div style={{width:"100%",maxWidth:360,background:"#0c0f16",border:"1px solid #1b2130",borderRadius:14,padding:"28px 26px",boxSizing:"border-box"}}>
+        <div style={{fontSize:16,fontWeight:800,color:"#eaedf3",marginBottom:4}}>🔒 AT Trading FX</div>
+        <div style={{fontSize:12,color:"#8b93a3",marginBottom:18,lineHeight:1.5}}>Analyzer je zatím v uzavřeném testu. Přihlas se svým účtem.</div>
+        <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="e-mail" type="email" autoCapitalize="off" autoCorrect="off" style={fld}/>
+        <input value={pw} onChange={e=>setPw(e.target.value)} placeholder="heslo" type="password" onKeyDown={e=>{if(e.key==="Enter")login();}} style={fld}/>
+        <button type="button" disabled={busy} onClick={login} style={btn}>Přihlásit</button>
+        {msg&&<div style={{fontSize:11.5,marginTop:12,color:/^⚠/.test(msg)?"#f2606e":"#8b93a3",lineHeight:1.5}}>{msg}</div>}
+      </div>
+    </div>
+  );
+}
 try{
-  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><App/></ErrorBoundary>);
+  ReactDOM.createRoot(document.getElementById("root")).render(<ErrorBoundary><AppGate/></ErrorBoundary>);
 }catch(err){
   document.getElementById("root").innerHTML='<div style="padding:24px;color:#f85149;background:#0d1117;font-family:system-ui">Aplikace spadla při startu: '+(err&&err.message?err.message:err)+'</div>';
 }

@@ -2307,7 +2307,45 @@ class FXApp extends React.Component{
       !st.loaded&&h('div',{style:{position:'fixed',inset:0,background:'rgba(7,8,12,.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:99,fontSize:14,color:T.dim}},'⏳ Načítám živá data…'));
   }
 }
-ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(FXApp));
+// ── Přístupová brána (uzavřený test — jen ADMIN_EMAIL) ─────────────────────
+// Appka nemá backend, takže tohle NENÍ skutečná bezpečnost (kód appky je na
+// GitHub Pages veřejně stažitelný jako u každé statické stránky) — jen brání
+// tomu, aby appku běžně někdo otevřel a používal, dokud je "jen pro admina".
+// Server-side pipeline (data-refresh cron, Telegram alerty…) běží nezávisle,
+// tahle brána se jí vůbec netýká.
+class AppGate extends React.Component{
+  constructor(p){ super(p); this.state={checking:true,authorized:false,email:'',pw:'',busy:false,msg:''}; this.login=this.login.bind(this); }
+  componentDidMount(){
+    if(!(window.Sync&&window.Sync.ready)){ this.setState({checking:false,authorized:false,msg:'⚠ Přihlašovací systém se nenačetl (internet/Supabase). Zkus obnovit stránku.'}); return; }
+    const check=(s)=>{ const email=s&&s.user&&s.user.email?String(s.user.email).trim().toLowerCase():null; this.setState({checking:false,authorized:email===ADMIN_EMAIL}); };
+    window.Sync.session().then(check).catch(()=>this.setState({checking:false,authorized:false}));
+    window.Sync.onAuth((s)=>check(s));
+  }
+  async login(){
+    const email=this.state.email,pw=this.state.pw;
+    if(!email.trim()||pw.length<6){ this.setState({msg:'Zadej e-mail a heslo (min. 6 znaků).'}); return; }
+    this.setState({busy:true,msg:'⏳ Přihlašuji…'});
+    try{ await window.Sync.signInPassword(email,pw); } // úspěch → onAuth listener výš přepne authorized sám
+    catch(e){ this.setState({busy:false,msg:'⚠ '+(e&&e.message||e)}); }
+  }
+  render(){
+    const h=React.createElement, st=this.state;
+    const wrap={minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#07080c',fontFamily:"'Manrope',sans-serif"};
+    if(st.checking) return h('div',{style:Object.assign({},wrap,{color:'#8b93a3',fontSize:13})},'Načítám…');
+    if(st.authorized) return h(FXApp);
+    const fld={width:'100%',padding:'11px 14px',background:'#0a0d13',border:'1px solid #1b2130',borderRadius:10,color:'#eaedf3',fontSize:13,fontFamily:"'Manrope',sans-serif",marginBottom:10,display:'block',outline:'none',boxSizing:'border-box'};
+    const btn={width:'100%',padding:'12px',background:'linear-gradient(180deg,#5e7cfb,#4c63d9)',border:'1px solid #d4a72c',borderRadius:10,color:'#fff',fontSize:13,fontWeight:700,fontFamily:'inherit',cursor:'pointer'};
+    return h('div',{style:Object.assign({},wrap,{padding:20})},
+      h('div',{style:{width:'100%',maxWidth:360,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:14,padding:'28px 26px',boxSizing:'border-box'}},
+        h('div',{style:{fontSize:16,fontWeight:800,color:'#eaedf3',marginBottom:4}},'🔒 AT Trading FX'),
+        h('div',{style:{fontSize:12,color:'#8b93a3',marginBottom:18,lineHeight:1.5}},'Analyzer je zatím v uzavřeném testu. Přihlas se svým účtem.'),
+        h('input',{value:st.email,onChange:e=>this.setState({email:e.target.value}),placeholder:'e-mail',type:'email',autoCapitalize:'off',autoCorrect:'off',style:fld}),
+        h('input',{value:st.pw,onChange:e=>this.setState({pw:e.target.value}),placeholder:'heslo',type:'password',onKeyDown:e=>{if(e.key==='Enter')this.login();},style:fld}),
+        h('button',{type:'button',disabled:st.busy,onClick:this.login,style:btn},'Přihlásit'),
+        st.msg&&h('div',{style:{fontSize:11.5,marginTop:12,color:/^⚠/.test(st.msg)?'#f2606e':'#8b93a3',lineHeight:1.5}},st.msg)));
+  }
+}
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(AppGate));
 </script>
 </body>
 </html>
