@@ -22,7 +22,7 @@ body{background:#07080c;color:#eaedf3;font-family:'Manrope',system-ui,-apple-sys
 @keyframes fxpulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes fxfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media(max-width:1300px){.fx-grid{grid-template-columns:340px minmax(0,1fr)!important}.fx-right{grid-column:1/-1!important;position:static!important;max-height:none!important;top:auto!important}}
-@media(max-width:1000px){.fx-grid{grid-template-columns:1fr!important}.fx-root{flex-direction:column!important}.fx-aside{position:static!important;width:100%!important;height:auto!important;max-height:none!important;top:auto!important}.fx-left,.fx-right{position:static!important;max-height:none!important;top:auto!important}}
+@media(max-width:1000px){.fx-grid{grid-template-columns:1fr!important}.fx-root{flex-direction:column!important}.fx-aside{position:static!important;width:100%!important;height:auto!important;max-height:none!important;top:auto!important}.fx-left,.fx-right{position:static!important;max-height:none!important;top:auto!important}.fx-strength-grid{grid-template-columns:1fr!important}}
 </style>
 </head>
 <body>
@@ -1252,17 +1252,45 @@ class FXApp extends React.Component{
     const X=i=>PL+(W-PL-PR)*(i/(n-1)), Y=v=>PT+(H-PT-PB)*(1-(v-mn)/rng); const last=vals[n-1],col=last>=0?T.green:T.red;
     const d=self.smooth(vals.map((v,i)=>[X(i),Y(v)])); const z=Y(0);
     return h('svg',{viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block'}},h('defs',null,h('linearGradient',{id:'ct'+c,x1:0,y1:0,x2:0,y2:1},h('stop',{offset:'0%',stopColor:col,stopOpacity:.28}),h('stop',{offset:'100%',stopColor:col,stopOpacity:0}))),(mn<0&&mx>0)&&h('line',{x1:PL,x2:W-PR,y1:z,y2:z,stroke:'#2a3242',strokeDasharray:'3 4'}),h('path',{d:d+' L '+X(n-1)+' '+(H-PB)+' L '+X(0)+' '+(H-PB)+' Z',fill:'url(#ct'+c+')'}),h('path',{d:d,fill:'none',stroke:col,strokeWidth:2,strokeLinecap:'round'}),h('circle',{cx:X(n-1),cy:Y(last),r:3,fill:col,stroke:'#0b0d13',strokeWidth:1.5})); }
+  setCBPolicyScore(c,v){ const n=parseInt(v,10); if(isNaN(n))return; try{ const cur=JSON.parse(localStorage.getItem('v5_cb_policy')||'{}'); cur[c]=Object.assign({},cur[c],{score:n}); localStorage.setItem('v5_cb_policy',JSON.stringify(cur)); }catch(e){} try{ if(typeof CB_POLICY_DATA!=='undefined'&&CB_POLICY_DATA[c]) CB_POLICY_DATA[c].score=n; }catch(e){} this.refreshData(); }
+  // Nejbližší nadcházející rozhodnutí centrálních bank z kalendáře (30 dní
+  // dopředu) — řádek "Další významná rozhodnutí" pod tabulkou CB.
+  nextCBDecisions(){
+    let full=[]; try{ full=mergeEvents(this._cal||[],this._up||[])||[]; }catch(e){ full=this._up||[]; }
+    const horizon=Date.now()+30*86400000;
+    const hits=full.filter(e=>{ const t=parseEventTime(e.time); if(isNaN(t)||t<Date.now()||t>horizon) return false; return /rate decision|interest rate/i.test(e.event||''); })
+      .sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time)).slice(0,3);
+    return hits.map(e=>{ const d=new Date(parseEventTime(e.time)); return d.getDate()+'.'+(d.getMonth()+1)+'. ('+ev2ccy(e)+' '+(e.event||'')+')'; });
+  }
   renderCB(){ const self=this,h=this.h,T=this.tok;
     const rates=(typeof CENTRAL_BANK_RATES!=='undefined')?CENTRAL_BANK_RATES:{}; const pol=(typeof CB_POLICY_DATA!=='undefined')?CB_POLICY_DATA:{};
     let last=null; try{last=JSON.parse(localStorage.getItem('cb_last_auto')||'null');}catch(e){}
-    return h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('🏦 Centrální banky','Auto z kalendáře (rozhodnutí o sazbách) · ruční override možný'),
-      h('div',{style:{fontSize:11,color:T.dim,background:'rgba(46,211,160,.07)',border:'1px solid rgba(46,211,160,.2)',borderRadius:9,padding:'9px 11px',marginBottom:13,lineHeight:1.5}},'🔄 Sazby, CPI i policy cyklus se aktualizují ',h('b',{style:{color:T.green}},'automaticky'),' z kalendáře, jakmile vyjde výsledek zasedání (actual). Ručně přepisuj jen když chceš předběhnout kalendář.',last&&last.items&&last.items.length?h('div',{style:{marginTop:6,color:T.green}},'Naposledy auto: '+last.items.join(', ')+' · '+new Date(last.at).toLocaleDateString('cs-CZ')):null),
+    let nextDec=[]; try{nextDec=this.nextCBDecisions();}catch(e){}
+    const stanceLabel=ps=>ps>0?'JESTŘÁBÍ +'+ps:ps<0?'HOLUBIČÍ '+ps:'NEUTRÁLNÍ';
+    return h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('🏦 Centrální banky — postoj & sazby','Auto z kalendáře (rozhodnutí o sazbách) · ruční override možný'),
+      h('div',{style:{fontSize:11,color:T.dim,background:'rgba(46,211,160,.07)',border:'1px solid rgba(46,211,160,.2)',borderRadius:9,padding:'9px 11px',marginBottom:13,lineHeight:1.5}},'🔄 Sazby, CPI i policy cyklus se aktualizují ',h('b',{style:{color:T.green}},'automaticky'),' z kalendáře, jakmile vyjde výsledek zasedání (actual). Ručně přepisuj jen když chceš předběhnout kalendář.',
+        h('div',{style:{marginTop:6}},'Poslední update: '+new Date().toLocaleDateString('cs-CZ')+(nextDec.length?' · Další významná rozhodnutí: '+nextDec.join(', '):'')),
+        last&&last.items&&last.items.length?h('div',{style:{marginTop:4,color:T.green}},'Naposledy auto: '+last.items.join(', ')+' · '+new Date(last.at).toLocaleDateString('cs-CZ')):null),
+      h('div',{style:{display:'grid',gridTemplateColumns:'46px 88px 128px 1fr 84px',gap:10,padding:'0 0 8px',borderBottom:'1px solid #1b2130',fontSize:9.5,fontWeight:700,letterSpacing:'.06em',color:T.faint}},['MĚNA','SAZBA','POSTOJ','KOMENTÁŘ','SÍLA POSTOJE'].map(x=>h('span',{key:x},x))),
       h('div',{style:{display:'flex',flexDirection:'column',gap:2}},this.CUR.map(c=>{ const ps=(pol[c]&&pol[c].score)||0; const pc=ps>0?T.green:ps<0?T.red:T.amber;
-        return h('div',{key:c,style:{display:'grid',gridTemplateColumns:'46px 92px 1fr 64px',gap:10,alignItems:'center',padding:'9px 0',boxShadow:'0 1px 0 #14182333'}},
+        return h('div',{key:c,style:{display:'grid',gridTemplateColumns:'46px 88px 128px 1fr 84px',gap:10,alignItems:'center',padding:'9px 0',boxShadow:'0 1px 0 #14182333'}},
           h('span',{style:self.mono({fontSize:13,fontWeight:700})},c),
           h('div',{style:{display:'flex',alignItems:'center',gap:4}},h('input',{defaultValue:(rates[c]!=null?rates[c]:''),onBlur:e=>self.setCBRate(c,e.target.value),style:Object.assign(self.mono({fontSize:13,fontWeight:700,color:T.text}),{width:52,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:7,padding:'5px 7px',textAlign:'right',outline:'none'})}),h('span',{style:{fontSize:12,color:T.faint}},'%')),
+          h('span',{style:{fontSize:10,fontWeight:700,color:pc,background:pc+'1c',border:'1px solid '+pc+'40',borderRadius:6,padding:'3px 7px',textAlign:'center',width:'fit-content'}},stanceLabel(ps)),
           h('span',{style:{fontSize:11.5,color:T.dim}},(pol[c]&&pol[c].label)||'—'),
-          h('span',{style:{fontSize:10,fontWeight:700,color:pc,background:pc+'1c',border:'1px solid '+pc+'40',borderRadius:6,padding:'3px 7px',textAlign:'center'}},ps>0?'jestřáb +'+ps:ps<0?'holub '+ps:'neutrál')); })));
+          h('input',{defaultValue:ps,onBlur:e=>self.setCBPolicyScore(c,e.target.value),title:'Síla postoje (−3…+3) — jestřábí kladně, holubičí záporně',style:Object.assign(self.mono({fontSize:13,fontWeight:700,color:pc}),{width:52,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:7,padding:'5px 7px',textAlign:'center',outline:'none'})})); })));
+  }
+  renderCBFactors(){ const self=this,h=this.h,T=this.tok;
+    const pol=(typeof CB_POLICY_DATA!=='undefined')?CB_POLICY_DATA:{};
+    const flag={USD:'🇺🇸',EUR:'🇪🇺',GBP:'🇬🇧',JPY:'🇯🇵',AUD:'🇦🇺',NZD:'🇳🇿',CAD:'🇨🇦',CHF:'🇨🇭'};
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
+      h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Co síla měn znamená?',''),
+        h('div',{style:{fontSize:11.5,color:T.dim,lineHeight:1.7}},'Měny s vyšším skóre mají lepší kombinaci fundamentů, centrálních bank, výnosů a sentimentu. Rozdíl ve skóre ovlivňuje relativní atraktivitu měn a potenciální směr toků kapitálu.')),
+      h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Hlavní faktory ovlivňující dnes',''),
+        this.CUR.map(c=>h('div',{key:c,style:{display:'flex',alignItems:'flex-start',gap:10,padding:'9px 0',boxShadow:'0 1px 0 #14182333'}},
+          h('span',{style:{fontSize:16,lineHeight:1.3}},flag[c]||'●'),
+          h('div',{style:{minWidth:0}},h('div',{style:self.mono({fontSize:11.5,fontWeight:700})},c),
+            h('div',{style:{fontSize:11,color:T.dim,lineHeight:1.4,marginTop:1}},(pol[c]&&pol[c].label)||'—'))))));
   }
 
   buildGauge(){ const self=this,h=this.h;
@@ -1624,8 +1652,12 @@ class FXApp extends React.Component{
       h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Síla měn','Ranking −10 … +10'),h('div',{style:{display:'flex',flexDirection:'column',gap:6}},rows.map(r=>{const pos=r.score>=0,col=pos?T.green:T.red,w=Math.abs(r.score)/10*100;return h('div',{key:r.c,style:{display:'grid',gridTemplateColumns:'40px 1fr 42px',alignItems:'center',gap:9}},h('span',{style:self.mono({fontSize:11.5,fontWeight:700})},r.c),h('div',{style:{height:8,background:'#0a0d13',border:'1px solid #161b27',borderRadius:5,overflow:'hidden'}},h('div',{style:{height:'100%',width:w+'%',background:col,opacity:.9,borderRadius:5}})),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:col,textAlign:'right'})},self.sgn(r.score)));}))));
   }
   renderStrength(){ const self=this,h=this.h,T=this.tok;
-    return h('div',{style:{display:'flex',flexDirection:'column',gap:16,maxWidth:1600}},h('div',{style:self.card({padding:'20px 22px'})},self.ptitle('Ranking síly měn','Skóre = fundamenty + CB policy + real yield + COT + retail + sezónnost'),h('div',{style:{marginTop:6}},this.StrengthChart())),
-      this.renderCB(),
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:16,maxWidth:1600}},
+      h('div',{className:'fx-strength-grid',style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) 340px',gap:16,alignItems:'start'}},
+        h('div',{style:{display:'flex',flexDirection:'column',gap:16,minWidth:0}},
+          h('div',{style:self.card({padding:'20px 22px'})},self.ptitle('Ranking síly měn','Skóre = fundamenty + CB policy + real yield + COT + retail + sezónnost'),h('div',{style:{marginTop:6}},this.StrengthChart())),
+          this.renderCB()),
+        this.renderCBFactors()),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))',gap:14}},this.CUR.map(c=>{const d=this.D[c],col=self.scol(d.score);
         // Vážené příspěvky ze scoreCurrency().components — Σ řádků sedí PŘESNĚ na
         // celkové skóre (Fund už neobsahuje skrytě Policy/Yield, Sezóna má reálnou
