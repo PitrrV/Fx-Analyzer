@@ -2818,6 +2818,18 @@ function _pxPair(pair){return (typeof pair==="string")?STANDARD_PAIRS.find(x=>x.
 function _pxFrom(rates,p){ if(!rates) return null; const b=rates[p.base],q=rates[p.quote]; return (b&&q)?q/b:null; }
 function getPairPrice(pair){ const p=_pxPair(pair); if(!p||!_PRICES) return null; return _pxFrom(_PRICES.rates,p); }
 function getLivePrices(){ const o={}; if(!_PRICES) return o; STANDARD_PAIRS.forEach(p=>{const v=_pxFrom(_PRICES.rates,p); if(v!=null&&isFinite(v)) o[p.pair]=parseFloat(v.toFixed(p.pair.includes("JPY")?3:5));}); return o; }
+// Denní cenová historie páru (pro mini-graf "Market Momentum" apod.) — z téhož
+// data/prices.json cronu jako getPriceMomentum/getRangePosition, plus aktuální
+// live rate jako poslední bod (může být čerstvější než poslední denní snapshot).
+function getPairPriceHistory(pair,days){
+  const p=_pxPair(pair); if(!p||!_PRICES||!Array.isArray(_PRICES.hist)) return {dates:[],vals:[]};
+  const h=_PRICES.hist; const start=days?Math.max(0,h.length-days):0;
+  const dates=[],vals=[];
+  for(let i=start;i<h.length;i++){ const v=_pxFrom(h[i].rates,p); if(v==null) continue; dates.push(h[i].d); vals.push(v); }
+  const live=getPairPrice(pair);
+  if(live!=null) { dates.push(new Date().toISOString().slice(0,10)); vals.push(live); }
+  return {dates,vals};
+}
 // % změna ceny páru za posledních `days` denních záznamů (null = málo historie)
 function getPriceMomentum(pair,days=5){
   const p=_pxPair(pair); if(!p||!_PRICES||!Array.isArray(_PRICES.hist)||_PRICES.hist.length<2) return null;
