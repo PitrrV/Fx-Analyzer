@@ -2513,7 +2513,7 @@ class FXApp extends React.Component{
     const main=h('main',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column'}},header,
       st.tab==='dashboard'?h('div',{style:{padding:'18px 22px 40px'}},h('div',{className:'fx-grid',style:{display:'grid',gridTemplateColumns:'374px minmax(0,1fr) 350px',gap:16,alignItems:'start'}},leftSection,h('section',{style:{minWidth:0}},this.renderDetail()),h('section',{className:'fx-right',style:{position:'sticky',top:84}},this.renderRight())))
         :h('div',{style:{padding:'18px 22px 48px',animation:'fxfade .3s ease'}},st.tab==='strength'?this.renderStrength():st.tab==='cot'?this.renderCOT():st.tab==='season'?this.renderSeasonality():st.tab==='calendar'?this.renderCalendar():st.tab==='ai'?this.renderAIAnalysis():st.tab==='coach'?this.renderAICoach():st.tab==='journal'?this.renderJournal():st.tab==='smart'?this.renderSmartAlerts():st.tab==='settings'?this.renderSettings():null));
-    return h('div',{className:'fx-root',style:{minHeight:'100vh',display:'flex',background:'radial-gradient(1100px 620px at 80% -10%, rgba(94,124,251,.10), transparent 58%), radial-gradient(900px 520px at 4% 2%, rgba(46,211,160,.055), transparent 54%), #07080c'}},
+    return h('div',{className:'fx-root',style:{minHeight:'100vh',display:'flex',background:'radial-gradient(1100px 620px at 80% -10%, rgba(94,124,251,.14), transparent 58%), radial-gradient(900px 520px at 4% 2%, rgba(46,211,160,.08), transparent 54%), radial-gradient(700px 500px at 96% 96%, rgba(157,123,255,.07), transparent 60%), #07080c'}},
       aside,main,
       st.cotModal&&h(self.CotModal,{key:st.cotModal,c:st.cotModal,range:st.cotRange,category:st.cotCategory}),
       st.chartModal&&h(self.ChartModal,Object.assign({key:st.chartModal.title},st.chartModal)),
