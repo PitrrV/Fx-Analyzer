@@ -1644,7 +1644,19 @@ class FXApp extends React.Component{
       ),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,alignItems:'start'}},
       (()=>{ let store={}; try{store=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){} const ai=store[p.pair];
-        if(!ai) return h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('AI Analýza — '+p.pair,'Zatím bez analýzy'),h('div',{style:{fontSize:12.5,color:T.faint,lineHeight:1.55,marginTop:4}},'Nahraj screenshot grafu v záložce AI Analýza ✦ — pak se tu ukáže bias, klíčové úrovně a jestli souhlasí s fundamentálním biasem.'));
+        if(!ai){
+          // Prázdný stav — dekorativní vlnitá mřížka (topografický "hřeben") v patě
+          // karty, glow rámeček. Deterministické (žádný Math.random), ať se
+          // nepřekresluje jinak při každém renderu.
+          const meshRows=(()=>{ const rows=[],N=9; for(let r=0;r<N;r++){ const baseY=58+r*11,amp=13+((r%3)*4),freq=1.5+(r%4)*0.35,phase=r*0.7; const pts=[]; for(let i=0;i<=40;i++){ const x=i/40*640; const y=baseY+Math.sin(i/40*Math.PI*freq+phase)*amp+Math.sin(i/40*Math.PI*freq*2.3+phase*1.3)*amp*0.35; pts.push([x,y]); } rows.push({d:self.smooth(pts),op:0.05+(r/N)*0.24}); } return rows; })();
+          const sparkle=h('svg',{width:13,height:13,viewBox:'0 0 24 24',fill:T.accent,stroke:'none'},h('path',{d:'M12 2c0 0 1.4 6.7 4 9.3S22 12 22 12s-6.7 1.4-9.3 4S12 22 12 22s-1.4-6.7-4-9.3S2 12 2 12s6.7-1.4 9.3-4S12 2 12 2z'}));
+          return h('div',{style:Object.assign(self.card({padding:'20px 22px'}),{position:'relative',overflow:'hidden',minHeight:172,border:'1px solid rgba(94,124,251,.35)',boxShadow:'0 18px 40px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.04), 0 0 26px rgba(94,124,251,.14)'})},
+            h('svg',{style:{position:'absolute',left:0,right:0,bottom:0,width:'100%',height:'72%',pointerEvents:'none'},viewBox:'0 0 640 160',preserveAspectRatio:'none',fill:'none'},
+              meshRows.map((row,i)=>h('path',{key:i,d:row.d,stroke:T.accent,strokeOpacity:row.op,strokeWidth:1}))),
+            h('div',{style:{position:'relative',zIndex:1}},
+              h('div',{style:{display:'flex',alignItems:'center',gap:9,marginBottom:9}},sparkle,h('span',{style:{fontSize:12,fontWeight:800,letterSpacing:'.05em',color:T.text}},'AI ANALÝZA')),
+              h('div',{style:{fontSize:12.5,color:T.dim,lineHeight:1.55,maxWidth:360}},'Zatím bez analýzy — nahraj screenshot grafu v záložce AI Analýza ✦ — pak se tu ukáže bias, klíčové úrovně a jestli souhlasí s fundamentálním biasem.')));
+        }
         const biasC=ai.bias==='BULLISH'?T.green:ai.bias==='BEARISH'?T.red:T.amber; const aiDir=ai.bias==='BULLISH'?'BUY':ai.bias==='BEARISH'?'SELL':((ai.entry_setup&&ai.entry_setup.direction)||null);
         const agree=aiDir?(aiDir===p.dir?{t:'✓ SOUHLASÍ S BIASEM',c:T.green,m:'AI ('+ai.bias+') potvrzuje fundamentální '+p.dir+' — silnější konfluence.'}:{t:'⚠ PROTI BIASU',c:T.red,m:'AI vidí '+ai.bias+', ale fundamentální bias je '+p.dir+' → konflikt, opatrně.'}):{t:'NEUTRÁL',c:T.amber,m:'AI vidí '+(ai.bias||'SIDEWAYS')+' — bez jasné směrové shody s biasem.'};
         const kl=(ai.key_levels||[]).slice(0,4);
