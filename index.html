@@ -388,8 +388,25 @@ class FXApp extends React.Component{
     // Admin skin: jen přihlášený ADMIN_EMAIL + zapnutý přepínač v Nastavení
     // (výchozí zapnuto). Mění accent/violet — ty se používají napříč grafy,
     // tlačítky i zvýrazněními, takže i tahle malá změna přebarví appku jako celek.
-    if(this.isAdmin&&this.state.adminSkin) return {bg:'#07080c',line:'#1b2130',line2:'#262d3d',text:'#eaedf3',dim:'#8b93a3',faint:'#5a6273',green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:'#d4a72c',violet:'#ff6b9d'};
-    const a=this.props.accent||'#5e7cfb'; return {bg:'#07080c',line:'#1b2130',line2:'#262d3d',text:'#eaedf3',dim:'#8b93a3',faint:'#5a6273',green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:a,violet:'#9d7bff'};
+    if(this.isAdmin&&this.state.adminSkin) return this._tokens({green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:'#d4a72c',violet:'#ff6b9d'});
+    const a=this.props.accent||'#5e7cfb'; return this._tokens({green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:a,violet:'#9d7bff'});
+  }
+  // Design-token systém — App Background → Section → Card (surface) → Nested
+  // Card (surface-elevated) → Accent Glow. Staré krátké názvy (bg/line/dim/…)
+  // zůstávají netknuté (na nich stojí stovky míst v appce), tohle jsou jen
+  // doplňkové/pojmenované aliasy nad stejnou paletou, aby šlo napříč appkou
+  // (Dashboard, Síla měn, COT & Sentiment, Kalendář, AI Coach, Trading deník…)
+  // stavět na jednom sdíleném slovníku — card()/mono()/ptitle() jsou sdílené
+  // pro všechny stránky, takže úpravy tady se projeví všude najednou.
+  _tokens(c){
+    return {bg:'#07080c',line:'#1b2130',line2:'#262d3d',text:'#eaedf3',dim:'#8b93a3',faint:'#5a6273',
+      green:c.green,red:c.red,amber:c.amber,yellow:c.yellow,accent:c.accent,violet:c.violet,
+      background:'#07080c', surface:'#0f121a', surfaceElevated:'#0a0d13', surfaceHover:'#0c0f16',
+      border:'#1b2130', borderActive:c.accent,
+      textPrimary:'#eaedf3', textSecondary:'#8b93a3',
+      positive:c.green, negative:c.red, warning:c.amber,
+      accentTeal:c.green, accentPurple:c.violet,
+      glowTeal:'rgba(46,211,160,.18)', glowPurple:'rgba(157,123,255,.18)'};
   }
   toggleAdminSkin(){ const on=!this.state.adminSkin; try{localStorage.setItem('fx_admin_skin',on?'1':'0');}catch(e){} this.setState({adminSkin:on}); }
 
@@ -525,7 +542,7 @@ class FXApp extends React.Component{
       this.setState({smartRules:next,smartBusy:false});
     }catch(e){ this.setState({smartErr:(e&&e.message)||String(e),smartBusy:false}); }
   }
-  card(extra){ return Object.assign({background:'linear-gradient(180deg,#0f121a,#0b0d13)',border:'1px solid #1b2130',borderRadius:18,boxShadow:'0 18px 40px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04)'},extra||{}); }
+  card(extra){ const T=this.tok; return Object.assign({background:'linear-gradient(180deg,'+T.surface+' 0%,'+T.surfaceElevated+' 100%)',border:'1px solid '+T.border,borderRadius:18,boxShadow:'0 18px 40px rgba(0,0,0,.32),inset 0 1px 0 rgba(255,255,255,.04)'},extra||{}); }
   mono(extra){ return Object.assign({fontFamily:"'JetBrains Mono',monospace"},extra||{}); }
   ptitle(t,sub){ const h=this.h,T=this.tok; return h('div',{style:{marginBottom:14}}, h('div',{style:{fontSize:13.5,fontWeight:800,letterSpacing:'-.01em'}},t), sub&&h('div',{style:this.mono({fontSize:10.5,color:T.faint,marginTop:3,letterSpacing:'.02em'})},sub)); }
   sgn(v,d){ return (v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(d==null?1:d); }
@@ -2513,7 +2530,7 @@ class FXApp extends React.Component{
     const main=h('main',{style:{flex:1,minWidth:0,display:'flex',flexDirection:'column'}},header,
       st.tab==='dashboard'?h('div',{style:{padding:'18px 22px 40px'}},h('div',{className:'fx-grid',style:{display:'grid',gridTemplateColumns:'374px minmax(0,1fr) 350px',gap:16,alignItems:'start'}},leftSection,h('section',{style:{minWidth:0}},this.renderDetail()),h('section',{className:'fx-right',style:{position:'sticky',top:84}},this.renderRight())))
         :h('div',{style:{padding:'18px 22px 48px',animation:'fxfade .3s ease'}},st.tab==='strength'?this.renderStrength():st.tab==='cot'?this.renderCOT():st.tab==='season'?this.renderSeasonality():st.tab==='calendar'?this.renderCalendar():st.tab==='ai'?this.renderAIAnalysis():st.tab==='coach'?this.renderAICoach():st.tab==='journal'?this.renderJournal():st.tab==='smart'?this.renderSmartAlerts():st.tab==='settings'?this.renderSettings():null));
-    return h('div',{className:'fx-root',style:{minHeight:'100vh',display:'flex',background:'radial-gradient(1100px 620px at 80% -10%, rgba(94,124,251,.14), transparent 58%), radial-gradient(900px 520px at 4% 2%, rgba(46,211,160,.08), transparent 54%), radial-gradient(700px 500px at 96% 96%, rgba(157,123,255,.07), transparent 60%), #07080c'}},
+    return h('div',{className:'fx-root',style:{minHeight:'100vh',display:'flex',background:'radial-gradient(1100px 620px at 80% -10%, rgba(94,124,251,.14), transparent 58%), radial-gradient(900px 520px at 4% 2%, '+T.glowTeal.replace(',.18)',',.08)')+', transparent 54%), radial-gradient(700px 500px at 96% 96%, '+T.glowPurple.replace(',.18)',',.07)')+', transparent 60%), '+T.background}},
       aside,main,
       st.cotModal&&h(self.CotModal,{key:st.cotModal,c:st.cotModal,range:st.cotRange,category:st.cotCategory}),
       st.chartModal&&h(self.ChartModal,Object.assign({key:st.chartModal.title},st.chartModal)),
