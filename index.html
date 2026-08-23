@@ -116,7 +116,7 @@ class FXApp extends React.Component{
     this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D',
       adminSkin:(()=>{try{return localStorage.getItem('fx_admin_skin')!=='0';}catch(e){return true;}})(),
       smartInput:'', smartConvo:[], smartDraft:null, smartBusy:false, smartErr:'', smartRules:[], smartRulesLoaded:false, smartEditingId:null,
-      cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'',
+      cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, jImportRaw:'', jImportMsg:'', coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasData:null, seasBusy:false, seasErr:'',
       seasFullPath:null, seasFullBusy:false, seasFullErr:'', seasFullYears:20, seasFullChartModal:false,
       // Výchozí okno = celý aktuální kalendářní měsíc (1. → poslední den) —
       // přepočítá se samo při každém otevření appky podle dnešního data,
@@ -580,6 +580,32 @@ class FXApp extends React.Component{
     try{localStorage.setItem('journal',JSON.stringify(arr));}catch(e){}
     this.setState(s=>{const je=Object.assign({},s.jEditRR);delete je[id];return{jEditRR:je};});
     this.buildJournal(); this.forceUpdate();
+  }
+  // Hromadný import zpětných obchodů (např. z brokerského Excel/HTML reportu,
+  // připraveného mimo appku) — vloží JSON pole obchodů rovnou do localStorage
+  // 'journal' ve stejném tvaru, jaký ukládá addTrade(). ctx (conviction/band/…)
+  // u zpětných obchodů zůstává null — appka ho umí zachytit jen v momentě
+  // živého zápisu, ne dodatečně z historie (viz vysvětlení v chatu). Dedup podle
+  // id, ať dvojklik na Importovat nezdvojí záznamy.
+  importTradesJSON(){
+    let arr; try{ arr=JSON.parse(this.state.jImportRaw||'[]'); }catch(e){ this.setState({jImportMsg:'⚠ Neplatný JSON: '+(e&&e.message||e)}); return; }
+    if(!Array.isArray(arr)){ this.setState({jImportMsg:'⚠ Očekávám pole obchodů (JSON array).'}); return; }
+    let existing=[]; try{existing=loadJournal()||[];}catch(e){}
+    const existingIds=new Set(existing.map(t=>t.id));
+    const now=new Date().toISOString();
+    let added=0, skipped=0; const toAdd=[];
+    arr.forEach(raw=>{
+      const id=raw.id||('mt_'+(raw.mt_pos_id||(Date.now()+'_'+Math.random().toString(36).slice(2,7))));
+      if(existingIds.has(id)){ skipped++; return; }
+      toAdd.push({id,pair:raw.pair,dir:raw.dir,entry:String(raw.entry||''),sl:String(raw.sl||''),tp:String(raw.tp||''),
+        riskPct:String(raw.riskPct||''),outcome:raw.outcome||'open',rMultiple:(raw.rMultiple==null?null:+raw.rMultiple),
+        notes:raw.notes||'',openedAt:raw.openedAt||now,closedAt:raw.closedAt||null,updatedAt:now,ctx:null});
+      existingIds.add(id); added++;
+    });
+    const merged=toAdd.concat(existing);
+    try{ localStorage.setItem('journal',JSON.stringify(merged)); }catch(e){}
+    this.buildJournal(); this.forceUpdate();
+    this.setState({jImportMsg:'✅ Naimportováno '+added+' obchodů'+(skipped?(' · přeskočeno '+skipped+' (už existují)'):'')+'.', jImportRaw:added?'':this.state.jImportRaw});
   }
   setKey(k,v){ try{ if(v&&v.trim())localStorage.setItem(k,v.trim()); else localStorage.removeItem(k); }catch(e){} this.forceUpdate(); }
   saveCoach(msgs){ try{localStorage.setItem('fx_coach_chat',JSON.stringify(msgs.slice(-50)));}catch(e){} }
@@ -1702,6 +1728,10 @@ class FXApp extends React.Component{
     const lab=t=>h('div',{style:{fontSize:10,color:T.faint,marginBottom:4}},t);
     const pairOpts=this.PAIRS.map(p=>p.pair); const curPair=f.pair||pairOpts[0]||'EURUSD';
     return h('div',{style:{display:'flex',flexDirection:'column',gap:16,maxWidth:1600}},h('div',{style:{display:'flex',gap:14,flexWrap:'wrap'}},kpi('Win Rate',j.wr+'%',T.green),kpi('Profit Factor',(j.pf||0).toFixed(1),T.green),kpi('Obchodů',j.trades),kpi('Průměr R',self.sgn(j.avgR,2),T.green),kpi('Nejlepší R','+'+(j.bestR||0).toFixed(1),T.accent)),
+      h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Import obchodů (JSON)','Zpětné doplnění z brokerského reportu — vlož pole obchodů, appka je přidá do deníku (bez duplicit)'),
+        h('textarea',{value:st.jImportRaw,onChange:e=>self.setState({jImportRaw:e.target.value}),placeholder:'[{"pair":"EURUSD","dir":"LONG","entry":"1.084","sl":"1.080","tp":"1.090","outcome":"win","rMultiple":1.5,"openedAt":"2026-06-22T20:50:00.000Z","closedAt":"2026-06-23T09:05:00.000Z"}, …]',rows:6,style:Object.assign({},inp,{fontFamily:"'JetBrains Mono',monospace",fontSize:11.5,resize:'vertical'})}),
+        h('button',{type:'button',onClick:()=>self.importTradesJSON(),style:{marginTop:10,border:'1px solid '+T.accent,background:'linear-gradient(180deg,#5e7cfb,#4c63d9)',color:'#fff',borderRadius:10,padding:'10px 18px',fontFamily:'inherit',fontSize:13,fontWeight:700,cursor:'pointer'}},'⬆ Importovat'),
+        st.jImportMsg&&h('div',{style:{fontSize:11.5,marginTop:10,color:st.jImportMsg[0]==='⚠'?T.red:T.green,lineHeight:1.5}},st.jImportMsg)),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(420px,1fr))',gap:16,alignItems:'start'}},
       je.hasCtx&&h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('Ověření edge','WR podle kontextu appky — nové obchody si kontext uloží samy'),
         this.sliceBar('Conviction ★3+',je.byConvHi),this.sliceBar('Conviction ★0–2',je.byConvLo),
