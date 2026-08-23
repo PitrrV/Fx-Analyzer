@@ -1430,27 +1430,46 @@ class FXApp extends React.Component{
       enough?body:h('div',{style:{fontSize:10.5,color:T.faint,padding:'24px 4px',textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
     // Prstencový (donut) graf L/S poměru — glow prstenec + text uprostřed (vždy
     // "Long" strana, zeleně) + legenda vpravo se čtverečkovými značkami.
-    const donut=(id,longPct)=>{ const r=42,cx=55,cy=55,circ=2*Math.PI*r,lp=Math.max(0,Math.min(100,longPct)),lLen=circ*lp/100;
-      return h('div',{style:{position:'relative',width:88,height:88,flex:'none'}},
-        h('svg',{width:88,height:88,viewBox:'0 0 110 110'},
+    // Velikost roste s prostorem karty (128px), ať nepůsobí drobně.
+    const donut=(id,longPct,sz)=>{ const size=sz||104,r=42,cx=55,cy=55,circ=2*Math.PI*r,lp=Math.max(0,Math.min(100,longPct)),lLen=circ*lp/100;
+      return h('div',{style:{position:'relative',width:size,height:size,flex:'none'}},
+        h('svg',{width:size,height:size,viewBox:'0 0 110 110'},
           h('defs',null,h('filter',{id:id,x:'-50%',y:'-50%',width:'200%',height:'200%'},h('feGaussianBlur',{stdDeviation:3.5,result:'blur'}),h('feMerge',null,h('feMergeNode',{in:'blur'}),h('feMergeNode',{in:'SourceGraphic'})))),
           h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:'#0a0d13',strokeWidth:16}),
           h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:'#161b27',strokeWidth:14}),
           lLen>0&&h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:T.green,strokeWidth:14,strokeLinecap:'round',strokeDasharray:lLen+' '+circ,transform:'rotate(-90 '+cx+' '+cy+')',filter:'url(#'+id+')'}),
           lLen<circ&&h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:T.red,strokeWidth:14,strokeLinecap:'round',strokeDasharray:(circ-lLen)+' '+circ,strokeDashoffset:-lLen,transform:'rotate(-90 '+cx+' '+cy+')',filter:'url(#'+id+')'})),
         h('div',{style:{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
-          h('div',{style:self.mono({fontSize:17,fontWeight:800,color:T.green,lineHeight:1})},Math.round(lp)+'%'),
-          h('div',{style:{fontSize:8,color:T.faint,letterSpacing:'.08em',marginTop:3}},'LONG'))); };
-    const legend=lp=>h('div',{style:{display:'flex',flexDirection:'column',gap:9}},[['Long',lp,T.green],['Short',100-lp,T.red]].map(([lbl,v,col])=>
-      h('div',{key:lbl,style:{display:'flex',alignItems:'center',gap:7}},h('span',{style:{width:8,height:8,borderRadius:2,background:col,flex:'none'}}),
-        h('div',null,h('div',{style:{fontSize:10,color:T.faint}},lbl),h('div',{style:self.mono({fontSize:13,fontWeight:800,color:col})},Math.round(v)+'%')))));
-    const donutCell=(title,sub,subCol,enough,longPct,filterId)=>h('div',{style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,minHeight:128,display:'flex',flexDirection:'column'}},
-      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:9,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null),
-      enough?h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:16,flex:1}},donut(filterId,longPct),legend(longPct)):h('div',{style:{flex:1,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10.5,color:T.faint,textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
+          h('div',{style:self.mono({fontSize:19,fontWeight:800,color:T.green,lineHeight:1})},Math.round(lp)+'%'),
+          h('div',{style:{fontSize:8.5,color:T.faint,letterSpacing:'.08em',marginTop:4}},'LONG'))); };
+    const legend=lp=>h('div',{style:{display:'flex',flexDirection:'column',gap:11}},[['Long',lp,T.green],['Short',100-lp,T.red]].map(([lbl,v,col])=>
+      h('div',{key:lbl,style:{display:'flex',alignItems:'center',gap:8}},h('span',{style:{width:9,height:9,borderRadius:2.5,background:col,flex:'none'}}),
+        h('div',null,h('div',{style:{fontSize:10.5,color:T.faint}},lbl),h('div',{style:self.mono({fontSize:14,fontWeight:800,color:col})},Math.round(v)+'%')))));
+    // Přepínač donut ⇄ historický graf — jedno tlačítko v hlavičce; ikona
+    // ukazuje CÍLOVÝ režim (co se zobrazí po kliknutí).
+    const modeBtn=(view,onClick)=>h('button',{type:'button',onClick:e=>{e.stopPropagation();onClick();},title:view==='donut'?'Zobrazit historii (graf)':'Zobrazit aktuální poměr (donut)',style:{width:22,height:22,borderRadius:6,border:'1px solid #1b2130',background:'#0c0f16',color:T.dim,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flex:'none'}},
+      view==='donut'
+        ?h('svg',{width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},h('path',{d:'M4 19V10M12 19V5M20 19v-7'}))
+        :h('svg',{width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},h('circle',{cx:12,cy:12,r:8.5}),h('path',{d:'M12 3.5V12l7 3.9'})));
+    // Karta se dvěma přepínatelnými režimy (donut = aktuální poměr, graf =
+    // historie v čase) — pro Retail L/S a oba COT L/S.
+    const dualCell=(title,sub,subCol,enough,longPct,filterId,view,onToggle,chartBody,zoom)=>{
+      const showChart=view==='chart';
+      return h('div',{onClick:(showChart&&enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(showChart&&enough&&zoom)?'Klikni pro zvětšení':undefined,
+        style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,minHeight:128,display:'flex',flexDirection:'column',cursor:(showChart&&enough&&zoom)?'pointer':'default'}},
+        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:9,gap:6}},
+          h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),
+          h('div',{style:{display:'flex',alignItems:'center',gap:6}},sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,modeBtn(view,onToggle))),
+        !enough?h('div',{style:{flex:1,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10.5,color:T.faint,textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.')
+          :showChart?h('div',{style:{flex:1,display:'flex',alignItems:'center'}},chartBody)
+          :h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:18,flex:1}},donut(filterId,longPct),legend(longPct))); };
     const cotBase=cotLS(p.base), cotQuote=cotLS(p.quote);
     const retailLongPct=rlong.length?rlong[rlong.length-1]:50;
     const cotBaseLongPct=cotBase[0].vals.length?cotBase[0].vals[cotBase[0].vals.length-1]:50;
     const cotQuoteLongPct=cotQuote[0].vals.length?cotQuote[0].vals[cotQuote[0].vals.length-1]:50;
+    const retailView=this.state.retailView==='chart'?'chart':'donut';
+    const cotBaseView=this.state.cotBaseView==='chart'?'chart':'donut';
+    const cotQuoteView=this.state.cotQuoteView==='chart'?'chart':'donut';
     const rng=['1D','1W','1M','6M','ALL'];
     return h('div',{style:self.card({padding:'14px 16px'})},
       h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:4}},
@@ -1461,9 +1480,9 @@ class FXApp extends React.Component{
         h('div',{style:{display:'flex',gap:5}},rng.map(r=>{const on=gr===r;return h('button',{key:r,type:'button',onClick:()=>self.setState({gridRange:r}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.14)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:7,padding:'4px 9px',fontSize:10,fontWeight:700,cursor:'pointer',boxShadow:on?'0 0 12px rgba(94,124,251,.22)':'none'})},r);}))),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginTop:8}},
         cell('Vývoj skóre',scMode==='diff'?self.sgn(sb.score-sq.score):self.sgn(sb.score)+' / '+self.sgn(sq.score),T.dim,sdates.length>=2,h('div',{style:{filter:'drop-shadow(0 0 5px '+(scMode==='diff'?T.yellow:T.accent)+'55)'}},h(self.HoverChart,{key:'sc'+p.pair+gr+scMode,dates:sdates,series:scActive,height:128,yMin:scYMin,yMax:scYMax,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0,area:true})),{title:p.pair+' — Vývoj skóre',subtitle:p.base+' vs '+p.quote+' · '+gr,dates:sdates,variants:{dual:{series:scoreSeries,yMin:-10,yMax:10},diff:{series:diffSeries,yMin:null,yMax:null}},mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)},scoreToggle),
-        donutCell('Retail L/S',null,null,rpts.length>=2,retailLongPct,'donutGlowRt'+p.pair),
-        donutCell('COT '+p.base+' L/S',(sb.inst>0?'net +':'net ')+sb.inst,sb.inst>=0?T.green:T.red,cdates.length>=2,cotBaseLongPct,'donutGlowCb'+p.pair),
-        donutCell('COT '+p.quote+' L/S',(sq.inst>0?'net +':'net ')+sq.inst,sq.inst>=0?T.green:T.red,cdates.length>=2,cotQuoteLongPct,'donutGlowCq'+p.pair))); }
+        dualCell('Retail L/S',retailView==='chart'&&rlong.length?('L '+rlong[rlong.length-1]+'% · S '+(100-rlong[rlong.length-1])+'%'):null,T.green,rpts.length>=2,retailLongPct,'donutGlowRt'+p.pair,retailView,()=>self.setState({retailView:retailView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'rt'+p.pair+gr,dates:rdates,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:p.pair+' — Retail Long/Short',subtitle:'Sentiment v čase · '+gr,dates:rdates,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
+        dualCell('COT '+p.base+' L/S',(sb.inst>0?'net +':'net ')+sb.inst,sb.inst>=0?T.green:T.red,cdates.length>=2,cotBaseLongPct,'donutGlowCb'+p.pair,cotBaseView,()=>self.setState({cotBaseView:cotBaseView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'cb'+p.pair+gr,dates:cdates,series:cotBase,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:p.base+' — COT Long/Short',subtitle:'Institucionální pozicování · '+gr,dates:cdates,series:cotBase,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
+        dualCell('COT '+p.quote+' L/S',(sq.inst>0?'net +':'net ')+sq.inst,sq.inst>=0?T.green:T.red,cdates.length>=2,cotQuoteLongPct,'donutGlowCq'+p.pair,cotQuoteView,()=>self.setState({cotQuoteView:cotQuoteView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'cq'+p.pair+gr,dates:cdates,series:cotQuote,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:p.quote+' — COT Long/Short',subtitle:'Institucionální pozicování · '+gr,dates:cdates,series:cotQuote,yMin:0,yMax:100,mid:50,fmt:pctFmt}))); }
   pairObj(id){ return this.PAIRS.find(p=>p.pair===id)||this.PAIRS[0]; }
   // Plná sada stavů dle getPairDailyState — texty 1:1 s classic (žádná nová logika).
   // "Potvrzeno" jen při skutečné shodě dnešních dat s biasem (level==='confirm').
