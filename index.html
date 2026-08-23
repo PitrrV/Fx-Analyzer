@@ -2551,7 +2551,11 @@ class FXApp extends React.Component{
 // Server-side pipeline (data-refresh cron, Telegram alerty…) běží nezávisle,
 // tahle brána se jí vůbec netýká.
 class AppGate extends React.Component{
-  constructor(p){ super(p); this.state={checking:true,authorized:false,email:'',pw:'',busy:false,msg:''}; this.login=this.login.bind(this); }
+  // mode: 'password' (výchozí) | 'otp-request' (zadej e-mail, pošli kód) |
+  // 'otp-verify' (kód poslán, zadej 6místný kód z e-mailu). OTP přihlášení
+  // (bez hesla) je nezávislé na PC session — Supabase session žije per
+  // prohlížeč/localStorage, takže přihlášení na mobilu nijak neodhlásí PC.
+  constructor(p){ super(p); this.state={checking:true,authorized:false,email:'',pw:'',code:'',mode:'password',busy:false,msg:''}; this.login=this.login.bind(this); this.sendCode=this.sendCode.bind(this); this.confirmCode=this.confirmCode.bind(this); }
   componentDidMount(){
     if(!(window.Sync&&window.Sync.ready)){ this.setState({checking:false,authorized:false,msg:'⚠ Přihlašovací systém se nenačetl (internet/Supabase). Zkus obnovit stránku.'}); return; }
     const check=(s)=>{ const email=s&&s.user&&s.user.email?String(s.user.email).trim().toLowerCase():null; this.setState({checking:false,authorized:email===ADMIN_EMAIL}); };
@@ -2565,6 +2569,20 @@ class AppGate extends React.Component{
     try{ await window.Sync.signInPassword(email,pw); } // úspěch → onAuth listener výš přepne authorized sám
     catch(e){ this.setState({busy:false,msg:'⚠ '+(e&&e.message||e)}); }
   }
+  async sendCode(){
+    const email=this.state.email;
+    if(!email.trim()){ this.setState({msg:'Zadej e-mail.'}); return; }
+    this.setState({busy:true,msg:'⏳ Posílám kód na e-mail…'});
+    try{ await window.Sync.signIn(email); this.setState({busy:false,mode:'otp-verify',msg:'✅ Kód poslán na '+email+' — zkontroluj schránku (i spam) a opiš ho sem.'}); }
+    catch(e){ this.setState({busy:false,msg:'⚠ '+(e&&e.message||e)}); }
+  }
+  async confirmCode(){
+    const email=this.state.email,code=this.state.code;
+    if(!code.trim()){ this.setState({msg:'Zadej kód z e-mailu.'}); return; }
+    this.setState({busy:true,msg:'⏳ Ověřuji kód…'});
+    try{ await window.Sync.verifyCode(email,code); } // úspěch → onAuth listener výš přepne authorized sám
+    catch(e){ this.setState({busy:false,msg:'⚠ '+(e&&e.message||e)}); }
+  }
   render(){
     const h=React.createElement, st=this.state;
     const wrap={minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#07080c',fontFamily:"'Manrope',sans-serif"};
@@ -2572,13 +2590,26 @@ class AppGate extends React.Component{
     if(st.authorized) return h(FXApp);
     const fld={width:'100%',padding:'11px 14px',background:'#0a0d13',border:'1px solid #1b2130',borderRadius:10,color:'#eaedf3',fontSize:13,fontFamily:"'Manrope',sans-serif",marginBottom:10,display:'block',outline:'none',boxSizing:'border-box'};
     const btn={width:'100%',padding:'12px',background:'linear-gradient(180deg,#5e7cfb,#4c63d9)',border:'1px solid #d4a72c',borderRadius:10,color:'#fff',fontSize:13,fontWeight:700,fontFamily:'inherit',cursor:'pointer'};
+    const linkBtn={background:'none',border:'none',color:'#8ba3ff',fontSize:11.5,fontFamily:'inherit',cursor:'pointer',padding:0,marginTop:14,textAlign:'left',textDecoration:'underline'};
+    const passwordForm=[
+      h('input',{key:'e',value:st.email,onChange:e=>this.setState({email:e.target.value}),placeholder:'e-mail',type:'email',autoCapitalize:'off',autoCorrect:'off',style:fld}),
+      h('input',{key:'p',value:st.pw,onChange:e=>this.setState({pw:e.target.value}),placeholder:'heslo',type:'password',onKeyDown:e=>{if(e.key==='Enter')this.login();},style:fld}),
+      h('button',{key:'b',type:'button',disabled:st.busy,onClick:this.login,style:btn},'Přihlásit'),
+      h('button',{key:'l',type:'button',onClick:()=>this.setState({mode:'otp-request',msg:''}),style:linkBtn},'Zapomenuté heslo? Přihlásit se kódem z e-mailu →')];
+    const otpRequestForm=[
+      h('input',{key:'e',value:st.email,onChange:e=>this.setState({email:e.target.value}),placeholder:'e-mail',type:'email',autoCapitalize:'off',autoCorrect:'off',onKeyDown:e=>{if(e.key==='Enter')this.sendCode();},style:fld}),
+      h('button',{key:'b',type:'button',disabled:st.busy,onClick:this.sendCode,style:btn},'Poslat přihlašovací kód'),
+      h('button',{key:'l',type:'button',onClick:()=>this.setState({mode:'password',msg:''}),style:linkBtn},'← Zpět na přihlášení heslem')];
+    const otpVerifyForm=[
+      h('input',{key:'c',value:st.code,onChange:e=>this.setState({code:e.target.value}),placeholder:'6místný kód z e-mailu',inputMode:'numeric',onKeyDown:e=>{if(e.key==='Enter')this.confirmCode();},style:fld}),
+      h('button',{key:'b',type:'button',disabled:st.busy,onClick:this.confirmCode,style:btn},'Potvrdit a přihlásit'),
+      h('button',{key:'r',type:'button',onClick:this.sendCode,style:linkBtn},'Poslat kód znovu'),
+      h('button',{key:'l',type:'button',onClick:()=>this.setState({mode:'password',msg:''}),style:linkBtn},'← Zpět na přihlášení heslem')];
     return h('div',{style:Object.assign({},wrap,{padding:20})},
       h('div',{style:{width:'100%',maxWidth:360,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:14,padding:'28px 26px',boxSizing:'border-box'}},
         h('div',{style:{fontSize:16,fontWeight:800,color:'#eaedf3',marginBottom:4}},'🔒 AT Trading FX'),
         h('div',{style:{fontSize:12,color:'#8b93a3',marginBottom:18,lineHeight:1.5}},'Analyzer je zatím v uzavřeném testu. Přihlas se svým účtem.'),
-        h('input',{value:st.email,onChange:e=>this.setState({email:e.target.value}),placeholder:'e-mail',type:'email',autoCapitalize:'off',autoCorrect:'off',style:fld}),
-        h('input',{value:st.pw,onChange:e=>this.setState({pw:e.target.value}),placeholder:'heslo',type:'password',onKeyDown:e=>{if(e.key==='Enter')this.login();},style:fld}),
-        h('button',{type:'button',disabled:st.busy,onClick:this.login,style:btn},'Přihlásit'),
+        st.mode==='otp-request'?otpRequestForm:st.mode==='otp-verify'?otpVerifyForm:passwordForm,
         st.msg&&h('div',{style:{fontSize:11.5,marginTop:12,color:/^⚠/.test(st.msg)?'#f2606e':'#8b93a3',lineHeight:1.5}},st.msg)));
   }
 }
