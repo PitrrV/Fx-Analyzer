@@ -1462,9 +1462,10 @@ class FXApp extends React.Component{
           h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:'#161b27',strokeWidth:14}),
           lLen>0&&h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:T.green,strokeWidth:14,strokeLinecap:'round',strokeDasharray:lLen+' '+circ,transform:'rotate(-90 '+cx+' '+cy+')',filter:'url(#'+id+')'}),
           lLen<circ&&h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:T.red,strokeWidth:14,strokeLinecap:'round',strokeDasharray:(circ-lLen)+' '+circ,strokeDashoffset:-lLen,transform:'rotate(-90 '+cx+' '+cy+')',filter:'url(#'+id+')'})),
-        h('div',{style:{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
-          h('div',{style:self.mono({fontSize:19,fontWeight:800,color:T.green,lineHeight:1})},Math.round(lp)+'%'),
-          h('div',{style:{fontSize:8.5,color:T.faint,letterSpacing:'.08em',marginTop:4}},'LONG'))); };
+        (()=>{ const shortDom=lp<50; const domPct=shortDom?100-lp:lp, domCol=shortDom?T.red:T.green;
+          return h('div',{style:{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
+            h('div',{style:self.mono({fontSize:19,fontWeight:800,color:domCol,lineHeight:1})},Math.round(domPct)+'%'),
+            h('div',{style:{fontSize:8.5,color:T.faint,letterSpacing:'.08em',marginTop:4}},shortDom?'SHORT':'LONG')); })()); };
     const legend=lp=>h('div',{style:{display:'flex',flexDirection:'column',gap:11}},[['Long',lp,T.green],['Short',100-lp,T.red]].map(([lbl,v,col])=>
       h('div',{key:lbl,style:{display:'flex',alignItems:'center',gap:8}},h('span',{style:{width:9,height:9,borderRadius:2.5,background:col,flex:'none'}}),
         h('div',null,h('div',{style:{fontSize:10.5,color:T.faint}},lbl),h('div',{style:self.mono({fontSize:14,fontWeight:800,color:col})},Math.round(v)+'%')))));
