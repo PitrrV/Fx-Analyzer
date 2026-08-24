@@ -14,7 +14,7 @@
   // localStorage klíče k synchronizaci
   const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","or_coach_model","oanda_token","oanda_env","cot_data","cot_meta","sent_data","positions_ts","v5_fav_pairs_ts"];
   const KEYS_ARR=["v5_ff_hist","journal","v5_fav_pairs","us100_retail_hist"];           // pole → sloučit (v5_fav_pairs viz výjimka ve smartMerge)
-  const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","positions","bias_state","engine_log","forecast_log","v5_cb_rates","us100_cot_hist","us100_score_hist"]; // objekty → sloučit
+  const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","pair_notes_ts","positions","bias_state","engine_log","forecast_log","v5_cb_rates","us100_cot_hist","us100_score_hist"]; // objekty → sloučit
   // TRANSIENT klíče se NIKDY nesynchronizují — a stripTransient() je navíc aktivně
   // odstraňuje ze slitých dat (applyLocal by jinak zapsal i staré kopie z cloudu
   // zpátky do zařízení a při push by se vracely do cloudu donekonečna):
