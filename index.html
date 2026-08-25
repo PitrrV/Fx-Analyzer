@@ -485,7 +485,7 @@ class FXApp extends React.Component{
     if(!orKey) throw new Error('Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).');
     const convo=this.state.smartConvo.concat([{role:'user',text:sentence}]);
     const apiMsgs=convo.map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
-    const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:buildSmartAlertSystemPrompt()}].concat(apiMsgs),max_tokens:500,temperature:0.1});
+    const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:buildSmartAlertSystemPrompt()}].concat(apiMsgs),max_tokens:500,temperature:0.1,reasoning:{exclude:true}});
     const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Smart Alerts'};
     const models=[(localStorage.getItem('or_coach_model')||'').trim()||'openrouter/free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free','google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
     let raw='';
@@ -641,7 +641,7 @@ class FXApp extends React.Component{
       const ctx=this.buildCoachContext(t);
       const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_TEACHING_PRINCIPLES+'\n\n'+COACH_PERSONA+'\n\n'+COACH_GUARDRAILS+'\n\n'+COACH_PERSONALIZATION+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB;
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
-      const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:1400,temperature:0.4});
+      const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:2200,temperature:0.4,reasoning:{exclude:true}});
       const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Coach'};
       const models=[(localStorage.getItem('or_coach_model')||'').trim()||'openrouter/free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free','google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
       let reply='';
@@ -650,12 +650,13 @@ class FXApp extends React.Component{
       reply=this.sanitizeCoachReply(reply);
       this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:reply}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};});
     }catch(e){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ '+(e&&e.message||e)}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); } }
-  // Free/slabší modely občas do odpovědi propašují vlastní "uvažování" (anglické
-  // věty typu "we need to…", "let's produce…") před skutečnou odpovědí — tohle
-  // takové úvodní odstavce useče, ať uživatel nevidí scratchpad modelu.
+  // Free/slabší (hlavně "reasoning") modely občas do odpovědi propašují vlastní
+  // "uvažování" (anglické věty typu "we need to…", "Okay, the user is asking…")
+  // místo/před skutečnou odpovědí — request už žádá reasoning:{exclude:true},
+  // ale ne každý provider to respektuje, takže tohle zůstává jako záchranná síť.
   sanitizeCoachReply(text){
     if(!text) return text;
-    const LEAK_RX=[/^(we|i)\s+(need to|should|will|must)\b/i,/^let'?s\s+(produce|write|draft|make|translate)\b/i,/^(the\s+user|user)\s+(only\s+)?wants\b/i,/^okay,?\s+(let'?s|i)\b/i,/^\(?thinking\)?\s*[:\-]/i,/^here'?s\s+(the|my)\s+(translation|answer|response)\b/i];
+    const LEAK_RX=[/^(we|i)\s+(need to|should|will|must)\b/i,/^let'?s\s+(produce|write|draft|make|translate|check|look|see|break)\b/i,/^let\s+me\s+(check|look|see|break|think)\b/i,/^(the\s+user|user)\s+(only\s+)?(wants|is\s+asking|asked)\b/i,/^okay,?\s+(let'?s|i|the\s+user)\b/i,/^\(?thinking\)?\s*[:\-]/i,/^here'?s\s+(the|my)\s+(translation|answer|response)\b/i,/^(looking at|first,?\s+for|now,?\s+(let'?s|i))\b/i];
     let paras=String(text).split(/\n{1,}/);
     while(paras.length>1){
       const p=paras[0].trim();
@@ -663,6 +664,13 @@ class FXApp extends React.Component{
       if(looksLikeLeak) paras.shift(); else break;
     }
     const cleaned=paras.join('\n\n').trim();
+    // Coach má dle systémového promptu VŽDY odpovídat česky. Delší text bez
+    // jediné české diakritiky prakticky jistě není odpověď, ale celý uniklý
+    // (často ještě uťatý) scratchpad modelu — radši čestná chybová hláška
+    // než zmatený anglický text.
+    if(cleaned.length>200&&!/[ěščřžýáíéůúťďň]/i.test(cleaned)){
+      return '⚠ Model tentokrát vrátil jen interní "uvažování" bez finální odpovědi (typické u slabších free modelů). Zkus se zeptat znovu, nebo v Nastavení ⚙ nastav spolehlivější (klidně placený) model pro Coache.';
+    }
     return cleaned||text;
   }
   buildCoachContext(focusText){ const sc={}; this.CUR.forEach(c=>{const d=this.D[c];sc[c]={score:+d.score.toFixed(2),fund:+d.fund.toFixed(2),cot:+d.cot.toFixed(2),cotPct:d.cotPct,policy:+d.policy.toFixed(2),yield:+d.yield.toFixed(2),season:+d.season.toFixed(2),cb:d.cb,inst:d.inst,retail:d.retail};});
@@ -737,7 +745,7 @@ class FXApp extends React.Component{
       const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading FX Analyzer'};
       let parsed=null,err='';
       for(const m of models){ try{
-        const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:JSON.stringify({model:m,messages:[{role:'system',content:AI_SYSTEM_PROMPT},{role:'user',content:[{type:'image_url',image_url:{url:'data:'+mt+';base64,'+b64}},{type:'text',text:ctx}]}],max_tokens:2048})});
+        const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:JSON.stringify({model:m,messages:[{role:'system',content:AI_SYSTEM_PROMPT},{role:'user',content:[{type:'image_url',image_url:{url:'data:'+mt+';base64,'+b64}},{type:'text',text:ctx}]}],max_tokens:2048,reasoning:{exclude:true}})});
         const d=await r.json(); if(d.error){err=(d.error.message||'chyba')+' ('+m+')';continue;}
         const cnd=d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content; if(!cnd){err='prázdná odpověď ('+m+')';continue;}
         const clean=String(cnd).replace(/```json|```/g,'').trim(); const si=clean.indexOf('{'),ei=clean.lastIndexOf('}');
