@@ -5,16 +5,22 @@
 // v data-refresh.yml (15 min), žádný nový trigger, žádný nový Telegram bot
 // (reused SCORE_TELEGRAM_BOT_TOKEN/CHAT_ID).
 //
-// Pravidlo: {id,text,summary,metric,targetType,target,op,value,repeat,status,
-// lastValue,lastMet,lastCheckedAt,firedAt,firedValue}. status: active|paused|fired.
-//
-// Vyhodnocení: met = op==="gte" ? value>=threshold : value<=threshold. Alert se
-// spustí jen na PŘECHODU !lastMet→met (ne opakovaně, dokud je podmínka trvale
-// splněná) — lastMet je uloženo z minulého běhu (nebo z okamžiku vytvoření
-// pravidla v prohlížeči, spočtené na aktuální hodnotě, ať čerstvě vytvořené
-// pravidlo, co je hned splněné, nespustí falešný alert při první kontrole).
-// Bez "repeat" (výchozí) se po spuštění pravidlo samo pozastaví (status
-// "fired") — typický záměr věty "upozorni mě, AŽ..." je jednorázový.
+// Dva typy pravidel (rozlišené polem "kind"):
+// - kind:"metric" (výchozí/starší pravidla bez "kind" se chovají takhle):
+//   {id,text,summary,metric,targetType,target,op,value,repeat,status,
+//   lastValue,lastMet,lastCheckedAt,firedAt,firedValue}. status: active|paused|fired.
+//   Vyhodnocení: met = op==="gte" ? value>=threshold : value<=threshold. Alert se
+//   spustí jen na PŘECHODU !lastMet→met (ne opakovaně, dokud je podmínka trvale
+//   splněná) — lastMet je uloženo z minulého běhu (nebo z okamžiku vytvoření
+//   pravidla v prohlížeči, spočtené na aktuální hodnotě, ať čerstvě vytvořené
+//   pravidlo, co je hned splněné, nespustí falešný alert při první kontrole).
+//   Bez "repeat" (výchozí) se po spuštění pravidlo samo pozastaví (status
+//   "fired") — typický záměr věty "upozorni mě, AŽ..." je jednorázový.
+// - kind:"event": {id,text,summary,kind:"event",ccy,event,date(YYYY-MM-DD),
+//   status,notified,lastCheckedAt,firedAt,firedActual,firedEstimate,firedPrev}.
+//   Žádná hranice — spustí se jednou, jakmile appka v kalendářních datech uvidí
+//   pro danou (ccy,event,date) vyplněné "actual". "repeat" se u tohoto typu
+//   ignoruje (ekonomická zpráva vyjde jen jednou), po spuštění vždy → "fired".
 const fs = require("fs");
 const path = require("path");
 
@@ -115,6 +121,18 @@ function ruleMet(rule, v) {
   return test(rule.op, rule.value);
 }
 
+// Stejný zdroj jako computeLiveState() (přednost akumulované historii, ta se
+// aktualizuje cronem a má i starší/rychle proběhlé události, co z rolling
+// calendar.json okna už mohly vypadnout), ale BEZ mapFFEvent() — surová data
+// mají "country" už jako 3písmennou měnu (viz data/calendar_hist.json), takže
+// se rovnou porovnává s rule.ccy beze ztráty/konverze.
+function loadCalendarEventsRaw() {
+  const hist = readJSON("data/calendar_hist.json", null);
+  if (hist && Array.isArray(hist.events) && hist.events.length) return hist.events;
+  const cal = readJSON("data/calendar.json", { events: [] });
+  return cal.events || [];
+}
+
 function escapeTgHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 async function sendTelegramMessage(token, chatId, text) {
   try {
@@ -133,6 +151,7 @@ async function sendTelegramMessage(token, chatId, text) {
   if (!state.rules.length) { console.log("Žádná AI Smart Alerts pravidla."); return; }
 
   const live = computeLiveState();
+  const calEvents = loadCalendarEventsRaw();
   const token = (process.env.SCORE_TELEGRAM_BOT_TOKEN || "").trim();
   const chatId = (process.env.SCORE_TELEGRAM_CHAT_ID || "").trim();
   const nowIso = new Date().toISOString();
@@ -140,6 +159,35 @@ async function sendTelegramMessage(token, chatId, text) {
 
   for (const rule of state.rules) {
     if (rule.status !== "active") continue;
+
+    if (rule.kind === "event") {
+      checked++;
+      rule.lastCheckedAt = nowIso;
+      changed = true;
+      const match = calEvents.find((e) =>
+        String(e.country || "").toUpperCase() === rule.ccy &&
+        e.title === rule.event &&
+        String(e.date || "").slice(0, 10) === rule.date
+      );
+      const actual = match && match.actual != null ? String(match.actual).trim() : "";
+      if (actual && !rule.notified) {
+        fired++;
+        rule.notified = true;
+        rule.firedAt = nowIso;
+        rule.firedActual = actual;
+        rule.firedEstimate = (match.forecast != null && String(match.forecast).trim() !== "") ? String(match.forecast).trim() : null;
+        rule.firedPrev = (match.previous != null && String(match.previous).trim() !== "") ? String(match.previous).trim() : null;
+        rule.status = "fired"; // jednorázová zpráva — "repeat" u tohoto typu nedává smysl
+        if (token && chatId) {
+          const text = `🔔 <b>AI Smart Alert — výsledek</b>\n${escapeTgHtml(rule.ccy)} · ${escapeTgHtml(rule.event)}\n\nVýsledek: <b>${escapeTgHtml(rule.firedActual)}</b>`
+            + (rule.firedEstimate ? `\nOdhad: ${escapeTgHtml(rule.firedEstimate)}` : "")
+            + (rule.firedPrev ? `\nPředchozí: ${escapeTgHtml(rule.firedPrev)}` : "");
+          await sendTelegramMessage(token, chatId, text);
+        }
+      }
+      continue;
+    }
+
     const val = evalMetric(rule, live);
     if (val == null) continue;
     checked++;

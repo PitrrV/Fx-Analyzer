@@ -87,11 +87,13 @@ function smartRuleMet(rule,v){
   if(rule.op2!=null&&rule.value2!=null) return test(rule.op,rule.value)||test(rule.op2,rule.value2);
   return test(rule.op,rule.value);
 }
-function buildSmartAlertSystemPrompt(){
+function buildSmartAlertSystemPrompt(upcoming){
   const pairList=STANDARD_PAIRS.map(p=>p.pair).join(', ');
   const curList=CURRENCIES.join(', ');
+  const upcList=(upcoming||[]).map(x=>x.ccy+' | '+x.event+' | '+x.date).join('\n')||'(žádné nadcházející HIGH/MEDIUM události v příštích 14 dnech)';
   return 'Jsi parser přirozeného jazyka pro "AI Smart Alerts" v FX analytické appce (AT Trading FX Command Center). Uživatel (admin appky) napíše česky nebo anglicky větu popisující, na co chce být upozorněn. Buď z ní sestav STRUKTUROVANÉ pravidlo, nebo — pokud věta neumožňuje jednoznačné sestavení — polož JEDNU konkrétní upřesňující otázku (česky). Nikdy nehádej, radši se zeptej.\n\n'
-    +'DOSTUPNÉ METRIKY:\n'
+    +'DVA TYPY PRAVIDEL — nejdřív rozpoznej, o který jde:\n\n'
+    +'TYP A) HRANICE ČÍSLA — uživatel chce upozornit, až appkou POČÍTANÁ metrika (skóre/retail/ER) překročí hranici. DOSTUPNÉ METRIKY:\n'
     +'- "score" — fundamentální skóre (škála přibližně −10 až +10). targetType "currency" (target = jedna z: '+curList+') NEBO targetType "pair" (target = kód páru — rozdíl skóre base−quote, tj. bias páru).\n'
     +'- "retail_long_pct" / "retail_short_pct" — % retailových obchodníků long/short na páru (škála 0–100). targetType vždy "pair".\n'
     +'- "efficiency_ratio" — Efficiency Ratio (Kaufman), technický indikátor síly trendu za posledních 10 dní z cenové historie (škála 0–1: ~1 = hladký přímočarý pohyb, ~0 = rozkolísaný chaos beze směru). targetType vždy "pair". V appce vidět jako "ER · EFFICIENCY RATIO" v detailu páru.\n\n'
@@ -102,11 +104,17 @@ function buildSmartAlertSystemPrompt(){
     +'Pokud uživatel řekne "klesne z 80 % na 70 %", počáteční hodnota (80) je jen kontext pro tebe — do pravidla dej jen cílovou: "op":"lte","value":70.\n\n'
     +'DRUHÁ PODMÍNKA (op2/value2, VOLITELNÉ): když uživatel popisuje DVĚ hranice spojené "NEBO" (typicky u oscilátoru — "klesne pod X NEBO stoupne nad Y", "mimo rozsah X–Y"), přidej "op2" a "value2" ve stejném formátu — pravidlo se spustí, když platí ALESPOŇ JEDNA z podmínek (op/value NEBO op2/value2). Nepoužívej op2/value2, pokud věta popisuje jen jednu hranici.\n\n'
     +'"repeat": true jen pokud uživatel výslovně chce OPAKOVANÉ upozorňování ("pokaždé když…", "vždycky když…") — jinak false (jednorázově, appka pak sama pravidlo pozastaví).\n\n'
+    +'TYP B) VÝSLEDEK KONKRÉTNÍ EKONOMICKÉ ZPRÁVY — uživatel chce prostě vědět HOLÝ VÝSLEDEK (actual číslo), až vyjde — NE hranici, NE jestli je nad/pod odhadem, NE dopad na skóre. Typické fráze: "upozorni mě na výsledek X", "chci vědět jaký bude/byl CPI", "pošli mi NFP číslo, až vyjde". U TOHOTO typu NIKDY se neptej na hranici skóre ani žádné jiné číslo — to je špatně pochopená otázka.\n'
+    +'Najdi v seznamu NADCHÁZEJÍCÍCH UDÁLOSTÍ (měna | přesný název | datum) níže PŘESNĚ JEDNU shodu podle měny a názvu zprávy z uživatelovy věty. Použij název a datum PŘESNĚ tak, jak je v seznamu — nevymýšlej, nezkracuj, nepřekládej.\n'
+    +'NADCHÁZEJÍCÍ UDÁLOSTI (příštích 14 dní, jen HIGH/MEDIUM dopad, jen ty bez výsledku):\n'+upcList+'\n\n'
+    +'Pokud nenajdeš žádnou jednoznačnou shodu (nic podobného v seznamu, nebo víc možných shod), zeptej se — např. vypiš 2-3 nejbližší kandidáty ze seznamu a nech uživatele vybrat.\n\n'
     +'Odpověz VÝHRADNĚ JSON, žádný další text, žádné markdown bloky (bez ```):\n'
-    +'- Rozumíš jednoznačně: {"ok":true,"metric":"score|retail_long_pct|retail_short_pct|efficiency_ratio","targetType":"currency|pair","target":"...","op":"gte|lte","value":number,"op2":"gte|lte"|null,"value2":number|null,"repeat":false,"summary":"jedna věta česky — lidsky čitelné shrnutí pravidla"}\n'
-    +'- Potřebuješ upřesnit: {"ok":false,"question":"konkrétní otázka česky"}\n\n'
-    +'Příklad 1: "Upozorni mě, až retail sentiment na AUDUSD klesne z 80 % short na 70 % short." → {"ok":true,"metric":"retail_short_pct","targetType":"pair","target":"AUDUSD","op":"lte","value":70,"op2":null,"value2":null,"repeat":false,"summary":"Upozornit, až podíl short retail obchodníků na AUDUSD klesne pod 70 %."}\n'
-    +'Příklad 2: "Upozorni mě až EURJPY ER klesne na 0.90 nebo stoupne na 0.98." → {"ok":true,"metric":"efficiency_ratio","targetType":"pair","target":"EURJPY","op":"lte","value":0.9,"op2":"gte","value2":0.98,"repeat":false,"summary":"Upozornit, až Efficiency Ratio na EURJPY klesne pod 0,90 nebo vzroste nad 0,98."}';
+    +'- TYP A rozumíš jednoznačně: {"ok":true,"kind":"metric","metric":"score|retail_long_pct|retail_short_pct|efficiency_ratio","targetType":"currency|pair","target":"...","op":"gte|lte","value":number,"op2":"gte|lte"|null,"value2":number|null,"repeat":false,"summary":"jedna věta česky — lidsky čitelné shrnutí pravidla"}\n'
+    +'- TYP B rozumíš jednoznačně: {"ok":true,"kind":"event","ccy":"...","event":"přesný název ZE SEZNAMU","date":"YYYY-MM-DD","summary":"jedna věta česky — např. Upozornit na výsledek Tokyo Core CPI y/y (JPY) dne 28.8."}\n'
+    +'- Potřebuješ upřesnit (u obou typů): {"ok":false,"question":"konkrétní otázka česky"}\n\n'
+    +'Příklad 1: "Upozorni mě, až retail sentiment na AUDUSD klesne z 80 % short na 70 % short." → {"ok":true,"kind":"metric","metric":"retail_short_pct","targetType":"pair","target":"AUDUSD","op":"lte","value":70,"op2":null,"value2":null,"repeat":false,"summary":"Upozornit, až podíl short retail obchodníků na AUDUSD klesne pod 70 %."}\n'
+    +'Příklad 2: "Upozorni mě až EURJPY ER klesne na 0.90 nebo stoupne na 0.98." → {"ok":true,"kind":"metric","metric":"efficiency_ratio","targetType":"pair","target":"EURJPY","op":"lte","value":0.9,"op2":"gte","value2":0.98,"repeat":false,"summary":"Upozornit, až Efficiency Ratio na EURJPY klesne pod 0,90 nebo vzroste nad 0,98."}\n'
+    +'Příklad 3: "Upozorni mě na výsledek Tokyo Core CPI y/y" (a v seznamu je "JPY | Tokyo Core CPI y/y | 2026-08-28") → {"ok":true,"kind":"event","ccy":"JPY","event":"Tokyo Core CPI y/y","date":"2026-08-28","summary":"Upozornit na výsledek Tokyo Core CPI y/y (JPY), jakmile vyjde 28. 8."}';
 }
 
 class FXApp extends React.Component{
@@ -480,12 +488,39 @@ class FXApp extends React.Component{
     if(r.op2!=null){ if(r.op2!=='gte'&&r.op2!=='lte') return false; if(typeof r.value2!=='number'||!isFinite(r.value2)) return false; }
     return true;
   }
+  // Nadcházející HIGH/MEDIUM události (14 dní, bez výsledku) — posílá se LLM
+  // parseru, ať pro "upozorni mě na výsledek X" vybírá z REÁLNÝCH událostí
+  // (přesný název/datum), ne z vymyšleného textu. validateEventRule() níž
+  // nad stejným seznamem ještě jednou ověří, že appka opravdu nevytvoří
+  // pravidlo na neexistující/špatně napsanou událost.
+  upcomingEventsForSmart(){
+    const up=this._up||[]; const cutoff=Date.now()+14*86400000; const seen=new Set(); const out=[];
+    up.forEach(x=>{
+      if(x.actual&&String(x.actual).trim()!=='') return;
+      const im=impUp(x.impact); if(im!=='HIGH'&&im!=='MEDIUM') return;
+      let ccy; try{ ccy=ev2ccy(x); }catch(e){ return; }
+      if(!this.CUR.includes(ccy)) return;
+      const t=parseEventTime(x.time); if(!(t>Date.now()&&t<=cutoff)) return;
+      const date=new Date(t).toISOString().slice(0,10);
+      const key=ccy+'|'+x.event+'|'+date; if(seen.has(key)) return; seen.add(key);
+      out.push({ccy,event:x.event,date});
+    });
+    return out;
+  }
+  validateEventRule(r,upcoming){
+    if(!r||typeof r!=='object') return false;
+    if(!r.ccy||!this.CUR.includes(r.ccy)) return false;
+    if(!r.event||typeof r.event!=='string') return false;
+    if(!r.date||!/^\d{4}-\d{2}-\d{2}$/.test(r.date)) return false;
+    return (upcoming||this.upcomingEventsForSmart()).some(x=>x.ccy===r.ccy&&x.event===r.event&&x.date===r.date);
+  }
   async parseSmartAlertSentence(sentence){
     const orKey=(localStorage.getItem('or_key')||'').trim();
     if(!orKey) throw new Error('Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).');
     const convo=this.state.smartConvo.concat([{role:'user',text:sentence}]);
     const apiMsgs=convo.map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
-    const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:buildSmartAlertSystemPrompt()}].concat(apiMsgs),max_tokens:500,temperature:0.1,reasoning:{exclude:true}});
+    const upcoming=this.upcomingEventsForSmart();
+    const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:buildSmartAlertSystemPrompt(upcoming)}].concat(apiMsgs),max_tokens:500,temperature:0.1,reasoning:{exclude:true}});
     const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Smart Alerts'};
     const models=[(localStorage.getItem('or_coach_model')||'').trim()||'openrouter/free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free','google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
     let raw='';
@@ -501,10 +536,13 @@ class FXApp extends React.Component{
     this.setState({smartBusy:true,smartErr:''});
     try{
       const {parsed,convo}=await this.parseSmartAlertSentence(t);
-      if(parsed.ok&&this.validateSmartRule(parsed)){
+      if(parsed.ok&&parsed.kind==='event'&&this.validateEventRule(parsed)){
+        const draft={id:'sa_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:t,summary:parsed.summary||'',kind:'event',ccy:parsed.ccy,event:parsed.event,date:parsed.date};
+        this.setState({smartDraft:draft,smartConvo:[],smartInput:'',smartBusy:false});
+      }else if(parsed.ok&&this.validateSmartRule(parsed)){
         const val=this.computeSmartValue(parsed);
         const met=smartRuleMet(parsed,val);
-        const draft={id:'sa_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:t,summary:parsed.summary||'',metric:parsed.metric,targetType:parsed.targetType,target:parsed.target,op:parsed.op,value:parsed.value,op2:parsed.op2!=null?parsed.op2:null,value2:parsed.value2!=null?parsed.value2:null,repeat:!!parsed.repeat,curValue:val,curMet:met};
+        const draft={id:'sa_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7),text:t,summary:parsed.summary||'',kind:'metric',metric:parsed.metric,targetType:parsed.targetType,target:parsed.target,op:parsed.op,value:parsed.value,op2:parsed.op2!=null?parsed.op2:null,value2:parsed.value2!=null?parsed.value2:null,repeat:!!parsed.repeat,curValue:val,curMet:met};
         this.setState({smartDraft:draft,smartConvo:[],smartInput:'',smartBusy:false});
       }else if(parsed.ok===false&&parsed.question){
         this.setState({smartConvo:convo.concat([{role:'assistant',text:parsed.question}]),smartInput:'',smartBusy:false});
@@ -517,9 +555,11 @@ class FXApp extends React.Component{
     const d=this.state.smartDraft; if(!d||this.state.smartBusy) return;
     this.setState({smartBusy:true,smartErr:''});
     const nowIso=new Date().toISOString(); const editingId=this.state.smartEditingId;
-    const rule={id:editingId||d.id,text:d.text,summary:d.summary,metric:d.metric,targetType:d.targetType,target:d.target,op:d.op,value:d.value,op2:d.op2!=null?d.op2:null,value2:d.value2!=null?d.value2:null,repeat:d.repeat,status:'active',createdAt:nowIso,updatedAt:nowIso,lastValue:d.curValue,lastMet:d.curMet,lastCheckedAt:nowIso,firedAt:null,firedValue:null};
+    const rule=d.kind==='event'
+      ?{id:editingId||d.id,text:d.text,summary:d.summary,kind:'event',ccy:d.ccy,event:d.event,date:d.date,status:'active',createdAt:nowIso,updatedAt:nowIso,notified:false,lastCheckedAt:nowIso,firedAt:null,firedActual:null,firedEstimate:null,firedPrev:null}
+      :{id:editingId||d.id,text:d.text,summary:d.summary,kind:'metric',metric:d.metric,targetType:d.targetType,target:d.target,op:d.op,value:d.value,op2:d.op2!=null?d.op2:null,value2:d.value2!=null?d.value2:null,repeat:d.repeat,status:'active',createdAt:nowIso,updatedAt:nowIso,lastValue:d.curValue,lastMet:d.curMet,lastCheckedAt:nowIso,firedAt:null,firedValue:null};
     try{
-      const next=await this.ghSmartAlertsMutate(rules=>{ const f=rules.filter(r=>r.id!==rule.id); f.push(rule); return f; },(editingId?'chore: upravit AI alert — ':'chore: nový AI alert — ')+rule.target+' [skip ci]');
+      const next=await this.ghSmartAlertsMutate(rules=>{ const f=rules.filter(r=>r.id!==rule.id); f.push(rule); return f; },(editingId?'chore: upravit AI alert — ':'chore: nový AI alert — ')+(rule.target||rule.ccy||'')+' [skip ci]');
       this.setState({smartRules:next,smartDraft:null,smartEditingId:null,smartBusy:false,smartErr:''});
     }catch(e){ this.setState({smartErr:(e&&e.message)||String(e),smartBusy:false}); }
   }
@@ -529,8 +569,11 @@ class FXApp extends React.Component{
     if(this.state.smartBusy) return; this.setState({smartBusy:true,smartErr:''});
     try{
       const patch={status};
-      if(status==='active'){ const val=this.computeSmartValue(rule); const met=smartRuleMet(rule,val); patch.lastValue=val; patch.lastMet=met; patch.lastCheckedAt=new Date().toISOString(); }
-      const next=await this.ghSmartAlertsMutate(rules=>rules.map(r=>r.id===rule.id?Object.assign({},r,patch,{updatedAt:new Date().toISOString()}):r),'chore: AI alert stav → '+status+' ('+rule.target+') [skip ci]');
+      if(status==='active'){
+        if(rule.kind==='event'){ patch.notified=false; patch.lastCheckedAt=new Date().toISOString(); }
+        else{ const val=this.computeSmartValue(rule); const met=smartRuleMet(rule,val); patch.lastValue=val; patch.lastMet=met; patch.lastCheckedAt=new Date().toISOString(); }
+      }
+      const next=await this.ghSmartAlertsMutate(rules=>rules.map(r=>r.id===rule.id?Object.assign({},r,patch,{updatedAt:new Date().toISOString()}):r),'chore: AI alert stav → '+status+' ('+(rule.target||rule.ccy||'')+') [skip ci]');
       this.setState({smartRules:next,smartBusy:false});
     }catch(e){ this.setState({smartErr:(e&&e.message)||String(e),smartBusy:false}); }
   }
@@ -538,7 +581,7 @@ class FXApp extends React.Component{
     if(this.state.smartBusy) return; if(!confirm('Smazat alert „'+rule.text+'"?')) return;
     this.setState({smartBusy:true,smartErr:''});
     try{
-      const next=await this.ghSmartAlertsMutate(rules=>rules.filter(r=>r.id!==rule.id),'chore: smazat AI alert ('+rule.target+') [skip ci]');
+      const next=await this.ghSmartAlertsMutate(rules=>rules.filter(r=>r.id!==rule.id),'chore: smazat AI alert ('+(rule.target||rule.ccy||'')+') [skip ci]');
       this.setState({smartRules:next,smartBusy:false});
     }catch(e){ this.setState({smartErr:(e&&e.message)||String(e),smartBusy:false}); }
   }
@@ -2423,9 +2466,10 @@ class FXApp extends React.Component{
     const btn={padding:'11px 18px',background:'linear-gradient(180deg,#5e7cfb,#4c63d9)',border:'1px solid '+T.accent,borderRadius:10,color:'#fff',fontSize:13,fontWeight:700,fontFamily:'inherit',cursor:'pointer'};
     const sec=Object.assign({},btn,{background:'#0c0f16',border:'1px solid #232b3d',color:T.dim});
     const hasToken=!!(localStorage.getItem('gh_pat')||'').trim();
-    const metricLabel=r=>r.metric==='score'?'Skóre':r.metric==='retail_long_pct'?'Retail long %':r.metric==='retail_short_pct'?'Retail short %':'Efficiency Ratio';
+    const metricLabel=r=>r.kind==='event'?'Výsledek zprávy':r.metric==='score'?'Skóre':r.metric==='retail_long_pct'?'Retail long %':r.metric==='retail_short_pct'?'Retail short %':'Efficiency Ratio';
     const unitFor=m=>SMART_ALERT_PCT_METRICS.includes(m)?' %':'';
     const opLabel=r=>{
+      if(r.kind==='event') return r.event+' · '+new Date(r.date+'T00:00:00').toLocaleDateString('cs-CZ');
       const u=unitFor(r.metric), base=(r.op==='gte'?'≥ ':'≤ ')+r.value+u;
       return (r.op2!=null&&r.value2!=null)?(base+' nebo '+(r.op2==='gte'?'≥ ':'≤ ')+r.value2+u):base;
     };
@@ -2439,14 +2483,16 @@ class FXApp extends React.Component{
         h('div',{style:{flex:1,minWidth:220}},
           h('div',{style:{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:5}},
             statusBadge(r.status),
-            h('span',{style:self.mono({fontSize:11,fontWeight:700,color:T.accent})},r.target),
+            h('span',{style:self.mono({fontSize:11,fontWeight:700,color:T.accent})},r.target||r.ccy),
             h('span',{style:self.mono({fontSize:10.5,color:T.dim})},metricLabel(r)+' '+opLabel(r)),
             r.repeat&&h('span',{style:self.mono({fontSize:9.5,color:T.violet})},'↻ opakovaně')),
           h('div',{style:{fontSize:12.5,color:T.text,lineHeight:1.5,marginBottom:4}},r.summary||r.text),
           h('div',{style:self.mono({fontSize:10,color:T.faint})},'„'+r.text+'"'),
           h('div',{style:self.mono({fontSize:10,color:T.faint,marginTop:5})},
-            (r.lastValue!=null?('Poslední hodnota: '+r.lastValue+unitFor(r.metric)+(r.lastCheckedAt?' · '+new Date(r.lastCheckedAt).toLocaleString('cs-CZ'):'')):'Zatím nekontrolováno')
-            +(r.firedAt?(' · 🔔 spuštěno '+new Date(r.firedAt).toLocaleString('cs-CZ')):''))),
+            r.kind==='event'
+              ?(r.firedActual!=null?('Výsledek: '+r.firedActual+(r.firedEstimate?' (odhad '+r.firedEstimate+')':'')+(r.firedPrev?' · předchozí '+r.firedPrev:'')):('Zatím bez výsledku — čeká na '+new Date(r.date+'T00:00:00').toLocaleDateString('cs-CZ')))
+              :((r.lastValue!=null?('Poslední hodnota: '+r.lastValue+unitFor(r.metric)+(r.lastCheckedAt?' · '+new Date(r.lastCheckedAt).toLocaleString('cs-CZ'):'')):'Zatím nekontrolováno')
+                +(r.firedAt?(' · 🔔 spuštěno '+new Date(r.firedAt).toLocaleString('cs-CZ')):'')))),
         h('div',{style:{display:'flex',flexDirection:'column',gap:5,flex:'none'}},
           r.status==='active'&&h('button',{type:'button',disabled:st.smartBusy,onClick:()=>self.setSmartRuleStatus(r,'paused'),style:Object.assign({},sec,{padding:'6px 10px',fontSize:11})},'⏸ Pauza'),
           r.status!=='active'&&h('button',{type:'button',disabled:st.smartBusy,onClick:()=>self.setSmartRuleStatus(r,'active'),style:Object.assign({},sec,{padding:'6px 10px',fontSize:11,color:T.green,border:'1px solid '+T.green+'66'})},'▶ '+(r.status==='fired'?'Znovu sledovat':'Aktivovat')),
@@ -2472,10 +2518,12 @@ class FXApp extends React.Component{
         self.ptitle('Rozumím takhle — potvrdíš?'),
         h('div',{style:{fontSize:13,color:T.text,lineHeight:1.6,marginBottom:8}},draft.summary),
         h('div',{style:self.mono({fontSize:11,color:T.dim,lineHeight:1.7})},
-          h('div',null,'Sleduje: ',h('b',{style:{color:T.accent}},draft.target),' · ',metricLabel(draft),' ',opLabel(draft)),
-          h('div',null,'Aktuální hodnota: ',h('b',{style:{color:T.text}},draft.curValue==null?'neznámá':(draft.curValue+unitFor(draft.metric))),
-            draft.curMet&&h('span',{style:{color:T.amber,marginLeft:6}},'(podmínka už teď platí — spustí se hned při první kontrole)')),
-          draft.repeat&&h('div',null,'↻ Bude upozorňovat opakovaně, ne jen jednou.')),
+          draft.kind==='event'
+            ?h('div',null,'Sleduje: ',h('b',{style:{color:T.accent}},draft.ccy),' · ',draft.event,' · ',new Date(draft.date+'T00:00:00').toLocaleDateString('cs-CZ'),h('div',{style:{marginTop:4,color:T.faint}},'Pošle Telegram s holým výsledkem (žádná hranice), hned jak appka uvidí, že zpráva má vyplněné actual číslo.'))
+            :[h('div',{key:'m'},'Sleduje: ',h('b',{style:{color:T.accent}},draft.target),' · ',metricLabel(draft),' ',opLabel(draft)),
+              h('div',{key:'v'},'Aktuální hodnota: ',h('b',{style:{color:T.text}},draft.curValue==null?'neznámá':(draft.curValue+unitFor(draft.metric))),
+                draft.curMet&&h('span',{style:{color:T.amber,marginLeft:6}},'(podmínka už teď platí — spustí se hned při první kontrole)')),
+              draft.repeat&&h('div',{key:'r'},'↻ Bude upozorňovat opakovaně, ne jen jednou.')]),
         h('div',{style:{display:'flex',gap:9,marginTop:14}},
           h('button',{type:'button',disabled:st.smartBusy,onClick:()=>self.confirmSmartAlert(),style:btn},st.smartBusy?'⏳ Ukládám…':'✓ Potvrdit a sledovat'),
           h('button',{type:'button',onClick:()=>self.cancelSmartDraft(),style:sec},'Zrušit'))),
