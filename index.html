@@ -643,17 +643,38 @@ class FXApp extends React.Component{
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
       const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:2200,temperature:0.4,reasoning:{exclude:true}});
       const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Coach'};
-      const models=[(localStorage.getItem('or_coach_model')||'').trim()||'openrouter/free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free','google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
-      let reply='';
-      for(const m of models){ try{ const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:body(m)}); const d=await r.json(); if(!d.error&&d.choices&&d.choices[0]&&d.choices[0].message){reply=d.choices[0].message.content;break;} }catch(e){} }
-      if(!reply) throw new Error('Žádný free model momentálně neodpověděl. Zkus to za chvíli.');
-      reply=this.sanitizeCoachReply(reply);
+      // Vlastní model (Nastavení ⚙) má vždy přednost. Fallback pořadí: Gemma/Llama
+      // instruct modely bývají mnohem méně náchylné na "myšlení nahlas" v odpovědi
+      // než DeepSeek-V3/Qwen3 (obojí má reasoning-styl chování i mimo dedikovaný
+      // reasoning mód) — ty proto zkoušíme až jako poslední záchranu. Žádný
+      // "openrouter/free" (není to platné model ID, jen to plýtvalo prvním pokusem).
+      const custom=(localStorage.getItem('or_coach_model')||'').trim();
+      const models=[custom,'google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
+      let reply='',fallback='';
+      for(const m of models){
+        try{
+          const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:body(m)});
+          const d=await r.json();
+          if(d.error||!d.choices||!d.choices[0]||!d.choices[0].message||!d.choices[0].message.content) continue;
+          const candidate=this.sanitizeCoachReply(d.choices[0].message.content);
+          // finish_reason "length" = model dostřílel do max_tokens (typicky uťaté
+          // uprostřed "myšlení") — i s hezky vyhlížejícím textem je to podezřelé,
+          // radši zkusit další model než ukázat neúplnou odpověď.
+          const truncated=d.choices[0].finish_reason==='length';
+          if(!truncated&&!this.coachReplyLooksBroken(candidate)){ reply=candidate; break; }
+          if(!fallback) fallback=candidate;
+        }catch(e){}
+      }
+      if(!reply&&!fallback) throw new Error('Žádný free model momentálně neodpověděl. Zkus to za chvíli.');
+      reply=reply||'⚠ Model tentokrát vrátil jen interní "uvažování" bez finální odpovědi (typické u slabších free modelů). Zkus se zeptat znovu, nebo v Nastavení ⚙ nastav spolehlivější (klidně placený) model pro Coache.';
       this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:reply}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};});
     }catch(e){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ '+(e&&e.message||e)}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); } }
   // Free/slabší (hlavně "reasoning") modely občas do odpovědi propašují vlastní
   // "uvažování" (anglické věty typu "we need to…", "Okay, the user is asking…")
   // místo/před skutečnou odpovědí — request už žádá reasoning:{exclude:true},
-  // ale ne každý provider to respektuje, takže tohle zůstává jako záchranná síť.
+  // ale ne každý provider to respektuje. Tady jen ustřihneme rozpoznatelné
+  // úvodní odstavce; jestli je to k ničemu, pozná to coachReplyLooksBroken()
+  // a sendCoach() zkusí další model, místo aby zbytek jen tiše zobrazil.
   sanitizeCoachReply(text){
     if(!text) return text;
     const LEAK_RX=[/^(we|i)\s+(need to|should|will|must)\b/i,/^let'?s\s+(produce|write|draft|make|translate|check|look|see|break)\b/i,/^let\s+me\s+(check|look|see|break|think)\b/i,/^(the\s+user|user)\s+(only\s+)?(wants|is\s+asking|asked)\b/i,/^okay,?\s+(let'?s|i|the\s+user)\b/i,/^\(?thinking\)?\s*[:\-]/i,/^here'?s\s+(the|my)\s+(translation|answer|response)\b/i,/^(looking at|first,?\s+for|now,?\s+(let'?s|i))\b/i];
@@ -664,15 +685,12 @@ class FXApp extends React.Component{
       if(looksLikeLeak) paras.shift(); else break;
     }
     const cleaned=paras.join('\n\n').trim();
-    // Coach má dle systémového promptu VŽDY odpovídat česky. Delší text bez
-    // jediné české diakritiky prakticky jistě není odpověď, ale celý uniklý
-    // (často ještě uťatý) scratchpad modelu — radši čestná chybová hláška
-    // než zmatený anglický text.
-    if(cleaned.length>200&&!/[ěščřžýáíéůúťďň]/i.test(cleaned)){
-      return '⚠ Model tentokrát vrátil jen interní "uvažování" bez finální odpovědi (typické u slabších free modelů). Zkus se zeptat znovu, nebo v Nastavení ⚙ nastav spolehlivější (klidně placený) model pro Coache.';
-    }
     return cleaned||text;
   }
+  // Coach má dle systémového promptu VŽDY odpovídat česky. Delší text bez
+  // jediné české diakritiky prakticky jistě není odpověď, ale celý uniklý
+  // scratchpad modelu.
+  coachReplyLooksBroken(text){ return !text||(text.length>200&&!/[ěščřžýáíéůúťďň]/i.test(text)); }
   buildCoachContext(focusText){ const sc={}; this.CUR.forEach(c=>{const d=this.D[c];sc[c]={score:+d.score.toFixed(2),fund:+d.fund.toFixed(2),cot:+d.cot.toFixed(2),cotPct:d.cotPct,policy:+d.policy.toFixed(2),yield:+d.yield.toFixed(2),season:+d.season.toFixed(2),cb:d.cb,inst:d.inst,retail:d.retail};});
     // Rozklad DNEŠNÍ změny skóre po komponentách (appka to už počítá pro panel
     // Síla měn, viz explainScoreChange) — ať Coach umí odpovědět "co dnes
