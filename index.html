@@ -1512,7 +1512,7 @@ class FXApp extends React.Component{
           h('div',{style:{fontSize:10.5,color:T.faint,marginTop:3}},self.agoTxt(f.flippedAt)+(f.driver?(' · driver: '+f.driver):'')),
           drv&&h('div',{style:{fontSize:11,color:T.dim,marginTop:3,fontStyle:'italic'}},'„'+drv.event+'"')); }))); }
   renderPairCharts(p){ const self=this,h=this.h,T=this.tok; const sb=this.D[p.base],sq=this.D[p.quote];
-    const gr=this.state.gridRange||'1M'; const days=({'1D':1,'1W':7,'1M':30,'6M':180,'ALL':4000})[gr]||30; const cut=Date.now()-days*86400000;
+    const gr=this.state.gridRange||'1M'; const days=({'14D':14,'1M':30,'3M':90,'6M':180,'ALL':4000})[gr]||30; const cut=Date.now()-days*86400000;
     const inWin=d=>{ const t=new Date(d).getTime(); return !isNaN(t)&&t>=cut; };
     // SCORE z historie skóre
     let sh={}; try{sh=loadScoreHistory()||{};}catch(e){}
@@ -1586,7 +1586,7 @@ class FXApp extends React.Component{
     const retailView=this.state.retailView==='chart'?'chart':'donut';
     const cotBaseView=this.state.cotBaseView==='chart'?'chart':'donut';
     const cotQuoteView=this.state.cotQuoteView==='chart'?'chart':'donut';
-    const rng=['1D','1W','1M','6M','ALL'];
+    const rng=['14D','1M','3M','6M','ALL'];
     return h('div',{style:self.card({padding:'14px 16px'})},
       h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:4}},
         h('div',{style:{display:'flex',alignItems:'center',gap:10}},
