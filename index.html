@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="engine.js?v=20260823a"></script>
-<script src="sync.js?v=20260824a"></script>
+<script src="sync.js?v=20260827a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -636,37 +636,56 @@ class FXApp extends React.Component{
   async sendCoach(text){ const t=(text==null?this.state.coachInput:text).trim(); if(!t||this.state.coachBusy)return;
     const hist=this.state.coachMsgs.concat([{role:'user',text:t}]); this.setState({coachInput:'',coachMsgs:hist,coachBusy:true}); this.saveCoach(hist);
     const orKey=(localStorage.getItem('or_key')||'').trim();
-    if(!orKey){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ Chybí OpenRouter API klíč — přidej ho v záložce Nastavení ⚙ (zdarma na openrouter.ai).'}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); return; }
+    const openaiKey=(localStorage.getItem('openai_key')||'').trim();
+    if(!orKey&&!openaiKey){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ Chybí API klíč — přidej OpenAI nebo OpenRouter klíč v záložce Nastavení ⚙.'}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); return; }
     try{
       const ctx=this.buildCoachContext(t);
       const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_TEACHING_PRINCIPLES+'\n\n'+COACH_PERSONA+'\n\n'+COACH_GUARDRAILS+'\n\n'+COACH_PERSONALIZATION+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB;
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
-      const body=m=>JSON.stringify({model:m,messages:[{role:'system',content:sys}].concat(apiMsgs),max_tokens:2200,temperature:0.4,reasoning:{exclude:true}});
-      const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Coach'};
-      // Vlastní model (Nastavení ⚙) má vždy přednost. Fallback pořadí: Gemma/Llama
-      // instruct modely bývají mnohem méně náchylné na "myšlení nahlas" v odpovědi
-      // než DeepSeek-V3/Qwen3 (obojí má reasoning-styl chování i mimo dedikovaný
-      // reasoning mód) — ty proto zkoušíme až jako poslední záchranu. Žádný
-      // "openrouter/free" (není to platné model ID, jen to plýtvalo prvním pokusem).
-      const custom=(localStorage.getItem('or_coach_model')||'').trim();
-      const models=[custom,'google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
+      const msgs=[{role:'system',content:sys}].concat(apiMsgs);
       let reply='',fallback='';
-      for(const m of models){
+      // Vlastní OpenAI klíč (Nastavení ⚙) má absolutní přednost, pokud je vyplněný —
+      // reálný placený model (výchozí gpt-4o-mini), o řád spolehlivější než free
+      // vrstva OpenRouteru a prakticky bez rizika "myšlení nahlas" v odpovědi.
+      if(openaiKey){
         try{
-          const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:body(m)});
+          const oModel=(localStorage.getItem('openai_coach_model')||'').trim()||'gpt-4o-mini';
+          const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+openaiKey},body:JSON.stringify({model:oModel,messages:msgs,max_tokens:2200,temperature:0.4})});
           const d=await r.json();
-          if(d.error||!d.choices||!d.choices[0]||!d.choices[0].message||!d.choices[0].message.content) continue;
-          const candidate=this.sanitizeCoachReply(d.choices[0].message.content);
-          // finish_reason "length" = model dostřílel do max_tokens (typicky uťaté
-          // uprostřed "myšlení") — i s hezky vyhlížejícím textem je to podezřelé,
-          // radši zkusit další model než ukázat neúplnou odpověď.
-          const truncated=d.choices[0].finish_reason==='length';
-          if(!truncated&&!this.coachReplyLooksBroken(candidate)){ reply=candidate; break; }
-          if(!fallback) fallback=candidate;
+          if(!d.error&&d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content){
+            const candidate=this.sanitizeCoachReply(d.choices[0].message.content);
+            const truncated=d.choices[0].finish_reason==='length';
+            if(!truncated&&!this.coachReplyLooksBroken(candidate)) reply=candidate; else fallback=candidate;
+          }
         }catch(e){}
       }
-      if(!reply&&!fallback) throw new Error('Žádný free model momentálně neodpověděl. Zkus to za chvíli.');
-      reply=reply||'⚠ Model tentokrát vrátil jen interní "uvažování" bez finální odpovědi (typické u slabších free modelů). Zkus se zeptat znovu, nebo v Nastavení ⚙ nastav spolehlivější (klidně placený) model pro Coache.';
+      if(!reply&&orKey){
+        const body=m=>JSON.stringify({model:m,messages:msgs,max_tokens:2200,temperature:0.4,reasoning:{exclude:true}});
+        const head={'Content-Type':'application/json','Authorization':'Bearer '+orKey,'HTTP-Referer':location.origin,'X-Title':'AT Trading AI Coach'};
+        // Vlastní model (Nastavení ⚙) má vždy přednost. Fallback pořadí: Gemma/Llama
+        // instruct modely bývají mnohem méně náchylné na "myšlení nahlas" v odpovědi
+        // než DeepSeek-V3/Qwen3 (obojí má reasoning-styl chování i mimo dedikovaný
+        // reasoning mód) — ty proto zkoušíme až jako poslední záchranu. Žádný
+        // "openrouter/free" (není to platné model ID, jen to plýtvalo prvním pokusem).
+        const custom=(localStorage.getItem('or_coach_model')||'').trim();
+        const models=[custom,'google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
+        for(const m of models){
+          try{
+            const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:body(m)});
+            const d=await r.json();
+            if(d.error||!d.choices||!d.choices[0]||!d.choices[0].message||!d.choices[0].message.content) continue;
+            const candidate=this.sanitizeCoachReply(d.choices[0].message.content);
+            // finish_reason "length" = model dostřílel do max_tokens (typicky uťaté
+            // uprostřed "myšlení") — i s hezky vyhlížejícím textem je to podezřelé,
+            // radši zkusit další model než ukázat neúplnou odpověď.
+            const truncated=d.choices[0].finish_reason==='length';
+            if(!truncated&&!this.coachReplyLooksBroken(candidate)){ reply=candidate; break; }
+            if(!fallback) fallback=candidate;
+          }catch(e){}
+        }
+      }
+      if(!reply&&!fallback) throw new Error('Žádný model momentálně neodpověděl. Zkus to za chvíli.');
+      reply=reply||'⚠ Model tentokrát vrátil jen interní "uvažování" bez finální odpovědi (typické u slabších free modelů). Zkus se zeptat znovu, nebo v Nastavení ⚙ vlož OpenAI klíč pro spolehlivější Coache.';
       this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:reply}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};});
     }catch(e){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ '+(e&&e.message||e)}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); } }
   // Free/slabší (hlavně "reasoning") modely občas do odpovědi propašují vlastní
@@ -2370,7 +2389,12 @@ class FXApp extends React.Component{
         (()=>{ const lab=(t,extra)=>h('label',{style:{fontSize:11,color:T.dim,display:'block',marginBottom:4,marginTop:4}},t,extra&&h('span',{style:{color:T.green,marginLeft:6,fontWeight:700}},extra));
           const keyInput=(k,ph,type)=>h('input',{defaultValue:(localStorage.getItem(k)||''),onBlur:e=>self.setKey(k,e.target.value),placeholder:ph,type:type||'text',autoCapitalize:'off',autoCorrect:'off',spellCheck:false,style:fld});
           return h('div',null,
-            lab('🤖 OpenRouter API klíč','✓ ZDARMA — pro AI analýzu a AI coache'),
+            lab('🧠 OpenAI API klíč','doporučeno — nejchytřejší a nejspolehlivější Coach'),
+            h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:6,lineHeight:1.5}},'platform.openai.com/api-keys → Create new secret key (začíná sk-…). Pokud je vyplněný, AI Coach ho použije PŘEDNOSTNĚ místo OpenRouter free modelů — platí se přímo tvému OpenAI účtu podle spotřeby (typicky zlomky centu za dotaz, výchozí model ',h('code',null,'gpt-4o-mini'),').'),
+            keyInput('openai_key','sk-…','password'),
+            lab('Model pro OpenAI Coache (nepovinné, prázdné = gpt-4o-mini)'),
+            keyInput('openai_coach_model','např. gpt-4o-mini, gpt-4o, gpt-4.1-mini…'),
+            lab('🤖 OpenRouter API klíč','✓ ZDARMA — použije se, když výše není OpenAI klíč'),
             h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:6,lineHeight:1.5}},'openrouter.ai → Sign up → Keys → Create Key (začíná sk-or-v1-…)'),
             keyInput('or_key','sk-or-v1-…','password'),
             lab('Model pro AI Analýzu grafu (nepovinné, prázdné = auto)'),
