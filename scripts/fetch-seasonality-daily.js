@@ -25,6 +25,21 @@ function parseCSVRows(text) {
   return text.trim().split(/\r?\n/).slice(1).map((line) => line.split(","));
 }
 
+// Sobota/neděle nejsou forexový obchodní den (trh je zavřený od pátečního
+// večera do nedělního večera NY času) — přesto se v datech ze Stooq i Yahoo
+// občas objeví víkendem datovaná "denní" svíčka (nejspíš artefakt časového
+// pásma zdroje/týdenního přeceňování). Nalezeno reálně v datech: víkendové
+// záznamy se opakují prakticky každý týden a odpovídající počet pátečních
+// záznamů je kvůli tomu podhodnocený — víkendová svíčka je zjevně
+// mislabelovaná, ne skutečný obchodní den. Appka z tohohle souboru počítá
+// "pozice v 60denním rozpětí" (position-in-range) — víkendový bod s cenou,
+// co nemusí odpovídat žádnému skutečnému obchodování, dokázal tohle číslo
+// citelně zkreslit (viz FX Weekly Audit 31.8.–4.9.2026, nález kvality dat).
+function isWeekend(dateStr) {
+  const dow = new Date(dateStr + "T00:00:00Z").getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
 // Ochrana proti tichému "downgradu" granularity — první živý běh s Yahoo
 // fallbackem vrátil pro range=max&interval=1d jen ~273 bodů za 22 let
 // (=měsíční data, ne denní), i když parametr interval=1d byl v URL.
@@ -54,7 +69,7 @@ async function fetchPairStooq(pair) {
   if (!text || /^<!DOCTYPE|exceeded/i.test(text)) throw new Error("neplatná odpověď (Stooq nejspíš blokuje datacentrové IP GitHub Actions)");
   const rows = parseCSVRows(text)
     .map((c) => ({ date: c[0], close: parseFloat(c[4]) }))
-    .filter((row) => row.date && /^\d{4}-\d{2}-\d{2}$/.test(row.date) && Number.isFinite(row.close));
+    .filter((row) => row.date && /^\d{4}-\d{2}-\d{2}$/.test(row.date) && Number.isFinite(row.close) && !isWeekend(row.date));
   const dates = rows.map((row) => row.date), closes = rows.map((row) => row.close);
   assertDailyResolution(dates);
   return { pair, dates, closes, updated: new Date().toISOString() };
@@ -79,7 +94,7 @@ async function fetchPairYahoo(pair) {
   const ts = res && res.timestamp, closes = res && res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close;
   if (!Array.isArray(ts) || !Array.isArray(closes)) throw new Error("neplatná struktura");
   const rows = ts.map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), close: closes[i] }))
-    .filter((row) => row.close != null && Number.isFinite(row.close));
+    .filter((row) => row.close != null && Number.isFinite(row.close) && !isWeekend(row.date));
   const outDates = rows.map((row) => row.date), outCloses = rows.map((row) => row.close);
   assertDailyResolution(outDates);
   return { pair, dates: outDates, closes: outCloses, updated: new Date().toISOString() };
