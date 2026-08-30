@@ -1872,21 +1872,34 @@ function extractCPIFromCalendar(calData){
   });
   const cpi={};
   const sorted=past.sort((a,b)=>new Date(b.time)-new Date(a.time));
+  // Kategorie "Inflation" (EVENT_RULES) záměrně zahrnuje i PPI/PCE pro účely
+  // skórování fundamentu — ale REAL_CPI_DATA má být VÝHRADNĚ spotřebitelská
+  // inflace (CPI/HICP), ne producent (PPI) ani jiná míra (PCE). Bez tohohle
+  // filtru níže popsaný 2. průchod u měny bez kalendářní "CPI y/y" události
+  // (např. NZ, kde ForexFactory hlásí inflaci jen čtvrtletně) sáhl po
+  // nejbližší jiné "Inflation" události — reálně to byl "PPI Input q/q" —
+  // a uložil číslo výrobců jako by to byla roční spotřebitelská inflace.
+  const isCPIName=name=>/cpi|consumer price|hicp/i.test(name)&&!/ppi|producer|pce|personal consumption/i.test(name);
   // 1. průchod: preferuj YoY události (pozor: CPI 0.0 je falsy — nutný "in" test)
   for(const ev of sorted){
     const cur=getCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
     const name=(ev.event||"").toLowerCase();
+    if(!isCPIName(name)) continue;
     const isYoY=name.includes("yoy")||name.includes("y/y")||name.includes("annual")||name.includes("year");
     if(!isYoY) continue;
     const val=parseFloat(ev.actual);
     if(!isNaN(val)&&val>=-2&&val<=20) cpi[cur]=parseFloat(val.toFixed(1));
   }
-  // 2. průchod: doplň zbývající — ale NE měsíční (m/m) čísla; REAL_CPI_DATA je roční
-  // inflace a m/m hodnota (např. CH 0.0 %) by rozbila real yield. Bez ročního CPI
-  // v kalendáři se drží stávající/ruční hodnota.
+  // 2. průchod: doplň zbývající — ale NE měsíční (m/m) ani čtvrtletní (q/q)
+  // čísla; REAL_CPI_DATA je roční inflace a m/m či q/q hodnota (např. CH
+  // 0,0 % m/m, nebo NZ 1,5 % q/q) by rozbila real yield. Bez ročního CPI
+  // v kalendáři se drží stávající/ruční hodnota — to je záměr, ne mezera:
+  // lepší žádná aktualizace než dosazení špatné veličiny.
   for(const ev of sorted){
     const cur=getCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
-    if(/m\/?m|monthly/i.test(ev.event||"")) continue;
+    const name=(ev.event||"").toLowerCase();
+    if(!isCPIName(name)) continue;
+    if(/m\/?m|monthly|q\/?q|quarterly/i.test(name)) continue;
     const val=parseFloat(ev.actual);
     if(!isNaN(val)&&val>=-2&&val<=20) cpi[cur]=parseFloat(val.toFixed(1));
   }
@@ -1909,7 +1922,6 @@ function autoDetectCBPolicy(currency,rateHistory){
   const recent=changes.slice(-6); // posledních 6 skutečných rozhodnutí
   const hikCount=recent.filter(c=>c.change>0).length;
   const cutCount=recent.filter(c=>c.change<0).length;
-  const last2=changes.slice(-2);
   const lastChange=changes[changes.length-1]?.change||0;
 
   // Roční změna celkové sazby
@@ -1917,25 +1929,47 @@ function autoDetectCBPolicy(currency,rateHistory){
   const year12=sorted.filter(r=>new Date(r.date)>new Date(now-365*86400000));
   const yearChange=year12.length>=2?year12[year12.length-1].rate-year12[0].rate:0;
 
-  // Počet hold rozhodnutí (méně než 0.1 změna)
-  const allRecent6=sorted.slice(-6);
-  const holdCount=allRecent6.filter((r,i)=>i>0&&Math.abs(r.rate-allRecent6[i-1].rate)<0.10).length;
+  // Počet zasedání OD POSLEDNÍ SKUTEČNÉ ZMĚNY, na kterých banka držela sazbu
+  // (ne jen "holdů mezi posledními 6 záznamy obecně" — to bylo nepřesné a
+  // hlavně nedosažitelné, viz níž). Bez skutečné změny v historii bereme
+  // celou historii jako "drženo".
+  const lastChangeDate=changes.length?changes[changes.length-1].date:null;
+  const holdsSinceLastChange=lastChangeDate
+    ?sorted.filter(r=>new Date(r.date)>new Date(lastChangeDate)).length
+    :Math.max(0,sorted.length-1);
 
   let score=0; let desc="";
-  if(hikCount>=3||(hikCount>=2&&yearChange>1.0)){
+  // PLATEAU MUSÍ BÝT PRVNÍ VĚTEV. Dřív byla stejná podmínka (holdCount>=4)
+  // až za větvemi cutCount>=3/hikCount>=3 — ty ale počítají z POSLEDNÍCH 6
+  // SKUTEČNÝCH změn bez ohledu na to, jak dávno se staly, takže banka, co
+  // čtyřikrát řezala v roce 2025 a od té doby 5-6× za sebou držela (přesně
+  // situace USD/GBP/CAD v srpnu 2026), navěky spadla do "agresivní řezy" a
+  // do týhle větve se nikdy nedostala. holdsSinceLastChange>=4 (4+ zasedání
+  // držení OD poslední změny) je jednoznačný plateau bez ohledu na to, kolik
+  // se dřív hikovalo/řezalo.
+  if(holdsSinceLastChange>=4){
+    score=0; desc="plateau, hold "+sorted[sorted.length-1]?.rate?.toFixed(2)+"%";
+  }else if(lastChange!==0&&changes.length>=2&&Math.sign(lastChange)!==Math.sign(changes[changes.length-2].change)&&holdsSinceLastChange<=1){
+    // OBRAT (pivot): poslední skutečná změna má opačné znaménko než ta
+    // předchozí a stalo se to nedávno (0-1 zasedání držení od ní) — banka
+    // právě otočila směr cyklu. Bez týhle větve by starší většina v
+    // hikCount/cutCount (počítaná z posledních 6 změn, kde může pořád
+    // převažovat starý cyklus) přečetla čerstvý obrat jako pokračování
+    // toho starého — přesně situace NZD v 7/2026 (hike po šesti řezech,
+    // appka to bez opravy četla jako "agresivní řezy").
+    score=lastChange>0?1:-1; desc=(lastChange>0?"obrat k hikům":"obrat k řezům")+", pozorujeme";
+  }else if(hikCount>=3||(hikCount>=2&&yearChange>1.0)){
     score=2; desc="agresivní hiking ("+yearChange.toFixed(2)+"% za rok)";
-  }else if(hikCount>=2&&holdCount<=2){
+  }else if(hikCount>=2&&holdsSinceLastChange<=2){
     score=2; desc="aktivní cyklus hikování";
-  }else if(hikCount>=1&&cutCount===0&&holdCount<=3){
+  }else if(hikCount>=1&&cutCount===0&&holdsSinceLastChange<=3){
     score=1; desc="cyklus hikování";
   }else if(cutCount>=3||(cutCount>=2&&yearChange<-1.0)){
     score=-2; desc="agresivní řezy ("+yearChange.toFixed(2)+"% za rok)";
   }else if(cutCount>=2&&hikCount===0){
     score=-2; desc="aktivní cyklus řezů";
-  }else if(cutCount>=1&&hikCount===0&&holdCount<=3){
+  }else if(cutCount>=1&&hikCount===0&&holdsSinceLastChange<=3){
     score=-1; desc="cyklus snižování";
-  }else if(holdCount>=4&&Math.abs(yearChange)<0.15){
-    score=0; desc="plateau, hold "+sorted[sorted.length-1]?.rate?.toFixed(2)+"%";
   }else if(lastChange>0){
     score=1; desc="poslední hike, pozorujeme";
   }else if(lastChange<0){
