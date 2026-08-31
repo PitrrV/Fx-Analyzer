@@ -98,7 +98,15 @@ const SEASONALITY={
 // ať se na všech zařízeních projeví správné hodnoty. Po této verzi fungují
 // ruční úpravy i auto-update z kalendáře normálně dál.
 try{
-  const CB_BASELINE="2026-06-verified-2";
+  // Bump 2026-08-30: autoDetectCBPolicy (plateau/pivot oprava) i
+  // extractCPIFromCalendar (CPI z PPI/SPPI oprava, viz FX Weekly Audit
+  // 31.8.–4.9.2026) — appka bez tohohle vynuceného úklidu klidně dál drží
+  // zápisy z PŘED opravou (např. NZD CPI 2,9 % z "PPI Input q/q", nebo
+  // USD/GBP/CAD/CHF policy score −2 "agresivní řezy" z v5_cb_policy) —
+  // oprava logiky sama jen zabrání DALŠÍMU špatnému zápisu, existující
+  // nepřepíše (viz komentáře u obou funkcí). Wipe donutí čerstvý přepočet
+  // z (opraveného) enginu hned při příštím načtení kalendáře.
+  const CB_BASELINE="2026-08-cbpolicy-cpi-fix";
   if(localStorage.getItem("cb_baseline")!==CB_BASELINE){
     localStorage.removeItem("v5_cb_rates");
     localStorage.removeItem("v5_cb_policy");
