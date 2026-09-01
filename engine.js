@@ -106,7 +106,11 @@ try{
   // oprava logiky sama jen zabrání DALŠÍMU špatnému zápisu, existující
   // nepřepíše (viz komentáře u obou funkcí). Wipe donutí čerstvý přepočet
   // z (opraveného) enginu hned při příštím načtení kalendáře.
-  const CB_BASELINE="2026-08-cbpolicy-cpi-fix";
+  // Bump 2026-09-01: extractCPIFromCalendar dál nerozlišovala regionální/
+  // členské dílčí CPI zprávy (např. "Spanish Flash CPI y/y" pro EUR,
+  // "Tokyo Core CPI y/y" pro JPY) od skutečné celoblokové/celonárodní —
+  // živě to bralo EUR 4,3 % ze Španělska místo eurozónových 2,5–2,9 %.
+  const CB_BASELINE="2026-09-cpi-regional-fix";
   if(localStorage.getItem("cb_baseline")!==CB_BASELINE){
     localStorage.removeItem("v5_cb_rates");
     localStorage.removeItem("v5_cb_policy");
@@ -1888,11 +1892,21 @@ function extractCPIFromCalendar(calData){
   // nejbližší jiné "Inflation" události — reálně to byl "PPI Input q/q" —
   // a uložil číslo výrobců jako by to byla roční spotřebitelská inflace.
   const isCPIName=name=>/cpi|consumer price|hicp/i.test(name)&&!/ppi|producer|pce|personal consumption/i.test(name);
+  // Členské/regionální dílčí zprávy — mají v názvu "cpi"/"y/y" stejně jako
+  // ta skutečná celoblok/celonárodní, ale hlásí JEN jednu zemi/oblast uvnitř
+  // měnového bloku (např. "Spanish Flash CPI y/y" pro EUR — Španělsko samo,
+  // ne celá eurozóna; "Tokyo Core CPI y/y" pro JPY — jen Tokio, leading
+  // indikátor, ne celonárodní číslo). Country/currency mapping (getCurrencyFromEvent)
+  // je správně bere jako EUR/JPY (jsou to legitimní eventy toho bloku), ale
+  // bez tohohle filtru vyhraje kterákoli z nich nad skutečným celoblokovým
+  // tiskem jen tím, že vyjde později — reálný nález: Španělská flash CPI
+  // (4,3 %, 28.8.) porazila eurozónovou "Final CPI y/y" (2,9 %, 19.8.).
+  const isRegionalCPI=name=>/\b(german|france|french|spanish|spain|italian|italy|tokyo)\b/i.test(name);
   // 1. průchod: preferuj YoY události (pozor: CPI 0.0 je falsy — nutný "in" test)
   for(const ev of sorted){
     const cur=getCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
     const name=(ev.event||"").toLowerCase();
-    if(!isCPIName(name)) continue;
+    if(!isCPIName(name)||isRegionalCPI(name)) continue;
     const isYoY=name.includes("yoy")||name.includes("y/y")||name.includes("annual")||name.includes("year");
     if(!isYoY) continue;
     const val=parseFloat(ev.actual);
@@ -1902,7 +1916,10 @@ function extractCPIFromCalendar(calData){
   // čísla; REAL_CPI_DATA je roční inflace a m/m či q/q hodnota (např. CH
   // 0,0 % m/m, nebo NZ 1,5 % q/q) by rozbila real yield. Bez ročního CPI
   // v kalendáři se drží stávající/ruční hodnota — to je záměr, ne mezera:
-  // lepší žádná aktualizace než dosazení špatné veličiny.
+  // lepší žádná aktualizace než dosazení špatné veličiny. Regionální (viz
+  // isRegionalCPI) se v NÁHRADNÍM průchodu výjimečně TOLERUJE — je to pořád
+  // lepší přiblížení než ponechat úplně starou/výchozí hodnotu, když měna
+  // nemá žádnou celoblokovou roční CPI zprávu vůbec.
   for(const ev of sorted){
     const cur=getCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
     const name=(ev.event||"").toLowerCase();
