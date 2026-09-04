@@ -714,8 +714,12 @@ class FXApp extends React.Component{
   setKey(k,v){ try{ if(v&&v.trim())localStorage.setItem(k,v.trim()); else localStorage.removeItem(k); }catch(e){} this.forceUpdate(); }
   // ── Správa vláken (viz newCoachThread/loadCoachThreads/saveCoachThreads výš) ──
   setActiveThread(id){ try{localStorage.setItem('fx_coach_active',id);}catch(e){} this.setState({coachActiveId:id}); }
+  // Jméno se ptá HNED při založení (prompt) — ať v levém sloupci nikdy
+  // nevisí "Nový chat" bez kontextu; když uživatel prompt zruší (Cancel),
+  // chat se vůbec nezaloží, žádný anonymní fantom navíc.
   newCoachChat(){ const threads=this.state.coachThreads; if(threads.length>=COACH_THREAD_LIMIT) return;
-    const t=newCoachThread(); const next=threads.concat([t]); saveCoachThreads(next);
+    const name=window.prompt('Jméno nového chatu (např. konkrétní pár, "Fundament", "Riziko"…):',''); if(name==null) return;
+    const t=newCoachThread(name); const next=threads.concat([t]); saveCoachThreads(next);
     this.setState({coachThreads:next}); this.setActiveThread(t.id); }
   deleteCoachThread(id){ const threads=this.state.coachThreads; if(threads.length<=1) return; // vždycky aspoň jedno vlákno
     const next=threads.filter(t=>t.id!==id); saveCoachThreads(next);
@@ -723,6 +727,9 @@ class FXApp extends React.Component{
     if(wasActive) try{localStorage.setItem('fx_coach_active',nextActive);}catch(e){}
     this.setState({coachThreads:next,coachActiveId:nextActive}); }
   renameCoachThread(id,name){ this.updateThread(id,{name:(name||'').trim().slice(0,40)||'Chat'}); }
+  // Jednotný vstupní bod pro přejmenování — volaný z hlavičky aktivního chatu
+  // I z kartičky v levém sloupci (bez nutnosti tam nejdřív přepnout).
+  promptRenameThread(id,current){ const name=window.prompt('Nové jméno chatu:',current||''); if(name==null) return; this.renameCoachThread(id,name); }
   clearCoachThread(id){ this.updateThread(id,{msgs:[{role:'coach',text:'Nový chat. Vidím tvoje živá skóre, COT i pozice — ptej se.'}]}); }
   updateThread(id,patch){ this.setState(s=>{ const threads=s.coachThreads.map(t=>t.id===id?Object.assign({},t,patch,{updatedAt:new Date().toISOString()}):t); saveCoachThreads(threads); return {coachThreads:threads}; }); }
   // Vstupní pole je per-vlákno, ale NEukládá se (viz saveCoachThreads) — obyčejný
@@ -2220,7 +2227,9 @@ class FXApp extends React.Component{
       others.length?others.map(t=>h('button',{key:t.id,type:'button',onClick:()=>self.setActiveThread(t.id),style:{display:'block',width:'100%',textAlign:'left',border:'1px solid #1b2130',background:'#0a0d13',borderRadius:12,padding:'11px 13px',cursor:'pointer',fontFamily:'inherit',marginBottom:8,flex:'none'}},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}},
           h('span',{style:{fontSize:12.5,fontWeight:800,color:T.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},t.name),
-          h('span',{onClick:e=>{e.stopPropagation();self.deleteCoachThread(t.id);},title:'Smazat chat',style:{fontSize:11,color:T.faint,cursor:'pointer',flex:'none',padding:'0 2px'}},'✕')),
+          h('span',{style:{display:'flex',gap:6,flex:'none'}},
+            h('span',{onClick:e=>{e.stopPropagation();self.promptRenameThread(t.id,t.name);},title:'Přejmenovat',style:{fontSize:11,color:T.faint,cursor:'pointer',padding:'0 2px'}},'✎'),
+            h('span',{onClick:e=>{e.stopPropagation();self.deleteCoachThread(t.id);},title:'Smazat chat',style:{fontSize:11,color:T.faint,cursor:'pointer',padding:'0 2px'}},'✕'))),
         t.pair&&h('div',{style:self.mono({fontSize:9.5,color:T.accent,marginTop:3})},t.pair),
         h('div',{style:{fontSize:10.5,color:T.faint,marginTop:5,lineHeight:1.4}},t.busy?'⏳ přemýšlí…':preview(t))))
         :h('div',{style:{fontSize:11,color:T.faint,lineHeight:1.55,padding:'0 2px'}},'Žádné další otevřené chaty — „+ Nový chat" založí další vlákno (třeba na konkrétní pár, nebo jen na fundament), aniž by se smazal tenhle.'));
@@ -2230,7 +2239,9 @@ class FXApp extends React.Component{
     const send=text=>self.sendCoach(text,active.id);
     const chatCard=h('div',{style:self.card({padding:0,overflow:'hidden',display:'flex',flexDirection:'column',height:'calc(100vh - 150px)',minHeight:520,flex:1,minWidth:0})},
       h('div',{style:{display:'flex',alignItems:'center',gap:12,padding:'15px 20px',borderBottom:'1px solid #1b2130'}},h('div',{style:self.mono({width:38,height:38,borderRadius:11,background:'linear-gradient(150deg,#10131c,#0a0c12)',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13})},'AT'),h('div',{style:{flex:1,minWidth:0}},
-        h('input',{key:'name-'+active.id,defaultValue:active.name,onBlur:e=>self.renameCoachThread(active.id,e.target.value),onKeyDown:e=>{if(e.key==='Enter')e.target.blur();},title:'Klikni a přejmenuj chat',style:{fontSize:14,fontWeight:800,color:T.text,background:'transparent',border:'none',outline:'none',fontFamily:'inherit',padding:0,width:'100%',maxWidth:260}}),
+        h('div',{style:{display:'flex',alignItems:'center',gap:6}},
+          h('span',{style:{fontSize:14,fontWeight:800,color:T.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:220}},active.name),
+          h('button',{type:'button',onClick:()=>self.promptRenameThread(active.id,active.name),title:'Přejmenovat chat',style:{border:'none',background:'transparent',color:T.faint,cursor:'pointer',fontSize:12,padding:'2px 5px',lineHeight:1}},'✎')),
         h('div',{style:{fontSize:11,color:T.green,display:'flex',alignItems:'center',gap:6,marginTop:2}},h('span',{style:{width:6,height:6,borderRadius:50,background:T.green}}),'Vidí tvé živé skóre, COT a pozice')),
         h('select',{value:active.pair,onChange:e=>self.updateThread(active.id,{pair:e.target.value}),title:'Zaměřit tohle vlákno na pár',style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'8px 10px',fontSize:12,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"}},[h('option',{key:'',value:''},'Všechny páry')].concat(this.PAIRS.map(p=>h('option',{key:p.pair,value:p.pair},p.pair)))),
         h('button',{type:'button',onClick:()=>self.clearCoachThread(active.id),title:'Vymazat historii tohohle chatu (jméno a pár zůstanou)',style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:9,padding:'8px 11px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer'}},'🗑 Vymazat')),
