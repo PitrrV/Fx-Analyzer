@@ -117,14 +117,49 @@ function buildSmartAlertSystemPrompt(upcoming){
     +'Příklad 3: "Upozorni mě na výsledek Tokyo Core CPI y/y" (a v seznamu je "JPY | Tokyo Core CPI y/y | 2026-08-28") → {"ok":true,"kind":"event","ccy":"JPY","event":"Tokyo Core CPI y/y","date":"2026-08-28","summary":"Upozornit na výsledek Tokyo Core CPI y/y (JPY), jakmile vyjde 28. 8."}';
 }
 
+// ── AI COACH — VÍCE POJMENOVANÝCH VLÁKEN SOUČASNĚ ──────────────────────
+// Dřív appka držela jediný chat (fx_coach_chat) — teď víc pojmenovaných
+// vláken, každé s vlastní historií i vlastním zaměřeným párem, ať jde
+// souběžně řešit "EURCAD swing" a "Fundament" bez přepisování jednoho
+// druhým. Lokální jen v tomhle prohlížeči (stejně jako dřívější
+// fx_coach_chat — není v sync.js KEYS_*, mezi zařízeními se nesynchronizuje).
+const COACH_THREAD_LIMIT=10;
+function newCoachThread(name,pair){
+  const now=new Date().toISOString();
+  return {id:'t_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),name:(name||'Nový chat').slice(0,40),pair:pair||'',
+    msgs:[{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}],
+    busy:false,input:'',createdAt:now,updatedAt:now};
+}
+function loadCoachThreads(){
+  try{
+    const raw=localStorage.getItem('fx_coach_threads_v1');
+    if(raw){ const arr=JSON.parse(raw); if(Array.isArray(arr)&&arr.length) return arr.map(t=>Object.assign({pair:'',input:''},t,{busy:false})); }
+  }catch(e){}
+  // Migrace ze starého jednoho chatu (fx_coach_chat) — historie se neztratí,
+  // jen se vloží jako první vlákno "Hlavní chat".
+  let oldMsgs=null;
+  try{ const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null'); if(Array.isArray(s)&&s.length) oldMsgs=s; }catch(e){}
+  const t=newCoachThread('Hlavní chat','');
+  if(oldMsgs) t.msgs=oldMsgs;
+  return [t];
+}
+function saveCoachThreads(threads){
+  try{
+    // busy/input jsou přechodné (per-session) — neukládat, appka by po
+    // reloadu tvrdila, že chat ještě "přemýšlí", nebo obnovila rozepsaný text.
+    const clean=threads.map(t=>({id:t.id,name:t.name,pair:t.pair,msgs:(t.msgs||[]).slice(-50),createdAt:t.createdAt,updatedAt:t.updatedAt}));
+    localStorage.setItem('fx_coach_threads_v1',JSON.stringify(clean));
+  }catch(e){}
+}
+
 class FXApp extends React.Component{
   constructor(p){
     super(p);
     const h=React.createElement; this.h=h;
-    this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), notesTs:(()=>{try{return JSON.parse(localStorage.getItem('pair_notes_ts')||'{}');}catch(e){return {};}})(), coachInput:'', coachMsgs:(()=>{try{const s=JSON.parse(localStorage.getItem('fx_coach_chat')||'null');if(Array.isArray(s)&&s.length)return s;}catch(e){}return [{role:'coach',text:'Vidím tvoje živá skóre, COT i pozice. Zeptej se na dnešní top setupy, rizika nebo korelace.'}];})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D',
+    this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), notesTs:(()=>{try{return JSON.parse(localStorage.getItem('pair_notes_ts')||'{}');}catch(e){return {};}})(), coachThreads:loadCoachThreads(), coachActiveId:(()=>{try{return localStorage.getItem('fx_coach_active')||'';}catch(e){return '';}})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D',
       adminSkin:(()=>{try{return localStorage.getItem('fx_admin_skin')!=='0';}catch(e){return true;}})(),
       smartInput:'', smartConvo:[], smartDraft:null, smartBusy:false, smartErr:'', smartRules:[], smartRulesLoaded:false, smartEditingId:null,
-      cotBusy:false, retailBusy:false, dataMsg:'', coachBusy:false, aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, jImportRaw:'', jImportMsg:'', jImportOpen:false, coachPair:'', cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasPairManual:'', seasData:null, seasBusy:false, seasErr:'',
+      cotBusy:false, retailBusy:false, dataMsg:'', aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, jImportRaw:'', jImportMsg:'', jImportOpen:false, cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasPairManual:'', seasData:null, seasBusy:false, seasErr:'',
       seasFullPath:null, seasFullBusy:false, seasFullErr:'', seasFullYears:20, seasFullChartModal:false,
       // Výchozí okno = celý aktuální kalendářní měsíc (1. → poslední den) —
       // přepočítá se samo při každém otevření appky podle dnešního data,
@@ -134,6 +169,9 @@ class FXApp extends React.Component{
       winToD:(()=>new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate())(),
       winYears:20, winBusy:false, winErr:'', winResult:null, winAvgPath:null, winDaily:null, winChartModal:false,
       seasRadarBusy:false, seasRadarErr:'', seasRadarResults:[], seasRadarAt:null };
+    // fx_coach_active mohlo ukazovat na vlákno, co mezitím zmizelo (smazané,
+    // nebo appka běží poprvé) — spadni na první dostupné.
+    if(!this.state.coachThreads.some(t=>t.id===this.state.coachActiveId)) this.state.coachActiveId=this.state.coachThreads[0].id;
     this.CUR=(typeof CURRENCIES!=='undefined')?CURRENCIES:['USD','EUR','GBP','JPY','AUD','NZD','CAD','CHF'];
     this.NAMES=(typeof NAMES!=='undefined')?NAMES:{};
     this.D={}; this.PAIRS=[]; this.series={}; this.dates=[]; this.daily=[]; this.cbdi=50; this.PRICES={}; this.US100=null;
@@ -158,7 +196,7 @@ class FXApp extends React.Component{
     // Auto-scroll chatu na poslední zprávu — jen když se zprávy/busy stav
     // skutečně změnily, ne na každý render (appka re-renderuje 1×/s kvůli
     // hodinám, to by uživateli rvalo scroll pryč, i když si čte historii nahoře).
-    if(this._coachScrollEl&&(prevState.coachMsgs!==this.state.coachMsgs||prevState.coachBusy!==this.state.coachBusy)){
+    if(this._coachScrollEl&&(prevState.coachThreads!==this.state.coachThreads||prevState.coachActiveId!==this.state.coachActiveId)){
       this._coachScrollEl.scrollTop=this._coachScrollEl.scrollHeight;
     }
     this.maybeLoadFullYearSeasonality();
@@ -674,15 +712,32 @@ class FXApp extends React.Component{
     this.setState({jImportMsg:'✅ Naimportováno '+added+' obchodů'+(skipped?(' · přeskočeno '+skipped+' (už existují)'):'')+'.', jImportRaw:added?'':this.state.jImportRaw});
   }
   setKey(k,v){ try{ if(v&&v.trim())localStorage.setItem(k,v.trim()); else localStorage.removeItem(k); }catch(e){} this.forceUpdate(); }
-  saveCoach(msgs){ try{localStorage.setItem('fx_coach_chat',JSON.stringify(msgs.slice(-50)));}catch(e){} }
-  clearCoach(){ const init=[{role:'coach',text:'Nový chat. Vidím tvoje živá skóre, COT i pozice — ptej se.'}]; this.setState({coachMsgs:init}); this.saveCoach(init); }
-  async sendCoach(text){ const t=(text==null?this.state.coachInput:text).trim(); if(!t||this.state.coachBusy)return;
-    const hist=this.state.coachMsgs.concat([{role:'user',text:t}]); this.setState({coachInput:'',coachMsgs:hist,coachBusy:true}); this.saveCoach(hist);
+  // ── Správa vláken (viz newCoachThread/loadCoachThreads/saveCoachThreads výš) ──
+  setActiveThread(id){ try{localStorage.setItem('fx_coach_active',id);}catch(e){} this.setState({coachActiveId:id}); }
+  newCoachChat(){ const threads=this.state.coachThreads; if(threads.length>=COACH_THREAD_LIMIT) return;
+    const t=newCoachThread(); const next=threads.concat([t]); saveCoachThreads(next);
+    this.setState({coachThreads:next}); this.setActiveThread(t.id); }
+  deleteCoachThread(id){ const threads=this.state.coachThreads; if(threads.length<=1) return; // vždycky aspoň jedno vlákno
+    const next=threads.filter(t=>t.id!==id); saveCoachThreads(next);
+    const wasActive=this.state.coachActiveId===id, nextActive=wasActive?next[0].id:this.state.coachActiveId;
+    if(wasActive) try{localStorage.setItem('fx_coach_active',nextActive);}catch(e){}
+    this.setState({coachThreads:next,coachActiveId:nextActive}); }
+  renameCoachThread(id,name){ this.updateThread(id,{name:(name||'').trim().slice(0,40)||'Chat'}); }
+  clearCoachThread(id){ this.updateThread(id,{msgs:[{role:'coach',text:'Nový chat. Vidím tvoje živá skóre, COT i pozice — ptej se.'}]}); }
+  updateThread(id,patch){ this.setState(s=>{ const threads=s.coachThreads.map(t=>t.id===id?Object.assign({},t,patch,{updatedAt:new Date().toISOString()}):t); saveCoachThreads(threads); return {coachThreads:threads}; }); }
+  // Vstupní pole je per-vlákno, ale NEukládá se (viz saveCoachThreads) — obyčejný
+  // setState na každý úhoz klávesy by jinak zbytečně psal do localStorage.
+  setThreadInput(id,val){ this.setState(s=>({coachThreads:s.coachThreads.map(t=>t.id===id?Object.assign({},t,{input:val}):t)})); }
+  async sendCoach(text,threadId){
+    const tid=threadId||this.state.coachActiveId;
+    const th=(this.state.coachThreads||[]).find(t=>t.id===tid); if(!th) return;
+    const t=(text==null?th.input:text).trim(); if(!t||th.busy) return;
+    const hist=th.msgs.concat([{role:'user',text:t}]); this.updateThread(tid,{msgs:hist,input:'',busy:true});
     const orKey=(localStorage.getItem('or_key')||'').trim();
     const openaiKey=(localStorage.getItem('openai_key')||'').trim();
-    if(!orKey&&!openaiKey){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ Chybí API klíč — přidej OpenAI nebo OpenRouter klíč v záložce Nastavení ⚙.'}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); return; }
+    if(!orKey&&!openaiKey){ this.updateThread(tid,{msgs:hist.concat([{role:'coach',text:'⚠ Chybí API klíč — přidej OpenAI nebo OpenRouter klíč v záložce Nastavení ⚙.'}]),busy:false}); return; }
     try{
-      const ctx=this.buildCoachContext(t);
+      const ctx=this.buildCoachContext(t,th.pair);
       const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_TEACHING_PRINCIPLES+'\n\n'+COACH_PERSONA+'\n\n'+COACH_GUARDRAILS+'\n\n'+COACH_PERSONALIZATION+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB;
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
       const msgs=[{role:'system',content:sys}].concat(apiMsgs);
@@ -729,8 +784,8 @@ class FXApp extends React.Component{
       }
       if(!reply&&!fallback) throw new Error('Žádný model momentálně neodpověděl. Zkus to za chvíli.');
       reply=reply||'⚠ Model tentokrát vrátil jen interní "uvažování" bez finální odpovědi (typické u slabších free modelů). Zkus se zeptat znovu, nebo v Nastavení ⚙ vlož OpenAI klíč pro spolehlivější Coache.';
-      this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:reply}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};});
-    }catch(e){ this.setState(s=>{const m=s.coachMsgs.concat([{role:'coach',text:'⚠ '+(e&&e.message||e)}]);this.saveCoach(m);return {coachMsgs:m,coachBusy:false};}); } }
+      this.updateThread(tid,{msgs:hist.concat([{role:'coach',text:reply}]),busy:false});
+    }catch(e){ this.updateThread(tid,{msgs:hist.concat([{role:'coach',text:'⚠ '+(e&&e.message||e)}]),busy:false}); } }
   // Free/slabší (hlavně "reasoning") modely občas do odpovědi propašují vlastní
   // "uvažování" (anglické věty typu "we need to…", "Okay, the user is asking…")
   // místo/před skutečnou odpovědí — request už žádá reasoning:{exclude:true},
@@ -753,7 +808,7 @@ class FXApp extends React.Component{
   // jediné české diakritiky prakticky jistě není odpověď, ale celý uniklý
   // scratchpad modelu.
   coachReplyLooksBroken(text){ return !text||(text.length>200&&!/[ěščřžýáíéůúťďň]/i.test(text)); }
-  buildCoachContext(focusText){ const sc={}; this.CUR.forEach(c=>{const d=this.D[c];sc[c]={score:+d.score.toFixed(2),fund:+d.fund.toFixed(2),cot:+d.cot.toFixed(2),cotPct:d.cotPct,policy:+d.policy.toFixed(2),yield:+d.yield.toFixed(2),season:+d.season.toFixed(2),cb:d.cb,inst:d.inst,retail:d.retail};});
+  buildCoachContext(focusText,threadPair){ const sc={}; this.CUR.forEach(c=>{const d=this.D[c];sc[c]={score:+d.score.toFixed(2),fund:+d.fund.toFixed(2),cot:+d.cot.toFixed(2),cotPct:d.cotPct,policy:+d.policy.toFixed(2),yield:+d.yield.toFixed(2),season:+d.season.toFixed(2),cb:d.cb,inst:d.inst,retail:d.retail};});
     // Rozklad DNEŠNÍ změny skóre po komponentách (appka to už počítá pro panel
     // Síla měn, viz explainScoreChange) — ať Coach umí odpovědět "co dnes
     // změnilo skóre X" z reálných dat, ne obecnou úvahou.
@@ -773,7 +828,7 @@ class FXApp extends React.Component{
     try{
       const msg=(focusText||'').toUpperCase();
       const found=this.PAIRS.find(p=>msg.includes(p.pair));
-      focusPair=(found&&found.pair)||this.state.coachPair||null;
+      focusPair=(found&&found.pair)||threadPair||null;
       if(focusPair){ let aiAnalyses={}; try{aiAnalyses=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){}
         focusPairDossier=buildPairDossier(focusPair,this._scores,this._cal,this._up,aiAnalyses); }
     }catch(e){}
@@ -809,7 +864,7 @@ class FXApp extends React.Component{
     let pairNote=null; try{ if(focusPair&&this.state.notes&&this.state.notes[focusPair]) pairNote=this.state.notes[focusPair]; }catch(e){}
     let riskSentiment='NEUTRÁLNÍ'; try{ riskSentiment=g_riskSentiment>0?'RISK-ON':g_riskSentiment<0?'RISK-OFF':'NEUTRÁLNÍ'; }catch(e){}
     let vix=null; try{ if(typeof _VIX_LATEST!=='undefined'&&_VIX_LATEST) vix={value:_VIX_LATEST.vix,change5d:_VIX_LATEST.vix5dChange,regime:_VIX_LATEST.regime,asOf:_VIX_LATEST.updated}; }catch(e){}
-    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:this.state.coachPair||'none',riskSentiment,vix,centralBanks:cb,currencyScores:sc,scoreChanges:scoreChanges,topPairs:top,econEvents:econEvents,focusPairDossier:focusPairDossier,pairNote:pairNote,journalEdge:journalEdgeSummary,openPositions:openPositions}; }
+    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:threadPair||'none',riskSentiment,vix,centralBanks:cb,currencyScores:sc,scoreChanges:scoreChanges,topPairs:top,econEvents:econEvents,focusPairDossier:focusPairDossier,pairNote:pairNote,journalEdge:journalEdgeSummary,openPositions:openPositions}; }
   async runVision(){ const file=this._aiFile; if(!file){ this.setState({aiErr:'Nejprve nahrej screenshot grafu.'}); return; }
     const orKey=(localStorage.getItem('or_key')||'').trim(); if(!orKey){ this.setState({aiErr:'Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).'}); return; }
     this.setState({aiBusy:true,aiErr:'',aiResult:null});
@@ -2152,20 +2207,41 @@ class FXApp extends React.Component{
   // \n se renderuje sám (bublina má whiteSpace:'pre-wrap'), takže tu stačí jen bold.
   formatCoachMsg(text){ const h=this.h; const parts=String(text==null?'':text).split(/(\*\*[^*]+\*\*)/g);
     return parts.map((p,i)=>(p.startsWith('**')&&p.endsWith('**')&&p.length>4)?h('b',{key:i,style:{color:'#eef1f6'}},p.slice(2,-2)):h('span',{key:i},p)); }
+  // Vlevo úzký sloupec s OSTATNÍMI otevřenými vlákny (kartička = jméno +
+  // poslední zpráva) — klik prohodí to vlákno doprostřed. Vpravo zůstává
+  // "CO COACH PRÁVĚ VIDÍ" beze změny — je to jediné okno do toho, na čem
+  // Coach reálně odpovídá, nechci ho zabírat kartičkami vláken.
+  renderCoachThreadRail(threads,activeId){ const self=this,h=this.h,T=this.tok;
+    const others=threads.filter(t=>t.id!==activeId);
+    const atLimit=threads.length>=COACH_THREAD_LIMIT;
+    const preview=t=>{ const last=(t.msgs||[]).slice(-1)[0]; if(!last) return '—'; const s=(last.text||'').replace(/\s+/g,' ').trim(); return s.length>60?s.slice(0,60)+'…':s||'—'; };
+    return h('div',{style:{width:206,flex:'none',display:'flex',flexDirection:'column',height:'calc(100vh - 150px)',minHeight:520,overflow:'auto'}},
+      h('button',{type:'button',disabled:atLimit,title:atLimit?('Max '+COACH_THREAD_LIMIT+' chatů — nejdřív nějaký smaž'):'Otevřít další chat vedle tohohle',onClick:()=>self.newCoachChat(),style:{border:'1px dashed '+(atLimit?'#232b3d':T.accent),background:atLimit?'#0a0d13':'rgba(94,124,251,.08)',color:atLimit?T.faint:T.accent,borderRadius:12,padding:'11px 13px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,cursor:atLimit?'default':'pointer',marginBottom:10,flex:'none'}},'+ Nový chat'),
+      others.length?others.map(t=>h('button',{key:t.id,type:'button',onClick:()=>self.setActiveThread(t.id),style:{display:'block',width:'100%',textAlign:'left',border:'1px solid #1b2130',background:'#0a0d13',borderRadius:12,padding:'11px 13px',cursor:'pointer',fontFamily:'inherit',marginBottom:8,flex:'none'}},
+        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:6}},
+          h('span',{style:{fontSize:12.5,fontWeight:800,color:T.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},t.name),
+          h('span',{onClick:e=>{e.stopPropagation();self.deleteCoachThread(t.id);},title:'Smazat chat',style:{fontSize:11,color:T.faint,cursor:'pointer',flex:'none',padding:'0 2px'}},'✕')),
+        t.pair&&h('div',{style:self.mono({fontSize:9.5,color:T.accent,marginTop:3})},t.pair),
+        h('div',{style:{fontSize:10.5,color:T.faint,marginTop:5,lineHeight:1.4}},t.busy?'⏳ přemýšlí…':preview(t))))
+        :h('div',{style:{fontSize:11,color:T.faint,lineHeight:1.55,padding:'0 2px'}},'Žádné další otevřené chaty — „+ Nový chat" založí další vlákno (třeba na konkrétní pár, nebo jen na fundament), aniž by se smazal tenhle.'));
+  }
   renderAICoach(){ const self=this,h=this.h,T=this.tok,st=this.state; const chips=['Top setupy dnes?','Co dnes změnilo skóre?','Rozeber nejbližší velký report','Otočil se dnes někde bias?','Co s mými otevřenými pozicemi?'];
-    const send=text=>self.sendCoach(text);
+    const threads=st.coachThreads||[]; const active=threads.find(t=>t.id===st.coachActiveId)||threads[0];
+    const send=text=>self.sendCoach(text,active.id);
     const chatCard=h('div',{style:self.card({padding:0,overflow:'hidden',display:'flex',flexDirection:'column',height:'calc(100vh - 150px)',minHeight:520,flex:1,minWidth:0})},
-      h('div',{style:{display:'flex',alignItems:'center',gap:12,padding:'15px 20px',borderBottom:'1px solid #1b2130'}},h('div',{style:self.mono({width:38,height:38,borderRadius:11,background:'linear-gradient(150deg,#10131c,#0a0c12)',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13})},'AT'),h('div',{style:{flex:1}},h('div',{style:{fontSize:14,fontWeight:800}},'AI Coach'),h('div',{style:{fontSize:11,color:T.green,display:'flex',alignItems:'center',gap:6}},h('span',{style:{width:6,height:6,borderRadius:50,background:T.green}}),'Vidí tvé živé skóre, COT a pozice')),
-        h('select',{value:st.coachPair,onChange:e=>self.setState({coachPair:e.target.value}),title:'Zaměřit na pár',style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'8px 10px',fontSize:12,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"}},[h('option',{key:'',value:''},'Všechny páry')].concat(this.PAIRS.map(p=>h('option',{key:p.pair,value:p.pair},p.pair)))),
-        h('button',{type:'button',onClick:()=>self.clearCoach(),title:'Nový chat',style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:9,padding:'8px 11px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer'}},'↺ Nový')),
-      h('div',{ref:self.setCoachScrollEl,style:{flex:1,overflow:'auto',padding:'20px',display:'flex',flexDirection:'column',gap:14}},st.coachMsgs.map((m,i)=>{const me=m.role==='user';return h('div',{key:i,style:{display:'flex',justifyContent:me?'flex-end':'flex-start'}},h('div',{style:{maxWidth:me?'76%':780,display:'flex',gap:10,flexDirection:me?'row-reverse':'row',alignItems:'flex-end'}},!me&&h('div',{style:self.mono({width:28,height:28,borderRadius:9,background:'#10131c',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:10,flex:'none',color:T.dim})},'AT'),h('div',{style:{fontSize:13,lineHeight:1.55,padding:'11px 14px',borderRadius:me?'14px 14px 4px 14px':'14px 14px 14px 4px',whiteSpace:'pre-wrap',color:me?'#eaf0ff':T.text,background:me?'linear-gradient(180deg,rgba(94,124,251,.22),rgba(94,124,251,.12))':'linear-gradient(180deg,#0f131c,#0b0e14)',border:'1px solid '+(me?'rgba(94,124,251,.32)':'#1b2130')}},me?m.text:self.formatCoachMsg(m.text))));}),st.coachBusy&&h('div',{style:{fontSize:12,color:T.faint,paddingLeft:38}},'⏳ Coach přemýšlí…')),
-      h('div',{style:{padding:'12px 16px',borderTop:'1px solid #1b2130'}},h('div',{style:{display:'flex',gap:7,flexWrap:'wrap',marginBottom:11}},chips.map(c=>h('button',{key:c,type:'button',onClick:()=>send(c),style:{fontSize:11,color:T.dim,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:999,padding:'6px 12px',cursor:'pointer',fontFamily:'inherit'}},c))),h('div',{style:{display:'flex',gap:9}},h('input',{value:st.coachInput,onChange:e=>this.setState({coachInput:e.target.value}),onKeyDown:e=>{if(e.key==='Enter')send(null);},placeholder:'Zeptej se na setup, riziko, korelace…',style:{flex:1,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:11,color:T.text,padding:'12px 14px',fontSize:13,fontFamily:"'Manrope',sans-serif",outline:'none'}}),h('button',{type:'button',disabled:st.coachBusy,onClick:()=>send(null),style:{border:'none',borderRadius:11,padding:'0 18px',fontFamily:'inherit',fontSize:13,fontWeight:800,color:'#06140f',cursor:st.coachBusy?'default':'pointer',opacity:st.coachBusy?.6:1,background:'linear-gradient(180deg,#4be0a8,'+T.green+')'}},'Odeslat'))));
-    return h('div',{style:{maxWidth:1680,margin:'0 auto',display:'flex',gap:16,alignItems:'flex-start'}},chatCard,self.renderCoachContextPanel());
+      h('div',{style:{display:'flex',alignItems:'center',gap:12,padding:'15px 20px',borderBottom:'1px solid #1b2130'}},h('div',{style:self.mono({width:38,height:38,borderRadius:11,background:'linear-gradient(150deg,#10131c,#0a0c12)',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13})},'AT'),h('div',{style:{flex:1,minWidth:0}},
+        h('input',{key:'name-'+active.id,defaultValue:active.name,onBlur:e=>self.renameCoachThread(active.id,e.target.value),onKeyDown:e=>{if(e.key==='Enter')e.target.blur();},title:'Klikni a přejmenuj chat',style:{fontSize:14,fontWeight:800,color:T.text,background:'transparent',border:'none',outline:'none',fontFamily:'inherit',padding:0,width:'100%',maxWidth:260}}),
+        h('div',{style:{fontSize:11,color:T.green,display:'flex',alignItems:'center',gap:6,marginTop:2}},h('span',{style:{width:6,height:6,borderRadius:50,background:T.green}}),'Vidí tvé živé skóre, COT a pozice')),
+        h('select',{value:active.pair,onChange:e=>self.updateThread(active.id,{pair:e.target.value}),title:'Zaměřit tohle vlákno na pár',style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'8px 10px',fontSize:12,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"}},[h('option',{key:'',value:''},'Všechny páry')].concat(this.PAIRS.map(p=>h('option',{key:p.pair,value:p.pair},p.pair)))),
+        h('button',{type:'button',onClick:()=>self.clearCoachThread(active.id),title:'Vymazat historii tohohle chatu (jméno a pár zůstanou)',style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:9,padding:'8px 11px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer'}},'🗑 Vymazat')),
+      h('div',{ref:self.setCoachScrollEl,style:{flex:1,overflow:'auto',padding:'20px',display:'flex',flexDirection:'column',gap:14}},active.msgs.map((m,i)=>{const me=m.role==='user';return h('div',{key:i,style:{display:'flex',justifyContent:me?'flex-end':'flex-start'}},h('div',{style:{maxWidth:me?'76%':780,display:'flex',gap:10,flexDirection:me?'row-reverse':'row',alignItems:'flex-end'}},!me&&h('div',{style:self.mono({width:28,height:28,borderRadius:9,background:'#10131c',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:10,flex:'none',color:T.dim})},'AT'),h('div',{style:{fontSize:13,lineHeight:1.55,padding:'11px 14px',borderRadius:me?'14px 14px 4px 14px':'14px 14px 14px 4px',whiteSpace:'pre-wrap',color:me?'#eaf0ff':T.text,background:me?'linear-gradient(180deg,rgba(94,124,251,.22),rgba(94,124,251,.12))':'linear-gradient(180deg,#0f131c,#0b0e14)',border:'1px solid '+(me?'rgba(94,124,251,.32)':'#1b2130')}},me?m.text:self.formatCoachMsg(m.text))));}),active.busy&&h('div',{style:{fontSize:12,color:T.faint,paddingLeft:38}},'⏳ Coach přemýšlí…')),
+      h('div',{style:{padding:'12px 16px',borderTop:'1px solid #1b2130'}},h('div',{style:{display:'flex',gap:7,flexWrap:'wrap',marginBottom:11}},chips.map(c=>h('button',{key:c,type:'button',onClick:()=>send(c),style:{fontSize:11,color:T.dim,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:999,padding:'6px 12px',cursor:'pointer',fontFamily:'inherit'}},c))),h('div',{style:{display:'flex',gap:9}},h('input',{value:active.input,onChange:e=>self.setThreadInput(active.id,e.target.value),onKeyDown:e=>{if(e.key==='Enter')send(null);},placeholder:'Zeptej se na setup, riziko, korelace…',style:{flex:1,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:11,color:T.text,padding:'12px 14px',fontSize:13,fontFamily:"'Manrope',sans-serif",outline:'none'}}),h('button',{type:'button',disabled:active.busy,onClick:()=>send(null),style:{border:'none',borderRadius:11,padding:'0 18px',fontFamily:'inherit',fontSize:13,fontWeight:800,color:'#06140f',cursor:active.busy?'default':'pointer',opacity:active.busy?.6:1,background:'linear-gradient(180deg,#4be0a8,'+T.green+')'}},'Odeslat'))));
+    return h('div',{style:{maxWidth:1980,margin:'0 auto',display:'flex',gap:16,alignItems:'flex-start'}},self.renderCoachThreadRail(threads,active.id),chatCard,self.renderCoachContextPanel(active));
   }
   // Panel "Co Coach právě vidí" — stejný kontext, jaký se posílá do promptu
   // (viz buildCoachContext), jen zhuštěný na pár řádků, ať je vidět, na jak
   // živých datech Coach vlastně odpovídá (a kdy je něco starší/nenačtené).
-  renderCoachContextPanel(){ const self=this,h=this.h,T=this.tok,st=this.state;
+  renderCoachContextPanel(activeThread){ const self=this,h=this.h,T=this.tok,st=this.state;
     let cotMeta={},histN=0; try{cotMeta=loadCOTMeta()||{};}catch(e){} try{histN=Object.keys(loadCOTHistory()||{}).length;}catch(e){}
     const cotAge=cotMeta&&cotMeta.asOf?Math.round((Date.now()-new Date(cotMeta.asOf).getTime())/86400000):null;
     const retailPt=(this._retailHist||[]).slice(-1)[0]||null;
@@ -2184,7 +2260,7 @@ class FXApp extends React.Component{
       {label:'Risk režim (VIX)',value:vixTxt,dot:vixDot},
       {label:'Otevřené pozice',value:posN+'×',dot:posN?'warn':'ok'},
       {label:'Deník obchodů',value:journalN+' zápisů',dot:'ok'},
-      {label:'Zaměřený pár',value:st.coachPair||'všechny páry',dot:'ok'},
+      {label:'Zaměřený pár',value:(activeThread&&activeThread.pair)||'všechny páry',dot:'ok'},
     ];
     const dotCol=d=>d==='ok'?T.green:d==='warn'?T.amber:T.red;
     return h('div',{style:self.card({padding:'16px 18px',width:284,flex:'none',height:'calc(100vh - 150px)',minHeight:520,overflow:'auto'})},
@@ -2576,7 +2652,13 @@ class FXApp extends React.Component{
       h('div',{style:{display:'flex',alignItems:'center',gap:12,padding:'2px 4px 16px',borderBottom:'1px solid #161b27'}},h('div',{style:self.mono({width:42,height:42,borderRadius:13,background:'linear-gradient(150deg,#10131c,#0a0c12)',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:16,letterSpacing:'-.04em',boxShadow:'inset 0 1px 0 rgba(255,255,255,.05),0 8px 20px rgba(0,0,0,.4)'})},'AT'),h('div',{style:{lineHeight:1.05}},h('div',{style:{fontWeight:800,fontSize:15}},'Command Center'),h('div',{style:self.mono({fontSize:9.5,color:T.faint,letterSpacing:'.26em',marginTop:3})},'FX BIAS ENGINE'))),
       h('nav',{style:{display:'flex',flexDirection:'column',gap:3}},NAV_GROUPS.map((g,gi)=>h(React.Fragment,{key:g},
         h('div',{style:self.mono({fontSize:9.5,fontWeight:800,letterSpacing:'.14em',color:'#454f63',padding:(gi?'14px':'2px')+' 15px 6px'})},g.toUpperCase()),
-        tabs.filter(t=>t.group===g).map(t=>{const on=st.tab===t.id;return h('button',{key:t.id,type:'button',onClick:()=>this.setState(s=>({tab:t.id,coachPair:t.id==='coach'?(s.sel||s.coachPair):s.coachPair,sel:(t.id==='ai'&&!s.sel)?(this.PAIRS[0]&&this.PAIRS[0].pair):s.sel})),style:{position:'relative',display:'flex',alignItems:'center',gap:11,width:'100%',border:0,background:on?'rgba(94,124,251,.10)':'transparent',color:on?'#eef1f6':'#9aa3b2',borderRadius:10,padding:'10px 12px 10px 15px',fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',textAlign:'left'}},h('span',{style:{position:'absolute',left:0,top:'50%',transform:'translateY(-50%)',width:3,height:15,borderRadius:'0 3px 3px 0',background:on?T.accent:'transparent'}}),h('svg',{width:15,height:15,viewBox:'0 0 24 24',fill:'none',stroke:on?T.accent:'#454f63',strokeWidth:1.9,strokeLinecap:'round',strokeLinejoin:'round',style:{flex:'none'},dangerouslySetInnerHTML:{__html:NAV_ICONS[t.id]||''}}),t.label);})))),
+        tabs.filter(t=>t.group===g).map(t=>{const on=st.tab===t.id;return h('button',{key:t.id,type:'button',onClick:()=>this.setState(s=>({tab:t.id,sel:(t.id==='ai'&&!s.sel)?(this.PAIRS[0]&&this.PAIRS[0].pair):s.sel}),()=>{
+            // Přechod na Coach s vybraným párem (např. z detailu páru) zaměří
+            // AKTIVNÍ vlákno na ten pár — stejná zkratka jako dřív, jen teď
+            // cílí na vlákno, které je zrovna uprostřed, místo jednoho
+            // globálního coachPair.
+            if(t.id==='coach'&&this.state.sel){ const aid=this.state.coachActiveId||(this.state.coachThreads[0]&&this.state.coachThreads[0].id); if(aid) this.updateThread(aid,{pair:this.state.sel}); }
+          }),style:{position:'relative',display:'flex',alignItems:'center',gap:11,width:'100%',border:0,background:on?'rgba(94,124,251,.10)':'transparent',color:on?'#eef1f6':'#9aa3b2',borderRadius:10,padding:'10px 12px 10px 15px',fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',textAlign:'left'}},h('span',{style:{position:'absolute',left:0,top:'50%',transform:'translateY(-50%)',width:3,height:15,borderRadius:'0 3px 3px 0',background:on?T.accent:'transparent'}}),h('svg',{width:15,height:15,viewBox:'0 0 24 24',fill:'none',stroke:on?T.accent:'#454f63',strokeWidth:1.9,strokeLinecap:'round',strokeLinejoin:'round',style:{flex:'none'},dangerouslySetInnerHTML:{__html:NAV_ICONS[t.id]||''}}),t.label);})))),
       h('div',{style:{marginTop:'auto'}},this.renderBiasCard()));
     const header=h('header',{style:{position:'sticky',top:0,zIndex:8,display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',padding:'14px 22px',background:'rgba(7,8,12,.72)',backdropFilter:'blur(14px)',boxShadow:'0 1px 0 #161b27,0 14px 30px rgba(0,0,0,.18)'}},
       h('div',null,h('div',{style:{display:'flex',alignItems:'center',gap:11}},h('h1',{style:{margin:0,fontSize:19,fontWeight:800,letterSpacing:'-.01em'}},titles[st.tab]),h('span',{style:{display:'inline-flex',alignItems:'center',gap:6,fontFamily:"'JetBrains Mono',monospace",fontSize:10,fontWeight:600,color:'#2ed3a0',background:'rgba(46,211,160,.1)',border:'1px solid rgba(46,211,160,.22)',borderRadius:999,padding:'3px 9px'}},h('span',{style:{width:6,height:6,borderRadius:'50%',background:'#2ed3a0',animation:'fxpulse 1.8s infinite'}}),'LIVE')),h('div',{style:{fontSize:12,color:T.dim,marginTop:3}},subs[st.tab])),
