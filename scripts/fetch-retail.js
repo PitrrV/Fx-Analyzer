@@ -53,20 +53,32 @@
 // Výstup: data/retail_hist.json = { updated, source, points:[ {t, pairs:{EURUSD:{l,s}}, ccy:{USD:..}, source } ] }
 const fs = require("fs");
 const CUR = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD"];
-const UA = {
+// Společná hlavička byla dřív JEDNA (UA) sdílená pro Myfxbook, FXSSI i CFTC — a
+// nesla Referer patřící FXSSI ("fxssi.com/tools/current-ratio") i do volání na
+// myfxbook.com. Nalezeno při vyšetřování výpadku 6.9.2026 (Myfxbook login.json
+// uspěl, ale get-community-outlook.json vracel "Invalid session." u KAŽDÉHO
+// běhu 19+ hodin v kuse — to je typický podpis serveru, co request kvůli
+// referer/origin mismatchi tiše přiřadí jinam, ne skutečně vypršelé session).
+// Každý zdroj má teď vlastní, k sobě patřící Referer.
+const UA_BASE = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   "Accept": "application/json, text/plain, */*",
-  "Referer": "https://fxssi.com/tools/current-ratio",
 };
+const UA_MYFX = { ...UA_BASE, "Referer": "https://www.myfxbook.com/community/outlook" };
+const UA_FXSSI = { ...UA_BASE, "Referer": "https://fxssi.com/tools/current-ratio" };
+const UA_OTHER = { ...UA_BASE };
 
 // ── Myfxbook oficiální API (primární, plné pokrytí) ─────────────────
 const MYFX = "https://www.myfxbook.com/api";
 
 async function myfxGet(path) {
-  const r = await fetch(MYFX + path, { headers: UA, signal: AbortSignal.timeout(25000) });
-  if (!r.ok) throw new Error("Myfxbook HTTP " + r.status);
-  const j = await r.json();
-  if (j.error) throw new Error("Myfxbook: " + (j.message || "chyba"));
+  const r = await fetch(MYFX + path, { headers: UA_MYFX, signal: AbortSignal.timeout(25000) });
+  const text = await r.text();
+  let j;
+  try { j = JSON.parse(text); }
+  catch (e) { throw new Error("Myfxbook HTTP " + r.status + " — nečitelná odpověď (prvních 200 znaků): " + text.slice(0, 200)); }
+  if (!r.ok) throw new Error("Myfxbook HTTP " + r.status + " — " + JSON.stringify(j).slice(0, 300));
+  if (j.error) throw new Error("Myfxbook: " + (j.message || "chyba") + " (celá odpověď: " + JSON.stringify(j).slice(0, 300) + ")");
   return j;
 }
 
@@ -74,11 +86,22 @@ async function fetchMyfxbook() {
   const email = process.env.MYFXBOOK_EMAIL, password = process.env.MYFXBOOK_PASSWORD;
   if (!email || !password) throw new Error("MYFXBOOK_EMAIL/PASSWORD nejsou nastavené");
   const lg = await myfxGet(`/login.json?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
-  if (!lg.session) throw new Error("Myfxbook login: chybí session");
+  if (!lg.session) throw new Error("Myfxbook login: chybí session (odpověď: " + JSON.stringify(lg).slice(0, 300) + ")");
   const session = lg.session;
+  console.log("Myfxbook login OK — session délka " + session.length + ", začíná „" + session.slice(0, 4) + "…");
   try {
-    // ⚠ session SYROVÁ, bez encodeURIComponent — viz komentář v hlavičce souboru.
-    const j = await myfxGet(`/get-community-outlook.json?session=${session}`);
+    let j;
+    try {
+      // Historicky fungovala syrová (nekódovaná) session v URL (viz komentář
+      // v hlavičce souboru). Než appku znovu spolehnout na jedinou variantu
+      // natvrdo — Myfxbook se od minule mohl zachovat jinak — při "Invalid
+      // session" zkusí ještě URL-kódovanou variantu, než se vzdá.
+      j = await myfxGet(`/get-community-outlook.json?session=${session}`);
+    } catch (e) {
+      if (!/invalid session/i.test(e.message)) throw e;
+      console.log("Syrová session odmítnuta (" + e.message + ") — zkouším URL-kódovanou…");
+      j = await myfxGet(`/get-community-outlook.json?session=${encodeURIComponent(session)}`);
+    }
     const pairs = {};
     for (const s of (j.symbols || [])) {
       const sym = String(s.name || "").toUpperCase().replace("/", "");
@@ -113,7 +136,7 @@ function smerSedi(a, b) {
 const FXSSI_URL = "https://c.fxssi.com/api/current-ratio";
 
 async function fetchFxssi() {
-  const r = await fetch(FXSSI_URL, { headers: UA, signal: AbortSignal.timeout(25000) });
+  const r = await fetch(FXSSI_URL, { headers: UA_FXSSI, signal: AbortSignal.timeout(25000) });
   if (!r.ok) throw new Error("FXSSI HTTP " + r.status);
   const j = await r.json();
   if (!j || typeof j.pairs !== "object") throw new Error("FXSSI: chybí pole `pairs`");
@@ -171,7 +194,7 @@ async function fetchCftcNonReportable() {
   const where = `(${COT_LIKE_PATS.map((p) => `market_and_exchange_names like '${p}'`).join(" OR ")}) AND report_date_as_yyyy_mm_dd > '${cutoff}T00:00:00.000'`;
   const fields = "market_and_exchange_names,report_date_as_yyyy_mm_dd,nonrept_positions_long_all,nonrept_positions_short_all";
   const url = `https://publicreporting.cftc.gov/resource/${CFTC_LEGACY_DATASET}.json?$select=${encodeURIComponent(fields)}&$where=${encodeURIComponent(where)}&$order=${encodeURIComponent("report_date_as_yyyy_mm_dd DESC")}&$limit=200`;
-  const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(25000) });
+  const r = await fetch(url, { headers: UA_OTHER, signal: AbortSignal.timeout(25000) });
   if (!r.ok) throw new Error("CFTC Socrata API HTTP " + r.status);
   const rows = await r.json();
   if (!Array.isArray(rows) || !rows.length) throw new Error("CFTC Socrata API: 0 řádků");
