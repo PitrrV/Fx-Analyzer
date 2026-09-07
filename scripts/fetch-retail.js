@@ -217,12 +217,45 @@ async function fetchCftcNonReportable() {
 (async () => {
   let ccy = null, pairs = {}, source = "";
 
-  // 1) Myfxbook — plné pokrytí (~140 měnových párů, všech 28 z STANDARD_PAIRS)
+  // Store se čte JEDNOU hned na začátku (dřív se čítal zvlášť — tady pro
+  // cooldown rozhodnutí níž, znovu u anti-inverze a znovu při zápisu) — jeden
+  // objekt, co appka postupně doplňuje a na konci uloží celý najednou.
+  let store = { updated: "", points: [] };
+  try { store = JSON.parse(fs.readFileSync("data/retail_hist.json", "utf8")); } catch (e) {}
+  if (!Array.isArray(store.points)) store.points = [];
+  const myfxState = store.myfxbook && typeof store.myfxbook === "object" ? store.myfxbook : { failStreak: 0, lastTry: 0 };
+
+  // 1) Myfxbook — plné pokrytí (~140 měnových párů, všech 28 z STANDARD_PAIRS).
+  // CIRCUIT BREAKER: po MYFX_FAIL_THRESHOLD selháních za sebou appka Myfxbook
+  // na MYFX_COOLDOWN_MS přestane zkoušet a rovnou jede na FXSSI. Důvod: appka
+  // má za sebou rozsáhlý dřívější průzkum (scripts/probe-myfxbook-*.js) — IP
+  // rotace, cookies, POST místo GET, hlavičky prohlížeče i 4 veřejné proxy byly
+  // vyzkoušené a vyvrácené (session padá i po JEDNOM keep-alive TCP spojení,
+  // tedy ne kvůli rotaci IP). Nevyvrácená zůstala jen jedna hypotéza z toho
+  // průzkumu (probe-myfxbook-session.js, H-E): vyčerpaný denní limit, hlášený
+  // STEJNOU hláškou "Invalid session." jako cokoli jiného. Pokud je to pravda,
+  // dalších 48×/den neúspěšných pokusů (retail.yml běží po 30 min) situaci jen
+  // zhoršuje, ne zlepšuje — cooldown tomu zabrání, a jakmile Myfxbook jednou
+  // znovu projde, počítadlo se vynuluje a appka se vrátí k běžné frekvenci.
+  const MYFX_FAIL_THRESHOLD = 3;
+  const MYFX_COOLDOWN_MS = 3 * 3600 * 1000; // 3 hodiny
+  const cooldownLeft = MYFX_COOLDOWN_MS - (Date.now() - (myfxState.lastTry || 0));
+  const skipMyfx = (myfxState.failStreak || 0) >= MYFX_FAIL_THRESHOLD && cooldownLeft > 0;
+
   let myfx = null;
-  try {
-    myfx = await fetchMyfxbook();
-    console.log("Myfxbook OK:", Object.keys(myfx).length, "párů");
-  } catch (e) { console.log("Myfxbook selhal:", e.message); }
+  if (skipMyfx) {
+    console.log(`Myfxbook přeskočeno — ${myfxState.failStreak}× za sebou selhal, cooldown ještě ${Math.round(cooldownLeft / 60000)} min.`);
+  } else {
+    try {
+      myfx = await fetchMyfxbook();
+      console.log("Myfxbook OK:", Object.keys(myfx).length, "párů");
+      myfxState.failStreak = 0;
+    } catch (e) {
+      myfxState.failStreak = (myfxState.failStreak || 0) + 1;
+      console.log(`Myfxbook selhal (${myfxState.failStreak}× za sebou):`, e.message);
+    }
+    myfxState.lastTry = Date.now();
+  }
 
   // 2) FXSSI — záloha a zároveň nezávislá KONTROLA SMĚRU
   let fxssi = null;
@@ -288,12 +321,9 @@ async function fetchCftcNonReportable() {
   // (b) ANTI-INVERZE: porovnej s posledním uloženým bodem téhož zdroje. Retail
   // pozicování je setrvačné — mezi dvěma běhy (30 min) se nemůže hromadně
   // překlopit na svůj zrcadlový obraz. Když by korelace vyšla silně ZÁPORNÁ,
-  // je to podpis prohozených long/short, ne pohyb trhu.
-  let prevStore = null;
-  try { prevStore = JSON.parse(fs.readFileSync("data/retail_hist.json", "utf8")); } catch (e) {}
-  const prev = prevStore && Array.isArray(prevStore.points)
-    ? [...prevStore.points].reverse().find((p) => p.source === source && p.pairs && Object.keys(p.pairs).length)
-    : null;
+  // je to podpis prohozených long/short, ne pohyb trhu. (store už načtený
+  // nahoře — žádné druhé čtení souboru.)
+  const prev = [...store.points].reverse().find((p) => p.source === source && p.pairs && Object.keys(p.pairs).length);
   if (prev) {
     const xs = [], ys = [];
     for (const [p, d] of Object.entries(pairs)) {
@@ -322,13 +352,11 @@ async function fetchCftcNonReportable() {
 
   const point = { t: new Date().toISOString(), pairs, ccy, source };
 
-  let store = { updated: "", points: [] };
-  try { store = JSON.parse(fs.readFileSync("data/retail_hist.json", "utf8")); } catch (e) {}
-  if (!Array.isArray(store.points)) store.points = [];
   store.points.push(point);
   store.points = store.points.slice(-1100); // ~45 dní bodů
   store.updated = point.t;
   store.source = source;
+  store.myfxbook = myfxState;
 
   fs.mkdirSync("data", { recursive: true });
   fs.writeFileSync("data/retail_hist.json", JSON.stringify(store));
