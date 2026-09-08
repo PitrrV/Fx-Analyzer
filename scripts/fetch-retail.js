@@ -302,6 +302,15 @@ async function fetchCftcNonReportable() {
     process.exit(0);
   }
 
+  // GH Actions "::warning::" anotace — dřívější výpadek (7.–8.9.2026, Myfxbook
+  // "Wrong email/password") běžel 3 dny neviditelně, protože job vždycky skončil
+  // "success" (fallback je legitimní, exit 0 je správně) a nikde se nezobrazilo,
+  // ŽE se použil fallback. Tohle nemění exit kód (zelený běh zůstává zelený),
+  // jen přidá varovný trojúhelník do seznamu běhů, když primární zdroj neseděl.
+  if (source !== "myfxbook-api+fxssi" && source !== "myfxbook-api") {
+    console.log(`::warning::Retail běží na záloze (${source}), ne na Myfxbooku — Myfxbook selhal ${myfxState.failStreak || 0}× za sebou.`);
+  }
+
   // ── VALIDAČNÍ BRÁNA PŘED ZÁPISEM ──────────────────────────────────
   // Vznikla po incidentu, kdy poziční parser prohodil long/short a data byla
   // 30 dní tiše obrácená. Cíl: radši nic nezapsat než zapsat obrácená data.
