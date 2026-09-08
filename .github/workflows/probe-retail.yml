@@ -14,22 +14,28 @@ jobs:
         with:
           node-version: "20"
       - name: Otestovat kandidátní zdroje
+        continue-on-error: true
         run: node scripts/probe-retail-sources.js
       - name: Audit integrity retail sentimentu
+        continue-on-error: true
         run: node scripts/audit-retail-integrity.js
       - name: Průzkum pokrytí párů
+        continue-on-error: true
         run: node scripts/probe-retail-coverage.js
       - name: Myfxbook keep-alive test
+        continue-on-error: true
         env:
           MYFXBOOK_EMAIL: ${{ secrets.MYFXBOOK_EMAIL }}
           MYFXBOOK_PASSWORD: ${{ secrets.MYFXBOOK_PASSWORD }}
         run: node scripts/probe-myfxbook-keepalive.js
       - name: Myfxbook cookie/POST test
+        continue-on-error: true
         env:
           MYFXBOOK_EMAIL: ${{ secrets.MYFXBOOK_EMAIL }}
           MYFXBOOK_PASSWORD: ${{ secrets.MYFXBOOK_PASSWORD }}
         run: node scripts/probe-myfxbook-cookie.js
       - name: Myfxbook přes veřejné proxy
+        continue-on-error: true
         env:
           MYFXBOOK_EMAIL: ${{ secrets.MYFXBOOK_EMAIL }}
           MYFXBOOK_PASSWORD: ${{ secrets.MYFXBOOK_PASSWORD }}
