@@ -2,8 +2,7 @@
 //
 // PŘÍSTUP 0 (PRIMÁRNÍ, intradenní, plné pokrytí): Myfxbook oficiální REST API —
 //   login.json + get-community-outlook.json · 187 symbolů, z toho ~140 měnových
-//   párů → pokrývá VŠECH 28 z STANDARD_PAIRS včetně křížů (GBPNZD, NZDJPY, EURCAD…),
-//   které FXSSI vůbec nesleduje.
+//   párů → pokrývá VŠECH 28 z STANDARD_PAIRS včetně křížů (GBPNZD, NZDJPY, EURCAD…).
 //
 //   POZOR NA SESSION — tady byla dlouho chyba: token z login.json se posílá do URL
 //   SYROVÝ, BEZ encodeURIComponent(). Obsahuje znaky, které by kódování změnilo na
@@ -11,41 +10,33 @@
 //   "Invalid session." Ověřeno živě (run 30191729319): syrová session error=false
 //   se 187 symboly, kódovaná "Invalid session." na tomtéž běhu. Nešlo tedy o vazbu
 //   session na IP, Cloudflare ani reputaci datacenter IP — jen o překódovaný token.
+//   I tak appka od 6.9.2026 zažívá opakované, nevysvětlené "Invalid session."
+//   výpadky (probe-myfxbook-*.js dokumentuje rozsáhlý průzkum, který IP rotaci,
+//   hlavičky, cookies i proxy vyvrátil jako příčinu) — nevyřešeno, appka na to
+//   reaguje cirkuit breakerem níž, ne dalším zdrojem.
 //
 //   SMĚR: API vrací pojmenovaná pole longPercentage/shortPercentage → směr je
 //   z názvu jednoznačný, nehádá se z pořadí (to byla příčina dřívějšího
 //   30denního obrácení dat, viz scripts/fix-retail-history-inversion.js).
-//   Navíc se křížově kontroluje proti FXSSI: při záporné korelaci se zápis odmítne.
 //
 //   Limit volné úrovně je 100 požadavků/24 h na get-community-outlook.json;
 //   cron po 30 min = 48/den, s rezervou.
 //
-// PŘÍSTUP 1 (záloha + křížová kontrola směru): FXSSI Current Ratio —
-//   https://c.fxssi.com/api/current-ratio · veřejné, BEZ přihlášení, čistý JSON.
-//   Ověřeno živě z GH Actions runneru (2026-07-26): 200 + application/json, žádná
-//   Cloudflare blokace, žádná session vázaná na IP. Agreguje pozice z 10 brokerů
-//   (MyFxBook, OANDA, Dukascopy, FXBlue, IG, XM, Insta, FiboGroup, Amarkets, FXSSI)
-//   s vahami → širší základna než dřívější samotný Myfxbook, který je uvnitř taky.
-//   Obnovuje se ~10 min, takže data rostou po celý den.
-//
-//   SMĚR HODNOTY (ověřeno, ne odhadnuto — chyba by tiše obrátila retail signál):
-//   hodnota v `pairs[PAIR][broker]` i `pairs[PAIR].average` je BUY % (= long %).
-//   Důkaz z jejich vlastního kódu/stylu na fxssi.com/tools/current-ratio:
-//     addBroker(){ perc=100-perc; open=perc; close=100-perc; … }  → close === RAW
-//     šablona:  <div class="ratio-bar-left" style="width:{{close}}%">
-//     jiný jejich nástroj mapuje ty samé třídy explicitně:
-//       $voter.find('.ratio-bar-left').text(data.buy+'%')
-//       $voter.find('.ratio-bar-right').text(data.sell+'%')
-//     CSS: .ratio-bar-left{background:#5896D6}(modrá) .ratio-bar-right{#F06A7A}(oranž.)
-//     jejich dokumentace: "The blue bar indicates the percentage of Buy trades,
-//     the orange bar displays the percentage of Sell trades."
-//   → levý pruh = close = RAW = Buy%. Sedí i jejich kontrariánský signál
-//     (open<50 ⇒ 'sell', tj. když je dav long, indikátor dává short).
-//
-// PŘÍSTUP 2 (fallback, týdenní): CFTC Non-reportable přes Socrata JSON API
+// PŘÍSTUP 1 (fallback, týdenní): CFTC Non-reportable přes Socrata JSON API
 //   (publicreporting.cftc.gov, dataset 6dca-aqww, pole nonrept_positions_*) — stejná
 //   infrastruktura jako spolehlivě běžící fetch-cot.js. Per měna (ne per pár),
-//   aktualizace jen týdně (páteční report) → použije se, jen když FXSSI selže.
+//   aktualizace jen týdně (páteční report) → použije se, jen když Myfxbook selže.
+//
+// FXSSI Current Ratio byl dřív PŘÍSTUP 1 (intradenní záloha + křížová kontrola
+// směru proti Myfxbooku) — na výslovnou žádost uživatele odstraněn 8.9.2026.
+// Důvod: jiné pokrytí brokerů i metodika než Myfxbook (viz historická data
+// v retail_hist.json, sloupec "source") způsobovalo při každém přepnutí zdroje
+// skok v grafu o 9-22 procentních bodů na měnu, nesouvisející s pohybem trhu
+// (zdokumentováno v FX Analyzer auditu 8.9.2026, §9 a §10b) — appka teď při
+// výpadku Myfxbooku raději nechá poslední známou hodnotu beze změny (a při
+// delším výpadku spadne až na týdenní CFTC), než aby míchala dvě neslučitelné
+// škály do jedné řady. Staré FXSSI body v historii se NEMAŽOU (viz git historie
+// commitu, který tohle zavedl, pro plný kontext).
 //
 // Historická poznámka: HTML stránka myfxbook.com/community/outlook je z GH Actions
 // blokovaná Cloudflare (403) — proto se používá výhradně oficiální REST API.
@@ -65,7 +56,6 @@ const UA_BASE = {
   "Accept": "application/json, text/plain, */*",
 };
 const UA_MYFX = { ...UA_BASE, "Referer": "https://www.myfxbook.com/community/outlook" };
-const UA_FXSSI = { ...UA_BASE, "Referer": "https://fxssi.com/tools/current-ratio" };
 const UA_OTHER = { ...UA_BASE };
 
 // ── Myfxbook oficiální API (primární, plné pokrytí) ─────────────────
@@ -118,53 +108,9 @@ async function fetchMyfxbook() {
   }
 }
 
-// Křížová kontrola SMĚRU proti nezávislému zdroji. Obrácená konvence u jednoho ze
-// zdrojů by se projevila silnou ZÁPORNOU korelací na společných párech.
-function smerSedi(a, b) {
-  const spol = Object.keys(a).filter((p) => b[p]);
-  if (spol.length < 5) return { ok: true, n: spol.length, r: NaN };
-  const xs = spol.map((p) => a[p].l), ys = spol.map((p) => b[p].l);
-  const n = xs.length, mx = xs.reduce((s, v) => s + v, 0) / n, my = ys.reduce((s, v) => s + v, 0) / n;
-  const cov = xs.reduce((s, x, i) => s + (x - mx) * (ys[i] - my), 0);
-  const sx = Math.sqrt(xs.reduce((s, x) => s + (x - mx) ** 2, 0));
-  const sy = Math.sqrt(ys.reduce((s, y) => s + (y - my) ** 2, 0));
-  const r = sx && sy ? cov / (sx * sy) : NaN;
-  return { ok: !(Number.isFinite(r) && r < -0.3), n, r };
-}
-
-// ── FXSSI Current Ratio (primární, intradenní) ──────────────────────
-const FXSSI_URL = "https://c.fxssi.com/api/current-ratio";
-
-async function fetchFxssi() {
-  const r = await fetch(FXSSI_URL, { headers: UA_FXSSI, signal: AbortSignal.timeout(25000) });
-  if (!r.ok) throw new Error("FXSSI HTTP " + r.status);
-  const j = await r.json();
-  if (!j || typeof j.pairs !== "object") throw new Error("FXSSI: chybí pole `pairs`");
-
-  const pairs = {};
-  for (const [rawSym, brokers] of Object.entries(j.pairs)) {
-    const sym = String(rawSym).toUpperCase().replace("/", "");
-    if (!/^[A-Z]{6}$/.test(sym)) continue;
-    // `average` = jejich vážený průměr přes brokery; když chybí, prostý průměr sloupců.
-    let long = parseFloat(brokers && brokers.average);
-    if (!Number.isFinite(long)) {
-      const vals = Object.entries(brokers || {})
-        .filter(([k]) => k !== "average" && k !== "oip")
-        .map(([, v]) => parseFloat(v))
-        .filter(Number.isFinite);
-      if (!vals.length) continue;
-      long = vals.reduce((a, b) => a + b, 0) / vals.length;
-    }
-    if (!(long >= 0 && long <= 100)) continue;
-    pairs[sym] = { l: Math.round(long), s: Math.round(100 - long) };
-  }
-  if (Object.keys(pairs).length < 6) throw new Error("FXSSI: jen " + Object.keys(pairs).length + " párů");
-  return pairs;
-}
-
 // Per-měnový průměr. Bere JEN páry, kde jsou OBĚ nohy sledovaná měna — jinak by
-// XAUUSD/BTCUSD/US30 (které FXSSI taky vrací) tahaly retail sentiment USD, i když
-// o měnovém páru samy o sobě nic neříkají.
+// XAUUSD/BTCUSD apod. (Myfxbook je mezi ~187 symboly taky vrací) tahaly retail
+// sentiment USD, i když o měnovém páru samy o sobě nic neříkají.
 function pairsToCcy(pairs) {
   const sum = {}, cnt = {};
   for (const [pair, d] of Object.entries(pairs)) {
@@ -227,9 +173,10 @@ async function fetchCftcNonReportable() {
 
   // 1) Myfxbook — plné pokrytí (~140 měnových párů, všech 28 z STANDARD_PAIRS).
   // CIRCUIT BREAKER: po MYFX_FAIL_THRESHOLD selháních za sebou appka Myfxbook
-  // na MYFX_COOLDOWN_MS přestane zkoušet a rovnou jede na FXSSI. Důvod: appka
-  // má za sebou rozsáhlý dřívější průzkum (scripts/probe-myfxbook-*.js) — IP
-  // rotace, cookies, POST místo GET, hlavičky prohlížeče i 4 veřejné proxy byly
+  // na MYFX_COOLDOWN_MS přestane zkoušet (rovnou na CFTC, viz níž — FXSSI mezi-
+  // krok byl odstraněn, viz komentář v hlavičce souboru). Appka má za sebou
+  // rozsáhlý dřívější průzkum (scripts/probe-myfxbook-*.js) — IP rotace,
+  // cookies, POST místo GET, hlavičky prohlížeče i 4 veřejné proxy byly
   // vyzkoušené a vyvrácené (session padá i po JEDNOM keep-alive TCP spojení,
   // tedy ne kvůli rotaci IP). Nevyvrácená zůstala jen jedna hypotéza z toho
   // průzkumu (probe-myfxbook-session.js, H-E): vyčerpaný denní limit, hlášený
@@ -257,35 +204,18 @@ async function fetchCftcNonReportable() {
     myfxState.lastTry = Date.now();
   }
 
-  // 2) FXSSI — záloha a zároveň nezávislá KONTROLA SMĚRU
-  let fxssi = null;
-  try {
-    fxssi = await fetchFxssi();
-    console.log("FXSSI OK:", Object.keys(fxssi).length, "párů");
-  } catch (e) { console.log("FXSSI selhal:", e.message); }
-
-  if (myfx && fxssi) {
-    const k = smerSedi(myfx, fxssi);
-    console.log(`Kontrola směru Myfxbook×FXSSI: n=${k.n} r=${Number.isFinite(k.r) ? k.r.toFixed(3) : "n/a"}`);
-    if (!k.ok) {
-      console.error("VALIDACE SELHALA: Myfxbook a FXSSI si odporují ve směru long/short — nezapisuju.");
-      process.exit(1);
-    }
-  }
-
   if (myfx) {
-    // Myfxbook je základ; FXSSI doplní jen páry, které Myfxbook nemá.
-    pairs = { ...(fxssi || {}), ...myfx };
+    pairs = myfx;
     ccy = pairsToCcy(pairs);
-    source = fxssi ? "myfxbook-api+fxssi" : "myfxbook-api";
+    source = "myfxbook-api";
     console.log("Zdroj:", source, "· párů celkem:", Object.keys(pairs).length, "·", JSON.stringify(ccy));
-  } else if (fxssi) {
-    pairs = fxssi;
-    ccy = pairsToCcy(pairs);
-    source = "fxssi-current-ratio";
-    console.log("Zdroj: fxssi-current-ratio ·", JSON.stringify(ccy));
   }
 
+  // 2) CFTC Non-reportable — poslední záchranná síť, jen když Myfxbook selže
+  // (nebo je v cooldownu). Záměrně BEZ FXSSI mezikroku (odstraněn 8.9.2026 na
+  // žádost uživatele — jiná metodika/pokrytí brokerů způsobovalo skoky v grafu
+  // při každém přepnutí zdroje, viz hlavička souboru). CFTC se aktualizuje jen
+  // týdně, takže i jako fallback nezpůsobuje častý sawtooth efekt.
   if (!ccy) {
     try {
       ccy = await fetchCftcNonReportable();
@@ -298,7 +228,7 @@ async function fetchCftcNonReportable() {
     // Recoverable stav (výpadek obou zdrojů) — existující data/retail_hist.json
     // zůstává nedotčené a další běh za 30 min to zkusí znovu. Exit 0 (ne 1), ať
     // tohle negeneruje opakované CI failure notifikace; skutečná chyba (FATAL) má 1.
-    console.warn("Žádný retail zdroj nedostupný (Myfxbook, FXSSI i CFTC selhaly) — nepřepisuju, zkusím příští běh.");
+    console.warn("Žádný retail zdroj nedostupný (Myfxbook i CFTC selhaly) — nepřepisuju, zkusím příští běh.");
     process.exit(0);
   }
 
@@ -307,7 +237,7 @@ async function fetchCftcNonReportable() {
   // "success" (fallback je legitimní, exit 0 je správně) a nikde se nezobrazilo,
   // ŽE se použil fallback. Tohle nemění exit kód (zelený běh zůstává zelený),
   // jen přidá varovný trojúhelník do seznamu běhů, když primární zdroj neseděl.
-  if (source !== "myfxbook-api+fxssi" && source !== "myfxbook-api") {
+  if (source !== "myfxbook-api") {
     console.log(`::warning::Retail běží na záloze (${source}), ne na Myfxbooku — Myfxbook selhal ${myfxState.failStreak || 0}× za sebou.`);
   }
 

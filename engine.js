@@ -3124,8 +3124,8 @@ function getDataFreshness(){
   // zelený (viz FX Analyzer audit 8.9.2026, §12 bod 3). Cron je nominálně po 30
   // min, ale GitHub Actions v praxi zahazuje většinu plánovaných běhů (reálný
   // odstup ~3-5 h, viz audit §12 "cron neběží") — 4/12 h pokryje běžný provoz
-  // i noční mezeru, a pořád odhalí skutečný vícehodinový výpadek obou zdrojů
-  // (MyFxbook i FXSSI najednou).
+  // i noční mezeru, a pořád odhalí skutečný vícehodinový výpadek Myfxbooku
+  // (FXSSI mezikrok odstraněn 8.9.2026 — viz scripts/fetch-retail.js).
   try{push("Retail",_RETAIL_LATEST&&_RETAIL_LATEST.t,4,12);}catch(e){push("Retail",null,4,12);}
   return out;
 }
