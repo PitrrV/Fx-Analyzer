@@ -22,21 +22,26 @@
 //   Limit volné úrovně je 100 požadavků/24 h na get-community-outlook.json;
 //   cron po 30 min = 48/den, s rezervou.
 //
-// PŘÍSTUP 1 (fallback, týdenní): CFTC Non-reportable přes Socrata JSON API
-//   (publicreporting.cftc.gov, dataset 6dca-aqww, pole nonrept_positions_*) — stejná
-//   infrastruktura jako spolehlivě běžící fetch-cot.js. Per měna (ne per pár),
-//   aktualizace jen týdně (páteční report) → použije se, jen když Myfxbook selže.
+// JEDINÝ ZDROJ — žádný fallback. CFTC Non-reportable (futures pozicování,
+// týdenní, per měna) sloužil dřív jako poslední záchranná síť, ale je to jiná
+// třída aktiva než Myfxbookův spotový retail sentiment a mění se řádově jinou
+// frekvencí — ve stejném okamžiku (8.9.2026) dával CFTC JPY 72 % long, zatímco
+// Myfxbook držel 19 %, a AUD 70 % vs. 18 % — tedy OBRACEL znaménko kontrari-
+// ánského signálu a dělal skoky v retail grafu, přesně ten samý problém, kvůli
+// kterému se o pár hodin dřív odstranilo FXSSI (viz níž). Na výslovnou žádost
+// uživatele odstraněno 9.9.2026: když Myfxbook selže, appka NEZAPISUJE nic —
+// data/retail_hist.json zůstane nedotčené, poslední dobrá hodnota stojí dál,
+// běh skončí exit 0 s varovnou anotací. Mezera v grafu je lepší než bod
+// z jiné populace aktiv.
 //
 // FXSSI Current Ratio byl dřív PŘÍSTUP 1 (intradenní záloha + křížová kontrola
 // směru proti Myfxbooku) — na výslovnou žádost uživatele odstraněn 8.9.2026.
 // Důvod: jiné pokrytí brokerů i metodika než Myfxbook (viz historická data
 // v retail_hist.json, sloupec "source") způsobovalo při každém přepnutí zdroje
 // skok v grafu o 9-22 procentních bodů na měnu, nesouvisející s pohybem trhu
-// (zdokumentováno v FX Analyzer auditu 8.9.2026, §9 a §10b) — appka teď při
-// výpadku Myfxbooku raději nechá poslední známou hodnotu beze změny (a při
-// delším výpadku spadne až na týdenní CFTC), než aby míchala dvě neslučitelné
-// škály do jedné řady. Staré FXSSI body v historii se NEMAŽOU (viz git historie
-// commitu, který tohle zavedl, pro plný kontext).
+// (zdokumentováno v FX Analyzer auditu 8.9.2026, §9 a §10b). Staré FXSSI body
+// v historii se NEMAŽOU (viz git historie commitu, který tohle zavedl, pro
+// plný kontext).
 //
 // Historická poznámka: HTML stránka myfxbook.com/community/outlook je z GH Actions
 // blokovaná Cloudflare (403) — proto se používá výhradně oficiální REST API.
@@ -56,7 +61,6 @@ const UA_BASE = {
   "Accept": "application/json, text/plain, */*",
 };
 const UA_MYFX = { ...UA_BASE, "Referer": "https://www.myfxbook.com/community/outlook" };
-const UA_OTHER = { ...UA_BASE };
 
 // ── Myfxbook oficiální API (primární, plné pokrytí) ─────────────────
 const MYFX = "https://www.myfxbook.com/api";
@@ -124,42 +128,6 @@ function pairsToCcy(pairs) {
   return ccy;
 }
 
-// ── CFTC Non-reportable přes Socrata API (fallback) ─────────────────
-const CFTC_LEGACY_DATASET = "6dca-aqww";
-const COT_MARKETS = {
-  EUR: "EURO FX", GBP: "BRITISH POUND", JPY: "JAPANESE YEN", AUD: "AUSTRALIAN DOLLAR",
-  CAD: "CANADIAN DOLLAR", CHF: "SWISS FRANC", NZD: "NZ DOLLAR",
-};
-const COT_LIKE_PATS = [
-  "EURO FX%", "BRITISH POUND%", "JAPANESE YEN%", "AUSTRALIAN DOLLAR%",
-  "CANADIAN DOLLAR%", "SWISS FRANC%", "%NZ DOLLAR%", "%NEW ZEALAND%",
-];
-
-async function fetchCftcNonReportable() {
-  const cutoff = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10);
-  const where = `(${COT_LIKE_PATS.map((p) => `market_and_exchange_names like '${p}'`).join(" OR ")}) AND report_date_as_yyyy_mm_dd > '${cutoff}T00:00:00.000'`;
-  const fields = "market_and_exchange_names,report_date_as_yyyy_mm_dd,nonrept_positions_long_all,nonrept_positions_short_all";
-  const url = `https://publicreporting.cftc.gov/resource/${CFTC_LEGACY_DATASET}.json?$select=${encodeURIComponent(fields)}&$where=${encodeURIComponent(where)}&$order=${encodeURIComponent("report_date_as_yyyy_mm_dd DESC")}&$limit=200`;
-  const r = await fetch(url, { headers: UA_OTHER, signal: AbortSignal.timeout(25000) });
-  if (!r.ok) throw new Error("CFTC Socrata API HTTP " + r.status);
-  const rows = await r.json();
-  if (!Array.isArray(rows) || !rows.length) throw new Error("CFTC Socrata API: 0 řádků");
-
-  const out = {};
-  for (const [ccy, market] of Object.entries(COT_MARKETS)) {
-    const row = rows.find((x) => String(x.market_and_exchange_names || "").toUpperCase().includes(market));
-    if (!row) continue;
-    const nrLong = parseFloat(row.nonrept_positions_long_all), nrShort = parseFloat(row.nonrept_positions_short_all);
-    if (!Number.isFinite(nrLong) || !Number.isFinite(nrShort)) continue;
-    const total = nrLong + nrShort;
-    out[ccy] = total > 0 ? Math.round((nrLong / total) * 100) : 50;
-  }
-  const vals = Object.values(out);
-  if (vals.length < 4) throw new Error("CFTC Socrata API: namapováno jen " + vals.length + " měn");
-  out.USD = Math.round(100 - vals.reduce((a, b) => a + b, 0) / vals.length);
-  return out;
-}
-
 (async () => {
   let ccy = null, pairs = {}, source = "";
 
@@ -171,11 +139,11 @@ async function fetchCftcNonReportable() {
   if (!Array.isArray(store.points)) store.points = [];
   const myfxState = store.myfxbook && typeof store.myfxbook === "object" ? store.myfxbook : { failStreak: 0, lastTry: 0 };
 
-  // 1) Myfxbook — plné pokrytí (~140 měnových párů, všech 28 z STANDARD_PAIRS).
+  // 1) Myfxbook — JEDINÝ zdroj (~140 měnových párů, všech 28 z STANDARD_PAIRS).
   // CIRCUIT BREAKER: po MYFX_FAIL_THRESHOLD selháních za sebou appka Myfxbook
-  // na MYFX_COOLDOWN_MS přestane zkoušet (rovnou na CFTC, viz níž — FXSSI mezi-
-  // krok byl odstraněn, viz komentář v hlavičce souboru). Appka má za sebou
-  // rozsáhlý dřívější průzkum (scripts/probe-myfxbook-*.js) — IP rotace,
+  // na MYFX_COOLDOWN_MS přestane zkoušet (žádný fallback, viz komentář v hla-
+  // vičce souboru). Appka má za sebou rozsáhlý dřívější průzkum (scripts/
+  // probe-myfxbook-*.js) — IP rotace,
   // cookies, POST místo GET, hlavičky prohlížeče i 4 veřejné proxy byly
   // vyzkoušené a vyvrácené (session padá i po JEDNOM keep-alive TCP spojení,
   // tedy ne kvůli rotaci IP). Nevyvrácená zůstala jen jedna hypotéza z toho
@@ -211,34 +179,22 @@ async function fetchCftcNonReportable() {
     console.log("Zdroj:", source, "· párů celkem:", Object.keys(pairs).length, "·", JSON.stringify(ccy));
   }
 
-  // 2) CFTC Non-reportable — poslední záchranná síť, jen když Myfxbook selže
-  // (nebo je v cooldownu). Záměrně BEZ FXSSI mezikroku (odstraněn 8.9.2026 na
-  // žádost uživatele — jiná metodika/pokrytí brokerů způsobovalo skoky v grafu
-  // při každém přepnutí zdroje, viz hlavička souboru). CFTC se aktualizuje jen
-  // týdně, takže i jako fallback nezpůsobuje častý sawtooth efekt.
   if (!ccy) {
-    try {
-      ccy = await fetchCftcNonReportable();
-      source = "cftc-nonreport";
-      console.log("CFTC Non-reportable OK (fallback):", JSON.stringify(ccy));
-    } catch (e) { console.log("CFTC Non-reportable selhal:", e.message); }
-  }
-
-  if (!ccy) {
-    // Recoverable stav (výpadek obou zdrojů) — existující data/retail_hist.json
-    // zůstává nedotčené a další běh za 30 min to zkusí znovu. Exit 0 (ne 1), ať
-    // tohle negeneruje opakované CI failure notifikace; skutečná chyba (FATAL) má 1.
-    console.warn("Žádný retail zdroj nedostupný (Myfxbook i CFTC selhaly) — nepřepisuju, zkusím příští běh.");
+    // Recoverable stav (Myfxbook selhal nebo je v cooldownu) — bez fallbacku
+    // se záměrně NEZAPISUJE nic. data/retail_hist.json zůstává nedotčené,
+    // poslední dobrá hodnota v grafu stojí dál, další běh to zkusí znovu.
+    // Exit 0 (ne 1), ať tohle negeneruje opakované CI failure notifikace;
+    // skutečná chyba (FATAL) má 1.
+    //
+    // GH Actions "::warning::" anotace — dřívější výpadek (7.–8.9.2026, Myfxbook
+    // "Wrong email/password") běžel 3 dny neviditelně, protože job vždycky
+    // skončil "success" a nikde se nezobrazilo, že se nic nezapsalo. Tohle
+    // nemění exit kód (zelený běh zůstává zelený), jen přidá varovný
+    // trojúhelník do seznamu běhů. Chybu z Myfxbooku samotného už loguje
+    // řádek "Myfxbook selhal (N× za sebou): …" o pár řádků výš.
+    console.warn("Žádný retail zdroj nedostupný (Myfxbook selhal) — nepřepisuju, zkusím příští běh.");
+    console.log(`::warning::Myfxbook nedostupný (${myfxState.failStreak || 0}× za sebou) — nezapisuji nový bod, v grafu zůstane poslední známá hodnota.`);
     process.exit(0);
-  }
-
-  // GH Actions "::warning::" anotace — dřívější výpadek (7.–8.9.2026, Myfxbook
-  // "Wrong email/password") běžel 3 dny neviditelně, protože job vždycky skončil
-  // "success" (fallback je legitimní, exit 0 je správně) a nikde se nezobrazilo,
-  // ŽE se použil fallback. Tohle nemění exit kód (zelený běh zůstává zelený),
-  // jen přidá varovný trojúhelník do seznamu běhů, když primární zdroj neseděl.
-  if (source !== "myfxbook-api") {
-    console.log(`::warning::Retail běží na záloze (${source}), ne na Myfxbooku — Myfxbook selhal ${myfxState.failStreak || 0}× za sebou.`);
   }
 
   // ── VALIDAČNÍ BRÁNA PŘED ZÁPISEM ──────────────────────────────────
