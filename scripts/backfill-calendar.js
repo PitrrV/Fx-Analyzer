@@ -30,6 +30,22 @@ const MON = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","
 const weekParam = (d) => MON[d.getUTCMonth()] + d.getUTCDate() + "." + d.getUTCFullYear();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Stejný ForexFactory/Cloudflare blok GitHub Actions IP (od 9.9.2026) a stejný obchvat
+// jako scripts/fetch-calendar.js — viz komentář tam pro plné vysvětlení. ANON klíč je
+// veřejný/publishable, bezpečně hardcodovatelný (stejný jako v sync.js).
+const FF_RELAY_BASE = "https://wdcvxfbhauwvwzbatkfh.supabase.co/functions/v1/ff-calendar-relay";
+const FF_RELAY_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndkY3Z4ZmJoYXV3dnd6YmF0a2ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NjU2NjEsImV4cCI6MjA5NzE0MTY2MX0.7ofHhBK6OxTug6l3MgnLJFNECZOmaKB_Z35v9v80I2o";
+async function fetchFFWeek(wp) {
+  try {
+    const r = await fetch(`${FF_RELAY_BASE}?week=${wp}`, { headers: { Authorization: `Bearer ${FF_RELAY_KEY}` }, signal: AbortSignal.timeout(25000) });
+    if (r.status === 200) return r;
+    console.log(`FF relay ${wp}: status=${r.status} — zkouším přímý fetch...`);
+  } catch (e) {
+    console.log(`FF relay ${wp}: ERR ${e.message} — zkouším přímý fetch...`);
+  }
+  return fetch("https://www.forexfactory.com/calendar?week=" + wp, { headers: UA, signal: AbortSignal.timeout(25000) });
+}
+
 // ── parser 1:1 z scripts/fetch-calendar.js ──────────────────────────────
 function extractDays(html) {
   const out = [];
@@ -90,7 +106,7 @@ function norm(e) {
   for (const d of todo.slice(0, MAX_WEEKS)) {
     const wp = weekParam(d);
     try {
-      const r = await fetch("https://www.forexfactory.com/calendar?week=" + wp, { headers: UA, signal: AbortSignal.timeout(25000) });
+      const r = await fetchFFWeek(wp);
       const html = await r.text();
       const days = extractDays(html);
       let n = 0;
