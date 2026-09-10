@@ -11,9 +11,13 @@
 //   se 187 symboly, kódovaná "Invalid session." na tomtéž běhu. Nešlo tedy o vazbu
 //   session na IP, Cloudflare ani reputaci datacenter IP — jen o překódovaný token.
 //   I tak appka od 6.9.2026 zažívá opakované, nevysvětlené "Invalid session."
-//   výpadky (probe-myfxbook-*.js dokumentuje rozsáhlý průzkum, který IP rotaci,
-//   hlavičky, cookies i proxy vyvrátil jako příčinu) — nevyřešeno, appka na to
-//   reaguje cirkuit breakerem níž, ne dalším zdrojem.
+//   výpadky (probe-myfxbook-*.js dokumentuje rozsáhlý průzkum, který IP rotaci
+//   MEZI voláními v jednom běhu vyvrátil jako příčinu — keep-alive test). To
+//   ale nevyvrací, že by celý sdílený GitHub Actions/Azure IP rozsah mohl mít
+//   u Myfxbooku špatnou reputaci jako celek — přesně tohle potvrzeně platilo
+//   u ForexFactory/Cloudflare (viz scripts/fetch-calendar.js). Od 10.9.2026 se
+//   proto nejdřív zkouší Supabase relay (fetchMyfxbookViaRelay, jiná IP), a až
+//   při jeho selhání přímá cesta níž — cirkuit breaker vidí jen výsledek obojího.
 //
 //   SMĚR: API vrací pojmenovaná pole longPercentage/shortPercentage → směr je
 //   z názvu jednoznačný, nehádá se z pořadí (to byla příčina dřívějšího
@@ -65,6 +69,16 @@ const UA_MYFX = { ...UA_BASE, "Referer": "https://www.myfxbook.com/community/out
 // ── Myfxbook oficiální API (primární, plné pokrytí) ─────────────────
 const MYFX = "https://www.myfxbook.com/api";
 
+// Supabase relay (stejný projekt/anon klíč jako ff-calendar-relay, viz
+// scripts/fetch-calendar.js) — test hypotézy, že Myfxbook má u GitHub Actions/
+// Azure IP rozsahu podobně špatnou reputaci jako potvrzeně měl ForexFactory/
+// Cloudflare. Relay dělá CELÝ login→outlook→logout dance server-side (Supabase
+// project secrets, heslo z tohohle skriptu nikam neputuje) a vrací syrovou
+// get-community-outlook.json odpověď. Bez záruky úspěchu — proto vždy s pádem
+// na přímou cestu (fetchMyfxbook níž) při jakémkoli selhání relay.
+const MYFXBOOK_RELAY_URL = "https://wdcvxfbhauwvwzbatkfh.supabase.co/functions/v1/myfxbook-relay";
+const MYFXBOOK_RELAY_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndkY3Z4ZmJoYXV3dnd6YmF0a2ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NjU2NjEsImV4cCI6MjA5NzE0MTY2MX0.7ofHhBK6OxTug6l3MgnLJFNECZOmaKB_Z35v9v80I2o";
+
 async function myfxGet(path) {
   const r = await fetch(MYFX + path, { headers: UA_MYFX, signal: AbortSignal.timeout(25000) });
   const text = await r.text();
@@ -74,6 +88,32 @@ async function myfxGet(path) {
   if (!r.ok) throw new Error("Myfxbook HTTP " + r.status + " — " + JSON.stringify(j).slice(0, 300));
   if (j.error) throw new Error("Myfxbook: " + (j.message || "chyba") + " (celá odpověď: " + JSON.stringify(j).slice(0, 300) + ")");
   return j;
+}
+
+// Sdíleno oběma cestami (relay i přímá) — jediné místo, co parsuje symbols[]
+// z get-community-outlook.json, ať parsování nedrifiuje mezi variantami.
+function parseOutlookSymbols(j) {
+  const pairs = {};
+  for (const s of (j.symbols || [])) {
+    const sym = String(s.name || "").toUpperCase().replace("/", "");
+    if (!/^[A-Z]{6}$/.test(sym)) continue;
+    const l = parseFloat(s.longPercentage), sh = parseFloat(s.shortPercentage);
+    if (!Number.isFinite(l) || !Number.isFinite(sh)) continue;
+    if (Math.abs(l + sh - 100) > 2) continue;          // nekonzistentní řádek
+    pairs[sym] = { l: Math.round(l), s: Math.round(100 - l) };
+  }
+  if (Object.keys(pairs).length < 20) throw new Error("Myfxbook: jen " + Object.keys(pairs).length + " párů");
+  return pairs;
+}
+
+async function fetchMyfxbookViaRelay() {
+  const r = await fetch(MYFXBOOK_RELAY_URL, { headers: { Authorization: `Bearer ${MYFXBOOK_RELAY_KEY}` }, signal: AbortSignal.timeout(25000) });
+  const text = await r.text();
+  let j;
+  try { j = JSON.parse(text); }
+  catch (e) { throw new Error("Myfxbook relay HTTP " + r.status + " — nečitelná odpověď: " + text.slice(0, 200)); }
+  if (!r.ok || j.error) throw new Error("Myfxbook relay: " + (j.error || ("HTTP " + r.status)));
+  return parseOutlookSymbols(j);
 }
 
 async function fetchMyfxbook() {
@@ -96,19 +136,24 @@ async function fetchMyfxbook() {
       console.log("Syrová session odmítnuta (" + e.message + ") — zkouším URL-kódovanou…");
       j = await myfxGet(`/get-community-outlook.json?session=${encodeURIComponent(session)}`);
     }
-    const pairs = {};
-    for (const s of (j.symbols || [])) {
-      const sym = String(s.name || "").toUpperCase().replace("/", "");
-      if (!/^[A-Z]{6}$/.test(sym)) continue;
-      const l = parseFloat(s.longPercentage), sh = parseFloat(s.shortPercentage);
-      if (!Number.isFinite(l) || !Number.isFinite(sh)) continue;
-      if (Math.abs(l + sh - 100) > 2) continue;          // nekonzistentní řádek
-      pairs[sym] = { l: Math.round(l), s: Math.round(100 - l) };
-    }
-    if (Object.keys(pairs).length < 20) throw new Error("Myfxbook: jen " + Object.keys(pairs).length + " párů");
-    return pairs;
+    return parseOutlookSymbols(j);
   } finally {
     try { await myfxGet(`/logout.json?session=${session}`); } catch (e) {}
+  }
+}
+
+// Relay první (test IP-reputační hypotézy), přímá cesta jako fallback při
+// jakémkoli selhání relay — stejný vzor jako fetchFFWeek() v
+// scripts/fetch-calendar.js. Circuit breaker níž vidí jen výsledek TÉHLE
+// funkce, ne dílčí selhání relay.
+async function fetchMyfxbookAny() {
+  try {
+    const pairs = await fetchMyfxbookViaRelay();
+    console.log("Myfxbook (přes Supabase relay) OK:", Object.keys(pairs).length, "párů");
+    return pairs;
+  } catch (e) {
+    console.log("Myfxbook relay selhal:", e.message, "— zkouším přímo…");
+    return await fetchMyfxbook();
   }
 }
 
@@ -162,7 +207,7 @@ function pairsToCcy(pairs) {
     console.log(`Myfxbook přeskočeno — ${myfxState.failStreak}× za sebou selhal, cooldown ještě ${Math.round(cooldownLeft / 60000)} min.`);
   } else {
     try {
-      myfx = await fetchMyfxbook();
+      myfx = await fetchMyfxbookAny();
       console.log("Myfxbook OK:", Object.keys(myfx).length, "párů");
       myfxState.failStreak = 0;
     } catch (e) {
