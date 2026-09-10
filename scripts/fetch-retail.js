@@ -117,8 +117,22 @@ async function fetchMyfxbookViaRelay() {
 }
 
 async function fetchMyfxbook() {
-  const email = process.env.MYFXBOOK_EMAIL, password = process.env.MYFXBOOK_PASSWORD;
+  // 10.9.2026: GH Actions log hlásí "Wrong email/password." přímo z Myfxbook
+  // login endpointu, i když uživatel potvrzuje, že se stejným heslem běžně
+  // přihlašuje v prohlížeči — plná historie fetch-retail.js (PR #210/#211/#212)
+  // ukazuje, že logika čtení/kódování těchto proměnných se od zavedení
+  // nezměnila, takže jde buď o skutečně jiný obsah GH Secret (typo/staré heslo),
+  // nebo o neviditelný whitespace (typicky trailing \n) při vkládání do GH
+  // Secrets — .trim() to potichu opraví, kdyby šlo o druhý případ, a
+  // bezpečné (nemaskovatelné) délky níž potvrdí/vyvrátí hypotézu v logu.
+  const rawEmail = process.env.MYFXBOOK_EMAIL || "", rawPassword = process.env.MYFXBOOK_PASSWORD || "";
+  const email = rawEmail.trim(), password = rawPassword.trim();
   if (!email || !password) throw new Error("MYFXBOOK_EMAIL/PASSWORD nejsou nastavené");
+  if (email.length !== rawEmail.length || password.length !== rawPassword.length) {
+    console.log(`MYFXBOOK_EMAIL/PASSWORD: nalezen obalující whitespace (email ${rawEmail.length}→${email.length} znaků, heslo ${rawPassword.length}→${password.length} znaků) — ořezáno.`);
+  } else {
+    console.log(`MYFXBOOK_EMAIL/PASSWORD: bez obalujícího whitespace (email ${email.length} znaků, heslo ${password.length} znaků).`);
+  }
   const lg = await myfxGet(`/login.json?email=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`);
   if (!lg.session) throw new Error("Myfxbook login: chybí session (odpověď: " + JSON.stringify(lg).slice(0, 300) + ")");
   const session = lg.session;
