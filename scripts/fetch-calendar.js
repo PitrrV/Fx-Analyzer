@@ -15,6 +15,26 @@ const MON = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","
 const weekParam = (d) => MON[d.getUTCMonth()] + d.getUTCDate() + "." + d.getUTCFullYear();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ForexFactory/Cloudflare blokuje GitHub Actions/Azure IP rozsah nepřetržitě od 9.9.2026
+// ~13:46 UTC (HTTP 403, potvrzeno živě i pro tenhle cron). Supabase Edge Function egress
+// blokovaný NENÍ (ověřeno 2026-09-10 opakovaným testem) — přes ni běží malý HTTP relay
+// (ff-calendar-relay, stejný Supabase projekt jako Fundament app, viz sync.js v tomhle
+// repu). ANON klíč je veřejný/publishable (stejný, co už appka posílá z prohlížeče v
+// sync.js) — bezpečně hardcodovatelný. Failover na přímý fetch pro případ, že relay
+// zrovna nefunguje nebo skript běží mimo GitHub Actions (tam blok není).
+const FF_RELAY_BASE = "https://wdcvxfbhauwvwzbatkfh.supabase.co/functions/v1/ff-calendar-relay";
+const FF_RELAY_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndkY3Z4ZmJoYXV3dnd6YmF0a2ZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NjU2NjEsImV4cCI6MjA5NzE0MTY2MX0.7ofHhBK6OxTug6l3MgnLJFNECZOmaKB_Z35v9v80I2o";
+async function fetchFFWeek(wp) {
+  try {
+    const r = await fetch(`${FF_RELAY_BASE}?week=${wp}`, { headers: { Authorization: `Bearer ${FF_RELAY_KEY}` } });
+    if (r.status === 200) return r;
+    console.log(`FF relay ${wp}: status=${r.status} — zkouším přímý fetch...`);
+  } catch (e) {
+    console.log(`FF relay ${wp}: ERR ${e.message} — zkouším přímý fetch...`);
+  }
+  return fetch("https://www.forexfactory.com/calendar?week=" + wp, { headers: UA });
+}
+
 // Vytáhne všechna pole `days: [...]` (validní JSON pole) napříč HTML.
 function extractDays(html) {
   const out = [];
@@ -65,7 +85,7 @@ function norm(e) {
   for (const off of [-42, -35, -28, -21, -14, -7, 0, 7, 14]) {
     const wp = weekParam(new Date(now.getTime() + off * 86400000));
     try {
-      const r = await fetch("https://www.forexfactory.com/calendar?week=" + wp, { headers: UA });
+      const r = await fetchFFWeek(wp);
       const html = await r.text();
       const days = extractDays(html);
       let n = 0;
