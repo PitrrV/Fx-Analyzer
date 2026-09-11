@@ -2844,6 +2844,20 @@ async function fetchActionOil(){
   }catch(e){}
   return null;
 }
+// ── FILTR "JEN MYFXBOOK" PRO GRAFY RETAIL SENTIMENTU ──────────────────
+// data/retail_hist.json nese i historii z dob, kdy primární zdroj retailu
+// opakovaně přeskakoval mezi CFTC Non-reportable, FXSSI Current Ratio a
+// Myfxbookem (viz historie scripts/fetch-retail.js, PR #96–#119) — starší
+// body navíc nemají vůbec pole `source` (zavedené až později), takže se
+// jejich původ nedá spolehlivě určit. Různé zdroje mají jinou metodiku/
+// populaci brokerů → při přepnutí dělaly v grafu viditelné skoky. Appka teď
+// bere retail výhradně z Myfxbooku (žádný fallback, viz fetch-retail.js) —
+// tenhle filtr zajistí, že i HISTORICKÉ grafy ukazují jen tohle, ne mix
+// zdrojů (a ne ani netagované staré body, jejichž zdroj neznáme jistě).
+function isMyfxbookRetailPoint(pt){
+  const s=pt&&pt.source;
+  return s==="myfxbook-api"||s==="myfxbook-api+fxssi";
+}
 // ── KANONICKÝ RETAIL SENTIMENT PRO SKÓRE (data/retail_hist.json, cron ~30 min) ──
 // sent_data v localStorage je per zařízení (PC s OANDA tokenem vs mobil bez něj) a
 // v cloud syncu je KEYS_SCALAR ("lokál vyhrává") → NIKDY se mezi zařízeními nesrovná.
