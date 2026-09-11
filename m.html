@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260908b"></script>
+<script src="engine.js?v=20260911a"></script>
 <script src="sync.js?v=20260827a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -170,7 +170,7 @@ async function loadDataMobile(){
   try{ await fetchActionVix(); }catch(e){}
   try{ applyAutoRiskSentiment(); }catch(e){}
   try{ await fetchActionCOTHistory(); }catch(e){}
-  let retailLatest=null, retailHist=[]; try{ const rj=await fetchActionRetail(); if(rj&&Array.isArray(rj.points)&&rj.points.length){ retailHist=rj.points; retailLatest=rj.points[rj.points.length-1]; } }catch(e){}
+  let retailLatest=null, retailHist=[]; try{ const rj=await fetchActionRetail(); if(rj&&Array.isArray(rj.points)&&rj.points.length){ retailHist=rj.points.filter(isMyfxbookRetailPoint); retailLatest=retailHist.length?retailHist[retailHist.length-1]:null; } }catch(e){}
   const cot=(typeof getLatestCOTScores==='function'&&getLatestCOTScores())||loadCOT(), sent=(typeof getCanonicalSent==='function'&&getCanonicalSent())||loadSentiment();
   const sc={}; CURRENCIES.forEach(c=>{ sc[c]=scoreCurrency(calScoring,c,cot,sent); });
   try{ if(typeof saveScoreDeltaSnapshot==='function') saveScoreDeltaSnapshot(sc); }catch(e){}
