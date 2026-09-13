@@ -118,24 +118,46 @@ try{
     localStorage.setItem("cb_baseline",CB_BASELINE);
   }
 }catch(e){}
-let CENTRAL_BANK_RATES={USD:3.75,EUR:2.25,GBP:3.75,JPY:1.00,AUD:4.35,NZD:2.25,CAD:2.25,CHF:0.00};
+// Audit 13.9.2026 (viz PR popis pro plnou tabulku zdroj/datum u každé měny):
+// EUR a NZD byly zastaralé, protože ForexFactory scraper appky měl stejný typ
+// výpadku (HTTP 403 od 9.9.2026, viz scripts/fetch-calendar.js/PR #215) jaký
+// nezávisle postihl i Fundament app — extractCBRatesFromCalendar() tak nikdy
+// nezachytil poslední "Interest Rate Decision" eventy pro EUR/NZD a hodnota
+// zůstala na starší úrovni. Teď opraveno na aktuální oficiální sazby; appka
+// sama dožene i cloud/localStorage stav (v5_cb_rates, KEYS_OBJ v sync.js,
+// "local wins" merge) při dalším refreshi kalendáře, jakmile ForexFactory
+// relay (PR #215) doplní chybějící eventy do historie.
+// POZOR u EUR: appka (extractCBRatesFromCalendar, řádek ~1867) záměrně
+// trackuje DEPOZITNÍ sazbu ("de facto policy rate"), NE Main Refinancing
+// Rate — 2,50 % je tedy depozitní sazba po hiku z 10.9.2026 (Main
+// Refinancing je 2,65 %, o tom appka vědomě NEúčtuje).
+let CENTRAL_BANK_RATES={USD:3.75,EUR:2.50,GBP:3.75,JPY:1.00,AUD:4.35,NZD:2.75,CAD:2.25,CHF:0.00};
 try{const usr=localStorage.getItem("v5_cb_rates");if(usr)CENTRAL_BANK_RATES={...CENTRAL_BANK_RATES,...JSON.parse(usr)};}catch(e){}
 
 // ── REAL CPI DATA (pro real yield = CB rate - CPI) ────────────
 // Aktualizuj po CPI datech každý měsíc
-let REAL_CPI_DATA={USD:3.2,EUR:3.2,GBP:2.8,JPY:2.8,AUD:3.5,NZD:3.8,CAD:2.8,CHF:0.9};
+// Audit 13.9.2026 — poslední oficiální roční (y/y) tisky, viz PR popis pro
+// přesné zdroje/data. NZD: Stats NZ sám publikuje roční číslo (4,1 % k
+// červnu 2026) — NEJDE o dopočet z FF čtvrtletního q/q (viz komentář u
+// extractCPIFromCalendar výš/níž, appka se tomu záměrně vyhýbá).
+let REAL_CPI_DATA={USD:3.4,EUR:3.3,GBP:2.9,JPY:3.1,AUD:3.8,NZD:4.1,CAD:3.0,CHF:0.8};
 try{const u=localStorage.getItem("v5_real_cpi");if(u)REAL_CPI_DATA={...REAL_CPI_DATA,...JSON.parse(u)};}catch(e){}
 
 // ── CB POLICY CYCLE — nejdůležitější makro faktor ─────────────
 // stance: "aggressive_hike" +3 | "hike" +2 | "hold" 0 | "cut" -1 | "aggressive_cut" -2
 // Aktualizuj po každém zasedání centrální banky
+// Audit 13.9.2026: NZD score/label byly stejně zastaralé jako sazba výš (RBNZ
+// mezitím otočila ze řezů na hiking cyklus, viz komentář v autoDetectCBPolicy
+// o "situaci NZD v 7/2026" — appka na to má logiku, jen ji kalendářní výpadek
+// nikdy nespustil). GBP label upraven jen v počtu hlasů (2→3, MPC červenec
+// 2026) — score beze změny.
 let CB_POLICY_DATA={
   USD:{score:0, label:"Fed — drží 3.50–3.75 %, dot plot rozdělený"},
-  EUR:{score:2, label:"ECB — hike +25bp, návrat k utahování"},
-  GBP:{score:0, label:"BoE — drží 3.75 %, 2 hlasy pro hike"},
+  EUR:{score:2, label:"ECB — 2. hike v řadě (pauza v červenci) na 2,50 % depo"},
+  GBP:{score:0, label:"BoE — drží 3.75 %, 3 hlasy pro hike"},
   JPY:{score:2, label:"BoJ — hike na 1.0 %, nejvýš od 1995"},
   AUD:{score:1, label:"RBA — drží 4.35 %, připraven hikovat dál"},
-  NZD:{score:0, label:"RBNZ — drží 2.25 %, externí členové pro hike"},
+  NZD:{score:2, label:"RBNZ — aktivní cyklus hikování, 2. hike v řadě na 2,75 %"},
   CAD:{score:0, label:"BoC — drží 2.25 %, cuts i hikes na stole"},
   CHF:{score:0, label:"SNB — drží 0 %"},
 };
