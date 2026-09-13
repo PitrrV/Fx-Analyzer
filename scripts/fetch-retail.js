@@ -26,26 +26,23 @@
 //   Limit volné úrovně je 100 požadavků/24 h na get-community-outlook.json;
 //   cron po 30 min = 48/den, s rezervou.
 //
-// JEDINÝ ZDROJ — žádný fallback. CFTC Non-reportable (futures pozicování,
-// týdenní, per měna) sloužil dřív jako poslední záchranná síť, ale je to jiná
-// třída aktiva než Myfxbookův spotový retail sentiment a mění se řádově jinou
-// frekvencí — ve stejném okamžiku (8.9.2026) dával CFTC JPY 72 % long, zatímco
-// Myfxbook držel 19 %, a AUD 70 % vs. 18 % — tedy OBRACEL znaménko kontrari-
-// ánského signálu a dělal skoky v retail grafu, přesně ten samý problém, kvůli
-// kterému se o pár hodin dřív odstranilo FXSSI (viz níž). Na výslovnou žádost
-// uživatele odstraněno 9.9.2026: když Myfxbook selže, appka NEZAPISUJE nic —
-// data/retail_hist.json zůstane nedotčené, poslední dobrá hodnota stojí dál,
-// běh skončí exit 0 s varovnou anotací. Mezera v grafu je lepší než bod
-// z jiné populace aktiv.
+// PŘÍSTUP 1 (NOUZOVÁ ZÁLOHA, jen když Myfxbook selže): FXSSI Current Ratio —
+// veřejné API bez přihlašování, tedy imunní vůči celé třídě problémů, co
+// postihují Myfxbook (heslo/session/účet). Odstraněno 8.9.2026 na žádost
+// uživatele, protože jiné pokrytí brokerů/metodika způsobovalo skok v grafu
+// o 9-22 p.b. na měnu při každém přepnutí zdroje (audit 8.9.2026, §9/§10b).
+// Znovu zavedeno 13.9.2026 — bezpečně tentokrát, protože engine.js má od
+// PR #218 filtr isMyfxbookRetailPoint(), co do grafů (index.html/m.html)
+// pouští JEN source "myfxbook-api"/"myfxbook-api+fxssi" — FXSSI body se
+// source "fxssi-current-ratio" se v grafu prostě nezobrazí (mezera, ne
+// skok), ale skóre appky aspoň nesedí dny na 100% zastaralých datech, když
+// Myfxbook zrovna nejede (viz incident 11.-13.9.2026: 53+ h/106+ běhů bez
+// dat, protože cirkulární jistič níž nikdy fakticky nezapnul — teď opraveno).
 //
-// FXSSI Current Ratio byl dřív PŘÍSTUP 1 (intradenní záloha + křížová kontrola
-// směru proti Myfxbooku) — na výslovnou žádost uživatele odstraněn 8.9.2026.
-// Důvod: jiné pokrytí brokerů i metodika než Myfxbook (viz historická data
-// v retail_hist.json, sloupec "source") způsobovalo při každém přepnutí zdroje
-// skok v grafu o 9-22 procentních bodů na měnu, nesouvisející s pohybem trhu
-// (zdokumentováno v FX Analyzer auditu 8.9.2026, §9 a §10b). Staré FXSSI body
-// v historii se NEMAŽOU (viz git historie commitu, který tohle zavedl, pro
-// plný kontext).
+// CFTC Non-reportable (týdenní futures pozicování) fallbackem NENÍ a
+// nebude — jiná třída aktiva, jiná frekvence, obracelo to znaménko
+// kontrariánského signálu (JPY 72% long CFTC vs 19% Myfxbook v témže
+// okamžiku 8.9.2026). Odstraněno 9.9.2026, zůstává odstraněné.
 //
 // Historická poznámka: HTML stránka myfxbook.com/community/outlook je z GH Actions
 // blokovaná Cloudflare (403) — proto se používá výhradně oficiální REST API.
@@ -65,6 +62,7 @@ const UA_BASE = {
   "Accept": "application/json, text/plain, */*",
 };
 const UA_MYFX = { ...UA_BASE, "Referer": "https://www.myfxbook.com/community/outlook" };
+const UA_FXSSI = { ...UA_BASE, "Referer": "https://fxssi.com/tools/current-ratio" };
 
 // ── Myfxbook oficiální API (primární, plné pokrytí) ─────────────────
 const MYFX = "https://www.myfxbook.com/api";
@@ -171,6 +169,38 @@ async function fetchMyfxbookAny() {
   }
 }
 
+// ── FXSSI Current Ratio (nouzová záloha, jen když Myfxbook selže) ───
+// Beze změny logiky oproti verzi před odstraněním 8.9.2026 (git historie,
+// commit b10c56be~1) — jen znovu zapojené, viz komentář v hlavičce souboru.
+const FXSSI_URL = "https://c.fxssi.com/api/current-ratio";
+
+async function fetchFxssi() {
+  const r = await fetch(FXSSI_URL, { headers: UA_FXSSI, signal: AbortSignal.timeout(25000) });
+  if (!r.ok) throw new Error("FXSSI HTTP " + r.status);
+  const j = await r.json();
+  if (!j || typeof j.pairs !== "object") throw new Error("FXSSI: chybí pole `pairs`");
+
+  const pairs = {};
+  for (const [rawSym, brokers] of Object.entries(j.pairs)) {
+    const sym = String(rawSym).toUpperCase().replace("/", "");
+    if (!/^[A-Z]{6}$/.test(sym)) continue;
+    // `average` = jejich vážený průměr přes brokery; když chybí, prostý průměr sloupců.
+    let long = parseFloat(brokers && brokers.average);
+    if (!Number.isFinite(long)) {
+      const vals = Object.entries(brokers || {})
+        .filter(([k]) => k !== "average" && k !== "oip")
+        .map(([, v]) => parseFloat(v))
+        .filter(Number.isFinite);
+      if (!vals.length) continue;
+      long = vals.reduce((a, b) => a + b, 0) / vals.length;
+    }
+    if (!(long >= 0 && long <= 100)) continue;
+    pairs[sym] = { l: Math.round(long), s: Math.round(100 - long) };
+  }
+  if (Object.keys(pairs).length < 6) throw new Error("FXSSI: jen " + Object.keys(pairs).length + " párů");
+  return pairs;
+}
+
 // Per-měnový průměr. Bere JEN páry, kde jsou OBĚ nohy sledovaná měna — jinak by
 // XAUUSD/BTCUSD apod. (Myfxbook je mezi ~187 symboly taky vrací) tahaly retail
 // sentiment USD, i když o měnovém páru samy o sobě nic neříkají.
@@ -198,19 +228,30 @@ function pairsToCcy(pairs) {
   if (!Array.isArray(store.points)) store.points = [];
   const myfxState = store.myfxbook && typeof store.myfxbook === "object" ? store.myfxbook : { failStreak: 0, lastTry: 0 };
 
-  // 1) Myfxbook — JEDINÝ zdroj (~140 měnových párů, všech 28 z STANDARD_PAIRS).
+  // 1) Myfxbook — PRIMÁRNÍ zdroj (~140 měnových párů, všech 28 z STANDARD_PAIRS).
   // CIRCUIT BREAKER: po MYFX_FAIL_THRESHOLD selháních za sebou appka Myfxbook
-  // na MYFX_COOLDOWN_MS přestane zkoušet (žádný fallback, viz komentář v hla-
-  // vičce souboru). Appka má za sebou rozsáhlý dřívější průzkum (scripts/
-  // probe-myfxbook-*.js) — IP rotace,
-  // cookies, POST místo GET, hlavičky prohlížeče i 4 veřejné proxy byly
-  // vyzkoušené a vyvrácené (session padá i po JEDNOM keep-alive TCP spojení,
-  // tedy ne kvůli rotaci IP). Nevyvrácená zůstala jen jedna hypotéza z toho
-  // průzkumu (probe-myfxbook-session.js, H-E): vyčerpaný denní limit, hlášený
-  // STEJNOU hláškou "Invalid session." jako cokoli jiného. Pokud je to pravda,
-  // dalších 48×/den neúspěšných pokusů (retail.yml běží po 30 min) situaci jen
-  // zhoršuje, ne zlepšuje — cooldown tomu zabrání, a jakmile Myfxbook jednou
-  // znovu projde, počítadlo se vynuluje a appka se vrátí k běžné frekvenci.
+  // na MYFX_COOLDOWN_MS přestane zkoušet a jede na FXSSI zálohu níž. Appka má
+  // za sebou rozsáhlý dřívější průzkum (scripts/probe-myfxbook-*.js) — IP
+  // rotace, cookies, POST místo GET, hlavičky prohlížeče i 4 veřejné proxy
+  // byly vyzkoušené a vyvrácené (session padá i po JEDNOM keep-alive TCP
+  // spojení, tedy ne kvůli rotaci IP). Jedna z nevyvrácených hypotéz
+  // (probe-myfxbook-session.js, H-E): vyčerpaný denní limit/anti-abuse
+  // ochrana, hlášená STEJNOU hláškou jako cokoli jiného ("Invalid session."
+  // dřív, "Wrong email/password." u incidentu 11.-13.9.2026) — nedá se to od
+  // skutečně špatných údajů rozeznat jen podle textu chyby. Dalších 48×/den
+  // neúspěšných pokusů (retail.yml běží po 30 min) situaci jen zhoršuje, ne
+  // zlepšuje.
+  //
+  // OPRAVENO 13.9.2026: tenhle stav (failStreak/lastTry) se dřív ukládal na
+  // disk JEN na úspěšné cestě (store.myfxbook = myfxState těsně před finálním
+  // zápisem, viz níž) — když Myfxbook selhal, skript skončil dřív (viz starý
+  // blok "if (!ccy)") a aktualizované počítadlo se NIKDY neuložilo. Cirkulární
+  // jistič tak fakticky nikdy nezapnul: incident 11.-13.9.2026 appka zkoušela
+  // přihlásit se stejným neúspěšným pokusem 53+ hodin, ~106× po sobě, každých
+  // 30 minut, bez jakéhokoli zpomalení — přesně ten vzorec (pravidelný
+  // automatizovaný login pokus stovky× po sobě), co bezpečnostní systémy
+  // typicky vyhodnotí jako útok. Teď se store.myfxbook ukládá HNED po každém
+  // pokusu (úspěch i neúspěch), nezávisle na zbytku běhu.
   const MYFX_FAIL_THRESHOLD = 3;
   const MYFX_COOLDOWN_MS = 3 * 3600 * 1000; // 3 hodiny
   const cooldownLeft = MYFX_COOLDOWN_MS - (Date.now() - (myfxState.lastTry || 0));
@@ -231,6 +272,16 @@ function pairsToCcy(pairs) {
     myfxState.lastTry = Date.now();
   }
 
+  // Persistovat cirkulární jistič HNED, nezávisle na tom, jak dopadne zbytek
+  // běhu (FXSSI záloha níž, validace) — viz OPRAVENO výš. store.points/
+  // updated/source se tady ještě nemění (na to dojde jen na úspěšné cestě
+  // dole), takže tenhle zápis nic z historie neztratí ani nepřepíše.
+  store.myfxbook = myfxState;
+  try {
+    fs.mkdirSync("data", { recursive: true });
+    fs.writeFileSync("data/retail_hist.json", JSON.stringify(store));
+  } catch (e) { console.error("Nepodařilo se persistovat myfxbook cirkulární jistič:", e.message); }
+
   if (myfx) {
     pairs = myfx;
     ccy = pairsToCcy(pairs);
@@ -238,9 +289,28 @@ function pairsToCcy(pairs) {
     console.log("Zdroj:", source, "· párů celkem:", Object.keys(pairs).length, "·", JSON.stringify(ccy));
   }
 
+  // 2) FXSSI — NOUZOVÁ záloha, jen když Myfxbook selhal/je v cooldownu (viz
+  // komentář v hlavičce souboru pro plné odůvodnění a proč je bezpečné ho mít
+  // zpátky). Veřejné API bez přihlašování — imunní vůči Myfxbook problémům.
+  let fxssi = null;
+  if (!myfx) {
+    try {
+      fxssi = await fetchFxssi();
+      console.log("FXSSI OK (nouzová záloha):", Object.keys(fxssi).length, "párů");
+    } catch (e) {
+      console.log("FXSSI selhal:", e.message);
+    }
+  }
+  if (!ccy && fxssi) {
+    pairs = fxssi;
+    ccy = pairsToCcy(pairs);
+    source = "fxssi-current-ratio";
+    console.log("Zdroj:", source, "· párů celkem:", Object.keys(pairs).length, "·", JSON.stringify(ccy));
+  }
+
   if (!ccy) {
-    // Recoverable stav (Myfxbook selhal nebo je v cooldownu) — bez fallbacku
-    // se záměrně NEZAPISUJE nic. data/retail_hist.json zůstává nedotčené,
+    // Recoverable stav (Myfxbook i FXSSI selhaly) — NEZAPISUJE se nic.
+    // data/retail_hist.json (kromě myfxbook stavu výš) zůstává nedotčené,
     // poslední dobrá hodnota v grafu stojí dál, další běh to zkusí znovu.
     // Exit 0 (ne 1), ať tohle negeneruje opakované CI failure notifikace;
     // skutečná chyba (FATAL) má 1.
@@ -251,8 +321,8 @@ function pairsToCcy(pairs) {
     // nemění exit kód (zelený běh zůstává zelený), jen přidá varovný
     // trojúhelník do seznamu běhů. Chybu z Myfxbooku samotného už loguje
     // řádek "Myfxbook selhal (N× za sebou): …" o pár řádků výš.
-    console.warn("Žádný retail zdroj nedostupný (Myfxbook selhal) — nepřepisuju, zkusím příští běh.");
-    console.log(`::warning::Myfxbook nedostupný (${myfxState.failStreak || 0}× za sebou) — nezapisuji nový bod, v grafu zůstane poslední známá hodnota.`);
+    console.warn("Žádný retail zdroj nedostupný (Myfxbook i FXSSI selhaly) — nepřepisuju, zkusím příští běh.");
+    console.log(`::warning::Myfxbook nedostupný (${myfxState.failStreak || 0}× za sebou), FXSSI záloha taky selhala — nezapisuji nový bod, v grafu zůstane poslední známá hodnota.`);
     process.exit(0);
   }
 
