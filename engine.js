@@ -127,11 +127,16 @@ try{
 // sama dožene i cloud/localStorage stav (v5_cb_rates, KEYS_OBJ v sync.js,
 // "local wins" merge) při dalším refreshi kalendáře, jakmile ForexFactory
 // relay (PR #215) doplní chybějící eventy do historie.
-// POZOR u EUR: appka (extractCBRatesFromCalendar, řádek ~1867) záměrně
-// trackuje DEPOZITNÍ sazbu ("de facto policy rate"), NE Main Refinancing
-// Rate — 2,50 % je tedy depozitní sazba po hiku z 10.9.2026 (Main
-// Refinancing je 2,65 %, o tom appka vědomě NEúčtuje).
-let CENTRAL_BANK_RATES={USD:3.75,EUR:2.50,GBP:3.75,JPY:1.00,AUD:4.35,NZD:2.75,CAD:2.25,CHF:0.00};
+// OPRAVA 14.9.2026: PR #219 (13.9.2026) mylně nastavil EUR na depozitní
+// sazbu (2,50 %) s domněnkou, že appka tohle trackuje záměrně — živá
+// kontrola dat/calendar.json ale ukázala, že ForexFactory pro EUR hlásí
+// JEN "Main Refinancing Rate", žádnou "Deposit Facility Rate" vůbec, takže
+// extractCBRatesFromCalendar() (filtr na "deposit", řádek ~1889) EUR sazbu
+// nikdy nedokázala automaticky dotáhnout — appka byla u EUR natrvalo
+// odkázaná na tenhle ruční seed / starou localStorage hodnotu. Teď filtr
+// přijímá i "main refinancing" a seed sedí na to, co appka fakticky umí
+// zachytit: 2,65 % (Main Refinancing Rate po hiku 10.9.2026).
+let CENTRAL_BANK_RATES={USD:3.75,EUR:2.65,GBP:3.75,JPY:1.00,AUD:4.35,NZD:2.75,CAD:2.25,CHF:0.00};
 try{const usr=localStorage.getItem("v5_cb_rates");if(usr)CENTRAL_BANK_RATES={...CENTRAL_BANK_RATES,...JSON.parse(usr)};}catch(e){}
 
 // ── REAL CPI DATA (pro real yield = CB rate - CPI) ────────────
@@ -153,7 +158,7 @@ try{const u=localStorage.getItem("v5_real_cpi");if(u)REAL_CPI_DATA={...REAL_CPI_
 // 2026) — score beze změny.
 let CB_POLICY_DATA={
   USD:{score:0, label:"Fed — drží 3.50–3.75 %, dot plot rozdělený"},
-  EUR:{score:2, label:"ECB — 2. hike v řadě (pauza v červenci) na 2,50 % depo"},
+  EUR:{score:2, label:"ECB — 2. hike v řadě (pauza v červenci) na 2,65 % (Main Refi)"},
   GBP:{score:0, label:"BoE — drží 3.75 %, 3 hlasy pro hike"},
   JPY:{score:2, label:"BoJ — hike na 1.0 %, nejvýš od 1995"},
   AUD:{score:1, label:"RBA — drží 4.35 %, připraven hikovat dál"},
@@ -1885,8 +1890,16 @@ function extractCBRatesFromCalendar(calData){
     if(!/^[<>~≈]?\s*-?\d+(\.\d+)?\s*%?$/.test(rawAct)) continue;
     const val=parseFloat(rawAct.replace(/^[<>~≈\s]+/,""));
     if(isNaN(val)||val<-1||val>25) continue;
-    // ECB: ber jen depozitní sazbu (de facto policy rate), ne main refinancing (vyšší).
-    if(cur==="EUR" && !/deposit/i.test(ev.event||"")) continue;
+    // ECB: ForexFactory ekonomický kalendář nese pro EUR JEN "Main Refinancing
+    // Rate" — ověřeno živě 14.9.2026 (data/calendar.json), žádná "Deposit
+    // Facility Rate" událost v datech vůbec není. Filtr dřív žádal jen
+    // "deposit" (13.9.2026 domněnka, že appka trackuje depozitní/"de facto
+    // policy" sazbu) — to EUR extrakci TRVALE vyřadilo, appka tak nikdy
+    // neuměla EUR sazbu automaticky dotáhnout, ani po opravě FF výpadku
+    // (PR #215/#219). Skutečný nález: appka reálně nemá na výběr, ForexFactory
+    // pro EUR hlásí jen Main Refinancing — CENTRAL_BANK_RATES.EUR seed výš
+    // proto trackuje TOHLE číslo (2,65 % po hiku 10.9.2026), ne depozitní.
+    if(cur==="EUR" && !/deposit|main refinancing/i.test(ev.event||"")) continue;
     if(!histories[cur]) histories[cur]=[];
     histories[cur].push({date:ev.time,rate:val});
     if(!(cur in rates)) rates[cur]=val; // nejnovější (pozor: sazba 0.00 je falsy — nutný "in" test)
