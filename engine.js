@@ -1728,6 +1728,15 @@ function computeSplashMode(){
   try{ localStorage.setItem('fx_welcome_last_date',today); }catch(e){}
   return 'full';
 }
+// Časování v ms, sdílené všemi 3 frontendy (ať se to při ladění neláme jen
+// v jednom souboru) — 'full' = první otevření dne, čte se pár vteřin;
+// 'micro' = appka dnes uvítání už ukázala, kratší, ale POŘÁD s pozdravem
+// (dřív úplně bez textu — působilo to jako by appka nic neudělala).
+// minHold = appka drží logo minimálně tolik, i kdyby data dorazila bleskově.
+// greet = jak dlouho zůstane vidět "Ahoj, {jméno}" + citát, než začne mizet.
+// fade = délka CSS fade-out (splashOut) na konci — JS skryje komponentu až
+// PO doběhnutí fade, ať se ten fade stihne reálně přehrát.
+const SPLASH_TIMING={ full:{minHold:1600,greet:3200,fade:600}, micro:{minHold:900,greet:1400,fade:600} };
 
 // ── IMPORT / EXPORT historie (CSV + JSON adaptéry) ──────────────────
 // Normalizuje libovolný zdroj (Kaggle/HF/FF export, vlastní JSON) na interní
