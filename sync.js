@@ -12,7 +12,7 @@
   catch(e){ console.warn("Supabase init selhal:",e); }
 
   // localStorage klíče k synchronizaci
-  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","or_coach_model","openai_key","openai_coach_model","oanda_token","oanda_env","cot_data","cot_meta","sent_data","positions_ts","v5_fav_pairs_ts"];
+  const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","or_coach_model","openai_key","openai_coach_model","oanda_token","oanda_env","cot_data","cot_meta","sent_data","positions_ts","v5_fav_pairs_ts","fx_user_name","fx_welcome_enabled","fx_welcome_freq"];
   const KEYS_ARR=["v5_ff_hist","journal","v5_fav_pairs","us100_retail_hist"];           // pole → sloučit (v5_fav_pairs viz výjimka ve smartMerge)
   const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","pair_notes_ts","positions","bias_state","engine_log","forecast_log","v5_cb_rates","us100_cot_hist","us100_score_hist"]; // objekty → sloučit
   // TRANSIENT klíče se NIKDY nesynchronizují — a stripTransient() je navíc aktivně
@@ -20,7 +20,10 @@
   // zpátky do zařízení a při push by se vracely do cloudu donekonečna):
   // - v5_risk_sent/_manual: auto-počítané z živých cen per zařízení
   // - v5_regime: mrtvý klíč bez zapisovače, ale čtený ve scoringu (mění váhy)
-  const TRANSIENT=["v5_ff_cache","fmp_cal_block","fh_cal_block","score_delta_buffer","v5_risk_sent","v5_risk_sent_manual","v5_regime"];
+  // - fx_welcome_last_date: "uvítání dnes appka už ukázala" — per zařízení
+  //   záměrně (ať otevření na mobilu nepřijde o svoje první uvítání dne jen
+  //   proto, že appka na PC ho ukázala dřív), viz computeSplashMode v engine.js
+  const TRANSIENT=["v5_ff_cache","fmp_cal_block","fh_cal_block","score_delta_buffer","v5_risk_sent","v5_risk_sent_manual","v5_regime","fx_welcome_last_date"];
   function stripTransient(d){
     if(!d) return d;
     TRANSIENT.forEach(k=>{ if(d._scalar)delete d._scalar[k]; if(d._arr)delete d._arr[k]; if(d._obj)delete d._obj[k]; });

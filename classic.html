@@ -8,9 +8,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260914a"></script>
+<script src="engine.js?v=20260914b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="sync.js?v=20260827a"></script>
+<script src="sync.js?v=20260914a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -21,6 +21,19 @@ input,select{outline:none}button{font-family:inherit}
 ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#161b22}::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
 a{color:#7d95ff}
 input[type=range]{accent-color:#7d95ff}
+
+/* ── Uvítací obrazovka (welcome splash) — viz WelcomeSplash ── */
+@keyframes splashEmblemIn{from{opacity:0;transform:scale(.5) rotateY(50deg)}to{opacity:1;transform:scale(1) rotateY(0deg)}}
+@keyframes splashPulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+@keyframes splashOrbit1{from{transform:translate(-50%,-50%) rotateX(62deg) rotate(0deg)}to{transform:translate(-50%,-50%) rotateX(62deg) rotate(360deg)}}
+@keyframes splashOrbit2{from{transform:translate(-50%,-50%) rotateX(62deg) rotate(40deg)}to{transform:translate(-50%,-50%) rotateX(62deg) rotate(400deg)}}
+@keyframes splashFadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes splashDotFade{0%,100%{opacity:.15}50%{opacity:1}}
+@keyframes splashShimmer{0%{left:-45%}100%{left:105%}}
+@keyframes splashDissolve{to{opacity:0;transform:scale(1.35) rotateY(35deg);filter:blur(10px)}}
+@keyframes splashDissolveUp{to{opacity:0;transform:translateY(-10px)}}
+@keyframes splashGreetIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes splashOut{to{opacity:0;visibility:hidden}}
 
 /* ── V4.3 PRO VISUAL SKIN ───────────────────────────── */
 .pro-shell{min-height:100vh;background:radial-gradient(circle at 35% -10%,#162033 0,#0b111a 34%,#070b11 100%);}
@@ -249,6 +262,9 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
   const [cbRates,setCbRates]=useState(()=>JSON.stringify(CENTRAL_BANK_RATES));
   const [cbPolicyJson,setCbPolicyJson]=useState(()=>JSON.stringify(Object.fromEntries(Object.entries(CB_POLICY_DATA).map(([k,v])=>[k,{score:v.score,label:v.label}]))));
   const [cpiJson,setCpiJson]=useState(()=>JSON.stringify(REAL_CPI_DATA));
+  const [wName,setWName]=useState(()=>{try{return getWelcomeName();}catch(e){return "";}});
+  const [wEn,setWEn]=useState(()=>{try{return getWelcomeSettings().enabled;}catch(e){return true;}});
+  const [wFreq,setWFreq]=useState(()=>{try{return getWelcomeSettings().freq;}catch(e){return "daily";}});
   const inp={width:"100%",padding:"8px 12px",background:"#0d1117",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",fontSize:13,marginBottom:10,display:"block"};
   function saveAll(){
     localStorage.setItem("fh",fh.trim());localStorage.setItem("av",av.trim());
@@ -271,6 +287,24 @@ function SettingsOverlay({fhKey,avKey,onSave,onClose,onImported}){
           <button onClick={onClose} style={{background:"none",border:"none",color:"#8b949e",fontSize:18,cursor:"pointer"}}>✕</button>
         </div>
         <SyncSection/>
+        <div style={{borderTop:"1px solid #21262d",paddingTop:12,marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#e6edf3",marginBottom:4}}>👋 Uvítací obrazovka</div>
+          <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Jméno (appka tě jím pozdraví)</label>
+          <input value={wName} onChange={e=>setWName(e.target.value)} onBlur={()=>{try{setWelcomeName(wName);}catch(e){}}} placeholder="např. Petr" maxLength={24} style={inp}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{fontSize:11.5,color:"#8b949e"}}>Zobrazovat uvítání</div>
+            <button type="button" onClick={()=>{const on=!wEn;try{setWelcomeSetting("fx_welcome_enabled",on?"1":"0");}catch(e){}setWEn(on);}}
+              style={{border:"1px solid "+(wEn?"#5e7cfb":"#30363d"),background:wEn?"rgba(94,124,251,.14)":"#0d1117",color:wEn?"#5e7cfb":"#8b949e",borderRadius:6,padding:"5px 11px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{wEn?"Zapnuto":"Vypnuto"}</button>
+          </div>
+          {wEn&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:8}}>
+            <div style={{fontSize:11.5,color:"#8b949e"}}>Frekvence</div>
+            <select value={wFreq} onChange={e=>{setWFreq(e.target.value);try{setWelcomeSetting("fx_welcome_freq",e.target.value);}catch(e2){}}}
+              style={{background:"#0d1117",border:"1px solid #30363d",borderRadius:6,color:"#e6edf3",padding:"5px 8px",fontSize:11.5}}>
+              <option value="daily">1× denně</option>
+              <option value="always">Vždy</option>
+            </select>
+          </div>}
+        </div>
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>Finnhub API klíč</label>
         <input value={fh} onChange={e=>setFh(e.target.value)} style={inp}/>
         <label style={{color:"#8b949e",fontSize:11,display:"block",marginBottom:3}}>FMP klíč <span style={{color:"#2ed3a0"}}>(kalendář, 15 měs zdarma)</span></label>
@@ -2857,6 +2891,104 @@ function BacktestTab({avKey,cotData}){
   );
 }
 
+// ── Uvítací obrazovka (welcome splash) ──────────────────────────────────
+// Stejná logika/citáty jako PC (index.html) a mobilní (m.html) verze — viz
+// computeSplashMode/WELCOME_QUOTES v engine.js. Mountuje se až PO úvodní
+// Setup obrazovce (App() ji vrací až po `if(!started)` branch), takže se
+// nikdy neplete do prvotního zadávání API klíčů.
+function WelcomeSplash({loading}){
+  const modeRef=useRef(null); if(modeRef.current===null){ try{modeRef.current=computeSplashMode();}catch(e){modeRef.current="off";} }
+  const quoteRef=useRef(null); if(quoteRef.current===null){ try{quoteRef.current=pickWelcomeQuote();}catch(e){quoteRef.current="";} }
+  const nameRef=useRef(null); if(nameRef.current===null){ try{nameRef.current=getWelcomeName();}catch(e){nameRef.current="";} }
+  const startRef=useRef(Date.now());
+  const capRef=useRef(null), greetRef=useRef(null);
+  const [phase,setPhase]=useState(modeRef.current==="off"?"hidden":"loading");
+
+  const advance=useCallback(()=>{
+    const elapsed=Date.now()-startRef.current, minHold=modeRef.current==="full"?1100:250;
+    const wait=Math.max(0,minHold-elapsed);
+    setTimeout(()=>{
+      setPhase(p=>{
+        if(p!=="loading") return p;
+        if(modeRef.current==="full"){ greetRef.current=setTimeout(()=>setPhase("hidden"),1700); return "greet"; }
+        return "hidden";
+      });
+    },wait);
+  },[]);
+
+  const skip=useCallback(()=>{ clearTimeout(capRef.current); clearTimeout(greetRef.current); setPhase("hidden"); },[]);
+
+  useEffect(()=>{
+    if(modeRef.current==="off") return;
+    capRef.current=setTimeout(advance,3500);
+    const onKey=e=>{ if(e.key==="Escape") skip(); };
+    window.addEventListener("keydown",onKey);
+    return ()=>{ clearTimeout(capRef.current); clearTimeout(greetRef.current); window.removeEventListener("keydown",onKey); };
+  },[advance,skip]);
+
+  const prevLoading=useRef(loading);
+  useEffect(()=>{
+    if(prevLoading.current&&!loading&&phase==="loading") advance();
+    prevLoading.current=loading;
+  },[loading,phase,advance]);
+
+  if(phase==="hidden") return null;
+  const greet=phase==="greet";
+  const name=nameRef.current;
+  return (
+    <div onClick={skip} title="Klikni pro přeskočení" style={{position:"fixed",inset:0,zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
+        background:"radial-gradient(900px 600px at 50% 38%, rgba(94,124,251,.14), transparent 60%), rgba(7,8,12,.88)",
+        backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
+        animation:"splashOut .6s ease forwards",animationDelay:greet?"1.7s":"0s"}}>
+      <div style={{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",perspective:900}}>
+        <div style={{position:"absolute",left:"50%",top:76,width:190,height:190,transform:"translate(-50%,-50%) rotateX(62deg)",
+            transformStyle:"preserve-3d",borderRadius:"50%",border:"1px solid rgba(94,124,251,.28)",
+            animation:greet?"splashDissolve .6s ease forwards":"splashOrbit1 7s linear infinite"}}>
+          <span style={{position:"absolute",top:-4,left:"50%",marginLeft:-4,width:8,height:8,borderRadius:"50%",background:"#5e7cfb",boxShadow:"0 0 10px 2px rgba(94,124,251,.7)"}}/>
+          <span style={{position:"absolute",bottom:-4,left:"50%",marginLeft:-4,width:8,height:8,borderRadius:"50%",background:"#2ed3a0",boxShadow:"0 0 10px 2px rgba(46,211,160,.7)"}}/>
+        </div>
+        <div style={{position:"absolute",left:"50%",top:76,width:250,height:250,transform:"translate(-50%,-50%) rotateX(62deg) rotate(40deg)",
+            transformStyle:"preserve-3d",borderRadius:"50%",border:"1px solid rgba(157,123,255,.22)",
+            animation:greet?"splashDissolve .6s ease forwards":"splashOrbit2 10s linear infinite reverse"}}>
+          <span style={{position:"absolute",top:"50%",left:-4,marginTop:-4,width:8,height:8,borderRadius:"50%",background:"#9d7bff",boxShadow:"0 0 10px 2px rgba(157,123,255,.7)"}}/>
+          <span style={{position:"absolute",top:"50%",right:-4,marginTop:-4,width:8,height:8,borderRadius:"50%",background:"#e8ab3f",boxShadow:"0 0 10px 2px rgba(232,171,63,.7)"}}/>
+        </div>
+        <div style={{position:"relative",width:120,height:120,marginTop:16,
+            animation:greet?"splashDissolve .55s ease forwards":"splashEmblemIn .8s cubic-bezier(.2,.8,.2,1) forwards"}}>
+          <div style={{position:"absolute",inset:-14,borderRadius:"50%",background:"radial-gradient(circle,rgba(94,124,251,.35),transparent 70%)",animation:"splashPulse 2.2s ease-in-out infinite"}}/>
+          <svg width="120" height="120" viewBox="0 0 150 150" style={{position:"relative",filter:"drop-shadow(0 6px 18px rgba(94,124,251,.35))"}}>
+            <defs><linearGradient id="splashHexGc" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#5e7cfb"/><stop offset="100%" stopColor="#9d7bff"/></linearGradient></defs>
+            <polygon points="75,10 132,42 132,108 75,140 18,108 18,42" fill="none" stroke="url(#splashHexGc)" strokeWidth="2.5"/>
+            <polygon points="75,24 120,49 120,101 75,126 30,101 30,49" fill="#0f121a" opacity=".5"/>
+            <rect x="46" y="86" width="9" height="24" rx="2" fill="#f2606e"/>
+            <rect x="61" y="70" width="9" height="40" rx="2" fill="#2ed3a0"/>
+            <rect x="76" y="54" width="9" height="56" rx="2" fill="#2ed3a0"/>
+            <rect x="91" y="40" width="9" height="70" rx="2" fill="#2ed3a0"/>
+            <path d="M42 100 L66 78 L82 88 L104 44" fill="none" stroke="#eaedf3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M96 44 L104 44 L104 52" fill="none" stroke="#eaedf3" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </div>
+        <div style={{marginTop:16,textAlign:"center",animation:greet?"splashDissolveUp .5s ease forwards":"splashFadeUp .6s ease forwards",animationDelay:greet?".45s":".5s"}}>
+          <div style={{fontSize:16,fontWeight:800,letterSpacing:".04em"}}><b style={{color:"#5e7cfb"}}>AT</b> TRADING</div>
+          <div style={{fontSize:9.5,color:"#5a6273",letterSpacing:".22em",marginTop:3,fontWeight:700}}>FX COMMAND CENTER</div>
+        </div>
+        {!greet&&<div style={{marginTop:22,display:"flex",flexDirection:"column",alignItems:"center",gap:8,animation:"splashFadeUp .5s ease forwards",animationDelay:".8s"}}>
+          <div style={{fontSize:10.5,color:"#8b93a3",letterSpacing:".12em",fontWeight:700}}>NAČÍTÁM ŽIVÁ DATA
+            <span>{[0,1,2].map(i=><span key={i} style={{animation:"splashDotFade 1.2s infinite",animationDelay:(i*.2)+"s"}}>.</span>)}</span>
+          </div>
+          <div style={{width:170,height:3,borderRadius:3,background:"#1b2130",overflow:"hidden",position:"relative"}}>
+            <div style={{position:"absolute",inset:0,width:"40%",borderRadius:3,background:"linear-gradient(90deg,transparent,#5e7cfb,#9d7bff,transparent)",animation:"splashShimmer 1.3s ease-in-out infinite"}}/>
+          </div>
+        </div>}
+        {greet&&<div style={{position:"absolute",textAlign:"center",opacity:0,animation:"splashGreetIn .7s cubic-bezier(.2,.8,.2,1) forwards",animationDelay:".15s",padding:"0 24px"}}>
+          <div style={{fontSize:24,fontWeight:800}}>Ahoj{name?", ":""}{name&&<span style={{color:"#5e7cfb"}}>{name}</span>} 👋</div>
+          <div style={{marginTop:11,fontSize:12,color:"#8b93a3",maxWidth:380,lineHeight:1.6,fontStyle:"italic"}}>„{quoteRef.current}“</div>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
 // ── HLAVNÍ APP ────────────────────────────────────────────
 function App(){
   const [fhKey,setFhKey]=useState(null);
@@ -3145,6 +3277,7 @@ function App(){
 
   return(
     <div className="pro-shell">
+      <WelcomeSplash loading={loading}/>
       {showSet&&<SettingsOverlay fhKey={fhKey} avKey={avKey} onSave={(fh,av)=>{setFhKey(fh);setAvKey(av);}} onClose={()=>setShowSet(false)} onImported={()=>loadData(fhKey||"",cotRef.current,sentRef.current)}/>}
       <aside className="command-sidebar">
         <div className="command-logo"><div className="command-logo-mark">AT</div><div><div className="command-logo-title">AT TRADING</div><div className="command-logo-sub">FX ANALYZER</div></div></div>
