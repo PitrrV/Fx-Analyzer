@@ -2308,92 +2308,190 @@ class FXApp extends React.Component{
     // zobrazí taky všechny — karta má overflowX:auto, takže se to jen vodorovně
     // scrolluje, nic se neztratí.
     const years=D?D.years:[];
-    // ── PŘEHLEDOVÝ PANEL (redesign 14.9.2026, inspirace externím mockupem) ──
-    // Na rozdíl od zbytku záložky (níž), co potřebuje vybraný pár + Alpha
-    // Vantage klíč (Reálná sezónnost) nebo Stooq denní historii (Roční
-    // křivka/Sezónní okno), tenhle panel čte VÝHRADNĚ ze statické tabulky
+    // ── PŘEHLEDOVÝ PANEL (redesign 14.9.2026, v2 15.9.2026 podle schváleného
+    // mockupu + úkolu "TASK_sezonnost_redesign.md" — mockup je JEDINÝ zdroj
+    // pravdy pro vzhled, ne pro data). Panel čte VÝHRADNĚ ze statické tabulky
     // SEASONALITY (engine.js, -2..+2 skóre/měna/měsíc — stejná data, co
     // getSeasonalScore() používá v hlavním scoringu) → funguje okamžitě pro
-    // všech 8 měn najednou, bez API klíče, bez čekání na fetch.
+    // všech 8 měn najednou, bez API klíče, bez čekání na fetch. Zbytek
+    // záložky (níž — Roční křivka/Reálná sezónnost/Sezónní okno/radar/per-pár
+    // heatmapa) zůstává BEZE ZMĚNY, mockup se týkal jen tohohle panelu.
+    //
+    // Barevná paleta (MC) je z mockupu — SCHVÁLENĚ jiná než zbytek appky
+    // (T.accent modrá vs. MC.accent tyrkysová), záměrně jen v týhle sekci,
+    // ne globálně (úkol výslovně omezuje zásah na Sezónnost, ne na celou appku).
     const MONF=['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
     const nowM=new Date().getMonth();
     const seasOverview=(()=>{
+      const MC={bg1:'#0a0e17',panel:'#0d1220',panel2:'#101828',border:'#1c2536',borderSoft:'#161d2c',
+        text0:'#eef2fa',text1:'#9aa7bd',text2:'#5d6a82',accent:'#22d3ee',accent2:'#0891b2',violet:'#8b7bff',
+        green:'#22e6a8',red:'#ff5c7a',amber:'#f5a623'};
       const curScores=self.CUR.map(c=>({c,raw:(SEASONALITY[c]||[])[nowM]||0})).sort((a,b)=>b.raw-a.raw);
       const monthAvg=MON.map((_,m)=>{ const vals=self.CUR.map(c=>(SEASONALITY[c]||[])[m]||0); return vals.reduce((a,b)=>a+b,0)/vals.length; });
+      // Rozptyl NAPŘÍČ MĚNAMI v daném měsíci (ne napříč lety — appka nemá
+      // roční historii k SEASONALITY, je to ručně kalibrovaná -2..+2 tabulka,
+      // ne surová návratnost) — kolik se měny v daném měsíci mezi sebou
+      // rozcházejí. Reálná, poctivá statistika, jen jiný význam než mockupový
+      // "10y ±1σ" popisek — proto přejmenováno na "rozptyl napříč měnami".
+      const sigmaAt=m=>{ const vals=self.CUR.map(c=>(SEASONALITY[c]||[])[m]||0),mean=monthAvg[m]; return Math.sqrt(vals.reduce((s,v)=>s+(v-mean)**2,0)/vals.length); };
+      const sigmas=MON.map((_,m)=>sigmaAt(m));
       const overallAvg=monthAvg.reduce((a,b)=>a+b,0)/12;
       let bestM=0,worstM=0; monthAvg.forEach((v,m)=>{ if(v>monthAvg[bestM])bestM=m; if(v<monthAvg[worstM])worstM=m; });
       const bestCur=curScores[0], worstCur=curScores[curScores.length-1];
       const fmt1=v=>(v>0?'+':'')+v.toFixed(1), fmt0=v=>(v>0?'+':'')+v;
+      // 0-100 přeškálování reálného -2..+2 skóre (lineární, žádná nová
+      // informace) — mockup chce "Celkové skóre 0-100" na gauge/žebříčku,
+      // tohle je poctivý převod, ne vymyšlené číslo.
+      const toScore=raw=>Math.round(((raw+2)/4)*100);
+      const FLAG={USD:'🇺🇸',EUR:'🇪🇺',GBP:'🇬🇧',JPY:'🇯🇵',AUD:'🇦🇺',NZD:'🇳🇿',CAD:'🇨🇦',CHF:'🇨🇭'};
 
-      // (a) Klíčové sezónní vzorce — 4 karty
-      const kpCard=(icon,label,val,col,sub)=>h('div',{style:Object.assign(self.card({padding:'14px 16px'}),{display:'flex',flexDirection:'column',gap:7,minWidth:0})},
-        h('div',{style:{display:'flex',alignItems:'center',gap:7}},h('span',{style:{fontSize:15}},icon),h('span',{style:{fontSize:10,color:T.faint,fontWeight:800,letterSpacing:'.03em',textTransform:'uppercase'}},label)),
-        h('div',{style:self.mono({fontSize:19,fontWeight:800,color:col,lineHeight:1.1})},val),
-        sub&&h('div',{style:{fontSize:10.5,color:T.dim}},sub));
-      const keyPatternsCard=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12}},
-        kpCard('📈','Nejsilnější měsíc',MONF[bestM],T.green,'trh Ø '+fmt1(monthAvg[bestM])),
-        kpCard('📉','Nejslabší měsíc',MONF[worstM],T.red,'trh Ø '+fmt1(monthAvg[worstM])),
-        kpCard('🏆','Nejsilnější měna teď',bestCur.c,T.green,MONF[nowM]+' · '+fmt0(bestCur.raw)),
-        kpCard('⚠','Nejslabší měna teď',worstCur.c,T.red,MONF[nowM]+' · '+fmt0(worstCur.raw)));
+      const mcCard=p=>({background:'linear-gradient(180deg,'+MC.panel+','+MC.bg1+')',border:'1px solid '+MC.borderSoft,borderRadius:16,padding:p||'18px 18px 16px',position:'relative',overflow:'hidden',boxShadow:'0 1px 0 rgba(255,255,255,.02) inset, 0 10px 30px -18px rgba(0,0,0,.6)'});
+      const mcGlow=h('div',{style:{position:'absolute',left:0,right:0,top:0,height:1,background:'linear-gradient(90deg,transparent,rgba(34,211,238,.35),transparent)'}});
+      const mcTitle=(t,sub,tag)=>h('div',{style:{marginBottom:14}},
+        h('div',{style:{fontSize:13.5,fontWeight:700,display:'flex',alignItems:'center',gap:8,color:MC.text0}},t,tag&&h('span',{style:{fontSize:9.5,padding:'2px 7px',borderRadius:5,background:'rgba(34,211,238,.12)',color:MC.accent,fontWeight:700,letterSpacing:'.3px',border:'1px solid rgba(34,211,238,.25)'}},tag)),
+        sub&&h('div',{style:{fontSize:11,color:MC.text1,marginTop:3}},sub));
 
-      // (b) Sezónní síla měn — žebříček aktuálního měsíce
-      const strengthCard=h('div',{style:self.card({padding:'18px 20px'})},
-        self.ptitle('Sezónní síla měn','Aktuální měsíc ('+MONF[nowM]+') · skóre z tabulky sezónnosti, -2 až +2'),
-        h('div',{style:{marginTop:12,display:'flex',flexDirection:'column',gap:9}},curScores.map(({c,raw})=>{
-          const pct=Math.round((Math.abs(raw)/2)*100), col=raw>0?T.green:raw<0?T.red:T.faint;
-          return h('div',{key:c,style:{display:'flex',alignItems:'center',gap:10}},
-            h('span',{style:self.mono({fontSize:12,fontWeight:700,color:T.text,width:32,flex:'none'})},c),
-            h('div',{style:{flex:1,height:8,background:'#0a0d13',borderRadius:4,overflow:'hidden'}},
-              h('div',{style:{height:'100%',width:pct+'%',background:col,opacity:.85,borderRadius:4,transition:'width .3s ease'}})),
-            h('span',{style:self.mono({fontSize:12,fontWeight:800,color:col,width:28,textAlign:'right',flex:'none'})},fmt0(raw)));
+      // (a) Sezónní výkon — měsíční průměr napříč měnami. Přímé popisky u
+      // vrcholu/dna (žádný velký popup), tenká křivka, pásmo = rozptyl mezi
+      // měnami (viz sigmaAt výš). Reálná data (SEASONALITY), ne "posledních
+      // 10 let" — appka nemá roční historii k týhle tabulce.
+      const lineCard=(()=>{
+        const W=640,H=210,PL=8,PR=40,PT=22,PB=28;
+        const allV=monthAvg.map((v,m)=>[v-sigmas[m],v+sigmas[m]]).flat().concat([0]);
+        const lo=Math.min(...allV)-.3, hi=Math.max(...allV)+.3, span=(hi-lo)||1;
+        const X=i=>PL+(W-PL-PR)*(i/11), Y=v=>PT+(H-PT-PB)*(1-(v-lo)/span);
+        const lineD=self.smooth(monthAvg.map((v,i)=>[X(i),Y(v)]));
+        const bandTop=monthAvg.map((v,i)=>[X(i),Y(v+sigmas[i])]);
+        const bandBot=monthAvg.map((v,i)=>[X(i),Y(v-sigmas[i])]).reverse();
+        const bandD='M '+bandTop.map(p=>p.join(' ')).join(' L ')+' L '+bandBot.map(p=>p.join(' ')).join(' L ')+' Z';
+        const zeroY=Y(0);
+        const gridYs=[0.2,0.45,0.7,0.95].map(f=>PT+(H-PT-PB)*f);
+        const peakPct={left:(X(bestM)/W*100)+'%',top:(Y(monthAvg[bestM])/H*100)+'%'};
+        const troughPct={left:(X(worstM)/W*100)+'%',top:(Y(monthAvg[worstM])/H*100)+'%'};
+        return h('div',{style:mcCard()},mcGlow,
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:10}},
+            mcTitle('Sezónní výkon — měsíční průměr',null,'8 měn'),
+            h('div',{style:{display:'flex',gap:12,alignItems:'center',flexWrap:'wrap',fontSize:10.5,color:MC.text1}},
+              h('span',{style:{display:'flex',alignItems:'center',gap:5}},h('i',{style:{width:8,height:8,borderRadius:4,background:MC.accent,display:'inline-block'}}),'Měsíční Ø (8 měn)'),
+              h('span',{style:{display:'flex',alignItems:'center',gap:5}},h('i',{style:{width:12,height:8,borderRadius:2,background:'rgba(34,211,238,.25)',display:'inline-block'}}),'Rozptyl mezi měnami (±1σ)'))),
+          h('div',{style:{position:'relative',height:H,marginTop:6}},
+            h('svg',{viewBox:'0 0 '+W+' '+H,style:{width:'100%',height:'100%',overflow:'visible'}},
+              gridYs.map((gy,i)=>h('line',{key:i,x1:PL,x2:W-PR,y1:gy,y2:gy,stroke:'rgba(255,255,255,.045)',strokeWidth:1})),
+              zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'rgba(255,255,255,.14)',strokeWidth:1}),
+              h('text',{x:W-PR+6,y:zeroY+3,fontSize:9,fill:MC.text2},'0'),
+              h('path',{d:bandD,fill:MC.accent,fillOpacity:.1}),
+              h('path',{d:lineD,fill:'none',stroke:MC.accent,strokeWidth:2.5,strokeLinecap:'round',strokeLinejoin:'round'}),
+              h('circle',{cx:X(bestM),cy:Y(monthAvg[bestM]),r:4.5,fill:MC.green,stroke:'#0a0e17',strokeWidth:2}),
+              h('circle',{cx:X(worstM),cy:Y(monthAvg[worstM]),r:4.5,fill:MC.red,stroke:'#0a0e17',strokeWidth:2}),
+              MON.map((mn,i)=>h('text',{key:i,x:X(i),y:H-8,fontSize:10,textAnchor:'middle',fill:MC.text2},mn))),
+            h('div',{style:{position:'absolute',left:peakPct.left,top:peakPct.top,transform:'translate(-50%,-135%)',fontSize:10.5,fontWeight:600,color:MC.text1,background:'rgba(10,14,23,.86)',border:'1px solid rgba(34,211,238,.3)',padding:'4px 8px',borderRadius:7,whiteSpace:'nowrap'}},MONF[bestM].slice(0,3)+' ',h('b',{style:{fontWeight:800,color:MC.green}},fmt1(monthAvg[bestM]))),
+            h('div',{style:{position:'absolute',left:troughPct.left,top:troughPct.top,transform:'translate(-50%,-135%)',fontSize:10.5,fontWeight:600,color:MC.text1,background:'rgba(10,14,23,.86)',border:'1px solid '+MC.borderSoft,padding:'4px 8px',borderRadius:7,whiteSpace:'nowrap'}},MONF[worstM].slice(0,3)+' ',h('b',{style:{fontWeight:800,color:MC.red}},fmt1(monthAvg[worstM])))));
+      })();
+
+      // (b) Klíčové sezónní vzorce — 4 karty, ikonové čipy podle mockupu.
+      // "Nejlepší den v týdnu"/"nejlepší čas" z mockupu appka NEMÁ jak
+      // spočítat (SEASONALITY je jen měsíční, žádná denní/hodinová
+      // granularita) — nahrazeno tím, co appka reálně umí: nejsilnější/
+      // nejslabší měna PRÁVĚ TEĎ (aktuální měsíc).
+      const kpItem=(icon,iconBg,iconCol,label,name,val,valCol)=>h('div',{style:{display:'flex',alignItems:'center',gap:11,padding:'11px 12px',background:MC.panel2,border:'1px solid '+MC.borderSoft,borderRadius:12}},
+        h('div',{style:{width:34,height:34,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,flexShrink:0,background:iconBg,color:iconCol}},icon),
+        h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontSize:10.5,color:MC.text1,fontWeight:600}},label),h('div',{style:{fontSize:13.5,fontWeight:700,marginTop:1,color:MC.text0}},name)),
+        h('div',{style:{fontSize:14.5,fontWeight:800,textAlign:'right',color:valCol,flexShrink:0}},val));
+      const keyPatternsCard=h('div',{style:mcCard()},mcGlow,mcTitle('Klíčové sezónní vzorce'),
+        h('div',{style:{display:'flex',flexDirection:'column',gap:10}},
+          kpItem('↗','rgba(34,230,168,.12)',MC.green,'NEJSILNĚJŠÍ MĚSÍC',MONF[bestM],fmt1(monthAvg[bestM]),MC.green),
+          kpItem('↘','rgba(255,92,122,.12)',MC.red,'NEJSLABŠÍ MĚSÍC',MONF[worstM],fmt1(monthAvg[worstM]),MC.red),
+          // Karty měn ukazují stejné 0-100 skóre jako gauge/žebříček níž (ne
+          // syrové -2..+2) — ať se stejná měna nečte jinak na dvou místech
+          // vedle sebe (měsíční karty výš zůstávají v -2..+2, tam duplicita
+          // se stejnou škálou jinde na stránce nehrozí).
+          kpItem('🏆','rgba(139,123,255,.14)',MC.violet,'NEJSILNĚJŠÍ MĚNA TEĎ',FLAG[bestCur.c]+' '+bestCur.c,toScore(bestCur.raw),MC.green),
+          kpItem('⚠','rgba(139,123,255,.14)',MC.violet,'NEJSLABŠÍ MĚNA TEĎ',FLAG[worstCur.c]+' '+worstCur.c,toScore(worstCur.raw),MC.red)));
+
+      // (c) Sezónní síla měn — radiální gauge (Ø aktuální měsíc, 0-100) +
+      // žebříček s pruhy (stejné přeškálování).
+      const gaugeR=62,gaugeCirc=2*Math.PI*gaugeR;
+      const gaugeFrac=Math.max(0,Math.min(1,(monthAvg[nowM]+2)/4)), gaugeVal=toScore(monthAvg[nowM]);
+      const gaugeCard=h('div',{style:mcCard()},mcGlow,mcTitle('Sezónní síla měn','Celkové skóre 0–100 · aktuální měsíc, přeškálováno z -2..+2'),
+        h('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',marginBottom:12}},
+          h('svg',{width:150,height:150,viewBox:'0 0 150 150'},
+            h('defs',null,h('linearGradient',{id:'seasGaugeGrad',x1:'0',y1:'0',x2:'1',y2:'1'},h('stop',{offset:'0%',stopColor:MC.accent}),h('stop',{offset:'100%',stopColor:MC.violet}))),
+            h('circle',{cx:75,cy:75,r:gaugeR,fill:'none',stroke:MC.panel2,strokeWidth:12}),
+            h('circle',{cx:75,cy:75,r:gaugeR,fill:'none',stroke:'url(#seasGaugeGrad)',strokeWidth:12,strokeLinecap:'round',strokeDasharray:gaugeCirc.toFixed(1),strokeDashoffset:(gaugeCirc*(1-gaugeFrac)).toFixed(1),transform:'rotate(-90 75 75)'})),
+          h('div',{style:self.mono({fontSize:34,fontWeight:800,letterSpacing:'-.5px',marginTop:-92,color:MC.text0})},gaugeVal),
+          h('div',{style:{fontSize:10.5,color:MC.text1,marginTop:58}},'Průměrná síla · '+MONF[nowM])),
+        h('div',{style:{display:'flex',flexDirection:'column',gap:9,marginTop:6}},curScores.map(({c,raw})=>{
+          const sc=toScore(raw), col=raw>0?MC.green:raw<0?MC.red:MC.text2;
+          return h('div',{key:c,style:{display:'grid',gridTemplateColumns:'40px 1fr 28px',alignItems:'center',gap:10}},
+            h('span',{style:{fontSize:11.5,fontWeight:700,color:MC.text0}},c),
+            h('div',{style:{height:7,borderRadius:5,background:MC.panel2,overflow:'hidden'}},h('div',{style:{height:'100%',width:sc+'%',borderRadius:5,background:col}})),
+            h('span',{style:{fontSize:11.5,fontWeight:700,textAlign:'right',color:MC.text1}},sc));
         })));
 
-      // (c) Sezónní kalendář — celkové skóre. 12 výsečí (měsíce) kolem prstence,
-      // barva/sytost = průměrné skóre napříč měnami. Hover "vyjede" výseč ven +
-      // glow (imituje 3D efekt z mockupu čistě přes SVG, bez knihovny).
-      const cx=120,cy=120,innerR=56,outerR=94,hov=st.seasDonutHover;
-      const polar=(r,ang)=>{ const a=(ang-90)*Math.PI/180; return [cx+r*Math.cos(a),cy+r*Math.sin(a)]; };
-      const arcPath=(rI,rO,a0,a1)=>{ const [x1,y1]=polar(rO,a0),[x2,y2]=polar(rO,a1),[x3,y3]=polar(rI,a1),[x4,y4]=polar(rI,a0); const large=a1-a0>180?1:0;
-        return 'M '+x1+' '+y1+' A '+rO+' '+rO+' 0 '+large+' 1 '+x2+' '+y2+' L '+x3+' '+y3+' A '+rI+' '+rI+' 0 '+large+' 0 '+x4+' '+y4+' Z'; };
-      const hoverData=hov!=null?{mn:MONF[hov],avg:monthAvg[hov]}:null;
-      const centerLabel=hoverData?hoverData.mn:'Celkem (rok)';
-      const centerVal=fmt1(hoverData?hoverData.avg:overallAvg);
-      const centerCol=(hoverData?hoverData.avg:overallAvg)>0?T.green:(hoverData?hoverData.avg:overallAvg)<0?T.red:T.faint;
-      const donutCard=h('div',{style:Object.assign(self.card({padding:'18px 20px'}),{display:'flex',flexDirection:'column',alignItems:'center'})},
-        self.ptitle('Sezónní kalendář — celkové skóre','Ø skóre napříč 8 měnami, po měsících · najeď myší pro detail'),
-        h('svg',{viewBox:'0 0 240 240',width:230,height:230,style:{marginTop:4,overflow:'visible'}},
-          MON.map((_,m)=>{
-            const isHover=hov===m, avg=monthAvg[m], rO=isHover?outerR+10:outerR;
-            const op=Math.min(1,Math.abs(avg)/2*.75+.3), col=avg>0?T.green:avg<0?T.red:T.faint;
-            const a0=m*30+1.6, a1=(m+1)*30-1.6, [lx,ly]=polar(rO+14,(a0+a1)/2);
-            return h('g',{key:m},
-              h('path',{d:arcPath(innerR,rO,a0,a1),fill:col,fillOpacity:op,stroke:'#07080c',strokeWidth:1.5,
-                style:{cursor:'pointer',transition:'d .16s ease,fill-opacity .16s ease',filter:isHover?'drop-shadow(0 0 9px '+col+'99)':'none'},
-                onMouseEnter:()=>self.setState({seasDonutHover:m}),onMouseLeave:()=>self.setState({seasDonutHover:null})}),
-              h('text',{x:lx,y:ly,fontSize:9,textAnchor:'middle',fill:isHover?T.text:T.faint,fontWeight:isHover?800:600,style:{pointerEvents:'none'}},MON[m]));
-          }),
-          h('circle',{cx,cy,r:innerR-5,fill:T.surfaceElevated}),
-          h('text',{x:cx,y:cy-7,textAnchor:'middle',fontSize:10.5,fill:T.faint,fontWeight:700},centerLabel),
-          h('text',{x:cx,y:cy+17,textAnchor:'middle',fontSize:21,fontWeight:800,fill:centerCol,fontFamily:"'JetBrains Mono',monospace"},centerVal)),
-        h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,lineHeight:1.5,textAlign:'center',maxWidth:280}},'Zelená = historicky spíš posilování napříč měnami, červená spíš oslabování. Tendence, ne předpověď.'));
-
-      // (d) Heatmapa měn × měsíců — celý rok, všech 8 měn najednou
-      const heatCell=v=>{ const op=Math.min(.85,Math.abs(v)/2*.75+.12); return {background:v>0?'rgba(46,211,160,'+op+')':v<0?'rgba(242,96,110,'+op+')':'#0a0d13',color:'#0a0d10'}; };
-      const heatmapCard=h('div',{style:self.card({padding:'18px 20px',overflowX:'auto'})},
-        self.ptitle('Sezónní heatmapa měn','Skóre sezónní tendence (-2 až +2) napříč všemi měnami a měsíci'),
-        h('div',{style:{minWidth:640,marginTop:6}},
-          h('div',{style:{display:'grid',gridTemplateColumns:'44px repeat(12,1fr)',gap:4,marginBottom:5}},
-            h('span',null),MON.map((mn,m)=>h('span',{key:m,style:self.mono({fontSize:9.5,color:m===nowM?T.accent:T.faint,fontWeight:m===nowM?800:600,textAlign:'center'})},mn))),
-          self.CUR.map(c=>h('div',{key:c,style:{display:'grid',gridTemplateColumns:'44px repeat(12,1fr)',gap:4,marginBottom:4}},
-            h('span',{style:self.mono({fontSize:11,fontWeight:700,color:T.dim,display:'flex',alignItems:'center'})},c),
+      // (d) Heatmapa měn × měsíců — vlajky pro rychlejší orientaci (jen
+      // dekorace, ne data), reálné -2..+2 skóre beze změny.
+      const heatCell=v=>{ const op=Math.min(.85,Math.abs(v)/2*.75+.12); return v>0?'rgba(34,230,168,'+op+')':v<0?'rgba(255,92,122,'+op+')':MC.panel2; };
+      const heatmapCard=h('div',{style:Object.assign(mcCard(),{overflowX:'auto'})},mcGlow,
+        mcTitle('Sezónní heatmapa měn','Skóre sezónní tendence (-2 až +2) napříč všemi měnami a měsíci'),
+        h('div',{style:{minWidth:660}},
+          h('div',{style:{display:'grid',gridTemplateColumns:'56px repeat(12,1fr)',gap:4,marginBottom:5}},
+            h('span',null),MON.map((mn,m)=>h('span',{key:m,style:self.mono({fontSize:9.5,color:m===nowM?MC.accent:MC.text2,fontWeight:m===nowM?800:600,textAlign:'center'})},mn))),
+          self.CUR.map(c=>h('div',{key:c,style:{display:'grid',gridTemplateColumns:'56px repeat(12,1fr)',gap:4,marginBottom:4}},
+            h('span',{style:{fontSize:11,fontWeight:700,color:MC.text0,display:'flex',alignItems:'center',gap:5}},FLAG[c],c),
             (SEASONALITY[c]||[]).map((v,m)=>h('span',{key:m,title:c+' '+MONF[m]+': '+fmt0(v),
-              style:Object.assign(self.mono({fontSize:10,fontWeight:700,textAlign:'center',padding:'7px 0',borderRadius:5}),heatCell(v),m===nowM?{border:'1px solid '+T.accent}:{})},fmt0(v))))))
+              style:Object.assign(self.mono({fontSize:10,fontWeight:700,textAlign:'center',padding:'7px 0',borderRadius:6}),{background:heatCell(v),color:v===0?MC.text2:'#0a0e10'},m===nowM?{border:'1px solid '+MC.accent}:{})},fmt0(v))))))
       );
 
+      // (e) Sezónní kalendář — divergentní sloupcový graf (NÁHRADA za původní
+      // donut, viz TASK_sezonnost_redesign.md bod 2 — donut byl nepřehledný).
+      // Pruh vychází ze středové nuly, doprava kladné/zeleně, doleva
+      // záporné/červeně. Škála v reálných jednotkách (-2..+2), ne ve %
+      // (appka % návratnost nemá — SEASONALITY je ručně kalibrované skóre).
+      const calCard=(()=>{
+        const rows=MON.map((mn,m)=>{
+          const v=monthAvg[m], pct=Math.min(50,(Math.abs(v)/2)*50), isHi=m===bestM, pos=v>=0;
+          return h('div',{key:m,style:{display:'grid',gridTemplateColumns:'34px 1fr 46px',alignItems:'center',gap:9,height:19,marginBottom:3}},
+            h('div',{style:{fontSize:11,color:MC.text1,fontWeight:600}},mn),
+            h('div',{style:{position:'relative',height:12,background:'linear-gradient(90deg,transparent 49.9%,rgba(255,255,255,.09) 50%,transparent 50.1%)'}},
+              h('div',{style:{position:'absolute',top:0,height:12,borderRadius:4,
+                left:pos?'50%':undefined,right:pos?undefined:'50%',width:pct+'%',
+                background:pos?'linear-gradient(90deg,#16a97e,'+MC.green+')':'linear-gradient(90deg,'+MC.red+',#b6324a)',
+                boxShadow:isHi?'0 0 0 1.5px rgba(34,211,238,.55), 0 0 10px rgba(34,211,238,.35)':'none'}})),
+            h('span',{style:{fontSize:11,fontWeight:700,textAlign:'right',color:pos?MC.green:MC.red}},fmt1(v)));
+        });
+        return h('div',{style:mcCard()},mcGlow,mcTitle('Sezónní kalendář','Ø skóre za měsíc, napříč všemi měnami · škála -2 až +2'),
+          h('div',null,
+            h('div',{style:{display:'flex',justifyContent:'space-between',fontSize:9.5,color:MC.text2,marginBottom:6,padding:'0 2px'}},h('span',null,'-2'),h('span',null,'0'),h('span',null,'+2')),
+            rows,
+            h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12,paddingTop:12,borderTop:'1px solid '+MC.borderSoft}},
+              h('div',{style:{fontSize:11,color:MC.text1}},'Průměr za rok'),
+              h('div',{style:{fontSize:17,fontWeight:800,color:overallAvg>=0?MC.green:MC.red}},fmt1(overallAvg)))));
+      })();
+
+      // (f) Nejlepší a nejhorší měny + Klíčové poznatky — žebříček z
+      // curScores (aktuální měsíc), poznatky generované z reálných hodnot
+      // výš (žádný vymyšlený text jako "pátek"/"13-16h" z mockupu).
+      const top4=curScores.slice(0,4), bottom4=[...curScores].sort((a,b)=>a.raw-b.raw).slice(0,4);
+      const rankItem=(i,c,raw)=>h('div',{key:c,style:{display:'flex',alignItems:'center',gap:8,padding:'7px 0',borderBottom:i<3?'1px solid '+MC.borderSoft:'none'}},
+        h('span',{style:{fontSize:10,color:MC.text2,width:12}},i+1),
+        h('span',{style:{flex:1,fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:6,color:MC.text0}},FLAG[c]+' '+c),
+        h('span',{style:{fontSize:12,fontWeight:800,color:raw>0?MC.green:raw<0?MC.red:MC.text2}},toScore(raw)));
+      const rankCard=h('div',{style:mcCard()},mcGlow,mcTitle('Nejlepší a nejhorší měny',MONF[nowM]+' · skóre 0–100'),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}},
+          h('div',null,h('div',{style:{fontSize:10.5,fontWeight:700,color:MC.text1,marginBottom:9,letterSpacing:'.3px',textTransform:'uppercase'}},'Top 4 (síla)'),top4.map((r,i)=>rankItem(i,r.c,r.raw))),
+          h('div',null,h('div',{style:{fontSize:10.5,fontWeight:700,color:MC.text1,marginBottom:9,letterSpacing:'.3px',textTransform:'uppercase'}},'Bottom 4'),bottom4.map((r,i)=>rankItem(i,r.c,r.raw)))),
+        h('div',{style:{marginTop:14,paddingTop:14,borderTop:'1px solid '+MC.borderSoft}},
+          h('ul',{style:{listStyle:'none',display:'flex',flexDirection:'column',gap:8,margin:0,padding:0}},
+            [MONF[bestM]+' je historicky nejsilnější měsíc napříč měnami (Ø skóre '+fmt1(monthAvg[bestM])+').',
+             MONF[worstM]+' bývá nejslabší měsíc (Ø skóre '+fmt1(monthAvg[worstM])+').',
+             FLAG[bestCur.c]+' '+bestCur.c+' a '+FLAG[top4[1].c]+' '+top4[1].c+' patří teď ('+MONF[nowM]+') mezi sezónně nejsilnější měny.',
+             FLAG[worstCur.c]+' '+worstCur.c+' má teď nejslabší sezónní tendenci ('+fmt0(worstCur.raw)+').'
+            ].map((t,i)=>h('li',{key:i,style:{fontSize:12,color:MC.text1,display:'flex',gap:8,lineHeight:1.5}},h('span',{style:{color:MC.accent,fontSize:8,marginTop:4}},'◆'),t)))));
+
       return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
-        keyPatternsCard,
-        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(360px,1fr))',gap:16,alignItems:'start'}},donutCard,strengthCard),
-        heatmapCard);
+        lineCard,
+        h('div',{style:{display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:16,alignItems:'start'}},keyPatternsCard,gaugeCard),
+        h('div',{style:{display:'grid',gridTemplateColumns:'1.15fr 1fr 1fr',gap:16,alignItems:'start'}},heatmapCard,calCard,rankCard));
     })();
     // Roční sezónní křivka — den po dni, celý rok Led→Pro, s vyznačeným DNES.
     // Nezávislé na "Reálná sezónnost" níže (ta je měsíční, z Alpha Vantage,
