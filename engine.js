@@ -1684,6 +1684,51 @@ function saveFavoritePairs(arr){
   try{localStorage.setItem(FAV_PAIRS_KEY,JSON.stringify((arr||[]).filter(Boolean)));localStorage.setItem("v5_fav_pairs_ts",String(Date.now()));}catch(e){}
 }
 
+// ── UVÍTACÍ OBRAZOVKA (welcome splash) ────────────────────────────────
+// Sdíleno mezi všemi 3 frontendy, aby banka citátů a rozhodovací logika
+// (celá/rychlá/vypnutá verze) žily na jednom místě — samotné JSX vykreslení
+// (React, 3D logo, animace) je v každé appce zvlášť, stejně jako zbytek UI
+// (viz CLAUDE.md, sekce "Tři frontendy sdílí jeden engine").
+const WELCOME_QUOTES=[
+  "Trh odměňuje trpělivost, ne rychlost.",
+  "Risk management dnes = kapitál na obchodování zítra.",
+  "Nejlepší obchod je někdy žádný obchod.",
+  "Edge se počítá na stovkách obchodů, ne na jednom.",
+  "Sleduj proces, ne jen výsledek.",
+  "Disciplína poráží predikci.",
+  "Malá ztráta je levná lekce.",
+  "Trh nemusíš předvídat, stačí na něj reagovat s plánem.",
+  "Konzistence buduje účet pomaleji, ale jistěji.",
+  "Nejdražší slovo na trhu je „snad“.",
+  "Připravenost bije nadšení.",
+  "Grafy ukazují pravděpodobnost, ne jistotu.",
+  "Dobrý trader řídí riziko dřív, než řídí zisk.",
+  "Klid je konkurenční výhoda."
+];
+function pickWelcomeQuote(){ return WELCOME_QUOTES[Math.floor(Math.random()*WELCOME_QUOTES.length)]; }
+function getWelcomeName(){ try{ return (localStorage.getItem('fx_user_name')||'').trim(); }catch(e){ return ''; } }
+function setWelcomeName(v){ try{ localStorage.setItem('fx_user_name',String(v||'').trim()); }catch(e){} }
+function getWelcomeSettings(){
+  try{ return { enabled: localStorage.getItem('fx_welcome_enabled')!=='0', freq: localStorage.getItem('fx_welcome_freq')||'daily' }; }
+  catch(e){ return {enabled:true,freq:'daily'}; }
+}
+// 'off' (v Nastavení vypnuto) | 'micro' (dnes appka už uvítání ukázala —
+// jen krátký bleskový fade, žádný text) | 'full' (plná sekvence logo→
+// uvítání→citát). Při 'full' rovnou zapíše dnešní datum, takže další
+// otevření/reload TÉHOŽ dne dostane 'micro' — žádný timer, jen datum
+// poslední plné show v localStorage (ať appka fyzicky neotravuje při
+// běžném refreshi stránky v průběhu dne).
+function computeSplashMode(){
+  const s=getWelcomeSettings();
+  if(!s.enabled) return 'off';
+  if(s.freq==='always') return 'full';
+  const today=new Date().toISOString().slice(0,10);
+  let last=''; try{ last=localStorage.getItem('fx_welcome_last_date')||''; }catch(e){}
+  if(last===today) return 'micro';
+  try{ localStorage.setItem('fx_welcome_last_date',today); }catch(e){}
+  return 'full';
+}
+
 // ── IMPORT / EXPORT historie (CSV + JSON adaptéry) ──────────────────
 // Normalizuje libovolný zdroj (Kaggle/HF/FF export, vlastní JSON) na interní
 // tvar {event,country,time,impact,actual,estimate,prev} — score engine pak

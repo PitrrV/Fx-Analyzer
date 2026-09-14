@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260914a"></script>
-<script src="sync.js?v=20260827a"></script>
+<script src="engine.js?v=20260914b"></script>
+<script src="sync.js?v=20260914a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -21,6 +21,20 @@ body{background:#07080c;color:#eaedf3;font-family:'Manrope',system-ui,-apple-sys
 ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#1b2130;border-radius:5px}::-webkit-scrollbar-thumb:hover{background:#2a3346}
 @keyframes fxpulse{0%,100%{opacity:1}50%{opacity:.3}}
 @keyframes fxfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* ── Uvítací obrazovka (welcome splash) ── viz FXApp.renderSplash() */
+@keyframes splashBgIn{from{filter:blur(0px) brightness(1)}to{filter:blur(20px) brightness(.5)}}
+@keyframes splashBgOut{from{filter:blur(20px) brightness(.5)}to{filter:blur(0px) brightness(1)}}
+@keyframes splashEmblemIn{from{opacity:0;transform:scale(.5) rotateY(50deg)}to{opacity:1;transform:scale(1) rotateY(0deg)}}
+@keyframes splashPulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+@keyframes splashOrbit1{from{transform:translate(-50%,-50%) rotateX(62deg) rotate(0deg)}to{transform:translate(-50%,-50%) rotateX(62deg) rotate(360deg)}}
+@keyframes splashOrbit2{from{transform:translate(-50%,-50%) rotateX(62deg) rotate(40deg)}to{transform:translate(-50%,-50%) rotateX(62deg) rotate(400deg)}}
+@keyframes splashFadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes splashDotFade{0%,100%{opacity:.15}50%{opacity:1}}
+@keyframes splashShimmer{0%{left:-45%}100%{left:105%}}
+@keyframes splashDissolve{to{opacity:0;transform:scale(1.35) rotateY(35deg);filter:blur(10px)}}
+@keyframes splashDissolveUp{to{opacity:0;transform:translateY(-10px)}}
+@keyframes splashGreetIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes splashOut{to{opacity:0;visibility:hidden}}
 @media(max-width:1300px){.fx-grid{grid-template-columns:340px minmax(0,1fr)!important}.fx-right{grid-column:1/-1!important;position:static!important;max-height:none!important;top:auto!important}}
 @media(max-width:1000px){.fx-grid{grid-template-columns:1fr!important}.fx-root{flex-direction:column!important}.fx-aside{position:static!important;width:100%!important;height:auto!important;max-height:none!important;top:auto!important}.fx-left,.fx-right{position:static!important;max-height:none!important;top:auto!important}.fx-strength-grid{grid-template-columns:1fr!important}}
 </style>
@@ -158,6 +172,9 @@ class FXApp extends React.Component{
     const h=React.createElement; this.h=h;
     this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), notesTs:(()=>{try{return JSON.parse(localStorage.getItem('pair_notes_ts')||'{}');}catch(e){return {};}})(), coachThreads:loadCoachThreads(), coachActiveId:(()=>{try{return localStorage.getItem('fx_coach_active')||'';}catch(e){return '';}})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D',
       adminSkin:(()=>{try{return localStorage.getItem('fx_admin_skin')!=='0';}catch(e){return true;}})(),
+      welcomeName:(()=>{try{return getWelcomeName();}catch(e){return '';}})(),
+      welcomeEnabled:(()=>{try{return getWelcomeSettings().enabled;}catch(e){return true;}})(),
+      welcomeFreq:(()=>{try{return getWelcomeSettings().freq;}catch(e){return 'daily';}})(),
       smartInput:'', smartConvo:[], smartDraft:null, smartBusy:false, smartErr:'', smartRules:[], smartRulesLoaded:false, smartEditingId:null,
       cotBusy:false, retailBusy:false, dataMsg:'', aiBusy:false, aiErr:'', aiResult:null, aiImgUrl:'', aiTf2:'H4', aiPrice:'', jForm:{pair:'',dir:'LONG',entry:'',sl:'',tp:'',riskPct:'',outcome:'open',rMultiple:'',notes:''}, jImportRaw:'', jImportMsg:'', jImportOpen:false, cotRange:'1Y', cotModal:null, chartModal:null, gridRange:'1M', jFilterPair:'all', jFilterOutcome:'all', calWindow:'upcoming', calCcy:'all', calImp:'all', calRes:'all', seasPair:'', seasPairManual:'', seasData:null, seasBusy:false, seasErr:'',
       seasFullPath:null, seasFullBusy:false, seasFullErr:'', seasFullYears:20, seasFullChartModal:false,
@@ -168,7 +185,16 @@ class FXApp extends React.Component{
       winToM:(()=>new Date().getMonth()+1)(),
       winToD:(()=>new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate())(),
       winYears:20, winBusy:false, winErr:'', winResult:null, winAvgPath:null, winDaily:null, winChartModal:false,
-      seasRadarBusy:false, seasRadarErr:'', seasRadarResults:[], seasRadarAt:null };
+      seasRadarBusy:false, seasRadarErr:'', seasRadarResults:[], seasRadarAt:null,
+      splashPhase:'loading' };
+    // Uvítací obrazovka — 'off'|'micro'|'full' rozhodnuté jednou při startu
+    // (viz computeSplashMode v engine.js), citát vylosovaný jednou za session,
+    // ať se během jednoho zobrazení nemění pod rukama.
+    this._splashMode=(()=>{try{return computeSplashMode();}catch(e){return 'off';}})();
+    this._splashQuote=(()=>{try{return pickWelcomeQuote();}catch(e){return '';}})();
+    this._splashName=(()=>{try{return getWelcomeName();}catch(e){return '';}})();
+    this._splashStart=Date.now();
+    if(this._splashMode==='off') this.state.splashPhase='hidden';
     // fx_coach_active mohlo ukazovat na vlákno, co mezitím zmizelo (smazané,
     // nebo appka běží poprvé) — spadni na první dostupné.
     if(!this.state.coachThreads.some(t=>t.id===this.state.coachActiveId)) this.state.coachActiveId=this.state.coachThreads[0].id;
@@ -190,8 +216,17 @@ class FXApp extends React.Component{
     this.maybeLoadFullYearSeasonality();
     this.loadSmartAlerts();
     this.loadSeasonalRadarFromCache();
-    if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s){ this._didInitSync=true; window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); } }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(!s){ this._didInitSync=false; return; } if(event==='SIGNED_IN'&&!this._didInitSync){ this._didInitSync=true; this.doSync(false); } }); } }
-  componentWillUnmount(){ clearInterval(this._t); clearInterval(this._clk); }
+    if(window.Sync&&window.Sync.ready){ window.Sync.session().then(s=>{ this.setState({syncSess:s}); if(s){ this._didInitSync=true; window.Sync.syncNow().then(()=>this.refreshData()).catch(()=>{}); } }).catch(()=>{}); window.Sync.onAuth((s,event)=>{ this.setState({syncSess:s}); if(!s){ this._didInitSync=false; return; } if(event==='SIGNED_IN'&&!this._didInitSync){ this._didInitSync=true; this.doSync(false); } }); }
+    // Uvítací obrazovka — tvrdý strop (appka nikdy nesmí být "čekárna", i
+    // kdyby data dlouho nedorazila) + Escape kdykoli přeskočí.
+    if(this.state.splashPhase!=='hidden'){
+      this._splashCap=setTimeout(()=>{ if(this.state.splashPhase==='loading') this.advanceSplash(); },3500);
+      this._onSplashKey=e=>{ if(e.key==='Escape') this.skipSplash(); };
+      window.addEventListener('keydown',this._onSplashKey);
+    }
+  }
+  componentWillUnmount(){ clearInterval(this._t); clearInterval(this._clk); clearTimeout(this._splashCap); clearTimeout(this._splashGreetT);
+    if(this._onSplashKey) window.removeEventListener('keydown',this._onSplashKey); }
   componentDidUpdate(prevProps,prevState){
     // Auto-scroll chatu na poslední zprávu — jen když se zprávy/busy stav
     // skutečně změnily, ne na každý render (appka re-renderuje 1×/s kvůli
@@ -200,7 +235,23 @@ class FXApp extends React.Component{
       this._coachScrollEl.scrollTop=this._coachScrollEl.scrollHeight;
     }
     this.maybeLoadFullYearSeasonality();
+    // Data právě dorazila (loaded false→truthy) — posuň uvítání na další fázi,
+    // ale ne dřív, než uplyne minimální "sluší se ho aspoň přečíst" čas.
+    if(!prevState.loaded&&this.state.loaded&&this.state.splashPhase==='loading') this.advanceSplash();
   }
+  // 'full': loading→(min. drž) greet (~1.7s) →hidden. 'micro': loading→
+  // (krátký fade) →hidden, bez textu vůbec — appka to neukazuje pořád dokola
+  // stejně dlouho, je to jen "otisk", že appka žije.
+  advanceSplash(){
+    const elapsed=Date.now()-this._splashStart, minHold=this._splashMode==='full'?1100:250;
+    const wait=Math.max(0,minHold-elapsed);
+    setTimeout(()=>{
+      if(this.state.splashPhase!=='loading') return;
+      if(this._splashMode==='full'){ this.setState({splashPhase:'greet'}); this._splashGreetT=setTimeout(()=>this.setState({splashPhase:'hidden'}),1700); }
+      else this.setState({splashPhase:'hidden'});
+    },wait);
+  }
+  skipSplash(){ clearTimeout(this._splashCap); clearTimeout(this._splashGreetT); this.setState({splashPhase:'hidden'}); }
   async doSync(reload){ this.setState({syncBusy:true,syncMsg:'⏳ Synchronizuji…'});
     try{ const st=await window.Sync.syncNow(); this.setState({syncMsg:`✅ Sloučeno: ${st.events} událostí · ${st.cotWeeks} COT týdnů · ${st.trades} obchodů · ${st.keys} klíčů`+(reload?' — obnovuji…':'')}); if(reload){ setTimeout(()=>location.reload(),1000); } else { this.refreshData(); } }
     catch(e){ this.setState({syncMsg:'⚠ '+(e&&e.message||e)}); } this.setState({syncBusy:false}); }
@@ -455,6 +506,9 @@ class FXApp extends React.Component{
       glowTeal:'rgba(46,211,160,.18)', glowPurple:'rgba(157,123,255,.18)'};
   }
   toggleAdminSkin(){ const on=!this.state.adminSkin; try{localStorage.setItem('fx_admin_skin',on?'1':'0');}catch(e){} this.setState({adminSkin:on}); }
+  setWelcomeNameField(v){ try{setWelcomeName(v);}catch(e){} this._splashName=v.trim(); this.setState({welcomeName:v}); }
+  toggleWelcomeEnabled(){ const on=!this.state.welcomeEnabled; try{setWelcomeSetting('fx_welcome_enabled',on?'1':'0');}catch(e){} this.setState({welcomeEnabled:on}); }
+  setWelcomeFreqField(v){ try{setWelcomeSetting('fx_welcome_freq',v);}catch(e){} this.setState({welcomeFreq:v}); }
 
   // ── AI Smart Alerts ─────────────────────────────────────────────────────
   b64EncodeUtf8(str){ return btoa(unescape(encodeURIComponent(str))); }
@@ -2588,6 +2642,17 @@ class FXApp extends React.Component{
           dg&&h('div',{title:'Diagnostika enginu — při rozdílu skóre mezi PC a mobilem/druhým zařízením porovnej tenhle řádek na obou; liší-li se "kal hist", je to hlavní příčina (různě dlouhá nashromážděná historie kalendáře v tomto prohlížeči)',style:self.mono({fontSize:10,color:T.faint,marginTop:11,paddingTop:9,borderTop:'1px solid #161b27',lineHeight:1.6,wordBreak:'break-all'})},
             'DIAG · zdroj '+dg.calSource+' · fund '+dg.fundConf+'% · risk '+(dg.risk>0?'ON':dg.risk<0?'OFF':'0')+'/'+dg.riskMode+' ('+dg.riskSrc+') · regime '+dg.regime+' · COT '+dg.cotAsOf+' · CB '+dg.cbRates+' · kal '+dg.ffLen+' ev / hist '+dg.ffWeeks+' t · COT '+dg.cotWeeks+' t · retail '+dg.sentSrc));
       })(),
+      h('div',{style:self.card({padding:'22px 24px',marginBottom:16})},
+        self.ptitle('👋 Uvítací obrazovka','Logo + pozdrav při prvním otevření appky (dnes)'),
+        h('label',{style:{fontSize:11,color:T.dim,display:'block',marginBottom:4}},'Jméno (appka tě jím pozdraví)'),
+        h('input',{defaultValue:st.welcomeName,onBlur:e=>self.setWelcomeNameField(e.target.value),placeholder:'např. Petr',maxLength:24,style:fld}),
+        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:6}},
+          h('div',null,h('div',{style:{fontSize:12,fontWeight:700,color:T.text}},'Zobrazovat uvítání'),h('div',{style:{fontSize:10.5,color:T.faint,marginTop:2}},'Vypnuto = appka naskočí rovnou, jen krátký „Načítám…“.')),
+          h('button',{type:'button',onClick:()=>self.toggleWelcomeEnabled(),style:{border:'1px solid '+(st.welcomeEnabled?T.accent:'#1b2130'),background:st.welcomeEnabled?'rgba(94,124,251,.14)':'#0c0f16',color:st.welcomeEnabled?T.accent:T.dim,borderRadius:8,padding:'6px 12px',fontSize:11.5,fontWeight:700,cursor:'pointer',fontFamily:'inherit',flex:'none'}},st.welcomeEnabled?'Zapnuto':'Vypnuto')),
+        st.welcomeEnabled&&h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginTop:12,paddingTop:12,borderTop:'1px solid #1b2130'}},
+          h('div',null,h('div',{style:{fontSize:12,fontWeight:700,color:T.text}},'Frekvence'),h('div',{style:{fontSize:10.5,color:T.faint,marginTop:2}},'„1× denně“ = plná verze jen při prvním otevření dne, jinak appka nezdržuje.')),
+          h('select',{value:st.welcomeFreq,onChange:e=>self.setWelcomeFreqField(e.target.value),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'7px 10px',fontSize:12,cursor:'pointer',fontFamily:'inherit'}},
+            h('option',{value:'daily'},'1× denně'),h('option',{value:'always'},'Vždy')))),
       h('div',{style:self.card({padding:'22px 24px'})},
         self.ptitle('☁️ Cloud sync'+(sess?' · přihlášen':''),'E-mail + heslo · stejné na PC i v mobilu'),
         !avail&&h('div',{style:{fontSize:12,color:T.faint}},'Nedostupné (internet / Supabase se nenačetl).'),
@@ -2720,6 +2785,67 @@ class FXApp extends React.Component{
         fired.map(ruleRow)));
   }
 
+  // ── Uvítací obrazovka ────────────────────────────────────────────────
+  // 'hidden' → null (nic se nevykresluje, appka jede normálně).
+  // 'loading' → 3D logo + orbity + "Načítám živá data…" shimmer (indeterminate,
+  //   appka reálně čeká na st.loaded — viz componentDidUpdate/advanceSplash).
+  // 'greet' → logo se "rozpustí", nastoupí uvítání se jménem + náhodný citát
+  //   (jen 'full' režim — viz computeSplashMode v engine.js).
+  // Pozadí appky (skutečný Dashboard, ne mockup) je vidět skrz — jen rozostřené
+  // (CSS blur na kořenovém elementu appky, ne samostatný obrázek), takže
+  // rozostření→zaostření při zmizení uvítání je reálný, ne předstíraný efekt.
+  renderSplash(){
+    const st=this.state,h=this.h;
+    if(st.splashPhase==='hidden') return null;
+    const greet=st.splashPhase==='greet';
+    const name=this._splashName;
+    return h('div',{onClick:()=>this.skipSplash(),title:'Klikni pro přeskočení',
+        style:{position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',
+          background:'radial-gradient(900px 600px at 50% 38%, rgba(94,124,251,.14), transparent 60%), rgba(7,8,12,.86)',
+          backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',
+          animation:'splashOut .6s ease forwards',animationDelay:greet?'1.7s':'0s'}},
+      h('div',{style:{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',perspective:900}},
+        // orbity
+        h('div',{style:{position:'absolute',left:'50%',top:76,width:190,height:190,transform:'translate(-50%,-50%) rotateX(62deg)',
+          transformStyle:'preserve-3d',borderRadius:'50%',border:'1px solid rgba(94,124,251,.28)',
+          animation:greet?'splashDissolve .6s ease forwards':'splashOrbit1 7s linear infinite'}},
+          h('span',{style:{position:'absolute',top:-4,left:'50%',marginLeft:-4,width:8,height:8,borderRadius:'50%',background:'#5e7cfb',boxShadow:'0 0 10px 2px rgba(94,124,251,.7)'}}),
+          h('span',{style:{position:'absolute',bottom:-4,left:'50%',marginLeft:-4,width:8,height:8,borderRadius:'50%',background:'#2ed3a0',boxShadow:'0 0 10px 2px rgba(46,211,160,.7)'}})),
+        h('div',{style:{position:'absolute',left:'50%',top:76,width:250,height:250,transform:'translate(-50%,-50%) rotateX(62deg) rotate(40deg)',
+          transformStyle:'preserve-3d',borderRadius:'50%',border:'1px solid rgba(157,123,255,.22)',
+          animation:greet?'splashDissolve .6s ease forwards':'splashOrbit2 10s linear infinite reverse'}},
+          h('span',{style:{position:'absolute',top:'50%',left:-4,marginTop:-4,width:8,height:8,borderRadius:'50%',background:'#9d7bff',boxShadow:'0 0 10px 2px rgba(157,123,255,.7)'}}),
+          h('span',{style:{position:'absolute',top:'50%',right:-4,marginTop:-4,width:8,height:8,borderRadius:'50%',background:'#e8ab3f',boxShadow:'0 0 10px 2px rgba(232,171,63,.7)'}})),
+        // emblém
+        h('div',{style:{position:'relative',width:120,height:120,marginTop:16,
+          animation:greet?'splashDissolve .55s ease forwards':'splashEmblemIn .8s cubic-bezier(.2,.8,.2,1) forwards'}},
+          h('div',{style:{position:'absolute',inset:-14,borderRadius:'50%',background:'radial-gradient(circle,rgba(94,124,251,.35),transparent 70%)',animation:'splashPulse 2.2s ease-in-out infinite'}}),
+          h('svg',{width:120,height:120,viewBox:'0 0 150 150',style:{position:'relative',filter:'drop-shadow(0 6px 18px rgba(94,124,251,.35))'}},
+            h('defs',null,h('linearGradient',{id:'splashHexG',x1:'0',y1:'0',x2:'1',y2:'1'},h('stop',{offset:'0%',stopColor:'#5e7cfb'}),h('stop',{offset:'100%',stopColor:'#9d7bff'}))),
+            h('polygon',{points:'75,10 132,42 132,108 75,140 18,108 18,42',fill:'none',stroke:'url(#splashHexG)',strokeWidth:2.5}),
+            h('polygon',{points:'75,24 120,49 120,101 75,126 30,101 30,49',fill:'#0f121a',opacity:.5}),
+            h('rect',{x:46,y:86,width:9,height:24,rx:2,fill:'#f2606e'}),
+            h('rect',{x:61,y:70,width:9,height:40,rx:2,fill:'#2ed3a0'}),
+            h('rect',{x:76,y:54,width:9,height:56,rx:2,fill:'#2ed3a0'}),
+            h('rect',{x:91,y:40,width:9,height:70,rx:2,fill:'#2ed3a0'}),
+            h('path',{d:'M42 100 L66 78 L82 88 L104 44',fill:'none',stroke:'#eaedf3',strokeWidth:3,strokeLinecap:'round',strokeLinejoin:'round'}),
+            h('path',{d:'M96 44 L104 44 L104 52',fill:'none',stroke:'#eaedf3',strokeWidth:3,strokeLinecap:'round',strokeLinejoin:'round'}))),
+        // wordmark
+        h('div',{style:{marginTop:16,textAlign:'center',animation:greet?'splashDissolveUp .5s ease forwards':'splashFadeUp .6s ease forwards',animationDelay:greet?'.45s':'.5s'}},
+          h('div',{style:{fontSize:16,fontWeight:800,letterSpacing:'.04em'}},h('b',{style:{color:'#5e7cfb'}},'AT'),' TRADING'),
+          h('div',{style:{fontSize:9.5,color:'#5a6273',letterSpacing:'.22em',marginTop:3,fontWeight:700}},'FX COMMAND CENTER')),
+        // loading label (jen fáze 'loading')
+        !greet&&h('div',{style:{marginTop:22,display:'flex',flexDirection:'column',alignItems:'center',gap:8,animation:'splashFadeUp .5s ease forwards',animationDelay:'.8s'}},
+          h('div',{style:{fontSize:10.5,color:'#8b93a3',letterSpacing:'.12em',fontWeight:700}},'NAČÍTÁM ŽIVÁ DATA',
+            h('span',null,['.','.','.'].map((d,i)=>h('span',{key:i,style:{animation:'splashDotFade 1.2s infinite',animationDelay:(i*.2)+'s'}},d)))),
+          h('div',{style:{width:170,height:3,borderRadius:3,background:'#1b2130',overflow:'hidden',position:'relative'}},
+            h('div',{style:{position:'absolute',inset:0,width:'40%',borderRadius:3,background:'linear-gradient(90deg,transparent,#5e7cfb,#9d7bff,transparent)',animation:'splashShimmer 1.3s ease-in-out infinite'}}))),
+        // uvítání + citát (jen fáze 'greet')
+        greet&&h('div',{style:{position:'absolute',textAlign:'center',opacity:0,animation:'splashGreetIn .7s cubic-bezier(.2,.8,.2,1) forwards',animationDelay:'.15s'}},
+          h('div',{style:{fontSize:24,fontWeight:800}},'Ahoj',name?', ':'',name?h('span',{style:{color:'#5e7cfb'}},name):null,' 👋'),
+          h('div',{style:{marginTop:11,fontSize:12,color:'#8b93a3',maxWidth:380,lineHeight:1.6,fontStyle:'italic'}},'„'+this._splashQuote+'“'))));
+  }
+
   render(){
     const self=this,h=this.h,T=this.tok, st=this.state;
     const clock=new Date().toLocaleTimeString('cs-CZ');
@@ -2834,7 +2960,10 @@ class FXApp extends React.Component{
         return h(self.WinChartModal,{pair:dd.pair,dates:dd.dates.slice(cutIdx),closes:dd.closes.slice(cutIdx),highlights:hl});
       })(),
       st.seasFullChartModal&&st.seasFullPath&&h(self.SeasYearChartModal,{pair:st.seasFullPath.pair,years:st.seasFullPath.years,n:st.seasFullPath.n,cum:st.seasFullPath.avg,dates:st.seasFullPath.dates}),
-      !st.loaded&&h('div',{style:{position:'fixed',inset:0,background:'rgba(7,8,12,.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:99,fontSize:14,color:T.dim}},'⏳ Načítám živá data…'));
+      this.renderSplash(),
+      // Uvítání vypnuté v Nastavení — appka pořád potřebuje nějaký indikátor
+      // prvního načtení, jen bez logo-efektu.
+      (this._splashMode==='off'&&!st.loaded)&&h('div',{style:{position:'fixed',inset:0,background:'rgba(7,8,12,.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:99,fontSize:14,color:T.dim}},'⏳ Načítám živá data…'));
   }
 }
 // ── Přístupová brána (uzavřený test — jen ADMIN_EMAIL) ─────────────────────
