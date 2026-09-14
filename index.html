@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260914b"></script>
+<script src="engine.js?v=20260914c"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
 *{box-sizing:border-box}
@@ -220,7 +220,7 @@ class FXApp extends React.Component{
     // Uvítací obrazovka — tvrdý strop (appka nikdy nesmí být "čekárna", i
     // kdyby data dlouho nedorazila) + Escape kdykoli přeskočí.
     if(this.state.splashPhase!=='hidden'){
-      this._splashCap=setTimeout(()=>{ if(this.state.splashPhase==='loading') this.advanceSplash(); },3500);
+      this._splashCap=setTimeout(()=>{ if(this.state.splashPhase==='loading') this.advanceSplash(); },4200);
       this._onSplashKey=e=>{ if(e.key==='Escape') this.skipSplash(); };
       window.addEventListener('keydown',this._onSplashKey);
     }
@@ -239,16 +239,19 @@ class FXApp extends React.Component{
     // ale ne dřív, než uplyne minimální "sluší se ho aspoň přečíst" čas.
     if(!prevState.loaded&&this.state.loaded&&this.state.splashPhase==='loading') this.advanceSplash();
   }
-  // 'full': loading→(min. drž) greet (~1.7s) →hidden. 'micro': loading→
-  // (krátký fade) →hidden, bez textu vůbec — appka to neukazuje pořád dokola
-  // stejně dlouho, je to jen "otisk", že appka žije.
+  // 'full' (první otevření dne): loading→(min. drž) greet (pár vteřin)→hidden.
+  // 'micro' (appka dnes uvítání už ukázala): stejná sekvence, jen kratší —
+  // ale POŘÁD s pozdravem (dřív úplně bez textu, působilo to jako by appka
+  // nic neudělala). Časy viz SPLASH_TIMING v engine.js.
   advanceSplash(){
-    const elapsed=Date.now()-this._splashStart, minHold=this._splashMode==='full'?1100:250;
-    const wait=Math.max(0,minHold-elapsed);
+    const T=SPLASH_TIMING[this._splashMode]||SPLASH_TIMING.micro;
+    const elapsed=Date.now()-this._splashStart, wait=Math.max(0,T.minHold-elapsed);
     setTimeout(()=>{
       if(this.state.splashPhase!=='loading') return;
-      if(this._splashMode==='full'){ this.setState({splashPhase:'greet'}); this._splashGreetT=setTimeout(()=>this.setState({splashPhase:'hidden'}),1700); }
-      else this.setState({splashPhase:'hidden'});
+      this.setState({splashPhase:'greet'});
+      // Skryje se až PO doběhnutí CSS fade-outu (splashOut, viz renderSplash),
+      // ať se ten fade stihne reálně přehrát místo aby appka zmizela naráz.
+      this._splashGreetT=setTimeout(()=>this.setState({splashPhase:'hidden'}),T.greet+T.fade);
     },wait);
   }
   skipSplash(){ clearTimeout(this._splashCap); clearTimeout(this._splashGreetT); this.setState({splashPhase:'hidden'}); }
@@ -2790,7 +2793,8 @@ class FXApp extends React.Component{
   // 'loading' → 3D logo + orbity + "Načítám živá data…" shimmer (indeterminate,
   //   appka reálně čeká na st.loaded — viz componentDidUpdate/advanceSplash).
   // 'greet' → logo se "rozpustí", nastoupí uvítání se jménem + náhodný citát
-  //   (jen 'full' režim — viz computeSplashMode v engine.js).
+  //   (u obou režimů 'full'/'micro', jen s jinou délkou — viz SPLASH_TIMING
+  //   v engine.js).
   // Pozadí appky (skutečný Dashboard, ne mockup) je vidět skrz — jen rozostřené
   // (CSS blur na kořenovém elementu appky, ne samostatný obrázek), takže
   // rozostření→zaostření při zmizení uvítání je reálný, ne předstíraný efekt.
@@ -2799,11 +2803,12 @@ class FXApp extends React.Component{
     if(st.splashPhase==='hidden') return null;
     const greet=st.splashPhase==='greet';
     const name=this._splashName;
+    const ST=SPLASH_TIMING[this._splashMode]||SPLASH_TIMING.micro;
     return h('div',{onClick:()=>this.skipSplash(),title:'Klikni pro přeskočení',
         style:{position:'fixed',inset:0,zIndex:200,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',
           background:'radial-gradient(900px 600px at 50% 38%, rgba(94,124,251,.14), transparent 60%), rgba(7,8,12,.86)',
           backdropFilter:'blur(20px)',WebkitBackdropFilter:'blur(20px)',
-          animation:'splashOut .6s ease forwards',animationDelay:greet?'1.7s':'0s'}},
+          animation:'splashOut '+(ST.fade/1000)+'s ease forwards',animationDelay:greet?(ST.greet/1000)+'s':'0s'}},
       h('div',{style:{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',perspective:900}},
         // orbity
         h('div',{style:{position:'absolute',left:'50%',top:76,width:190,height:190,transform:'translate(-50%,-50%) rotateX(62deg)',

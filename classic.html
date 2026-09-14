@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260914b"></script>
+<script src="engine.js?v=20260914c"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sync.js?v=20260914a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2905,13 +2905,15 @@ function WelcomeSplash({loading}){
   const [phase,setPhase]=useState(modeRef.current==="off"?"hidden":"loading");
 
   const advance=useCallback(()=>{
-    const elapsed=Date.now()-startRef.current, minHold=modeRef.current==="full"?1100:250;
-    const wait=Math.max(0,minHold-elapsed);
+    const T=SPLASH_TIMING[modeRef.current]||SPLASH_TIMING.micro;
+    const elapsed=Date.now()-startRef.current, wait=Math.max(0,T.minHold-elapsed);
     setTimeout(()=>{
       setPhase(p=>{
         if(p!=="loading") return p;
-        if(modeRef.current==="full"){ greetRef.current=setTimeout(()=>setPhase("hidden"),1700); return "greet"; }
-        return "hidden";
+        // Skryje se až PO doběhnutí CSS fade-outu (splashOut), ať se stihne
+        // reálně přehrát místo aby splash zmizel naráz.
+        greetRef.current=setTimeout(()=>setPhase("hidden"),T.greet+T.fade);
+        return "greet";
       });
     },wait);
   },[]);
@@ -2920,7 +2922,7 @@ function WelcomeSplash({loading}){
 
   useEffect(()=>{
     if(modeRef.current==="off") return;
-    capRef.current=setTimeout(advance,3500);
+    capRef.current=setTimeout(advance,4200);
     const onKey=e=>{ if(e.key==="Escape") skip(); };
     window.addEventListener("keydown",onKey);
     return ()=>{ clearTimeout(capRef.current); clearTimeout(greetRef.current); window.removeEventListener("keydown",onKey); };
@@ -2935,11 +2937,12 @@ function WelcomeSplash({loading}){
   if(phase==="hidden") return null;
   const greet=phase==="greet";
   const name=nameRef.current;
+  const ST=SPLASH_TIMING[modeRef.current]||SPLASH_TIMING.micro;
   return (
     <div onClick={skip} title="Klikni pro přeskočení" style={{position:"fixed",inset:0,zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
         background:"radial-gradient(900px 600px at 50% 38%, rgba(94,124,251,.14), transparent 60%), rgba(7,8,12,.88)",
         backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
-        animation:"splashOut .6s ease forwards",animationDelay:greet?"1.7s":"0s"}}>
+        animation:"splashOut "+(ST.fade/1000)+"s ease forwards",animationDelay:greet?(ST.greet/1000)+"s":"0s"}}>
       <div style={{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",perspective:900}}>
         <div style={{position:"absolute",left:"50%",top:76,width:190,height:190,transform:"translate(-50%,-50%) rotateX(62deg)",
             transformStyle:"preserve-3d",borderRadius:"50%",border:"1px solid rgba(94,124,251,.28)",
