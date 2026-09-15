@@ -2511,7 +2511,17 @@ class FXApp extends React.Component{
     const nowM=new Date().getMonth();
     const seasOverview=(()=>{
       const curScores=self.CUR.map(c=>({c,raw:(SEASONALITY[c]||[])[nowM]||0})).sort((a,b)=>b.raw-a.raw);
-      const monthAvg=MON.map((_,m)=>{ const vals=self.CUR.map(c=>(SEASONALITY[c]||[])[m]||0); return vals.reduce((a,b)=>a+b,0)/vals.length; });
+      // Pár-specifická sezónnost (base − quote), NE tržní průměr napříč 8
+      // měnami. Dřív "Nejsilnější/Nejslabší měsíc" i donut počítaly Ø ze
+      // VŠECH 8 měn — to je konstanta úplně nezávislá na vybraném páru
+      // (vyjde vždycky STEJNÝ měsíc bez ohledu na to, co je vybrané v
+      // selectu níž na stránce) — matoucí, viz zpětná vazba "je jedno jaký
+      // dám pár". Base−quote diff (stejná matematika jako "Sezónnost"
+      // komponenta v detailu páru) je naopak pár-specifická a mění se s
+      // volbou páru.
+      const base=cur.slice(0,3), quote=cur.slice(3,6);
+      const seasBase=SEASONALITY[base]||MON.map(()=>0), seasQuote=SEASONALITY[quote]||MON.map(()=>0);
+      const monthAvg=MON.map((_,m)=>+(((seasBase[m]||0)-(seasQuote[m]||0)).toFixed(2)));
       const overallAvg=monthAvg.reduce((a,b)=>a+b,0)/12;
       let bestM=0,worstM=0; monthAvg.forEach((v,m)=>{ if(v>monthAvg[bestM])bestM=m; if(v<monthAvg[worstM])worstM=m; });
       const bestCur=curScores[0], worstCur=curScores[curScores.length-1];
@@ -2523,8 +2533,8 @@ class FXApp extends React.Component{
         h('div',{style:self.mono({fontSize:19,fontWeight:800,color:col,lineHeight:1.1})},val),
         sub&&h('div',{style:{fontSize:10.5,color:T.dim}},sub));
       const keyPatternsCard=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:12}},
-        kpCard('📈','Nejsilnější měsíc',MONF[bestM],T.green,'trh Ø '+fmt1(monthAvg[bestM])),
-        kpCard('📉','Nejslabší měsíc',MONF[worstM],T.red,'trh Ø '+fmt1(monthAvg[worstM])),
+        kpCard('📈','Nejsilnější měsíc pro '+cur,MONF[bestM],T.green,cur+' Ø '+fmt1(monthAvg[bestM])),
+        kpCard('📉','Nejslabší měsíc pro '+cur,MONF[worstM],T.red,cur+' Ø '+fmt1(monthAvg[worstM])),
         kpCard('🏆','Nejsilnější měna teď',bestCur.c,T.green,MONF[nowM]+' · '+fmt0(bestCur.raw)),
         kpCard('⚠','Nejslabší měna teď',worstCur.c,T.red,MONF[nowM]+' · '+fmt0(worstCur.raw)));
 
@@ -2552,7 +2562,7 @@ class FXApp extends React.Component{
       const centerVal=fmt1(hoverData?hoverData.avg:overallAvg);
       const centerCol=(hoverData?hoverData.avg:overallAvg)>0?T.green:(hoverData?hoverData.avg:overallAvg)<0?T.red:T.faint;
       const donutCard=h('div',{style:Object.assign(self.card({padding:'18px 20px'}),{display:'flex',flexDirection:'column',alignItems:'center'})},
-        self.ptitle('Sezónní kalendář — celkové skóre','Ø skóre napříč 8 měnami, po měsících · najeď myší pro detail'),
+        self.ptitle('Sezónní kalendář — '+cur,base+' − '+quote+' skóre, po měsících · najeď myší pro detail'),
         h('svg',{viewBox:'0 0 240 240',width:230,height:230,style:{marginTop:4,overflow:'visible'}},
           MON.map((_,m)=>{
             const isHover=hov===m, avg=monthAvg[m], rO=isHover?outerR+10:outerR;
@@ -2567,7 +2577,7 @@ class FXApp extends React.Component{
           h('circle',{cx,cy,r:innerR-5,fill:T.surfaceElevated}),
           h('text',{x:cx,y:cy-7,textAnchor:'middle',fontSize:10.5,fill:T.faint,fontWeight:700},centerLabel),
           h('text',{x:cx,y:cy+17,textAnchor:'middle',fontSize:21,fontWeight:800,fill:centerCol,fontFamily:"'JetBrains Mono',monospace"},centerVal)),
-        h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,lineHeight:1.5,textAlign:'center',maxWidth:280}},'Zelená = historicky spíš posilování napříč měnami, červená spíš oslabování. Tendence, ne předpověď.'));
+        h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,lineHeight:1.5,textAlign:'center',maxWidth:280}},'Zelená = historicky spíš posiluje '+base+' vůči '+quote+' ('+cur+' nahoru), červená spíš naopak. Tendence, ne předpověď.'));
 
       // (d) Heatmapa měn × měsíců — celý rok, všech 8 měn najednou
       const heatCell=v=>{ const op=Math.min(.85,Math.abs(v)/2*.75+.12); return {background:v>0?'rgba(46,211,160,'+op+')':v<0?'rgba(242,96,110,'+op+')':'#0a0d13',color:'#0a0d10'}; };
@@ -2637,7 +2647,6 @@ class FXApp extends React.Component{
           rn.map(radarRow)));
     })();
     return h('div',{style:{display:'flex',flexDirection:'column',gap:16,maxWidth:1600}},
-      seasOverview,
       fullYearCard,
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(420px,1fr))',gap:16,alignItems:'start'}},
       h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
@@ -2718,6 +2727,7 @@ class FXApp extends React.Component{
             h(self.PriceMeasureChart,{dates:dSlice,closes:cSlice,height:260,highlights:hl}));
         })());
       })())),
+      seasOverview,
       !D&&!st.seasBusy&&h('div',{style:self.card({padding:'40px 22px',textAlign:'center'})},h('div',{style:{fontSize:13,color:T.faint,lineHeight:1.6}},'Vyber pár a klikni ',h('b',{style:{color:T.accent}},'Načíst sezónnost'),'.',h('br'),'Stáhne reálné měsíční výnosy a spočítá, jak se ',cur,' v jednotlivých měsících historicky chová. Potřebuje Alpha Vantage klíč (Nastavení).')),
       D&&(()=>{
         // Kumulativní sezónní křivka — stejná data jako sloupcový graf níže (D.avg),
