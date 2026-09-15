@@ -1709,8 +1709,13 @@ function pickWelcomeQuote(){ return WELCOME_QUOTES[Math.floor(Math.random()*WELC
 function getWelcomeName(){ try{ return (localStorage.getItem('fx_user_name')||'').trim(); }catch(e){ return ''; } }
 function setWelcomeName(v){ try{ localStorage.setItem('fx_user_name',String(v||'').trim()); }catch(e){} }
 function getWelcomeSettings(){
-  try{ return { enabled: localStorage.getItem('fx_welcome_enabled')!=='0', freq: localStorage.getItem('fx_welcome_freq')||'daily' }; }
-  catch(e){ return {enabled:true,freq:'daily'}; }
+  // Výchozí 'always' (dokud si uživatel v Nastavení nevybere '1× denně') —
+  // prozatím záměrně, ať jde uvítání doladit (barvy/timing/text) při
+  // opakovaném otevírání appky během jednoho dne, ne jednou a pak čekat na
+  // zítřek. Až bude vzhled/timing hotový, přepnout defaultně zpátky na
+  // 'daily' (viz TASK/konverzace k uvítací obrazovce).
+  try{ return { enabled: localStorage.getItem('fx_welcome_enabled')!=='0', freq: localStorage.getItem('fx_welcome_freq')||'always' }; }
+  catch(e){ return {enabled:true,freq:'always'}; }
 }
 // 'off' (v Nastavení vypnuto) | 'micro' (dnes appka už uvítání ukázala —
 // jen krátký bleskový fade, žádný text) | 'full' (plná sekvence logo→
