@@ -1,0 +1,49 @@
+name: "Verify: OOS scaling reprodukce + JPY COT po fixu"
+
+# Jednorázový diagnostický běh (JEN workflow_dispatch, žádný cron) — ověřuje
+# dva konkrétní nálezy z auditu 2026-08-15 na SOUČASNÉM engine.js (po PR #153
+# JPY COT fade fixu, po PR #153/#154 v5_regime + crowding brzdě):
+#   1) reprodukuje scripts/counter-audit-oos-split.js (JPY/CHF/GBP škálování,
+#      CPI akcelerace) train/test split s embargem — dřív ukazoval na scratch
+#      cesty z jiné session, teď opraveno na reálná committnutá data
+#   2) přepočítá scripts/attribute-replay-components.js (per-komponenta PF pro
+#      JPY/CAD páry) na ČERSTVĚ regenerovaném data/calibration_replay.json —
+#      dosavadní calibration_replay_attribution.json je z 20.7., PŘED JPY fixem
+#
+# Nic se automaticky necommituje — jen výstup do logu, ať je vidět, jestli
+# nálezy z auditu drží na živém kódu, než se cokoli mergne.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # backtest-replay.js dělá git log/git show přes historii data/calendar.json a data/oil.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: "1/3: Regenerovat data/calibration_replay.json ze SOUČASNÉHO engine.js"
+        run: node scripts/backtest-replay.js
+
+      - name: "2/3: Atribuce komponent (JPY/CAD) na čerstvém replay"
+        run: node scripts/attribute-replay-components.js
+
+      - name: "3/3: OOS train/test reprodukce škálování (JPY/CHF/GBP/CPI)"
+        run: node scripts/counter-audit-oos-split.js
+
+      - name: "Shrnutí (pro rychlé čtení v logu)"
+        if: always()
+        run: |
+          echo "=== calibration_replay_attribution.json (JPY/CAD, po JPY fixu) ==="
+          cat data/calibration_replay_attribution.json || true
+          echo
+          echo "=== oos_split_test.json (reprodukce na současném kódu) ==="
+          cat data/research/oos_split_test.json || true
