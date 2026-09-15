@@ -90,7 +90,12 @@ async function fetchPairStooq(pair) {
 async function fetchPairYahoo(pair) {
   const period2 = Math.floor(Date.now() / 1000);
   const period1 = Math.floor(new Date("2000-01-01T00:00:00Z").getTime() / 1000);
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${pair}=X?period1=${period1}&period2=${period2}&interval=1d`;
+  // XAUUSD (zlato) NENÍ FX kříž pro Yahoo — "XAUUSD=X" vrací HTTP 404
+  // (ověřeno živě, GH Actions run 2026-09-15, viz stejná oprava ve
+  // fetch-gold-price.js). Yahoo zlato vede jako COMEX kontinuální future
+  // "GC=F" (appka stejnou konvenci už používá pro WTI ropu "CL=F").
+  const ySym = pair === "XAUUSD" ? "GC=F" : `${pair}=X`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ySym}?period1=${period1}&period2=${period2}&interval=1d`;
   const r = await fetch(url, {
     signal: AbortSignal.timeout(20000),
     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
