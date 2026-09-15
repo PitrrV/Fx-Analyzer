@@ -19,6 +19,13 @@ const STANDARD_PAIRS = [
   "EURCHF", "EURAUD", "EURCAD", "EURJPY", "EURNZD", "GBPCHF", "GBPJPY", "GBPAUD",
   "GBPCAD", "GBPNZD", "AUDCAD", "AUDJPY", "AUDNZD", "AUDCHF", "NZDCAD", "NZDJPY",
   "NZDCHF", "CADJPY", "CADCHF", "CHFJPY",
+  // XAUUSD (zlato) — NENÍ FX pár, ale fetchPairYahoo()/fetchPairStooq() níž
+  // berou "pair" jen jako syrový ticker (lowercase pro Stooq, "+=X" pro
+  // Yahoo), takže funguje beze změny kódu. Živě ověřeno (probe-gold-us100.js),
+  // že Stooq "xauusd" i Yahoo "XAUUSD=X" jsou platné tickery pro spotové
+  // zlato/USD. Appka pak umí XAUUSD v "Sezónním okně"/"Roční sezónní
+  // křivce" stejně jako kterýkoli jiný pár (viz index.html seasPairManual).
+  "XAUUSD",
 ];
 
 function parseCSVRows(text) {

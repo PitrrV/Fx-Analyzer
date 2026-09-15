@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260915c"></script>
+<script src="engine.js?v=20260915d"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
 *{box-sizing:border-box}
@@ -331,11 +331,46 @@ class FXApp extends React.Component{
       try{ await fetchActionUS100Retail(); }catch(e){}
       try{ await fetchActionUS100Macro(); }catch(e){}
       try{ this.US100=scoreUS100(); saveUS100ScoreHistory(this.US100); }catch(e){ this.US100=null; }
+      // ZLATO (XAUUSD) — taky samostatný nástroj (vlastní COT/retail/cena,
+      // viz engine.js), ale NA ROZDÍL od US100 appka ho níž vpraví přímo do
+      // this.D (jako 9. "měnu" pro účely zobrazení) a this.PAIRS (jako
+      // 29. pár vedle 28 FX) — reálné využití v žebříčku/kartě/detailu/
+      // deníku/alertech stejně jako ostatní měny, ne samostatná kartička
+      // mimo žebříček.
+      try{ await fetchActionGoldCot(); }catch(e){}
+      try{ await fetchActionGoldRetail(); }catch(e){}
+      try{ await fetchActionGoldPrice(); }catch(e){}
+      let goldScoreObj=null;
+      try{ goldScoreObj=scoreGold(); saveGoldScoreHistory(goldScoreObj); }catch(e){}
+      if(goldScoreObj){
+        this.D.XAU={
+          score:+(goldScoreObj.score||0), fund:+(goldScoreObj.macroScore||0), policy:0, yield:+(goldScoreObj.yieldScore||0),
+          cot:+(goldScoreObj.cotScore||0), sent:+(goldScoreObj.sentScore||0), season:0,
+          cotPct:(()=>{try{return getGoldCOTPercentile();}catch(e){return 50;}})()??50,
+          cotPctDelta:null,
+          chg7:(()=>{try{return getGoldScoreChange(7);}catch(e){return 0;}})()||0,
+          chg7d:(()=>{try{return getGoldScoreChangeDetail(7);}catch(e){return null;}})(),
+          cb:'—',
+          inst:Math.round(Math.max(-100,Math.min(100,(goldScoreObj.cotScore||0)*12))),
+          cotLong:goldScoreObj.cot?goldScoreObj.cot.mMoneyLong:null,
+          retail:Math.round(goldScoreObj.retailPct!=null?goldScoreObj.retailPct:50)
+        };
+      }
       // PAIRS
       const fcLog={};
       // Plné rozlišení stavů z getPairDailyState (conflict/confirm/upcoming/done/tomorrow/none)
       // — dřívější redukce na 3 stavy ukazovala "Potvrzeno" i pro páry úplně bez dat.
-      this.PAIRS=ranked.map(p=>{ let status='none',prob=50,fdir=p.dir; try{const ds=getPairDailyState(p,sc,cal,up);status=ds.level||'none';}catch(e){} try{const fc=buildForecastV5(p,sc,calScoring,up)||{};prob=fc.prob||50;fdir=fc.dir||p.dir;fcLog[p.pair]=fc;}catch(e){}
+      // Zlato prochází STEJNÝM .map() jako 28 FX párů (viz komentář výš), ale
+      // getPairDailyState/buildForecastV5 se pro něj ZÁMĚRNĚ vůbec nevolají
+      // (p.isGold guard) — obě funkce čtou scores[pair.base], a "XAU" v `sc`
+      // není (zlato tam nikdy nebylo přidané, viz buildGoldPair). Bez guardu
+      // by `scores.XAU?.score||0` tiše spadlo na 0 a appka by tak ukazovala
+      // kalendářní conflict/confirm dot spočítaný jen z USD strany — vypadalo
+      // by to jako reálný signál pro zlato, není to jeden. Radši žádný status
+      // (poctivé "zlato nemá kalendář") než tichý fake.
+      const rankedAll=goldScoreObj?ranked.concat([buildGoldPair(goldScoreObj)]):ranked;
+      this.PAIRS=rankedAll.map(p=>{ let status='none',prob=50,fdir=p.dir;
+        if(!p.isGold){ try{const ds=getPairDailyState(p,sc,cal,up);status=ds.level||'none';}catch(e){} try{const fc=buildForecastV5(p,sc,calScoring,up)||{};prob=fc.prob||50;fdir=fc.dir||p.dir;fcLog[p.pair]=fc;}catch(e){} }
         return {pair:p.pair,base:p.base,quote:p.quote,dir:p.dir,fdir,diff:+p.diff,conv:Math.min(5,p.conviction||0),convReasons:p.convictionReasons||[],crowdedLate:!!p.crowdedLate,prob,status}; });
       try{ if(typeof logForecastSnapshot==='function') logForecastSnapshot(fcLog); }catch(e){}
       if(!this.state.sel&&this.PAIRS[0]) this.state.sel=this.PAIRS[0].pair;
@@ -350,8 +385,11 @@ class FXApp extends React.Component{
       // journal
       this.buildJournal();
       // prices — živé ze serverového cronu (data/prices.json); statické jen jako fallback
-      const STATIC_PX={USDJPY:157.2,EURUSD:1.084,GBPUSD:1.271,AUDUSD:0.664,NZDUSD:0.612,USDCAD:1.372,USDCHF:0.888,CHFJPY:177,GBPJPY:199.8,EURJPY:170.4,GBPAUD:1.914,EURAUD:1.632};
+      const STATIC_PX={USDJPY:157.2,EURUSD:1.084,GBPUSD:1.271,AUDUSD:0.664,NZDUSD:0.612,USDCAD:1.372,USDCHF:0.888,CHFJPY:177,GBPJPY:199.8,EURJPY:170.4,GBPAUD:1.914,EURAUD:1.632,XAUUSD:3650};
       try{ const lp=getLivePrices(); this.PRICES=Object.assign({},STATIC_PX,lp); }catch(e){ this.PRICES=STATIC_PX; }
+      // XAUUSD NENÍ v STANDARD_PAIRS (viz engine.js) → getLivePrices() ho
+      // nikdy nevrátí, vlastní zdroj (data/gold_price.json, viz výš).
+      try{ const gp=loadGoldPrice(); if(gp&&Number.isFinite(gp.current)) this.PRICES.XAUUSD=gp.current; }catch(e){}
       this.setState({loaded:Date.now()});
     }catch(e){ console.error('refreshData',e); this.setState({loaded:Date.now(),err:String(e&&e.message||e)}); }
   }
@@ -1734,6 +1772,7 @@ class FXApp extends React.Component{
   today(){ return new Date().toLocaleDateString('cs-CZ',{day:'numeric',month:'long',year:'numeric'}); }
 
   renderDetail(){ if(this.state.sel==='US100') return this.renderUS100Detail();
+    if(this.state.sel==='XAUUSD') return this.renderGoldDetail();
     const self=this,h=this.h,T=this.tok, p=this.pairObj(this.state.sel); if(!p) return null;
     const buy=p.dir==='BUY', ac=buy?T.green:T.red, sb=this.D[p.base], sq=this.D[p.quote]; const probC=p.prob>=65?T.green:p.prob<=35?T.red:T.amber;
     const stars=n=>'★'.repeat(n)+'☆'.repeat(5-n);
@@ -1983,6 +2022,71 @@ class FXApp extends React.Component{
           cell('Vývoj skóre',D.score!=null?self.sgn(D.score):null,dc,sdatesW.length>=2,h(self.HoverChart,{key:'sc-us100-'+gr,dates:sdatesW,series:scoreSeries,height:128,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0}),{title:'US100 — Vývoj skóre',subtitle:'COT + retail · '+gr,dates:sdatesW,series:scoreSeries,mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)}),
           cell('Retail L/S',lastRetail?('L '+lastRetail.l+'% · S '+lastRetail.s+'%'):null,T.green,rptsW.length>=2,h(self.HoverChart,{key:'rt-us100-'+gr,dates:rdatesW,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'US100 — Retail Long/Short',subtitle:'NAS100 · FXSSI Current Ratio · '+gr,dates:rdatesW,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
           cell('COT Leveraged Funds L/S',D.cot?((D.cot.levNet>=0?'net +':'net ')+D.cot.levNet.toLocaleString('cs-CZ')):null,D.cot&&D.cot.levNet>=0?T.green:T.red,cdatesW.length>=2,h(self.HoverChart,{key:'cot-us100-'+gr,dates:cdatesW,series:cotLS,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'US100 — COT Leveraged Funds Long/Short',subtitle:'CFTC TFF · Nasdaq-100 Consolidated · '+gr,dates:cdatesW,series:cotLS,yMin:0,yMax:100,mid:50,fmt:pctFmt})),
+        lastRetail&&h('div',{style:{fontSize:11,color:T.dim,marginTop:10,lineHeight:1.5}},
+          lastRetail.l>=80?'Dav extrémně LONG → kontrariánsky bearish signál.':lastRetail.l<=20?'Dav extrémně SHORT → kontrariánsky bullish signál.':lastRetail.l>=70?'Dav silně LONG → mírný kontrariánský tlak dolů.':lastRetail.l<=30?'Dav silně SHORT → mírný kontrariánský tlak nahoru.':'Dav rozdělený — bez extrému.'))
+    );
+  }
+  // Zlato (XAUUSD) — vlastní detail, stejný princip jako renderUS100Detail()
+  // výš (žádný ekonomický kalendář, appka na to nemá "zemi/CB"). Na rozdíl
+  // od US100 appka zlato NAVÍC ukazuje v žebříčku párů jako 29. pár (viz
+  // buildGoldPair v engine.js) — tenhle detail se otevře po kliknutí na něj,
+  // stejně jako detail kteréhokoli FX páru.
+  renderGoldDetail(){ const self=this,h=this.h,T=this.tok,st=this.state;
+    let D=null; try{D=scoreGold();}catch(e){}
+    D=D||{score:0,cotScore:0,sentScore:0,macroScore:0,usdScore:0,usdRaw:null,riskScore:0,riskRegime:null,yieldScore:0,dxyScore:0,fedScore:0,cot:null,macro:null,cotAsOf:null,retailPct:null,retailAsOf:null};
+    const buy=D.score>=0, dc=buy?T.green:T.red;
+    const cotHist=(typeof loadGoldCotHistory==='function')?loadGoldCotHistory():{};
+    const cotDates=Object.keys(cotHist).sort();
+    const scoreHist=(typeof loadGoldScoreHistory==='function')?loadGoldScoreHistory():{};
+    const scoreDates=Object.keys(scoreHist).sort();
+    const retailHist=(typeof loadGoldRetailHistory==='function')?loadGoldRetailHistory():[];
+    const ageTxt=iso=>{ if(!iso) return 'nenačteno'; const h_=Math.round((Date.now()-new Date(iso).getTime())/3600000); return h_<1?'právě teď':h_<48?('před '+h_+' h'):('před '+Math.round(h_/24)+' dny'); };
+    const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
+    const price=(()=>{try{return loadGoldPrice();}catch(e){return null;}})();
+    const gr=st.goldRange||'1M'; const days=({'14D':14,'1M':30,'3M':90,'6M':180,'ALL':4000})[gr]||30; const cut=Date.now()-days*86400000;
+    const inWin=iso=>{ const t=new Date(iso).getTime(); return !isNaN(t)&&t>=cut; };
+    const sdatesW=scoreDates.filter(inWin);
+    const scoreSeries=[{name:'Skóre',col:T.yellow,vals:sdatesW.map(d=>+(scoreHist[d].score||0))}];
+    const rptsW=retailHist.filter(pt=>inWin(pt.t));
+    const rdatesW=rptsW.map(pt=>pt.t);
+    const retailSeries=[{name:'Long',col:T.green,vals:rptsW.map(pt=>pt.l)},{name:'Short',col:T.red,vals:rptsW.map(pt=>pt.s)}];
+    const cdatesW=cotDates.filter(inWin);
+    const cotLS=(()=>{ const lng=[],sht=[]; cdatesW.forEach(d=>{ const r=cotHist[d]; const l=(r&&+r.mMoneyLong)||0,s=(r&&+r.mMoneyShort)||0,tot=l+s; lng.push(tot?Math.round(l/tot*100):50); sht.push(tot?Math.round(s/tot*100):50); }); return [{name:'Long',col:T.green,vals:lng},{name:'Short',col:T.red,vals:sht}]; })();
+    const pctFmt=v=>Math.round(v)+'%';
+    const rng=['14D','1M','3M','6M','ALL'];
+    const cell=(title,sub,subCol,enough,body,zoom)=>h('div',{onClick:(enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(enough&&zoom)?'Klikni pro zvětšení':undefined,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,cursor:(enough&&zoom)?'pointer':'default'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),h('div',{style:{display:'flex',alignItems:'center',gap:6}},sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,(enough&&zoom)?h('span',{style:{fontSize:11,color:T.faint}},'⤢'):null)),
+      enough?body:h('div',{style:{fontSize:10.5,color:T.faint,padding:'24px 4px',textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+      h('div',{style:self.card({padding:'18px 20px'})},
+        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}},
+          h('div',null,h('div',{style:{display:'flex',alignItems:'baseline',gap:10}},h('span',{style:{fontSize:20}},'🥇'),h('span',{style:self.mono({fontSize:22,fontWeight:800})},'XAUUSD'),h('span',{style:{fontSize:12,color:T.faint}},'Zlato')),
+            h('div',{style:{fontSize:11,color:T.faint,marginTop:4}},'Skóre z COT (Managed Money) + retail + makro směr (USD, VIX risk-off jako safe-haven bid, výnosy, dolar, Fed funds); bez fundamentálního kalendáře, zlato nemá centrální banku')),
+          h('div',{style:{textAlign:'right'}},
+            price&&Number.isFinite(price.current)&&h('div',{style:self.mono({fontSize:13,color:T.dim,marginBottom:2})},'$'+price.current.toFixed(2)),
+            h('div',{style:self.mono({fontSize:28,fontWeight:800,color:dc})},(D.score>0?'+':'')+D.score.toFixed(1)),
+            h('div',{style:{fontSize:10.5,fontWeight:700,color:dc,letterSpacing:'.04em'}},buy?'BULLISH BIAS':'BEARISH BIAS'))),
+        h('div',{style:{display:'flex',gap:20,marginTop:14,paddingTop:12,borderTop:'1px solid #161b27',flexWrap:'wrap'}},
+          h('div',{title:'JEN Managed Money (trend-money hedge fondy/CTA) — Producer/Merchant se do skóre neblendí, viz fetch-gold-cot.js proč'},h('div',{style:{fontSize:10,color:T.faint}},'COT komponenta'),h('div',{style:self.mono({fontSize:15,fontWeight:700,color:self.scol(D.cotScore)})},self.sgn(D.cotScore))),
+          h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'Retail komponenta'),h('div',{style:self.mono({fontSize:15,fontWeight:700,color:self.scol(D.sentScore)})},self.sgn(D.sentScore))),
+          h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'COT stáří'),h('div',{style:self.mono({fontSize:12,fontWeight:700})},ageTxt(D.cotAsOf))),
+          h('div',null,h('div',{style:{fontSize:10,color:T.faint}},'Retail stáří'),h('div',{style:self.mono({fontSize:12,fontWeight:700})},ageTxt(D.retailAsOf))),
+          D.cot&&h('div',{title:'Producer/Merchant (těžaři/rafinerie) — kontext, NENÍ součástí skóre. Strukturálně skoro vždy net short (hedging budoucí produkce), ne tržní signál.'},h('div',{style:{fontSize:10,color:T.faint}},'Těžaři net (kontext)'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:T.faint})},(D.cot.prodMercNet>=0?'+':'')+D.cot.prodMercNet.toLocaleString('cs-CZ')))),
+        h('div',{style:{display:'flex',gap:20,marginTop:12,paddingTop:12,borderTop:'1px solid #161b27',flexWrap:'wrap'}},
+          h('div',{title:'Součet USD + Risk + Výnosy + Dolar + Fed funds — fundamentální směr, viz komponenty níže'},h('div',{style:{fontSize:10,color:T.faint}},'Makro komponenta'),h('div',{style:self.mono({fontSize:15,fontWeight:700,color:self.scol(D.macroScore)})},self.sgn(D.macroScore,2))),
+          h('div',{title:'Inverzní živé USD skóre appky (slabý dolar = bonus pro zlato, přímá dolarová denominace)'+(D.usdRaw!=null?(' · USD skóre '+self.sgn(D.usdRaw)):'')},h('div',{style:{fontSize:10,color:T.faint}},'USD (inverzně)'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:self.scol(D.usdScore)})},self.sgn(D.usdScore,2))),
+          h('div',{title:'Risk-on/off regime z VIX — OBRÁCENĚ než u akcií: zlato je safe-haven, risk-off = bullish'},h('div',{style:{fontSize:10,color:T.faint}},'Risk (VIX)'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:D.riskRegime==='RISK_OFF'?T.green:D.riskRegime==='RISK_ON'?T.red:T.faint})},D.riskRegime==='RISK_ON'?'RISK-ON':D.riskRegime==='RISK_OFF'?'RISK-OFF':D.riskRegime==='NEUTRAL'?'neutrál':'—')),
+          h('div',{title:'FRED DGS10, 20denní změna — klesající výnosy = bullish pro neúročené zlato'+(D.macro&&D.macro.dgs10?(' · '+D.macro.dgs10.value.toFixed(2)+'% ('+(D.macro.dgs10.chg20d>=0?'+':'')+D.macro.dgs10.chg20d+' 20d)'):'')},h('div',{style:{fontSize:10,color:T.faint}},'Výnosy 10Y'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:self.scol(D.yieldScore)})},self.sgn(D.yieldScore,2))),
+          h('div',{title:'FRED DTWEXBGS (Broad Dollar Index), 20denní změna — sdíleno s US100 makro fetchem (data/us100_macro.json)'+(D.macro&&D.macro.dxy?(' · '+D.macro.dxy.value.toFixed(2)+' ('+(D.macro.dxy.chg20d>=0?'+':'')+D.macro.dxy.chg20d+' 20d)'):'')},h('div',{style:{fontSize:10,color:T.faint}},'Dolar (DXY)'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:self.scol(D.dxyScore)})},self.sgn(D.dxyScore,2))),
+          h('div',{title:'FRED DFF (efektivní Fed funds rate), 20denní změna — rostoucí sazby = vyšší oportunitní náklad držení neúročeného zlata'+(D.macro&&D.macro.fedfunds?(' · '+D.macro.fedfunds.value.toFixed(2)+'% ('+(D.macro.fedfunds.chg20d>=0?'+':'')+D.macro.fedfunds.chg20d+' 20d)'):'')},h('div',{style:{fontSize:10,color:T.faint}},'Fed funds'),h('div',{style:self.mono({fontSize:13,fontWeight:700,color:self.scol(D.fedScore)})},self.sgn(D.fedScore,2))))),
+      h('div',{style:self.card({padding:'14px 16px'})},
+        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,flexWrap:'wrap',marginBottom:4}},
+          self.ptitle('Zlato — grafy','Vývoj skóre · Retail · COT — stejný princip jako u FX párů'),
+          h('div',{style:{display:'flex',gap:5}},rng.map(r=>{const on=gr===r;return h('button',{key:r,type:'button',onClick:()=>self.setState({goldRange:r}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:7,padding:'4px 9px',fontSize:10,fontWeight:700,cursor:'pointer'})},r);}))),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginTop:8}},
+          cell('Vývoj skóre',D.score!=null?self.sgn(D.score):null,dc,sdatesW.length>=2,h(self.HoverChart,{key:'sc-gold-'+gr,dates:sdatesW,series:scoreSeries,height:128,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0}),{title:'Zlato — Vývoj skóre',subtitle:'COT + retail · '+gr,dates:sdatesW,series:scoreSeries,mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)}),
+          cell('Retail L/S',lastRetail?('L '+lastRetail.l+'% · S '+lastRetail.s+'%'):null,T.green,rptsW.length>=2,h(self.HoverChart,{key:'rt-gold-'+gr,dates:rdatesW,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'Zlato — Retail Long/Short',subtitle:'XAUUSD · Myfxbook/FXSSI · '+gr,dates:rdatesW,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
+          cell('COT Managed Money L/S',D.cot?((D.cot.mMoneyNet>=0?'net +':'net ')+D.cot.mMoneyNet.toLocaleString('cs-CZ')):null,D.cot&&D.cot.mMoneyNet>=0?T.green:T.red,cdatesW.length>=2,h(self.HoverChart,{key:'cot-gold-'+gr,dates:cdatesW,series:cotLS,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'Zlato — COT Managed Money Long/Short',subtitle:'CFTC Disaggregated · GOLD - COMMODITY EXCHANGE INC. · '+gr,dates:cdatesW,series:cotLS,yMin:0,yMax:100,mid:50,fmt:pctFmt})),
         lastRetail&&h('div',{style:{fontSize:11,color:T.dim,marginTop:10,lineHeight:1.5}},
           lastRetail.l>=80?'Dav extrémně LONG → kontrariánsky bearish signál.':lastRetail.l<=20?'Dav extrémně SHORT → kontrariánsky bullish signál.':lastRetail.l>=70?'Dav silně LONG → mírný kontrariánský tlak dolů.':lastRetail.l<=30?'Dav silně SHORT → mírný kontrariánský tlak nahoru.':'Dav rozdělený — bez extrému.'))
     );

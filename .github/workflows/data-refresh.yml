@@ -103,6 +103,30 @@ jobs:
             echo "Ropa beze změny."
           fi
 
+      # Zlato (XAUUSD) — vlastní soubor (data/gold_price.json), nezávislý na
+      # kroku výš. Stejný vzor jako ropa (Stooq + Yahoo fallback).
+      - name: Stáhnout cenu zlata (XAUUSD)
+        timeout-minutes: 5
+        continue-on-error: true
+        run: node scripts/fetch-gold-price.js
+      - name: "Commit: zlato při změně"
+        if: always()
+        run: |
+          git config user.name "gold-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/gold_price.json)" ]; then
+            git add data/gold_price.json
+            git commit -m "chore: update gold price [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Zlato beze změny."
+          fi
+
       - name: Stáhnout a analyzovat zprávy (AI Market Radar)
         timeout-minutes: 8
         continue-on-error: true
