@@ -44,7 +44,12 @@ async function fromStooq() {
 }
 
 async function fromYahoo() {
-  const r = await fetch("https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X?range=1y&interval=1d", {
+  // POZOR (zjištěno živě, GH Actions run 2026-09-15): "XAUUSD=X" (stejná
+  // konvence jako appka používá pro FX páry, "EURUSD=X") u Yahoo pro zlato
+  // NEEXISTUJE — vrací HTTP 404. Yahoo zlato nemá jako FX kříž, ale jako
+  // COMEX kontinuální future "GC=F" (stejná konvence appka už používá pro
+  // WTI ropu, "CL=F" ve fetch-oil.js).
+  const r = await fetch("https://query1.finance.yahoo.com/v8/finance/chart/GC=F?range=1y&interval=1d", {
     signal: AbortSignal.timeout(15000),
     headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
   });
