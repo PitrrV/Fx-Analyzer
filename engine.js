@@ -1741,7 +1741,7 @@ function computeSplashMode(){
 // greet = jak dlouho zůstane vidět "Ahoj, {jméno}" + citát, než začne mizet.
 // fade = délka CSS fade-out (splashOut) na konci — JS skryje komponentu až
 // PO doběhnutí fade, ať se ten fade stihne reálně přehrát.
-const SPLASH_TIMING={ full:{minHold:1800,greet:5200,fade:700}, micro:{minHold:900,greet:1800,fade:600} };
+const SPLASH_TIMING={ full:{minHold:1800,greet:7200,fade:700}, micro:{minHold:900,greet:1800,fade:600} };
 
 // ── IMPORT / EXPORT historie (CSV + JSON adaptéry) ──────────────────
 // Normalizuje libovolný zdroj (Kaggle/HF/FF export, vlastní JSON) na interní
