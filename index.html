@@ -385,7 +385,7 @@ class FXApp extends React.Component{
       // journal
       this.buildJournal();
       // prices — živé ze serverového cronu (data/prices.json); statické jen jako fallback
-      const STATIC_PX={USDJPY:157.2,EURUSD:1.084,GBPUSD:1.271,AUDUSD:0.664,NZDUSD:0.612,USDCAD:1.372,USDCHF:0.888,CHFJPY:177,GBPJPY:199.8,EURJPY:170.4,GBPAUD:1.914,EURAUD:1.632,XAUUSD:3650};
+      const STATIC_PX={USDJPY:157.2,EURUSD:1.084,GBPUSD:1.271,AUDUSD:0.664,NZDUSD:0.612,USDCAD:1.372,USDCHF:0.888,CHFJPY:177,GBPJPY:199.8,EURJPY:170.4,GBPAUD:1.914,EURAUD:1.632,XAUUSD:4300};
       try{ const lp=getLivePrices(); this.PRICES=Object.assign({},STATIC_PX,lp); }catch(e){ this.PRICES=STATIC_PX; }
       // XAUUSD NENÍ v STANDARD_PAIRS (viz engine.js) → getLivePrices() ho
       // nikdy nevrátí, vlastní zdroj (data/gold_price.json, viz výš).
