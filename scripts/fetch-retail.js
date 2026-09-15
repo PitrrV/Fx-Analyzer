@@ -385,4 +385,29 @@ function pairsToCcy(pairs) {
   fs.mkdirSync("data", { recursive: true });
   fs.writeFileSync("data/retail_hist.json", JSON.stringify(store));
   console.log("Zapsáno data/retail_hist.json · bodů:", store.points.length, "· zdroj:", source, "· ccy:", JSON.stringify(ccy));
+
+  // ── ZLATO (XAUUSD) — vedlejší produkt téhož fetche, ne nový zdroj ──────
+  // parseOutlookSymbols()/fetchFxssi() NEfiltrují na 28 FX párů — vrací
+  // KAŽDÝ symbol tvaru 6 velkých písmen, co Myfxbook/FXSSI mají, a XAUUSD
+  // mezi nimi reálně je (ověřeno živě, appka ho tak sbírá potichu už měsíce,
+  // jen `pairsToCcy()` výš ho zahazuje, protože XAU není v CUR). Samostatný
+  // soubor (data/gold_retail.json), vlastní historie — try/catch, ať
+  // případný problém tady nikdy nezkazí zelený běh FX retailu výš.
+  try {
+    const g = pairs.XAUUSD;
+    if (g && Number.isFinite(g.l)) {
+      let goldStore = { points: [] };
+      try { goldStore = JSON.parse(fs.readFileSync("data/gold_retail.json", "utf8")); } catch (e) {}
+      if (!Array.isArray(goldStore.points)) goldStore.points = [];
+      goldStore.points.push({ t: point.t, l: g.l, s: g.s, source });
+      goldStore.points = goldStore.points.slice(-1100);
+      goldStore.updated = point.t;
+      fs.writeFileSync("data/gold_retail.json", JSON.stringify(goldStore));
+      console.log("Zapsáno data/gold_retail.json · bodů:", goldStore.points.length, "· XAUUSD long", g.l + "%");
+    } else {
+      console.log("XAUUSD nebylo v tomhle běhu ve zdroji (" + source + ") — gold_retail.json nedotčen.");
+    }
+  } catch (e) {
+    console.warn("Zápis data/gold_retail.json selhal (FX retail výš je v pořádku):", e.message);
+  }
 })().catch((e) => { console.error("FATAL", e); process.exit(1); });

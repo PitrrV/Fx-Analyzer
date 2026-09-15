@@ -2,8 +2,14 @@
    AT Trading FX Analyzer — SDÍLENÝ ENGINE (sync s index.html, lines 75-2060)
    ============================================================================ */
 const CURRENCIES=["USD","EUR","GBP","JPY","AUD","CAD","CHF","NZD"];
-const FLAGS={USD:"🇺🇸",EUR:"🇪🇺",GBP:"🇬🇧",JPY:"🇯🇵",AUD:"🇦🇺",CAD:"🇨🇦",CHF:"🇨🇭",NZD:"🇳🇿"};
-const NAMES={USD:"US Dollar",EUR:"Euro",GBP:"British Pound",JPY:"Japanese Yen",AUD:"Aus Dollar",CAD:"Canadian Dollar",CHF:"Swiss Franc",NZD:"NZ Dollar"};
+// XAU (zlato) NENÍ v CURRENCIES — je to samostatný nástroj (viz blok
+// "ZLATO (XAUUSD)" níž), ne 9. plnohodnotná FX měna pro scoreCurrency/
+// STANDARD_PAIRS. FLAGS/NAMES mají XAU navíc JEN kvůli zobrazení (appka
+// tenhle pár vpravuje do this.D/this.PAIRS jako syntetický pár, viz
+// buildGoldPair() — bez záznamu tady by karta/detail ukazovaly prázdnou
+// vlajku a "undefined" jméno).
+const FLAGS={USD:"🇺🇸",EUR:"🇪🇺",GBP:"🇬🇧",JPY:"🇯🇵",AUD:"🇦🇺",CAD:"🇨🇦",CHF:"🇨🇭",NZD:"🇳🇿",XAU:"🥇"};
+const NAMES={USD:"US Dollar",EUR:"Euro",GBP:"British Pound",JPY:"Japanese Yen",AUD:"Aus Dollar",CAD:"Canadian Dollar",CHF:"Swiss Franc",NZD:"NZ Dollar",XAU:"Gold"};
 const COUNTRY_FLAGS={US:"🇺🇸",EU:"🇪🇺",DE:"🇩🇪",FR:"🇫🇷",IT:"🇮🇹",ES:"🇪🇸",GB:"🇬🇧",JP:"🇯🇵",AU:"🇦🇺",CA:"🇨🇦",CH:"🇨🇭",NZ:"🇳🇿",CN:"🇨🇳"};
 const CURRENCY_COUNTRIES={USD:["US"],EUR:["EU","DE","FR","IT","ES"],GBP:["GB"],JPY:["JP"],AUD:["AU"],CAD:["CA"],CHF:["CH"],NZD:["NZ"]};
 const INDIRECT_COUNTRIES={AUD:["CN"],NZD:["CN"],CAD:["US"],CHF:["EU","DE","FR","IT","ES","US"]};
@@ -3840,3 +3846,206 @@ function saveUS100ScoreHistory(scoreObj){
   }catch(e){}
 }
 function loadUS100ScoreHistory(){ try{ const v=JSON.parse(localStorage.getItem("us100_score_hist")||"{}"); return (v&&typeof v==="object")?v:{}; }catch(e){ return {}; } }
+
+/* ============================================================================
+   ZLATO (XAUUSD) — SAMOSTATNÝ nástroj, MIMO STANDARD_PAIRS/CURRENCIES,
+   stejný princip jako US100 blok výš (žádná z těchhle funkcí nevolá ani
+   neupravuje CURRENCIES/scoreCurrency/STANDARD_PAIRS).
+   ============================================================================
+   Na rozdíl od US100 (finanční future, TFF report) je zlato FYZICKÁ komodita
+   → jiný CFTC report (Disaggregated Futures-Only, viz fetch-gold-cot.js).
+   Retail sentiment je "zadarmo" — Myfxbook/FXSSI vrací XAUUSD spolu s 28 FX
+   páry, appka ho jen dřív zahazovala (viz pairsToCcy ve fetch-retail.js);
+   teď se navíc ukládá do data/gold_retail.json. Makro komponenty NEMAJÍ
+   vlastní fetch — čtou se ze STEJNÉHO data/us100_macro.json (10Y výnos,
+   Broad Dollar Index), co appka už stahuje pro US100 (viz loadUS100Macro
+   výš) — nemá smysl tahat ty samé FRED série dvakrát.
+   Vlastní localStorage klíče: gold_cot_hist / gold_retail_hist / gold_price /
+   gold_score_hist (NE cot_hist/retail_hist/score_hist, co používá 8 měn, ani
+   us100_*, co používá US100). */
+const GOLD_INSTRUMENT={symbol:"XAUUSD",base:"XAU",quote:"USD",name:"Zlato",retailSymbol:"XAUUSD"};
+
+async function fetchActionGoldCot(){
+  const r=await fetch("data/gold_cot.json?t="+Date.now());
+  if(!r.ok) throw new Error("gold_cot.json HTTP "+r.status);
+  const j=await r.json();
+  if(!j||!j.hist||typeof j.hist!=="object") throw new Error("gold_cot.json: chybí hist");
+  let local={}; try{ const v=JSON.parse(localStorage.getItem("gold_cot_hist")||"{}"); if(v&&typeof v==="object") local=v; }catch(e){}
+  const merged={...local,...j.hist};
+  const dates=Object.keys(merged).sort().slice(-150);
+  const trimmed={}; dates.forEach(d=>trimmed[d]=merged[d]);
+  localStorage.setItem("gold_cot_hist",JSON.stringify(trimmed));
+  return trimmed;
+}
+function loadGoldCotHistory(){ try{ const v=JSON.parse(localStorage.getItem("gold_cot_hist")||"{}"); return (v&&typeof v==="object")?v:{}; }catch(e){ return {}; } }
+
+async function fetchActionGoldRetail(){
+  const r=await fetch("data/gold_retail.json?t="+Date.now());
+  if(!r.ok) throw new Error("gold_retail.json HTTP "+r.status);
+  const j=await r.json();
+  if(!j||!Array.isArray(j.points)) throw new Error("gold_retail.json: chybí points");
+  let local=[]; try{ const v=JSON.parse(localStorage.getItem("gold_retail_hist")||"[]"); if(Array.isArray(v)) local=v; }catch(e){}
+  const seen=new Set(local.map(p=>p.t));
+  const merged=local.concat(j.points.filter(p=>!seen.has(p.t))).sort((a,b)=>new Date(a.t)-new Date(b.t)).slice(-1100);
+  localStorage.setItem("gold_retail_hist",JSON.stringify(merged));
+  return merged;
+}
+function loadGoldRetailHistory(){ try{ const v=JSON.parse(localStorage.getItem("gold_retail_hist")||"[]"); return Array.isArray(v)?v:[]; }catch(e){ return []; } }
+
+async function fetchActionGoldPrice(){
+  const r=await fetch("data/gold_price.json?t="+Date.now());
+  if(!r.ok) throw new Error("gold_price.json HTTP "+r.status);
+  const j=await r.json();
+  if(!j) throw new Error("gold_price.json: prázdná odpověď");
+  localStorage.setItem("gold_price",JSON.stringify(j));
+  return j;
+}
+function loadGoldPrice(){ try{ const v=JSON.parse(localStorage.getItem("gold_price")||"null"); return (v&&typeof v==="object")?v:null; }catch(e){ return null; } }
+
+// Skóre zlata — COT (JEN Managed Money, viz fetch-gold-cot.js proč se
+// Producer/Merchant neblendí) + kontrariánský retail (stejná pravidla jako
+// getSentimentScore/scoreUS100 výš) + makro blok. Makro je u zlata ve dvou
+// směrech OBRÁCENÉ oproti US100, ne jen zkopírované:
+//   - Risk sentiment: zlato je safe-haven, risk-OFF = BULLISH (u US100 akcií
+//     je to přesně naopak — risk-off škodí).
+//   - USD/výnosy/dolar/sazby: SAME znaménko jako US100 (slabý dolar, klesající
+//     výnosy = bullish pro obojí, byť z jiného mechanismu — dolarová
+//     denominace u zlata, diskontní sazba u tech akcií).
+// Žádný ekonomický KALENDÁŘ (NFP/CPI/…) — zlato nemá centrální banku/zemi,
+// stejný důvod jako u US100 (viz komentář u scoreUS100 výš).
+//
+// Váhy jsou tržní konvence (směr vztahu), NE zpětně testované — stejný
+// princip jako scoreUS100 výš. Magnitudy komponent (usdScore/yieldScore/…)
+// jsou ZÁMĚRNĚ stejné jako u US100 (ne nově vymyšlené), ať appka nemá dvoje
+// nekonzistentní pravidla pro to samé makro — mění se JEN znaménko u risku.
+function scoreGold(){
+  const cotHist=loadGoldCotHistory();
+  const cotDates=Object.keys(cotHist).sort();
+  const lastCotDate=cotDates[cotDates.length-1];
+  const cot=lastCotDate?cotHist[lastCotDate]:null;
+  const retailHist=loadGoldRetailHistory();
+  const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
+  const sentScore=lastRetail?(lastRetail.l>=80?-1:lastRetail.l>=70?-0.5:lastRetail.l<=20?1:lastRetail.l<=30?0.5:0):0;
+  const cotScore=cot?cot.score:0;
+
+  // USD inverzní — appka už počítá živé USD skóre (score_hist), nulová nová
+  // data. Slabý dolar = bonus pro zlato (přímá denominace, stejný směr jako
+  // appka už uplatňuje u US100, byť jiný mechanismus).
+  let usdRaw=null,usdScore=0;
+  try{
+    const sh=loadScoreHistory()||{};
+    const dates=Object.keys(sh).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    const last=dates[dates.length-1];
+    if(last&&sh[last]&&typeof sh[last].USD==="number"){ usdRaw=sh[last].USD; usdScore=clamp(-1,1,-0.1*usdRaw); }
+  }catch(e){}
+
+  // Risk regime (VIX) — OBRÁCENÉ znaménko oproti US100: zlato je safe-haven,
+  // risk-off = bullish, risk-on = bearish (fade bezpečného přístavu).
+  let riskRegime=null,riskScore=0;
+  try{
+    const v=(typeof computeAutoRiskSentiment==="function")?computeAutoRiskSentiment():null;
+    riskRegime=v===1?"RISK_ON":v===-1?"RISK_OFF":v===0?"NEUTRAL":null;
+    riskScore=v===-1?0.6:v===1?-0.6:0;
+  }catch(e){}
+
+  // Makro (FRED, sdíleno s US100 — viz hlavička bloku): výnosy/dolar/sazby,
+  // stejné znaménko jako US100 (rostoucí = bearish pro neúročené zlato).
+  const macro=loadUS100Macro();
+  let yieldScore=0,dxyScore=0,fedScore=0;
+  if(macro){
+    if(macro.dgs10&&typeof macro.dgs10.chg20d==="number") yieldScore=clamp(-1,1,-2.5*macro.dgs10.chg20d);
+    if(macro.dxy&&typeof macro.dxy.chg20d==="number") dxyScore=clamp(-0.6,0.6,-0.15*macro.dxy.chg20d);
+    if(macro.fedfunds&&typeof macro.fedfunds.chg20d==="number") fedScore=clamp(-0.5,0.5,-1.0*macro.fedfunds.chg20d);
+  }
+
+  const macroScore=+(usdScore+riskScore+yieldScore+dxyScore+fedScore).toFixed(2);
+  const score=+(cotScore+sentScore+macroScore).toFixed(1);
+  return {
+    score,cotScore,sentScore,macroScore,
+    usdScore,usdRaw,riskScore,riskRegime,yieldScore,dxyScore,fedScore,
+    cot,macro,
+    cotAsOf:lastCotDate||null,retailPct:lastRetail?lastRetail.l:null,retailAsOf:lastRetail?lastRetail.t:null,
+  };
+}
+
+function saveGoldScoreHistory(scoreObj){
+  if(!scoreObj) return;
+  const today=new Date().toISOString().split("T")[0];
+  try{
+    const hist=JSON.parse(localStorage.getItem("gold_score_hist")||"{}");
+    hist[today]={score:scoreObj.score,cot:scoreObj.cotScore,sent:scoreObj.sentScore};
+    const dates=Object.keys(hist).sort().slice(-260);
+    const trimmed={}; dates.forEach(d=>trimmed[d]=hist[d]);
+    localStorage.setItem("gold_score_hist",JSON.stringify(trimmed));
+  }catch(e){}
+}
+function loadGoldScoreHistory(){ try{ const v=JSON.parse(localStorage.getItem("gold_score_hist")||"{}"); return (v&&typeof v==="object")?v:{}; }catch(e){ return {}; } }
+// Stejná technika jako getScoreChangeDetail() výš (kalendářní nejbližší den,
+// tolerance ±3 dny) — jen na gold_score_hist místo score_hist, protože zlato
+// s 8 FX měnami historii nesdílí (samostatný nástroj, viz hlavička bloku).
+function getGoldScoreChangeDetail(days=7){
+  try{
+    const hist=loadGoldScoreHistory();
+    const dates=Object.keys(hist).sort();
+    if(dates.length<2) return null;
+    const curDate=dates[dates.length-1];
+    const cur=hist[curDate]?.score;
+    if(typeof cur!=="number") return null;
+    const targetMs=parseEventTime(curDate)-days*86400000;
+    let best=null,bestDiff=Infinity;
+    for(let i=0;i<dates.length-1;i++){
+      const ms=parseEventTime(dates[i]);
+      const dd=Math.abs(ms-targetMs);
+      if(dd<bestDiff){bestDiff=dd;best=dates[i];}
+    }
+    if(!best||bestDiff>3*86400000) return null;
+    const past=hist[best]?.score;
+    if(typeof past!=="number") return null;
+    const spanDays=Math.round((parseEventTime(curDate)-parseEventTime(best))/86400000);
+    return {delta:parseFloat((cur-past).toFixed(1)),spanDays,from:best,to:curDate};
+  }catch(e){return null;}
+}
+function getGoldScoreChange(days=7){ const d=getGoldScoreChangeDetail(days); return d?d.delta:0; }
+
+// Vrátí syntetický "pár" XAUUSD ve STEJNÉM tvaru, jaký appka počítá pro
+// 28 FX párů (rankPairs() výš), ale NEPROCHÁZÍ rankPairs samotné — appka ho
+// jen připojí do stejného seznamu/žebříčku (viz index.html/m.html/
+// classic.html), takže obecné komponenty (karta páru, detail, filtry,
+// oblíbené, deník, AI Smart Alerts) s ním pracují beze změny. diff = zlaté
+// skóre − živé USD skóre, STEJNÁ matematika jako u kteréhokoli FX páru
+// s USD (diff = base.score − quote.score).
+// COT percentil pro zlato — stejná technika jako getCOTPercentile() výš
+// (aktuální týden vs. rozložení předchozích), jen na Managed Money skóre
+// z gold_cot_hist místo FX kategorie.
+function getGoldCOTPercentile(){
+  try{
+    const hist=loadGoldCotHistory();
+    const dates=Object.keys(hist).sort();
+    const scores=dates.map(d=>hist[d].score).filter(s=>typeof s==="number");
+    if(scores.length<12) return null;
+    const cur=scores[scores.length-1];
+    const hist2=scores.slice(0,-1);
+    return Math.round((hist2.filter(s=>s<=cur).length/hist2.length)*100);
+  }catch(e){return null;}
+}
+
+function buildGoldPair(goldScoreObj){
+  const g=goldScoreObj||scoreGold();
+  let usdScore=0;
+  try{
+    const sh=loadScoreHistory()||{};
+    const dates=Object.keys(sh).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    const last=dates[dates.length-1];
+    if(last&&sh[last]&&typeof sh[last].USD==="number") usdScore=sh[last].USD;
+  }catch(e){}
+  const diff=g.score-usdScore;
+  const cotPctBase=getGoldCOTPercentile();
+  return {
+    pair:GOLD_INSTRUMENT.symbol,base:GOLD_INSTRUMENT.base,quote:GOLD_INSTRUMENT.quote,
+    dir:diff>0?"BUY":"SELL",strong:diff>0?GOLD_INSTRUMENT.base:GOLD_INSTRUMENT.quote,
+    weak:diff>0?GOLD_INSTRUMENT.quote:GOLD_INSTRUMENT.base,
+    diff:parseFloat(Math.abs(diff).toFixed(2)),s1:g.score,s2:usdScore,
+    corrGroup:null,cotCrowded:cotPctBase!=null&&(cotPctBase>=88||cotPctBase<=12),yieldLabel:"",cotPctBase,cotPctQuote:null,
+    conviction:0,convictionReasons:[],crowdedLate:false,isGold:true,
+  };
+}

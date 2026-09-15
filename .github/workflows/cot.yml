@@ -72,3 +72,27 @@ jobs:
           else
             echo "Beze změny."
           fi
+      # Zlato (XAUUSD) COT — samostatný krok, vlastní soubor (data/gold_cot.json),
+      # jiný CFTC dataset než FX/US100 (Disaggregated, ne TFF — viz hlavička
+      # fetch-gold-cot.js). continue-on-error stejně jako US100 výš.
+      - name: "Stáhnout COT: Zlato"
+        continue-on-error: true
+        run: node scripts/fetch-gold-cot.js
+      - name: "Commit: Gold COT při změně"
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name "cot-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/gold_cot.json)" ]; then
+            git add data/gold_cot.json
+            git commit -m "chore: update Gold COT [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Beze změny."
+          fi

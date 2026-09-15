@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260915c"></script>
+<script src="engine.js?v=20260915d"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -207,8 +207,6 @@ async function loadDataMobile(){
   if(calSource==="finnhub"){ try{ up=await fetchUpcoming14(key); }catch(e){ up=deriveUpcomingFromEvents(cal); } }
   else up=deriveUpcomingFromEvents(cal);
   const months=(calSource==="fmp"||calSource==="finnhub")?15:ffHistorySpanMonths(cal);
-  const fc={}; ranked.forEach(p=>{ try{ fc[p.pair]=buildForecastV5(p,sc,calScoring,up); }catch(e){} });
-  try{ if(typeof logForecastSnapshot==='function') logForecastSnapshot(fc); }catch(e){}
   // US100 (Nasdaq-100) — samostatný nástroj, stejná data appka stahuje pro PC
   // (data/us100_cot.json, data/us100_retail.json), jen tenhle mobilní load
   // musí ty samé fetch/score funkce zavolat sám (m.html je nezávislý na
@@ -220,7 +218,34 @@ async function loadDataMobile(){
     try{ await fetchActionUS100Macro(); }catch(e){}
     us100=scoreUS100(); saveUS100ScoreHistory(us100);
   }catch(e){}
-  return { scores:sc, D, pairs:ranked, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(), retailLatest, retailHist, us100,
+  // ZLATO (XAUUSD) — na rozdíl od US100 appka ho níž vpraví přímo do D (jako
+  // 9. "měnu" pro zobrazení) a pairs (jako 29. pár) — sesterská implementace
+  // k index.html refreshData(), viz komentáře tam pro plné odůvodnění.
+  try{ await fetchActionGoldCot(); }catch(e){}
+  try{ await fetchActionGoldRetail(); }catch(e){}
+  try{ await fetchActionGoldPrice(); }catch(e){}
+  let goldScoreObj=null;
+  try{ goldScoreObj=scoreGold(); saveGoldScoreHistory(goldScoreObj); }catch(e){}
+  if(goldScoreObj){
+    D.XAU={
+      score:+(goldScoreObj.score||0), fund:+(goldScoreObj.macroScore||0), policy:0, yield:+(goldScoreObj.yieldScore||0),
+      cot:+(goldScoreObj.cotScore||0), sent:+(goldScoreObj.sentScore||0), season:0,
+      cotPct:(()=>{try{return getGoldCOTPercentile();}catch(e){return 50;}})()??50,
+      cotPctDelta:null,
+      chg7:(()=>{try{return getGoldScoreChange(7);}catch(e){return 0;}})()||0,
+      cb:"—",
+      inst:Math.round(Math.max(-100,Math.min(100,(goldScoreObj.cotScore||0)*12))),
+      cotLong:goldScoreObj.cot?goldScoreObj.cot.mMoneyLong:null,
+      retail:Math.round(goldScoreObj.retailPct!=null?goldScoreObj.retailPct:50)
+    };
+  }
+  const rankedAll=goldScoreObj?ranked.concat([buildGoldPair(goldScoreObj)]):ranked;
+  // Zlato NEPROCHÁZÍ buildForecastV5 (kalendářní kalkulace, "XAU" v sc není
+  // — viz komentář u stejné logiky v index.html refreshData) — bez fc[pair]
+  // appka na kartě prostě neukáže "14d" chip pro zlato, poctivě, ne fake.
+  const fc={}; ranked.forEach(p=>{ try{ fc[p.pair]=buildForecastV5(p,sc,calScoring,up); }catch(e){} });
+  try{ if(typeof logForecastSnapshot==='function') logForecastSnapshot(fc); }catch(e){}
+  return { scores:sc, D, pairs:rankedAll, cal, upcoming:up, forecasts:fc, cotMeta:loadCOTMeta(), retailLatest, retailHist, us100,
     calMeta:{source:calSource||"none",months,count:cal.length,conf:Math.round((g_fundConfidence||0)*100)} };
 }
 
@@ -793,6 +818,119 @@ function US100DetailM({data,onClose}){
   );
 }
 
+// Zlato (XAUUSD) — vlastní detail, stejný princip jako US100DetailM výš
+// (žádný ekonomický kalendář, appka na to nemá "zemi/CB"). Sesterská
+// implementace k renderGoldDetail() v index.html — stejná data/funkce
+// z engine.js, jen JSX/rozměry přizpůsobené mobilu.
+function GoldDetailM({onClose}){
+  let gold=null; try{gold=scoreGold();}catch(e){}
+  gold=gold||{score:0,cotScore:0,sentScore:0,macroScore:0,usdScore:0,usdRaw:null,riskScore:0,riskRegime:null,yieldScore:0,dxyScore:0,fedScore:0,cot:null,macro:null,cotAsOf:null,retailPct:null,retailAsOf:null};
+  const buy=gold.score>=0, col=buy?"#2ed3a0":"#f2606e";
+  const cotHist=(typeof loadGoldCotHistory==="function")?loadGoldCotHistory():{};
+  const cotDates=Object.keys(cotHist).sort();
+  const scoreHist=(typeof loadGoldScoreHistory==="function")?loadGoldScoreHistory():{};
+  const scoreDates=Object.keys(scoreHist).sort();
+  const retailHist=(typeof loadGoldRetailHistory==="function")?loadGoldRetailHistory():[];
+  const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
+  const price=(()=>{try{return loadGoldPrice();}catch(e){return null;}})();
+  const ageTxt=iso=>{ if(!iso) return "nenačteno"; const h=Math.round((Date.now()-new Date(iso).getTime())/3600000); return h<1?"právě teď":h<48?("před "+h+" h"):("před "+Math.round(h/24)+" dny"); };
+  const scoreSeries=[{name:"Skóre",color:"#e3d21f",vals:scoreDates.map(d=>+(scoreHist[d].score||0))}];
+  const retailSeries=[{name:"Long",color:"#2ed3a0",vals:retailHist.map(pt=>pt.l)},{name:"Short",color:"#f2606e",vals:retailHist.map(pt=>pt.s)}];
+  const cotLS=(()=>{ const lng=[],sht=[]; cotDates.forEach(d=>{ const r=cotHist[d]; const l=(r&&+r.mMoneyLong)||0,s=(r&&+r.mMoneyShort)||0,tot=l+s; lng.push(tot?Math.round(l/tot*100):50); sht.push(tot?Math.round(s/tot*100):50); }); return [{name:"Long",color:"#2ed3a0",vals:lng},{name:"Short",color:"#f2606e",vals:sht}]; })();
+  return (
+    <div className="ovl">
+      <div className="topbar" style={{margin:"0 -12px"}}>
+        <button className="btn sec" style={{width:"auto",padding:"7px 12px"}} onClick={onClose}>← Zpět</button>
+        <h1>🥇 XAUUSD</h1>
+        <span className={"pill "+(buy?"buy":"sell")}>{buy?"BULLISH":"BEARISH"}</span>
+      </div>
+      <div style={{paddingTop:12}}>
+        <div className="card">
+          <div className="between">
+            <div><div className="muted" style={{fontSize:12}}>Zlato — skóre{price&&Number.isFinite(price.current)?(" · $"+price.current.toFixed(2)):""}</div><div className="bignum" style={{color:col}}>{(gold.score>0?"+":"")+gold.score.toFixed(1)}</div></div>
+            <div style={{textAlign:"right"}}>
+              <div className="muted" style={{fontSize:10.5}}>COT {fmtNum(gold.cotScore)} · Retail {fmtNum(gold.sentScore)}</div>
+              <div className="muted" style={{fontSize:10.5,marginTop:2}}>COT {ageTxt(gold.cotAsOf)} · Retail {ageTxt(gold.retailAsOf)}</div>
+            </div>
+          </div>
+          <div className="muted" style={{fontSize:11,marginTop:8,lineHeight:1.5}}>Skóre z COT (Managed Money) + retail + makro směr (USD, VIX risk-off jako safe-haven bid, výnosy, dolar, Fed funds); bez fundamentálního kalendáře, zlato nemá centrální banku.</div>
+        </div>
+
+        <div className="card">
+          <div className="between" style={{marginBottom:8}}>
+            <span style={{fontWeight:800,fontSize:13}}>🧭 Makro komponenta</span>
+            <b className="mono" style={{fontSize:13,color:gold.macroScore>=0?"#2ed3a0":"#f2606e"}}>{(gold.macroScore>0?"+":"")+gold.macroScore.toFixed(2)}</b>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div>
+              <div className="muted" style={{fontSize:10}}>USD (inverzně){gold.usdRaw!=null?(" · "+fmtNum(gold.usdRaw)):""}</div>
+              <div className="mono" style={{fontSize:12.5,fontWeight:700,color:gold.usdScore>=0?"#2ed3a0":"#f2606e"}}>{(gold.usdScore>0?"+":"")+gold.usdScore.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:10}}>Risk (VIX) — safe-haven</div>
+              <div className="mono" style={{fontSize:12.5,fontWeight:700,color:gold.riskRegime==="RISK_OFF"?"#2ed3a0":gold.riskRegime==="RISK_ON"?"#f2606e":"#6b7688"}}>{gold.riskRegime==="RISK_ON"?"RISK-ON":gold.riskRegime==="RISK_OFF"?"RISK-OFF":gold.riskRegime==="NEUTRAL"?"neutrál":"—"}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:10}}>Výnosy 10Y{gold.macro&&gold.macro.dgs10?(" · "+gold.macro.dgs10.value.toFixed(2)+"%"):""}</div>
+              <div className="mono" style={{fontSize:12.5,fontWeight:700,color:gold.yieldScore>=0?"#2ed3a0":"#f2606e"}}>{(gold.yieldScore>0?"+":"")+gold.yieldScore.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:10}}>Dolar (DXY){gold.macro&&gold.macro.dxy?(" · "+gold.macro.dxy.value.toFixed(1)):""}</div>
+              <div className="mono" style={{fontSize:12.5,fontWeight:700,color:gold.dxyScore>=0?"#2ed3a0":"#f2606e"}}>{(gold.dxyScore>0?"+":"")+gold.dxyScore.toFixed(2)}</div>
+            </div>
+            <div>
+              <div className="muted" style={{fontSize:10}}>Fed funds{gold.macro&&gold.macro.fedfunds?(" · "+gold.macro.fedfunds.value.toFixed(2)+"%"):""}</div>
+              <div className="mono" style={{fontSize:12.5,fontWeight:700,color:gold.fedScore>=0?"#2ed3a0":"#f2606e"}}>{(gold.fedScore>0?"+":"")+gold.fedScore.toFixed(2)}</div>
+            </div>
+          </div>
+          <div className="muted" style={{fontSize:10,marginTop:8,lineHeight:1.5}}>FRED (výnosy/dolar/Fed, sdíleno s US100) + živé USD skóre appky + VIX risk regime (obráceně než u akcií) — 20denní trend, tlumené váhy.</div>
+        </div>
+
+        <div className="card">
+          <div style={{fontWeight:800,fontSize:13,marginBottom:6}}>Vývoj skóre</div>
+          <BigChart series={scoreSeries} dates={scoreDates} height={130} mid={0} fmt={v=>(v>0?"+":"")+v.toFixed(1)} big={true}/>
+        </div>
+
+        <div className="card">
+          <div className="between" style={{marginBottom:6}}>
+            <span style={{fontWeight:800,fontSize:13}}>🏛 COT pozicování</span>
+            <span className="muted" style={{fontSize:10.5}}>Managed Money L/S</span>
+          </div>
+          {gold.cot?(<>
+            <div className="between" style={{marginBottom:4}}>
+              <span className="muted" style={{fontSize:11}}>Managed Money net</span>
+              <b className="mono" style={{fontSize:12,color:gold.cot.mMoneyNet>=0?"#2ed3a0":"#f2606e"}}>{(gold.cot.mMoneyNet>0?"+":"")+gold.cot.mMoneyNet.toLocaleString("cs-CZ")}</b>
+            </div>
+            <div className="between" style={{marginBottom:8}}>
+              <span className="muted" style={{fontSize:11}} title="Těžaři/rafinerie — kontext, NENÍ součástí skóre. Strukturálně skoro vždy net short (hedging budoucí produkce).">Těžaři net (kontext)</span>
+              <b className="mono" style={{fontSize:12,color:"#6b7688"}}>{(gold.cot.prodMercNet>0?"+":"")+gold.cot.prodMercNet.toLocaleString("cs-CZ")}</b>
+            </div>
+            <BigChart series={cotLS} dates={cotDates} height={130} yMin={0} yMax={100} mid={50} fmt={v=>Math.round(v)+"%"} big={true}/>
+            <div className="muted" style={{fontSize:10,marginTop:6}}>CFTC Disaggregated · GOLD - COMMODITY EXCHANGE INC. · {cotDates.length} týdnů historie</div>
+          </>):(<div className="muted" style={{fontSize:11.5}}>COT data se ještě nenačetla — objeví se po nejbližším týdenním cronu.</div>)}
+        </div>
+
+        <div className="card">
+          <div className="between" style={{marginBottom:6}}>
+            <span style={{fontWeight:800,fontSize:13}}>🧍 Retail sentiment</span>
+            <span className="muted" style={{fontSize:10.5}}>XAUUSD · Myfxbook/FXSSI</span>
+          </div>
+          {lastRetail?(<>
+            <div style={{height:22,borderRadius:7,overflow:"hidden",display:"flex",border:"1px solid #161b27",background:"var(--inp)",marginBottom:8}}>
+              <div style={{width:lastRetail.l+"%",background:"linear-gradient(90deg,#2ed3a0dd,#2ed3a099)",display:"flex",alignItems:"center",paddingLeft:8}}>{lastRetail.l>=18&&<span className="mono" style={{fontSize:10.5,fontWeight:700,color:"#04140e"}}>L {lastRetail.l}%</span>}</div>
+              <div style={{width:lastRetail.s+"%",background:"linear-gradient(90deg,#f2606e99,#f2606edd)",display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8}}>{lastRetail.s>=18&&<span className="mono" style={{fontSize:10.5,fontWeight:700,color:"#1c0609"}}>{lastRetail.s}% S</span>}</div>
+            </div>
+            <BigChart series={retailSeries} dates={retailHist.map(pt=>pt.t)} height={130} yMin={0} yMax={100} mid={50} fmt={v=>Math.round(v)+"%"} big={true}/>
+            <div className="muted" style={{fontSize:11,marginTop:8,lineHeight:1.5}}>
+              {lastRetail.l>=80?"Dav extrémně LONG → kontrariánsky bearish signál.":lastRetail.l<=20?"Dav extrémně SHORT → kontrariánsky bullish signál.":lastRetail.l>=70?"Dav silně LONG → mírný kontrariánský tlak dolů.":lastRetail.l<=30?"Dav silně SHORT → mírný kontrariánský tlak nahoru.":"Dav rozdělený — bez extrému."}
+            </div>
+          </>):(<div className="muted" style={{fontSize:11.5}}>Retail data se ještě nenačetla — objeví se po nejbližším refreshi (~30 min).</div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── ZÁLOŽKA: SIGNÁLY ────────────────────────────────────────
 function SignalsTab({data,onTap,favs,onToggleFav}){
   const [filter,setFilter]=useState("all");
@@ -809,7 +947,7 @@ function SignalsTab({data,onTap,favs,onToggleFav}){
         })}
       </div>
       {shown.length===0&&filter==="favs"&&<div className="card muted" style={{textAlign:"center"}}>Zatím žádné oblíbené. Klikni ☆ na páru.</div>}
-      {shown.map(p=><PairCard key={p.pair} p={p} f={data.forecasts[p.pair]} daily={getPairDailyState(p,data.scores,data.cal,data.upcoming)} onTap={()=>onTap(p)} isFav={favs&&favs.has(p.pair)} onToggleFav={onToggleFav}/>)}
+      {shown.map(p=><PairCard key={p.pair} p={p} f={data.forecasts[p.pair]} daily={p.isGold?{level:"none",dot:"",color:null}:getPairDailyState(p,data.scores,data.cal,data.upcoming)} onTap={()=>onTap(p)} isFav={favs&&favs.has(p.pair)} onToggleFav={onToggleFav}/>)}
       {!pairs.length&&<div className="card muted">Žádné páry. Zkus Refresh.</div>}
       {data.us100&&<div style={{padding:"10px 12px 0",fontSize:11,fontWeight:800,letterSpacing:".08em",color:"#5a6273"}}>INDEXY</div>}
       <US100CardM us100={data.us100} onTap={()=>onTap("US100")}/>
@@ -1589,7 +1727,8 @@ function MApp(){
         </div>
       </div>}
       {sel==="US100"&&data&&<US100DetailM data={data} onClose={()=>setSel(null)}/>}
-      {sel&&sel!=="US100"&&data&&<PairDetail p={sel} scores={data.scores} D={data.D} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} calData={data.cal} upcoming={data.upcoming} retailHist={data.retailHist} onClose={()=>setSel(null)}/>}
+      {sel&&sel.isGold&&<GoldDetailM onClose={()=>setSel(null)}/>}
+      {sel&&sel!=="US100"&&!sel.isGold&&data&&<PairDetail p={sel} scores={data.scores} D={data.D} f={data.forecasts[sel.pair]} cotData={cot} daily={getPairDailyState(sel,data.scores,data.cal,data.upcoming)} calData={data.cal} upcoming={data.upcoming} retailHist={data.retailHist} onClose={()=>setSel(null)}/>}
       <WelcomeSplash loading={loading}/>
     </div>
   );
