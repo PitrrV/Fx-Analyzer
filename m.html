@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20260915d"></script>
+<script src="engine.js?v=20260915e"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -833,6 +833,24 @@ function GoldDetailM({onClose}){
   const retailHist=(typeof loadGoldRetailHistory==="function")?loadGoldRetailHistory():[];
   const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
   const price=(()=>{try{return loadGoldPrice();}catch(e){return null;}})();
+  // Poznámka — stejný pair_notes store jako u FX párů (viz PairDetail výš),
+  // jen klíčované "XAUUSD" místo párového symbolu.
+  const [note,setNoteS]=useState(()=>{try{return (loadNotes()||{})["XAUUSD"]||"";}catch(e){return"";}});
+  function changeNote(v){setNoteS(v);try{const n=loadNotes()||{};if(v.trim())n["XAUUSD"]=v;else delete n["XAUUSD"];localStorage.setItem("pair_notes",JSON.stringify(n));}catch(e){}}
+  // RP+ER u zlata NENÍ (m.html tenhle signál nemá ani u FX párů, viz PairDetail
+  // výš) — jen COT vs Retail a AI analýza/poznámka mají FX ekvivalent tady.
+  // "Instituce" strana je čisté Managed Money skóre zlata (žádné base−quote
+  // odečítání jako u FX — zlato nemá symetrický COT protějšek na USD straně,
+  // stejný princip jako scoreGold() bere COT komponentu samostatně).
+  const iDiff=Math.round(Math.max(-100,Math.min(100,(gold.cotScore||0)*12))), iSide=iDiff>8?"LONG":iDiff<-8?"SHORT":"NEUTRÁL";
+  const rLong=lastRetail?lastRetail.l:50, rShort=100-rLong;
+  const rSide=rLong>=55?"LONG":rShort>=55?"SHORT":"NEUTRÁL";
+  const oppG=(iSide==="LONG"&&rSide==="SHORT")||(iSide==="SHORT"&&rSide==="LONG");
+  const cvG=oppG?{t:"CONTRARIAN ✓",c:"#2ed3a0",m:"Instituce ("+iSide+") jdou PROTI davu ("+rSide+") → silnější signál ve směru instituce."}:(iSide!=="NEUTRÁL"&&iSide===rSide)?{t:"SHODA",c:"#e8ab3f",m:"Instituce i dav drží stejně ("+iSide+") — žádná contrarian výhoda, opatrně."}:{t:"NEUTRÁL",c:"#5a6273",m:"Pozicování bez extrému — slabý signál."};
+  const aiG=(()=>{try{return (JSON.parse(localStorage.getItem("ai_analyses_v1")||"{}")||{})["XAUUSD"];}catch(e){return null;}})();
+  const goldDir=buy?"BUY":"SELL";
+  const aiDirG=aiG?(aiG.bias==="BULLISH"?"BUY":aiG.bias==="BEARISH"?"SELL":((aiG.entry_setup&&aiG.entry_setup.direction)||null)):null;
+  const aiAgreeG=aiG?(aiDirG?(aiDirG===goldDir?{c:"#2ed3a0",m:"AI ("+aiG.bias+") potvrzuje fundamentální "+goldDir+" — silnější konfluence."}:{c:"#f2606e",m:"AI vidí "+aiG.bias+", ale bias je "+goldDir+" → konflikt, opatrně."}):{c:"#e8ab3f",m:"AI vidí "+(aiG.bias||"SIDEWAYS")+" — bez jasné shody."}):null;
   const ageTxt=iso=>{ if(!iso) return "nenačteno"; const h=Math.round((Date.now()-new Date(iso).getTime())/3600000); return h<1?"právě teď":h<48?("před "+h+" h"):("před "+Math.round(h/24)+" dny"); };
   const scoreSeries=[{name:"Skóre",color:"#e3d21f",vals:scoreDates.map(d=>+(scoreHist[d].score||0))}];
   const retailSeries=[{name:"Long",color:"#2ed3a0",vals:retailHist.map(pt=>pt.l)},{name:"Short",color:"#f2606e",vals:retailHist.map(pt=>pt.s)}];
@@ -925,6 +943,40 @@ function GoldDetailM({onClose}){
               {lastRetail.l>=80?"Dav extrémně LONG → kontrariánsky bearish signál.":lastRetail.l<=20?"Dav extrémně SHORT → kontrariánsky bullish signál.":lastRetail.l>=70?"Dav silně LONG → mírný kontrariánský tlak dolů.":lastRetail.l<=30?"Dav silně SHORT → mírný kontrariánský tlak nahoru.":"Dav rozdělený — bez extrému."}
             </div>
           </>):(<div className="muted" style={{fontSize:11.5}}>Retail data se ještě nenačetla — objeví se po nejbližším refreshi (~30 min).</div>)}
+        </div>
+
+        {/* COT vs Retail — stejná karta jako u FX párů (viz PairDetail výš) */}
+        <div className="card">
+          <div className="between" style={{marginBottom:11}}><span style={{fontWeight:800,fontSize:13}}>COT vs Retail</span><span className="vtag" style={{color:cvG.c,background:cvG.c+"1c",border:"1px solid "+cvG.c+"44"}}>{cvG.t}</span></div>
+          <div style={{marginBottom:11}}>
+            <div className="between" style={{marginBottom:5}}><span style={{fontSize:11.5,fontWeight:700}}>🧍 Retail dav</span><span className="muted" style={{fontSize:10.5}}>contrarian</span></div>
+            <div style={{height:22,borderRadius:7,overflow:"hidden",display:"flex",border:"1px solid #161b27",background:"var(--inp)"}}>
+              <div style={{width:rLong+"%",background:"linear-gradient(90deg,#2ed3a0dd,#2ed3a099)",display:"flex",alignItems:"center",paddingLeft:8}}>{rLong>=18&&<span className="mono" style={{fontSize:10.5,fontWeight:700,color:"#04140e"}}>L {rLong}%</span>}</div>
+              <div style={{width:rShort+"%",background:"linear-gradient(90deg,#f2606e99,#f2606edd)",display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8}}>{rShort>=18&&<span className="mono" style={{fontSize:10.5,fontWeight:700,color:"#1c0609"}}>{rShort}% S</span>}</div>
+            </div>
+          </div>
+          <div style={{marginBottom:11}}>
+            <div className="between" style={{marginBottom:5}}><span style={{fontSize:11.5,fontWeight:700}}>🏛 Instituce (COT Managed Money)</span><span className="mono" style={{fontSize:11,fontWeight:700,color:iSide==="LONG"?"#2ed3a0":iSide==="SHORT"?"#f2606e":"#5a6273"}}>{iSide}</span></div>
+            <div style={{position:"relative",height:22,borderRadius:7,background:"var(--inp)",border:"1px solid #161b27",overflow:"hidden"}}>
+              <div style={{position:"absolute",left:"50%",top:0,bottom:0,width:1,background:"#2a3242"}}/>
+              <div style={{position:"absolute",top:0,bottom:0,left:iDiff>=0?"50%":(50-Math.min(50,Math.abs(iDiff)/2))+"%",width:Math.min(50,Math.abs(iDiff)/2)+"%",background:iDiff>=0?"#2ed3a0":"#f2606e",opacity:.85}}/>
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",fontSize:9.5,color:"#5a6273"}} className="mono"><span>◀ SHORT</span><span>LONG ▶</span></div>
+            </div>
+          </div>
+          <div className="verdict" style={{background:cvG.c+"12",border:"1px solid "+cvG.c+"33"}}><span style={{fontSize:15}}>{oppG?"🎯":(iSide===rSide&&iSide!=="NEUTRÁL")?"⚠️":"•"}</span><span>{cvG.m}</span></div>
+        </div>
+
+        {/* AI konfluence (z fotky grafu) — stejná karta jako u FX párů */}
+        {aiAgreeG&&<div className="card" style={{borderColor:aiAgreeG.c+"44",borderLeft:"3px solid "+aiAgreeG.c}}>
+          <div className="between" style={{marginBottom:8}}><span style={{fontWeight:800,fontSize:13}}>🤖 AI analýza — XAUUSD</span><span style={{fontSize:12,fontWeight:800,color:aiG.bias==="BULLISH"?"#2ed3a0":aiG.bias==="BEARISH"?"#f2606e":"#e8ab3f"}}>{aiG.bias||"—"}{aiG.confidence!=null?(" "+aiG.confidence+"%"):""}</span></div>
+          <div className="verdict" style={{background:aiAgreeG.c+"12",border:"1px solid "+aiAgreeG.c+"33"}}><span style={{fontSize:15}}>{aiAgreeG.c==="#2ed3a0"?"🎯":aiAgreeG.c==="#f2606e"?"⚠️":"•"}</span><span>{aiAgreeG.m}</span></div>
+          {aiG.entry_setup&&(aiG.entry_setup.entry_zone||aiG.entry_setup.invalidation||aiG.entry_setup.stop_loss)&&<div className="muted" style={{fontSize:11.5,marginTop:8,lineHeight:1.5}}>{aiG.entry_setup.entry_zone&&<span><b style={{color:"#5e7cfb"}}>Entry:</b> {aiG.entry_setup.entry_zone} </span>}{(aiG.entry_setup.invalidation||aiG.entry_setup.stop_loss)&&<span><b style={{color:"#f2606e"}}>· Invalidace:</b> {aiG.entry_setup.invalidation||aiG.entry_setup.stop_loss}</span>}</div>}
+        </div>}
+
+        {/* Moje poznámka — stejná karta jako u FX párů */}
+        <div className="card">
+          <div style={{fontWeight:800,fontSize:13,marginBottom:8}}>📝 Moje poznámka — XAUUSD</div>
+          <textarea className="fld" style={{minHeight:64,resize:"vertical",marginBottom:0}} value={note} onChange={e=>changeNote(e.target.value)} placeholder="Tvoje teze, klíčové úrovně, plán vstupu…"/>
         </div>
       </div>
     </div>
