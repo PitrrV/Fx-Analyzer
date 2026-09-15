@@ -29,11 +29,20 @@ jobs:
           MYFXBOOK_PASSWORD: ${{ secrets.MYFXBOOK_PASSWORD }}
         run: node scripts/fetch-retail.js
       - name: Commit při změně
+        # data/gold_retail.json píše STEJNÝ krok výš (fetch-retail.js, viz
+        # komentář u "Zapsáno data/gold_retail.json") — musí se stagovat/
+        # commitnout spolu s retail_hist.json. Dřív se přidával jen
+        # retail_hist.json, takže gold_retail.json zůstával jako unstaged
+        # změna a `git pull --rebase` na něj spadl ("cannot pull with
+        # rebase: You have unstaged changes", exit 128) pokaždé, když se
+        # XAUUSD retail bod reálně změnil — appka pak celé hodiny neměla
+        # čerstvý Myfxbook retail, protože KAŽDÝ běh selhal už na tomhle
+        # kroku (živě ověřeno, run 34967881364).
         run: |
           git config user.name "retail-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain data/retail_hist.json)" ]; then
-            git add data/retail_hist.json
+          if [ -n "$(git status --porcelain data/retail_hist.json data/gold_retail.json)" ]; then
+            git add data/retail_hist.json data/gold_retail.json
             git commit -m "chore: update retail sentiment [skip ci]"
             for i in 1 2 3 4 5; do
               git pull --rebase origin main
