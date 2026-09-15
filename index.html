@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260915d"></script>
+<script src="engine.js?v=20260915e"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
 *{box-sizing:border-box}
@@ -1647,7 +1647,7 @@ class FXApp extends React.Component{
     // Trojkombinace s fundamentem (dnešní nález): fade funguje LÍP, když fundament
     // NESOUHLASÍ se směrem chase (souhlas PF~0.90 — nejhorší, proti PF~1.9-2.2) —
     // proto se "souhlasící" bucket vůbec nezobrazuje (svítí jen potvrzené).
-    let rp=null,er=null; try{rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);}catch(e){}
+    let rp=null,er=null; try{ if(p.isGold){rp=getGoldRangePosition(10); er=getGoldEfficiencyRatio(10);} else {rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);} }catch(e){}
     if(!rp||!er) return null;
     const diff=(sb.score||0)-(sq.score||0), NEUTRAL=0.3;
     const bandPF=(type,e)=>{ const bands=type==='SHORT'?[[0.5,0.65,1.19],[0.65,0.8,1.37],[0.8,1.01,2.45]]:[[0.2,0.35,1.66],[0.35,0.5,1.39],[0.5,0.65,1.64]];
@@ -1655,6 +1655,105 @@ class FXApp extends React.Component{
     if(rp.rp>=0.8&&er.er>0.5){ if(diff<-NEUTRAL) return null; return {type:'SHORT',rp:rp.rp,er:er.er,diff,pf:bandPF('SHORT',er.er),fundBucket:diff>NEUTRAL?'proti':'neutral'}; }
     if(rp.rp<=0.2&&er.er>=0.2&&er.er<0.65){ if(diff>NEUTRAL) return null; return {type:'LONG',rp:rp.rp,er:er.er,diff,pf:bandPF('LONG',er.er),fundBucket:diff<-NEUTRAL?'proti':'neutral'}; }
     return null;
+  }
+  // "COT vs Retail" karta — vytažená z renderDetail() do vlastní metody, ať ji
+  // beze změny může použít i renderGoldDetail() (this.D.XAU má STEJNÝ tvar
+  // .retail/.inst jako 8 FX měn, viz komentář u refreshData — zero-special-case).
+  cotVsRetailCard(p,sb,sq){ const self=this,h=this.h,T=this.tok;
+    return h('div',{style:self.card({padding:'16px 18px'})},(()=>{
+      const rLong=Math.max(0,Math.min(100,Math.round((sb.retail+(100-sq.retail))/2))), rShort=100-rLong;
+      const iDiff=Math.round(sb.inst-sq.inst), iSide=iDiff>2?'LONG':iDiff<-2?'SHORT':'NEUTRÁL', iMag=Math.min(50,Math.abs(iDiff)/2);
+      const instPct=Math.max(0,Math.min(100,50+(iDiff>=0?iMag:-iMag)));
+      const rSide=rLong>=55?'LONG':rShort>=55?'SHORT':'NEUTRÁL';
+      const opp=(iSide==='LONG'&&rSide==='SHORT')||(iSide==='SHORT'&&rSide==='LONG');
+      const v=opp?{t:'CONTRARIAN ✓',c:T.green,m:'Instituce ('+iSide+') jdou PROTI davu ('+rSide+') → silnější signál ve směru instituce.'}:(iSide!=='NEUTRÁL'&&iSide===rSide)?{t:'SHODA',c:T.amber,m:'Instituce i dav drží stejně ('+iSide+') — žádná contrarian výhoda, opatrně.'}:{t:'NEUTRÁLNÍ',c:T.faint,m:'Bez extrému — slabý signál.'};
+      const gradBar=pct=>h('div',{style:{height:11,borderRadius:6,background:'linear-gradient(90deg,'+T.green+' 0%,'+T.green+' '+Math.max(0,pct-8)+'%,'+T.red+' '+Math.min(100,pct+8)+'%,'+T.red+' 100%)',boxShadow:'0 0 12px rgba(46,211,160,.16), inset 0 1px 0 rgba(255,255,255,.06)'}});
+      const iconBadge=(col,path)=>h('div',{style:{width:22,height:22,borderRadius:7,flex:'none',background:col+'22',border:'1px solid '+col+'55',display:'flex',alignItems:'center',justifyContent:'center'}},
+        h('svg',{width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:col,strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},path));
+      return h('div',null,
+        h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:16}},self.ptitle('COT vs Retail'),h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:v.c,background:v.c+'1c',border:'1px solid '+v.c+'44',borderRadius:7,padding:'5px 10px',whiteSpace:'nowrap'}},v.t)),
+        h('div',{style:{marginBottom:16}},
+          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}},
+            h('div',{style:{display:'flex',alignItems:'center',gap:8}},iconBadge(T.violet,h('path',{d:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 20c0-3.6 3.1-6 7-6s7 2.4 7 6'})),h('span',{style:{fontSize:12,fontWeight:700,color:T.text}},'Retail')),
+            h('span',{style:self.mono({fontSize:12,fontWeight:800,color:T.text})},rLong+'% / '+rShort+'%')),
+          gradBar(rLong)),
+        h('div',{style:{marginBottom:16}},
+          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}},
+            h('div',{style:{display:'flex',alignItems:'center',gap:8}},iconBadge(T.green,h('path',{d:'M3 21h18M4 21V9l8-5 8 5v12M9 21v-7h6v7'})),h('span',{style:{fontSize:12,fontWeight:700,color:T.text}},'Instituce')),
+            h('span',{style:self.mono({fontSize:12,fontWeight:800,color:iSide==='LONG'?T.green:iSide==='SHORT'?T.red:T.faint})},iSide+(iSide!=='NEUTRÁL'?(' '+(iDiff>0?'+':'')+iDiff):''))),
+          gradBar(instPct)),
+        h('div',{style:{fontSize:12,color:T.dim,lineHeight:1.5}},v.m));
+    })());
+  }
+  // RP+ER karta — vytažená z renderDetail() do vlastní metody (viz komentář
+  // u cotVsRetailCard výš), ať ji beze změny použije i renderGoldDetail().
+  rpErCard(p,sb,sq){ const self=this,h=this.h,T=this.tok;
+    let rp=null,er=null; try{ if(p.isGold){rp=getGoldRangePosition(10); er=getGoldEfficiencyRatio(10);} else {rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);} }catch(e){}
+    if(!rp&&!er) return null;
+    const sig=self.getRPERSignal(p,sb,sq);
+    const verdict=sig?(sig.type==='SHORT'?{t:'SILNÝ SHORT',c:T.red,bg:'rgba(242,96,110,.07)'}:{t:'SILNÝ LONG',c:T.green,bg:'rgba(46,211,160,.07)'}):{t:'ŽÁDNÝ SIGNÁL',c:T.faint,bg:'transparent'};
+    const rpZoneLbl=rp?({low:'dno rozpětí',mid:'střed rozpětí',high:'vrchol rozpětí'}[rp.zone]):null;
+    const erLbl=er==null?null:(er.er<0.2?'chaos / cikcak':er.er<0.35?'slabé':er.er<0.5?'sleduj':er.er<0.65?'aktivní zóna':'silné, přímočaré');
+    const rpBar=rp&&h('div',null,
+      h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:8}},h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:T.dim}},'RP · POZICE V ROZPĚTÍ'),h('span',{style:self.mono({fontSize:12,fontWeight:800,color:T.text})},Math.round(rp.rp*100)+'%')),
+      h('div',{style:{position:'relative',height:10,borderRadius:5,background:'#1b2130'}},
+        h('div',{style:{position:'absolute',left:0,top:0,bottom:0,width:'20%',background:T.green+'1a',borderRadius:'5px 0 0 5px'}}),
+        h('div',{style:{position:'absolute',right:0,top:0,bottom:0,width:'20%',background:T.red+'1a',borderRadius:'0 5px 5px 0'}}),
+        h('div',{style:{position:'absolute',top:-3,left:'calc('+(rp.rp*100)+'% - 7px)',width:14,height:16,borderRadius:5,background:T.accent,border:'2px solid #0b0e15'}})),
+      h('div',{style:{fontSize:11.5,fontWeight:700,color:T.dim,marginTop:7}},rpZoneLbl+' · 10 dní'));
+    const erBar=er&&h('div',null,
+      h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:8}},h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:T.dim}},'ER · EFFICIENCY RATIO'),h('span',{style:self.mono({fontSize:12,fontWeight:800,color:T.text})},er.er.toFixed(2))),
+      h('div',{style:{position:'relative',height:10,borderRadius:5,background:'#1b2130'}},
+        h('div',{style:{position:'absolute',left:'20%',top:0,bottom:0,width:'45%',background:T.yellow+'14'}}),
+        [0.2,0.5,0.65].map(t=>h('div',{key:t,style:{position:'absolute',left:(t*100)+'%',top:0,bottom:0,width:1,background:'#3a4256'}})),
+        h('div',{style:{position:'absolute',top:-3,left:'calc('+(er.er*100)+'% - 7px)',width:14,height:16,borderRadius:5,background:T.yellow,border:'2px solid #0b0e15'}})),
+      h('div',{style:{fontSize:11.5,fontWeight:700,color:T.dim,marginTop:7}},erLbl+' · 10 dní'));
+    return h('div',{style:self.card({padding:'18px 20px',background:verdict.bg,borderColor:sig?verdict.c+'33':'#1b2130',borderLeft:sig?'3px solid '+verdict.c:'1px solid #1b2130'})},
+      h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:16,flexWrap:'wrap'}},
+        self.ptitle('RP + ER — exhaustion signál','Technický fade + kontrola fundamentu'),
+        h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:verdict.c,background:sig?verdict.c+'1c':'#0c0f16',border:'1px solid '+(sig?verdict.c+'44':'#232b3d'),borderRadius:7,padding:'5px 12px',whiteSpace:'nowrap'}},verdict.t)),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}},rpBar||h('div'),erBar||h('div',{style:{fontSize:10.5,color:T.faint}},'Málo cenové historie pro ER.')),
+      sig?(()=>{ const priceTxt=sig.type==='SHORT'?('Cena je na vrcholu 10d rozpětí a dostala se tam hladce (ER '+sig.er.toFixed(2)+') — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). '):('Cena je na dně 10d rozpětí s přiměřeným ER ('+sig.er.toFixed(2)+', ne chaos, ne panika) — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). ');
+        const isProti=sig.fundBucket==='proti';
+        const fundTxt=isProti?('Fundament s tímhle '+sig.type+'em nesouhlasí (sám zůstává '+(sig.type==='SHORT'?'bullish':'bearish')+', '+self.sgn(sig.diff)+') — zní to jako varování, ale přesně tahle kombinace byla v testu nejsilnější'):('Fundament je neutrální ('+self.sgn(sig.diff)+'), nekazí ani nepotvrzuje');
+        return h('div',{style:{display:'flex',alignItems:'center',gap:10,background:verdict.c+'16',border:'1px solid '+verdict.c+'44',borderRadius:10,padding:'11px 14px',marginTop:14}},
+        h('span',{style:{fontSize:16,flex:'none'}},'🎯'),
+        h('span',{style:{fontSize:13,fontWeight:700,color:T.text,lineHeight:1.5}},priceTxt,fundTxt,isProti?h('span',{style:{marginLeft:7,fontSize:9.5,fontWeight:800,letterSpacing:'.05em',color:verdict.c,background:verdict.c+'22',border:'1px solid '+verdict.c+'55',borderRadius:6,padding:'2px 7px',verticalAlign:'middle'}},'⚡ SILNĚJŠÍ'):null,' → ',h('b',{style:{color:verdict.c}},'POTVRZENO.'))); })():
+        h('div',{style:{fontSize:11,color:T.dim,marginTop:14,lineHeight:1.5,paddingTop:12,borderTop:'1px solid #ffffff0f'}},'RP/ER nejsou v žádné zóně, nebo fundament silně souhlasí se směrem chase — v tom případě signál nesvítí (historicky nejhorší kombinace, PF~0.9). Čistě informační, neovlivňuje skóre ani diferenciál.'));
+  }
+  // AI analýza karta (z uloženého screenshotu grafu, ai_analyses_v1) — vytažená
+  // z renderDetail() do vlastní metody (viz komentář u cotVsRetailCard výš).
+  aiAnalysisCard(p){ const self=this,h=this.h,T=this.tok;
+    let store={}; try{store=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){} const ai=store[p.pair];
+    if(!ai){
+      const meshRows=(()=>{ const rows=[],N=9; for(let r=0;r<N;r++){ const baseY=58+r*11,amp=13+((r%3)*4),freq=1.5+(r%4)*0.35,phase=r*0.7; const pts=[]; for(let i=0;i<=40;i++){ const x=i/40*640; const y=baseY+Math.sin(i/40*Math.PI*freq+phase)*amp+Math.sin(i/40*Math.PI*freq*2.3+phase*1.3)*amp*0.35; pts.push([x,y]); } rows.push({d:self.smooth(pts),op:0.05+(r/N)*0.24}); } return rows; })();
+      const sparkle=h('svg',{width:13,height:13,viewBox:'0 0 24 24',fill:T.accent,stroke:'none'},h('path',{d:'M12 2c0 0 1.4 6.7 4 9.3S22 12 22 12s-6.7 1.4-9.3 4S12 22 12 22s-1.4-6.7-4-9.3S2 12 2 12s6.7-1.4 9.3-4S12 2 12 2z'}));
+      return h('div',{style:Object.assign(self.card({padding:'20px 22px'}),{position:'relative',overflow:'hidden',minHeight:172,border:'1px solid rgba(94,124,251,.35)',boxShadow:'0 18px 40px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.04), 0 0 26px rgba(94,124,251,.14)'})},
+        h('svg',{style:{position:'absolute',left:0,right:0,bottom:0,width:'100%',height:'72%',pointerEvents:'none'},viewBox:'0 0 640 160',preserveAspectRatio:'none',fill:'none'},
+          meshRows.map((row,i)=>h('path',{key:i,d:row.d,stroke:T.accent,strokeOpacity:row.op,strokeWidth:1}))),
+        h('div',{style:{position:'relative',zIndex:1}},
+          h('div',{style:{display:'flex',alignItems:'center',gap:9,marginBottom:9}},sparkle,h('span',{style:{fontSize:12,fontWeight:800,letterSpacing:'.05em',color:T.text}},'AI ANALÝZA')),
+          h('div',{style:{fontSize:12.5,color:T.dim,lineHeight:1.55,maxWidth:360}},'Zatím bez analýzy — nahraj screenshot grafu v záložce AI Analýza ✦ — pak se tu ukáže bias, klíčové úrovně a jestli souhlasí s fundamentálním biasem.')));
+    }
+    const biasC=ai.bias==='BULLISH'?T.green:ai.bias==='BEARISH'?T.red:T.amber; const aiDir=ai.bias==='BULLISH'?'BUY':ai.bias==='BEARISH'?'SELL':((ai.entry_setup&&ai.entry_setup.direction)||null);
+    const agree=aiDir?(aiDir===p.dir?{t:'✓ SOUHLASÍ S BIASEM',c:T.green,m:'AI ('+ai.bias+') potvrzuje fundamentální '+p.dir+' — silnější konfluence.'}:{t:'⚠ PROTI BIASU',c:T.red,m:'AI vidí '+ai.bias+', ale fundamentální bias je '+p.dir+' → konflikt, opatrně.'}):{t:'NEUTRÁL',c:T.amber,m:'AI vidí '+(ai.bias||'SIDEWAYS')+' — bez jasné směrové shody s biasem.'};
+    const kl=(ai.key_levels||[]).slice(0,4);
+    return h('div',{style:self.card({padding:'16px 18px',borderColor:agree.c+'33',borderLeft:'3px solid '+agree.c})},
+      h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:10}},self.ptitle('AI Analýza — '+p.pair,'Z fotky grafu · '+(ai.tf||'TF')),h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:agree.c,background:agree.c+'1c',border:'1px solid '+agree.c+'44',borderRadius:7,padding:'5px 10px',whiteSpace:'nowrap'}},agree.t)),
+      h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:10}},h('span',{style:{fontSize:13,fontWeight:800,color:biasC,background:biasC+'1c',border:'1px solid '+biasC+'44',borderRadius:8,padding:'4px 11px'}},ai.bias||'—'),ai.confidence!=null&&h('span',{style:self.mono({fontSize:12,fontWeight:700,color:ai.confidence>=70?T.green:T.amber})},'Confidence '+ai.confidence+'%')),
+      h('div',{style:{display:'flex',alignItems:'center',gap:9,background:agree.c+'12',border:'1px solid '+agree.c+'33',borderRadius:10,padding:'10px 13px',marginBottom:kl.length?12:(ai.entry_setup?12:0)}},h('span',{style:{fontSize:15}},agree.c===T.green?'🎯':agree.c===T.red?'⚠️':'•'),h('span',{style:{fontSize:12.5,color:T.text,lineHeight:1.5}},agree.m)),
+      kl.length&&h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}},kl.map((l,i)=>h('div',{key:i,style:{display:'flex',justifyContent:'space-between',gap:8,background:'#0a0d13',border:'1px solid #161b27',borderRadius:8,padding:'7px 10px'}},h('span',{style:{fontSize:10.5,fontWeight:700,color:(l.type==='SUPPORT'?T.green:l.type==='RESISTANCE'?T.red:T.dim)}},l.type||'LEVEL'),h('span',{style:self.mono({fontSize:11.5,fontWeight:700})},l.zone||'—')))),
+      ai.entry_setup&&h('div',{style:{fontSize:12,color:T.dim,lineHeight:1.55,marginTop:kl.length?10:0}},h('b',{style:{color:T.accent}},'Entry: '),(ai.entry_setup.entry_zone||'—'),h('span',{style:{margin:'0 8px',color:'#2a3242'}},'·'),h('b',{style:{color:T.red}},'Invalidace: '),(ai.entry_setup.invalidation||ai.entry_setup.stop_loss||'—')));
+  }
+  // "Moje poznámka" karta — vytažená z renderDetail() do vlastní metody (viz
+  // komentář u cotVsRetailCard výš).
+  notesCard(p){ const self=this,h=this.h,T=this.tok;
+    const ts=this.state.notesTs[p.pair];
+    const tsTxt=(()=>{ if(!ts)return null; const d=new Date(ts); if(isNaN(d))return null; const now=new Date(); const hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); return (d.toDateString()===now.toDateString()?'dnes ':(d.getDate()+'.'+(d.getMonth()+1)+'. '))+hm; })();
+    return h('div',{style:Object.assign(self.card({padding:'16px 18px'}),{border:'1px solid rgba(157,123,255,.28)',boxShadow:'0 18px 40px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.04), 0 0 24px rgba(157,123,255,.1)'})},
+      h('span',{style:{fontSize:12,fontWeight:800,letterSpacing:'.05em',color:T.text}},'MOJE POZNÁMKA'),
+      h('textarea',{value:this.state.notes[p.pair]||'',onChange:e=>self.setNote(p.pair,e.target.value),placeholder:'Tvoje teze, plán vstupu…',style:{marginTop:12,minHeight:70,resize:'vertical',width:'100%',background:'#0a0d13',border:'1px solid #1b2130',borderRadius:10,color:T.text,padding:'11px 13px',fontSize:12.5,fontFamily:"'Manrope',sans-serif",lineHeight:1.55,outline:'none'}}),
+      tsTxt?h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,textAlign:'right'}},'Poslední editace: '+tsTxt):null);
   }
   agoTxt(ts){ if(!ts) return ''; const m=Math.round((Date.now()-ts)/60000); if(m<60) return 'před '+m+' min'; const hh=Math.floor(m/60); return hh<24?('před '+hh+' h'):('před '+Math.floor(hh/24)+' dny'); }
   flipInfo(pairId){ return (this._flips||[]).find(f=>f.pair===pairId)||null; }
@@ -1824,67 +1923,11 @@ class FXApp extends React.Component{
       this.renderPairCharts(p),
       isCAD&&this.renderOilPanel(p),
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,alignItems:'start'}},
-      h('div',{style:self.card({padding:'16px 18px'})},(()=>{
-        const rLong=Math.max(0,Math.min(100,Math.round((sb.retail+(100-sq.retail))/2))), rShort=100-rLong;
-        const iDiff=Math.round(sb.inst-sq.inst), iSide=iDiff>2?'LONG':iDiff<-2?'SHORT':'NEUTRÁL', iMag=Math.min(50,Math.abs(iDiff)/2);
-        const instPct=Math.max(0,Math.min(100,50+(iDiff>=0?iMag:-iMag)));
-        const rSide=rLong>=55?'LONG':rShort>=55?'SHORT':'NEUTRÁL';
-        const opp=(iSide==='LONG'&&rSide==='SHORT')||(iSide==='SHORT'&&rSide==='LONG');
-        const v=opp?{t:'CONTRARIAN ✓',c:T.green,m:'Instituce ('+iSide+') jdou PROTI davu ('+rSide+') → silnější signál ve směru instituce.'}:(iSide!=='NEUTRÁL'&&iSide===rSide)?{t:'SHODA',c:T.amber,m:'Instituce i dav drží stejně ('+iSide+') — žádná contrarian výhoda, opatrně.'}:{t:'NEUTRÁLNÍ',c:T.faint,m:'Bez extrému — slabý signál.'};
-        // Jemný gradientový pruh (žádné bloky/text uvnitř) — barevný přechod
-        // green→red kolem daného podílu, uprostřed rozmazaný.
-        const gradBar=pct=>h('div',{style:{height:11,borderRadius:6,background:'linear-gradient(90deg,'+T.green+' 0%,'+T.green+' '+Math.max(0,pct-8)+'%,'+T.red+' '+Math.min(100,pct+8)+'%,'+T.red+' 100%)',boxShadow:'0 0 12px rgba(46,211,160,.16), inset 0 1px 0 rgba(255,255,255,.06)'}});
-        const iconBadge=(col,path)=>h('div',{style:{width:22,height:22,borderRadius:7,flex:'none',background:col+'22',border:'1px solid '+col+'55',display:'flex',alignItems:'center',justifyContent:'center'}},
-          h('svg',{width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:col,strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},path));
-        return h('div',null,
-          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:16}},self.ptitle('COT vs Retail'),h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:v.c,background:v.c+'1c',border:'1px solid '+v.c+'44',borderRadius:7,padding:'5px 10px',whiteSpace:'nowrap'}},v.t)),
-          h('div',{style:{marginBottom:16}},
-            h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}},
-              h('div',{style:{display:'flex',alignItems:'center',gap:8}},iconBadge(T.violet,h('path',{d:'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 20c0-3.6 3.1-6 7-6s7 2.4 7 6'})),h('span',{style:{fontSize:12,fontWeight:700,color:T.text}},'Retail')),
-              h('span',{style:self.mono({fontSize:12,fontWeight:800,color:T.text})},rLong+'% / '+rShort+'%')),
-            gradBar(rLong)),
-          h('div',{style:{marginBottom:16}},
-            h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}},
-              h('div',{style:{display:'flex',alignItems:'center',gap:8}},iconBadge(T.green,h('path',{d:'M3 21h18M4 21V9l8-5 8 5v12M9 21v-7h6v7'})),h('span',{style:{fontSize:12,fontWeight:700,color:T.text}},'Instituce')),
-              h('span',{style:self.mono({fontSize:12,fontWeight:800,color:iSide==='LONG'?T.green:iSide==='SHORT'?T.red:T.faint})},iSide+(iSide!=='NEUTRÁL'?(' '+(iDiff>0?'+':'')+iDiff):''))),
-            gradBar(instPct)),
-          h('div',{style:{fontSize:12,color:T.dim,lineHeight:1.5}},v.m));
-      })()),
+      self.cotVsRetailCard(p,sb,sq),
       h('div',{style:self.card({padding:'16px 18px'})},h('div',{style:{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap'}},h('div',{style:{display:'flex',alignItems:'center',gap:10}},h('div',{style:{width:26,height:26,borderRadius:8,background:'rgba(94,124,251,.14)',border:'1px solid rgba(94,124,251,.4)',display:'flex',alignItems:'center',justifyContent:'center',flex:'none'}},h('svg',{width:14,height:14,viewBox:'0 0 24 24',fill:'none',stroke:'#8ba3ff',strokeWidth:1.8,strokeLinecap:'round',strokeLinejoin:'round'},h('path',{d:'M21 11.5a8.38 8.38 0 0 1-9 8.35 8.5 8.5 0 0 1-4.5-1.3L3 20l1.45-3.5A8.38 8.38 0 0 1 3 11.5a8.5 8.5 0 0 1 8.5-8.5h.5a8.48 8.48 0 0 1 8 8v.5z'}))),self.ptitle('Daily Brief — '+p.pair,briefMsg)),h('div',{style:{display:'flex',gap:6}},['LONG','SHORT','none'].map(s=>{const on=pos===s,col=s==='LONG'?T.green:s==='SHORT'?T.red:T.faint;return h('button',{key:s,type:'button',onClick:()=>self.setPos(p.pair,s),style:{border:'1px solid '+(on?col:'#232b3d'),background:on?col+'1f':'#0c0f16',color:on?col:T.dim,borderRadius:9,padding:'7px 13px',fontFamily:'inherit',fontSize:11.5,fontWeight:700,cursor:'pointer'}},s==='none'?'Zavřít':s);}))),dailyForPair.length?h('div',{style:{display:'flex',flexDirection:'column',gap:2,marginTop:4}},dailyForPair.map((d,i)=>{const ic=d.imp==='HIGH'?T.red:d.imp==='MEDIUM'?T.amber:T.yellow;const ins=dInsight(d);return h('div',{key:i,style:{display:'flex',alignItems:'flex-start',gap:11,padding:'9px 0',boxShadow:i<dailyForPair.length-1?'0 1px 0 #14182333':'none'}},h('span',{style:self.mono({fontSize:11,color:T.dim,width:42,marginTop:1})},d.t),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,width:34,marginTop:1})},d.ccy),h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontSize:12.5,color:T.text}},d.ev),ins&&h('div',{style:{fontSize:11,color:ins.col,marginTop:3,lineHeight:1.45}},ins.txt)),h('span',{style:{fontSize:9,fontWeight:700,color:ic,background:ic+'1c',border:'1px solid '+ic+'40',borderRadius:5,padding:'3px 7px'}},d.imp));})):h('div',{style:{fontSize:12,color:T.faint,marginTop:4}},'Žádné plánované události pro '+p.base+' ani '+p.quote+' dnes.')),
       ),
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,alignItems:'start'}},
-      (()=>{ let rp=null,er=null; try{rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);}catch(e){}
-        if(!rp&&!er) return null;
-        const sig=self.getRPERSignal(p,sb,sq);
-        const verdict=sig?(sig.type==='SHORT'?{t:'SILNÝ SHORT',c:T.red,bg:'rgba(242,96,110,.07)'}:{t:'SILNÝ LONG',c:T.green,bg:'rgba(46,211,160,.07)'}):{t:'ŽÁDNÝ SIGNÁL',c:T.faint,bg:'transparent'};
-        const rpZoneLbl=rp?({low:'dno rozpětí',mid:'střed rozpětí',high:'vrchol rozpětí'}[rp.zone]):null;
-        const erLbl=er==null?null:(er.er<0.2?'chaos / cikcak':er.er<0.35?'slabé':er.er<0.5?'sleduj':er.er<0.65?'aktivní zóna':'silné, přímočaré');
-        const rpBar=rp&&h('div',null,
-          h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:8}},h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:T.dim}},'RP · POZICE V ROZPĚTÍ'),h('span',{style:self.mono({fontSize:12,fontWeight:800,color:T.text})},Math.round(rp.rp*100)+'%')),
-          h('div',{style:{position:'relative',height:10,borderRadius:5,background:'#1b2130'}},
-            h('div',{style:{position:'absolute',left:0,top:0,bottom:0,width:'20%',background:T.green+'1a',borderRadius:'5px 0 0 5px'}}),
-            h('div',{style:{position:'absolute',right:0,top:0,bottom:0,width:'20%',background:T.red+'1a',borderRadius:'0 5px 5px 0'}}),
-            h('div',{style:{position:'absolute',top:-3,left:'calc('+(rp.rp*100)+'% - 7px)',width:14,height:16,borderRadius:5,background:T.accent,border:'2px solid #0b0e15'}})),
-          h('div',{style:{fontSize:11.5,fontWeight:700,color:T.dim,marginTop:7}},rpZoneLbl+' · 10 dní'));
-        const erBar=er&&h('div',null,
-          h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:8}},h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:T.dim}},'ER · EFFICIENCY RATIO'),h('span',{style:self.mono({fontSize:12,fontWeight:800,color:T.text})},er.er.toFixed(2))),
-          h('div',{style:{position:'relative',height:10,borderRadius:5,background:'#1b2130'}},
-            h('div',{style:{position:'absolute',left:'20%',top:0,bottom:0,width:'45%',background:T.yellow+'14'}}),
-            [0.2,0.5,0.65].map(t=>h('div',{key:t,style:{position:'absolute',left:(t*100)+'%',top:0,bottom:0,width:1,background:'#3a4256'}})),
-            h('div',{style:{position:'absolute',top:-3,left:'calc('+(er.er*100)+'% - 7px)',width:14,height:16,borderRadius:5,background:T.yellow,border:'2px solid #0b0e15'}})),
-          h('div',{style:{fontSize:11.5,fontWeight:700,color:T.dim,marginTop:7}},erLbl+' · 10 dní'));
-        return h('div',{style:self.card({padding:'18px 20px',background:verdict.bg,borderColor:sig?verdict.c+'33':'#1b2130',borderLeft:sig?'3px solid '+verdict.c:'1px solid #1b2130'})},
-          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:16,flexWrap:'wrap'}},
-            self.ptitle('RP + ER — exhaustion signál','Technický fade + kontrola fundamentu'),
-            h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:verdict.c,background:sig?verdict.c+'1c':'#0c0f16',border:'1px solid '+(sig?verdict.c+'44':'#232b3d'),borderRadius:7,padding:'5px 12px',whiteSpace:'nowrap'}},verdict.t)),
-          h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}},rpBar||h('div'),erBar||h('div',{style:{fontSize:10.5,color:T.faint}},'Málo cenové historie pro ER.')),
-          sig?(()=>{ const priceTxt=sig.type==='SHORT'?('Cena je na vrcholu 10d rozpětí a dostala se tam hladce (ER '+sig.er.toFixed(2)+') — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). '):('Cena je na dně 10d rozpětí s přiměřeným ER ('+sig.er.toFixed(2)+', ne chaos, ne panika) — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). ');
-            const isProti=sig.fundBucket==='proti';
-            const fundTxt=isProti?('Fundament s tímhle '+sig.type+'em nesouhlasí (sám zůstává '+(sig.type==='SHORT'?'bullish':'bearish')+', '+self.sgn(sig.diff)+') — zní to jako varování, ale přesně tahle kombinace byla v testu nejsilnější'):('Fundament je neutrální ('+self.sgn(sig.diff)+'), nekazí ani nepotvrzuje');
-            return h('div',{style:{display:'flex',alignItems:'center',gap:10,background:verdict.c+'16',border:'1px solid '+verdict.c+'44',borderRadius:10,padding:'11px 14px',marginTop:14}},
-            h('span',{style:{fontSize:16,flex:'none'}},'🎯'),
-            h('span',{style:{fontSize:13,fontWeight:700,color:T.text,lineHeight:1.5}},priceTxt,fundTxt,isProti?h('span',{style:{marginLeft:7,fontSize:9.5,fontWeight:800,letterSpacing:'.05em',color:verdict.c,background:verdict.c+'22',border:'1px solid '+verdict.c+'55',borderRadius:6,padding:'2px 7px',verticalAlign:'middle'}},'⚡ SILNĚJŠÍ'):null,' → ',h('b',{style:{color:verdict.c}},'POTVRZENO.'))); })():
-            h('div',{style:{fontSize:11,color:T.dim,marginTop:14,lineHeight:1.5,paddingTop:12,borderTop:'1px solid #ffffff0f'}},'RP/ER nejsou v žádné zóně, nebo fundament silně souhlasí se směrem chase — v tom případě signál nesvítí (historicky nejhorší kombinace, PF~0.9). Čistě informační, neovlivňuje skóre ani diferenciál.')); })(),
+      self.rpErCard(p,sb,sq),
       (()=>{ let cf={state:'unknown',mom:null},lp=null,hist={dates:[],vals:[]}; try{cf=getBiasConfirmation(p.pair,p.dir);lp=getPairPrice(p.pair);hist=getPairPriceHistory(p.pair,30);}catch(e){}
         const map={confirms:{c:T.green,ic:'✓',t:'POTVRZUJE '+p.dir,m:'Cena se hýbe ve směru biasu — konfluence.'},
           diverges:{c:T.red,ic:'⚠',t:'DIVERGUJE',m:'Cena jde proti biasu — počkej na potvrzení, nehoň cenu.'},
@@ -1925,41 +1968,13 @@ class FXApp extends React.Component{
           disc?h('div',{style:{fontSize:10.5,color:T.faint,marginTop:11,paddingTop:9,borderTop:'1px solid #ffffff12',lineHeight:1.4}},disc):null); })(),
       ),
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,alignItems:'start'}},
-      (()=>{ let store={}; try{store=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){} const ai=store[p.pair];
-        if(!ai){
-          // Prázdný stav — dekorativní vlnitá mřížka (topografický "hřeben") v patě
-          // karty, glow rámeček. Deterministické (žádný Math.random), ať se
-          // nepřekresluje jinak při každém renderu.
-          const meshRows=(()=>{ const rows=[],N=9; for(let r=0;r<N;r++){ const baseY=58+r*11,amp=13+((r%3)*4),freq=1.5+(r%4)*0.35,phase=r*0.7; const pts=[]; for(let i=0;i<=40;i++){ const x=i/40*640; const y=baseY+Math.sin(i/40*Math.PI*freq+phase)*amp+Math.sin(i/40*Math.PI*freq*2.3+phase*1.3)*amp*0.35; pts.push([x,y]); } rows.push({d:self.smooth(pts),op:0.05+(r/N)*0.24}); } return rows; })();
-          const sparkle=h('svg',{width:13,height:13,viewBox:'0 0 24 24',fill:T.accent,stroke:'none'},h('path',{d:'M12 2c0 0 1.4 6.7 4 9.3S22 12 22 12s-6.7 1.4-9.3 4S12 22 12 22s-1.4-6.7-4-9.3S2 12 2 12s6.7-1.4 9.3-4S12 2 12 2z'}));
-          return h('div',{style:Object.assign(self.card({padding:'20px 22px'}),{position:'relative',overflow:'hidden',minHeight:172,border:'1px solid rgba(94,124,251,.35)',boxShadow:'0 18px 40px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.04), 0 0 26px rgba(94,124,251,.14)'})},
-            h('svg',{style:{position:'absolute',left:0,right:0,bottom:0,width:'100%',height:'72%',pointerEvents:'none'},viewBox:'0 0 640 160',preserveAspectRatio:'none',fill:'none'},
-              meshRows.map((row,i)=>h('path',{key:i,d:row.d,stroke:T.accent,strokeOpacity:row.op,strokeWidth:1}))),
-            h('div',{style:{position:'relative',zIndex:1}},
-              h('div',{style:{display:'flex',alignItems:'center',gap:9,marginBottom:9}},sparkle,h('span',{style:{fontSize:12,fontWeight:800,letterSpacing:'.05em',color:T.text}},'AI ANALÝZA')),
-              h('div',{style:{fontSize:12.5,color:T.dim,lineHeight:1.55,maxWidth:360}},'Zatím bez analýzy — nahraj screenshot grafu v záložce AI Analýza ✦ — pak se tu ukáže bias, klíčové úrovně a jestli souhlasí s fundamentálním biasem.')));
-        }
-        const biasC=ai.bias==='BULLISH'?T.green:ai.bias==='BEARISH'?T.red:T.amber; const aiDir=ai.bias==='BULLISH'?'BUY':ai.bias==='BEARISH'?'SELL':((ai.entry_setup&&ai.entry_setup.direction)||null);
-        const agree=aiDir?(aiDir===p.dir?{t:'✓ SOUHLASÍ S BIASEM',c:T.green,m:'AI ('+ai.bias+') potvrzuje fundamentální '+p.dir+' — silnější konfluence.'}:{t:'⚠ PROTI BIASU',c:T.red,m:'AI vidí '+ai.bias+', ale fundamentální bias je '+p.dir+' → konflikt, opatrně.'}):{t:'NEUTRÁL',c:T.amber,m:'AI vidí '+(ai.bias||'SIDEWAYS')+' — bez jasné směrové shody s biasem.'};
-        const kl=(ai.key_levels||[]).slice(0,4);
-        return h('div',{style:self.card({padding:'16px 18px',borderColor:agree.c+'33',borderLeft:'3px solid '+agree.c})},
-          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:10}},self.ptitle('AI Analýza — '+p.pair,'Z fotky grafu · '+(ai.tf||'TF')),h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:agree.c,background:agree.c+'1c',border:'1px solid '+agree.c+'44',borderRadius:7,padding:'5px 10px',whiteSpace:'nowrap'}},agree.t)),
-          h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:10}},h('span',{style:{fontSize:13,fontWeight:800,color:biasC,background:biasC+'1c',border:'1px solid '+biasC+'44',borderRadius:8,padding:'4px 11px'}},ai.bias||'—'),ai.confidence!=null&&h('span',{style:self.mono({fontSize:12,fontWeight:700,color:ai.confidence>=70?T.green:T.amber})},'Confidence '+ai.confidence+'%')),
-          h('div',{style:{display:'flex',alignItems:'center',gap:9,background:agree.c+'12',border:'1px solid '+agree.c+'33',borderRadius:10,padding:'10px 13px',marginBottom:kl.length?12:(ai.entry_setup?12:0)}},h('span',{style:{fontSize:15}},agree.c===T.green?'🎯':agree.c===T.red?'⚠️':'•'),h('span',{style:{fontSize:12.5,color:T.text,lineHeight:1.5}},agree.m)),
-          kl.length&&h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}},kl.map((l,i)=>h('div',{key:i,style:{display:'flex',justifyContent:'space-between',gap:8,background:'#0a0d13',border:'1px solid #161b27',borderRadius:8,padding:'7px 10px'}},h('span',{style:{fontSize:10.5,fontWeight:700,color:(l.type==='SUPPORT'?T.green:l.type==='RESISTANCE'?T.red:T.dim)}},l.type||'LEVEL'),h('span',{style:self.mono({fontSize:11.5,fontWeight:700})},l.zone||'—')))),
-          ai.entry_setup&&h('div',{style:{fontSize:12,color:T.dim,lineHeight:1.55,marginTop:kl.length?10:0}},h('b',{style:{color:T.accent}},'Entry: '),(ai.entry_setup.entry_zone||'—'),h('span',{style:{margin:'0 8px',color:'#2a3242'}},'·'),h('b',{style:{color:T.red}},'Invalidace: '),(ai.entry_setup.invalidation||ai.entry_setup.stop_loss||'—')));
-      })(),
+      self.aiAnalysisCard(p),
       h('div',{style:self.card({padding:'16px 18px'})},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}},
           h('span',{style:{fontSize:12,fontWeight:800,letterSpacing:'.05em',color:T.text}},'KOMPONENTY SKÓRE'),
           h('span',{style:self.mono({fontSize:11,fontWeight:800,color:T.accent})},comps.filter(x=>buy?x.v>0:x.v<0).length+'/'+comps.length)),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(120px,1fr))',gap:9}},comps.map(x=>{const col=self.scol(x.v);return h('div',{key:x.l,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'12px 10px',textAlign:'center'}},h('div',{style:{fontSize:10,color:T.dim,marginBottom:8,minHeight:24}},x.l),h('div',{style:self.mono({fontSize:20,fontWeight:700,color:col})},self.sgn(x.v,2)));}))),
-      (()=>{ const ts=this.state.notesTs[p.pair];
-        const tsTxt=(()=>{ if(!ts)return null; const d=new Date(ts); if(isNaN(d))return null; const now=new Date(); const hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); return (d.toDateString()===now.toDateString()?'dnes ':(d.getDate()+'.'+(d.getMonth()+1)+'. '))+hm; })();
-        return h('div',{style:Object.assign(self.card({padding:'16px 18px'}),{border:'1px solid rgba(157,123,255,.28)',boxShadow:'0 18px 40px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.04), 0 0 24px rgba(157,123,255,.1)'})},
-          h('span',{style:{fontSize:12,fontWeight:800,letterSpacing:'.05em',color:T.text}},'MOJE POZNÁMKA'),
-          h('textarea',{value:this.state.notes[p.pair]||'',onChange:e=>self.setNote(p.pair,e.target.value),placeholder:'Tvoje teze, plán vstupu…',style:{marginTop:12,minHeight:70,resize:'vertical',width:'100%',background:'#0a0d13',border:'1px solid #1b2130',borderRadius:10,color:T.text,padding:'11px 13px',fontSize:12.5,fontFamily:"'Manrope',sans-serif",lineHeight:1.55,outline:'none'}}),
-          tsTxt?h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,textAlign:'right'}},'Poslední editace: '+tsTxt):null); })(),
+      self.notesCard(p),
       ),
       h('div',{style:self.card({padding:'14px 18px',background:verdict.bg,borderColor:verdict.c+'33',borderLeft:'3px solid '+verdict.c})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:11,flexWrap:'wrap'}},h('div',{style:{display:'flex',alignItems:'center',gap:10}},h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:verdict.c,background:verdict.c+'1c',border:'1px solid '+verdict.c+'44',borderRadius:7,padding:'4px 10px'}},verdict.t),h('span',{style:{fontSize:13,fontWeight:600,color:T.text}},verdict.msg)),h('span',{style:self.mono({fontSize:12,fontWeight:700,color:verdict.c})},okN+'/'+fac.length+' faktorů')),h('div',{style:{display:'flex',gap:7,flexWrap:'wrap'}},fac.map(f=>h('span',{key:f.l,title:f.d,style:{display:'inline-flex',alignItems:'center',gap:5,fontSize:10.5,fontWeight:600,padding:'4px 9px',borderRadius:6,background:f.ok?'rgba(46,211,160,.1)':'rgba(120,130,150,.08)',border:'1px solid '+(f.ok?'rgba(46,211,160,.28)':'#222a39'),color:f.ok?T.green:T.faint}},h('span',null,f.ok?'✓':'○'),f.l))))
     );
@@ -2054,6 +2069,13 @@ class FXApp extends React.Component{
     const cotLS=(()=>{ const lng=[],sht=[]; cdatesW.forEach(d=>{ const r=cotHist[d]; const l=(r&&+r.mMoneyLong)||0,s=(r&&+r.mMoneyShort)||0,tot=l+s; lng.push(tot?Math.round(l/tot*100):50); sht.push(tot?Math.round(s/tot*100):50); }); return [{name:'Long',col:T.green,vals:lng},{name:'Short',col:T.red,vals:sht}]; })();
     const pctFmt=v=>Math.round(v)+'%';
     const rng=['14D','1M','3M','6M','ALL'];
+    // Syntetický pár pro sdílené karty (COT vs Retail / RP+ER / AI analýza /
+    // poznámka) — STEJNÁ funkce jako refreshData() používá k připojení zlata
+    // do žebříčku (buildGoldPair), takže this.D.XAU/this.D.USD (retail/inst ve
+    // stejném tvaru jako 8 FX měn) sednou beze změny na cotVsRetailCard/
+    // rpErCard, které normálně dostávají FX pár z pairObj().
+    const goldPair=buildGoldPair(D);
+    const sbG=this.D.XAU,sqG=this.D.USD;
     const cell=(title,sub,subCol,enough,body,zoom)=>h('div',{onClick:(enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(enough&&zoom)?'Klikni pro zvětšení':undefined,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,cursor:(enough&&zoom)?'pointer':'default'}},
       h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),h('div',{style:{display:'flex',alignItems:'center',gap:6}},sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,(enough&&zoom)?h('span',{style:{fontSize:11,color:T.faint}},'⤢'):null)),
       enough?body:h('div',{style:{fontSize:10.5,color:T.faint,padding:'24px 4px',textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
@@ -2088,7 +2110,16 @@ class FXApp extends React.Component{
           cell('Retail L/S',lastRetail?('L '+lastRetail.l+'% · S '+lastRetail.s+'%'):null,T.green,rptsW.length>=2,h(self.HoverChart,{key:'rt-gold-'+gr,dates:rdatesW,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'Zlato — Retail Long/Short',subtitle:'XAUUSD · Myfxbook/FXSSI · '+gr,dates:rdatesW,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
           cell('COT Managed Money L/S',D.cot?((D.cot.mMoneyNet>=0?'net +':'net ')+D.cot.mMoneyNet.toLocaleString('cs-CZ')):null,D.cot&&D.cot.mMoneyNet>=0?T.green:T.red,cdatesW.length>=2,h(self.HoverChart,{key:'cot-gold-'+gr,dates:cdatesW,series:cotLS,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'Zlato — COT Managed Money Long/Short',subtitle:'CFTC Disaggregated · GOLD - COMMODITY EXCHANGE INC. · '+gr,dates:cdatesW,series:cotLS,yMin:0,yMax:100,mid:50,fmt:pctFmt})),
         lastRetail&&h('div',{style:{fontSize:11,color:T.dim,marginTop:10,lineHeight:1.5}},
-          lastRetail.l>=80?'Dav extrémně LONG → kontrariánsky bearish signál.':lastRetail.l<=20?'Dav extrémně SHORT → kontrariánsky bullish signál.':lastRetail.l>=70?'Dav silně LONG → mírný kontrariánský tlak dolů.':lastRetail.l<=30?'Dav silně SHORT → mírný kontrariánský tlak nahoru.':'Dav rozdělený — bez extrému.'))
+          lastRetail.l>=80?'Dav extrémně LONG → kontrariánsky bearish signál.':lastRetail.l<=20?'Dav extrémně SHORT → kontrariánsky bullish signál.':lastRetail.l>=70?'Dav silně LONG → mírný kontrariánský tlak dolů.':lastRetail.l<=30?'Dav silně SHORT → mírný kontrariánský tlak nahoru.':'Dav rozdělený — bez extrému.')),
+      // Stejné karty jako u FX párů (viz renderDetail) — COT vs Retail + RP+ER
+      // exhaustion signál, teď nad zlato-specifickými zdroji dat (this.D.XAU/
+      // this.D.USD, gold_price.json cenová historie).
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,alignItems:'start'}},
+        self.cotVsRetailCard(goldPair,sbG,sqG),
+        self.rpErCard(goldPair,sbG,sqG)),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,alignItems:'start'}},
+        self.aiAnalysisCard(goldPair),
+        self.notesCard(goldPair))
     );
   }
   renderOilPanel(p){ const self=this,h=this.h,T=this.tok; let oilSt=null; try{oilSt=getOilStatus();}catch(e){}

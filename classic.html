@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20260915d"></script>
+<script src="engine.js?v=20260915e"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sync.js?v=20260914a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1444,10 +1444,11 @@ function NotesCard({pair,note,onSave}){
 // funkce z engine.js, jen JSX/vizuální jazyk klasické appky (pro-card,
 // #7d95ff akcent). Žádný ekonomický kalendář — zlato nemá centrální banku,
 // generický <Detail> níž by na "XAU" počítal jen šum z USD strany.
-function GoldDetailClassic(){
+function GoldDetailClassic({notes={},onNote=()=>{},aiAnalyses={}}){
   let gold=null; try{gold=scoreGold();}catch(e){}
   gold=gold||{score:0,cotScore:0,sentScore:0,macroScore:0,usdScore:0,usdRaw:null,riskScore:0,riskRegime:null,yieldScore:0,dxyScore:0,fedScore:0,cot:null,macro:null,cotAsOf:null,retailPct:null,retailAsOf:null};
   const buy=gold.score>=0, ac=buy?"#2ed3a0":"#ff4d4d";
+  const goldPairRef={pair:"XAUUSD"};
   const cotHist=(typeof loadGoldCotHistory==="function")?loadGoldCotHistory():{};
   const cotDates=Object.keys(cotHist).sort();
   const scoreHist=(typeof loadGoldScoreHistory==="function")?loadGoldScoreHistory():{};
@@ -1460,8 +1461,18 @@ function GoldDetailClassic(){
   const retailL=retailHist.map(pt=>pt.l), retailS=retailHist.map(pt=>pt.s);
   const cotL=[],cotS=[]; cotDates.forEach(d=>{ const r=cotHist[d]; const l=(r&&+r.mMoneyLong)||0,s=(r&&+r.mMoneyShort)||0,tot=l+s; cotL.push(tot?Math.round(l/tot*100):50); cotS.push(tot?Math.round(s/tot*100):50); });
   const stat=(label,val,col)=>(<div style={{padding:"10px 14px",borderLeft:"1px solid #1b2a35",flex:1,minWidth:110}}><div style={{fontSize:10,color:"#4a6a88",marginBottom:5}}>{label}</div><div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:15,fontWeight:700,color:col||"#e6edf3"}}>{val}</div></div>);
+  // "Instituce" = čisté Managed Money COT skóre zlata (žádné base−quote
+  // odečítání jako u FX COTRetailPairPanel — zlato nemá symetrický COT
+  // protějšek na USD straně, stejný princip jako scoreGold() bere COT
+  // komponentu samostatně).
+  const iDiffG=Math.round(Math.max(-100,Math.min(100,(gold.cotScore||0)*12))), iSideG=iDiffG>8?"LONG":iDiffG<-8?"SHORT":"NEUTRAL";
+  const rLongG=lastRetail?lastRetail.l:50, rSideG=rLongG>=55?"LONG":(100-rLongG)>=55?"SHORT":"NEUTRAL";
+  const alignedG=(iSideG==="LONG"&&rSideG==="SHORT")||(iSideG==="SHORT"&&rSideG==="LONG");
+  const alignLabelG=alignedG?"HIGH":(rSideG==="NEUTRAL"||iSideG==="NEUTRAL"?"NEUTRAL":"CONFLICT");
+  const alignColorG=alignLabelG==="HIGH"?"#2ed3a0":alignLabelG==="CONFLICT"?"#ff4d4d":"#d29922";
   return (
-    <div className="pro-card" style={{padding:0,overflow:"hidden"}}>
+    <>
+    <div className="pro-card" style={{padding:0,overflow:"hidden",marginBottom:14}}>
       <div style={{padding:"18px 22px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -1516,6 +1527,50 @@ function GoldDetailClassic(){
         </>):<div style={{color:"#4a6a88",fontSize:11.5}}>Retail data se ještě nenačetla — objeví se po nejbližším refreshi (~30 min).</div>}
       </div>
     </div>
+    {/* COT vs Retail — stejná "Smart Money Alignment" logika jako
+        COTRetailPairPanel u FX párů výš, jen nad zlato-specifickými
+        localStorage zdroji (gold_cot_hist/gold_retail_hist). */}
+    <div className="pro-card" style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
+        <div>
+          <div className="pro-panel-title" style={{marginBottom:4}}>COT & Retail Positioning (XAUUSD)</div>
+          <div style={{display:"flex",gap:18,fontSize:12,flexWrap:"wrap"}}>
+            <span><b style={{color:"#5e7cfb"}}>■ Instituce (Managed Money)</b></span>
+            <span><b style={{color:"#bf4cff"}}>■ Retail (contrarian)</b></span>
+          </div>
+        </div>
+        <div style={{textAlign:"right",minWidth:130,borderLeft:"1px solid #243142",paddingLeft:14}}>
+          <div style={{fontSize:10,color:"#8b949e",letterSpacing:".08em"}}>SMART MONEY ALIGNMENT</div>
+          <div style={{fontSize:20,fontWeight:1000,color:alignColorG,marginTop:3}}>{alignLabelG}</div>
+          <div style={{height:1,background:"#243142",margin:"8px 0"}}/>
+          <div style={{fontSize:11,color:"#8b949e"}}>Instituce <b style={{color:iSideG==="LONG"?"#5e7cfb":iSideG==="SHORT"?"#ff4d4d":"#8b949e"}}>{iSideG}</b></div>
+          <div style={{fontSize:11,color:"#8b949e"}}>Retail <b style={{color:rSideG==="LONG"?"#bf4cff":rSideG==="SHORT"?"#ff4d4d":"#8b949e"}}>{rSideG}</b></div>
+        </div>
+      </div>
+      {cotL.length>=2?<DualLineChart a={cotL} b={retailL} colorA="#5e7cfb" colorB="#bf4cff" labelA="COT L%" labelB="Retail L%" unit="pct" height={200}/>:<div style={{color:"#4a6a88",fontSize:11.5}}>Historie se ještě sbírá.</div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:10}}>
+        <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
+          <div style={{fontSize:10,color:"#8b949e"}}>COT (Managed Money)</div>
+          <div style={{fontSize:20,fontWeight:900,color:iDiffG>=0?"#2ed3a0":"#ff4d4d"}}>{iDiffG>0?"+":""}{iDiffG}</div>
+        </div>
+        <div style={{background:"#0b111a",border:"1px solid #243142",borderRadius:10,padding:12}}>
+          <div style={{fontSize:10,color:"#8b949e"}}>Retail positioning</div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
+            <b style={{color:"#2ed3a0"}}>{rLongG}% LONG</b>
+            <b style={{color:"#ff4d4d"}}>{100-rLongG}% SHORT</b>
+          </div>
+        </div>
+        <div style={{background:alignColorG+"12",border:`1px solid ${alignColorG}44`,borderRadius:10,padding:12}}>
+          <div style={{fontSize:10,color:"#8b949e"}}>Interpretace</div>
+          <div style={{fontSize:13,lineHeight:1.5,color:"#c9d1d9",marginTop:5}}>
+            {alignLabelG==="HIGH"?"Smart money je proti davu — silná konfluence.":alignLabelG==="CONFLICT"?"Instituce a retail jdou stejným směrem — pozor na crowded trade.":"Retail není v extrému — neutrální filtr."}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style={{marginBottom:14}}><AIAnalysisStatusPanel pair={goldPairRef} aiAnalyses={aiAnalyses}/></div>
+    <NotesCard pair={goldPairRef} note={notes["XAUUSD"]} onSave={onNote}/>
+    </>
   );
 }
 
@@ -3511,7 +3566,7 @@ function App(){
               </div>
               <div style={{borderTop:"1px solid #263242",paddingTop:12,marginTop:10,display:"flex",justifyContent:"space-between",fontSize:12,color:"#8b949e"}}><span>Celkem párů: {top.length}</span><button className="pro-btn" onClick={()=>loadData(fhKey||"",cotData,sentData,true)}>Aktualizovat</button></div>
             </div>
-            <div>{selected&&selected.isGold&&<GoldDetailClassic/>}{selected&&!selected.isGold&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses} calData={calData} upcoming={upcoming} positions={positions} onPosition={updatePosition} notes={notes} onNote={updateNote}/>}</div>
+            <div>{selected&&selected.isGold&&<GoldDetailClassic notes={notes} onNote={updateNote} aiAnalyses={aiAnalyses}/>}{selected&&!selected.isGold&&<Detail pair={selected} scores={scores} forecast={forecasts[selected.pair]} cotMeta={cotMeta} cotData={cotData} sentData={sentData} aiAnalyses={aiAnalyses} calData={calData} upcoming={upcoming} positions={positions} onPosition={updatePosition} notes={notes} onNote={updateNote}/>}</div>
             <div>
               <DashboardCalendarPanel events={buildEventWatch(calData,upcoming)} pair={selected} onSetManual={setManualActual}/>
               <DailyBriefBar pairs={top} scores={scores} calData={calData} upcoming={upcoming} positions={positions} inline/>

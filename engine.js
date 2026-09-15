@@ -4029,6 +4029,37 @@ function getGoldCOTPercentile(){
   }catch(e){return null;}
 }
 
+// ── Zlato: RP+ER exhaustion signál ──────────────────────────────────────
+// Stejná matematika jako getRangePosition/getEfficiencyRatio/getBiasConfirmation
+// výš, ale zlato NENÍ v STANDARD_PAIRS (viz hlavička bloku) — _pxPair(pair) by
+// ho nenašlo a ty obecné funkce by čtou _PRICES.hist (FX měnové kurzy z
+// data/prices.json), což pro dolarovou cenu zlata nedává smysl. Zlato má
+// vlastní cenovou historii (loadGoldPrice().series — 130 denních closes z
+// data/gold_price.json, fetch-gold-price.js) — funkce níž počítají identický
+// vzorec, jen nad touhle sérií (žádné date pole, jen closes — dost pro RP/ER,
+// které jsou čistě z cen, ne z data).
+function getGoldRangePosition(days=10){
+  const gp=loadGoldPrice(); if(!gp||!Array.isArray(gp.series)||gp.series.length<2) return null;
+  const s=gp.series.slice(-days);
+  let mn=Infinity,mx=-Infinity,last=null;
+  s.forEach(px=>{ if(typeof px!=="number"||!isFinite(px)) return; if(px<mn)mn=px; if(px>mx)mx=px; last=px; });
+  if(last==null||!(mx>mn)) return null;
+  const rp=(last-mn)/(mx-mn);
+  const zone=rp<=0.33?"low":rp>=0.67?"high":"mid";
+  return {rp:parseFloat(rp.toFixed(3)),zone,min:mn,max:mx,days};
+}
+function getGoldEfficiencyRatio(days=10){
+  const gp=loadGoldPrice(); if(!gp||!Array.isArray(gp.series)||gp.series.length<days+1) return null;
+  const s=gp.series.slice(-(days+1));
+  const p0=s[0],p1=s[s.length-1];
+  if(typeof p0!=="number"||typeof p1!=="number") return null;
+  let sumAbs=0;
+  for(let i=1;i<s.length;i++){ if(typeof s[i-1]==="number"&&typeof s[i]==="number") sumAbs+=Math.abs(s[i]-s[i-1]); }
+  if(sumAbs===0) return null;
+  const er=Math.abs(p1-p0)/sumAbs;
+  return {er:parseFloat(er.toFixed(3)),days};
+}
+
 function buildGoldPair(goldScoreObj){
   const g=goldScoreObj||scoreGold();
   let usdScore=0;
