@@ -2372,35 +2372,69 @@ class FXApp extends React.Component{
           arr.map((e,i)=>h('div',{key:i,style:{fontSize:10.5,color:T.dim,paddingLeft:6}},ev2ccy(e)+' — '+e.event))))
         :h('div',{style:{fontSize:11,color:T.faint,lineHeight:1.5}},'Žádná kolize více HIGH událostí ve stejný den — tenhle týden.')));
   }
-  renderAIAnalysis(){ const self=this,h=this.h,T=this.tok,st=this.state; const R=st.aiResult; const p=this.pairObj(st.sel)||{};
-    const biasC=R&&R.bias==='BULLISH'?T.green:R&&R.bias==='BEARISH'?T.red:T.amber;
+  renderAIAnalysis(){ const self=this,h=this.h,st=this.state; const R=st.aiResult; const p=this.pairObj(st.sel)||{};
+    // Vizuální redesign (14.9.2026) — stejná "MC" paleta/jazyk jako u nové
+    // Sezónnosti (mockup Claude Cowork), tady schválně znovu lokálně (viz
+    // poznámka u Sezónnosti — MC je záměrně jen v konkrétní sekci, ne
+    // globálně). ŽÁDNÁ data/logika/handlery se neměnily — pořád stejný
+    // st.aiResult/aiImgUrl/aiBusy/aiErr/aiTf2/aiPrice a stejné
+    // self.runVision()/self.onAIFile(), jen jiný vzhled.
+    const MC={bg1:'#0a0e17',panel:'#0d1220',panel2:'#101828',border:'#1c2536',borderSoft:'#161d2c',
+      text0:'#eef2fa',text1:'#9aa7bd',text2:'#5d6a82',accent:'#22d3ee',accent2:'#0891b2',
+      green:'#22e6a8',red:'#ff5c7a',amber:'#f5a623'};
+    const mcCard=pad=>({background:'linear-gradient(180deg,'+MC.panel+','+MC.bg1+')',border:'1px solid '+MC.borderSoft,borderRadius:16,padding:pad||'18px 18px 16px',position:'relative',overflow:'hidden',boxShadow:'0 1px 0 rgba(255,255,255,.02) inset, 0 10px 30px -18px rgba(0,0,0,.6)'});
+    const mcGlow=h('div',{style:{position:'absolute',left:0,right:0,top:0,height:1,background:'linear-gradient(90deg,transparent,rgba(34,211,238,.35),transparent)'}});
+    const mcTitle=(t,sub,tag)=>h('div',{style:{marginBottom:14}},
+      h('div',{style:{fontSize:13.5,fontWeight:700,display:'flex',alignItems:'center',gap:8,color:MC.text0}},t,tag&&h('span',{style:{fontSize:9.5,padding:'2px 7px',borderRadius:5,background:'rgba(34,211,238,.12)',color:MC.accent,fontWeight:700,letterSpacing:'.3px',border:'1px solid rgba(34,211,238,.25)'}},tag)),
+      sub&&h('div',{style:{fontSize:11,color:MC.text1,marginTop:3}},sub));
+    const mono2=extra=>Object.assign({fontFamily:"'JetBrains Mono',monospace"},extra||{});
+    const biasC=R&&R.bias==='BULLISH'?MC.green:R&&R.bias==='BEARISH'?MC.red:MC.amber;
+    const biasLabel=R&&R.bias==='BULLISH'?'BULLISH ↑':R&&R.bias==='BEARISH'?'BEARISH ↓':(R&&R.bias)||'—';
     const tfs=['M15','H1','H4','D1']; const pairOpts=this.PAIRS.map(x=>x.pair);
-    const sec=(title,body)=>h('div',{style:{marginTop:14}},h('div',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:T.dim,marginBottom:7}},title),body);
-    const chip=(t,c)=>h('span',{style:{fontSize:11,fontWeight:700,color:c||T.text,background:(c||T.dim)+'1c',border:'1px solid '+(c||T.dim)+'40',borderRadius:6,padding:'3px 8px',marginRight:6,marginBottom:6,display:'inline-block'}},t);
+    const kl=R&&Array.isArray(R.key_levels)?R.key_levels.slice(0,6):[];
+    const sec=(icon,title,body)=>h('div',{style:{marginTop:16}},h('div',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.05em',textTransform:'uppercase',color:MC.text2,marginBottom:8,display:'flex',alignItems:'center',gap:6}},icon,title),body);
+    const chip=(t,c)=>h('span',{style:{fontSize:11,fontWeight:700,color:c||MC.text1,background:(c||MC.text2)+'1e',border:'1px solid '+(c||MC.text2)+'40',borderRadius:6,padding:'3px 9px',marginRight:6,marginBottom:6,display:'inline-block'}},t);
+    // Confidence gauge — stejný jazyk jako radiální gauge u Sezónnosti, ale
+    // tady vykresluje SKUTEČNÉ R.confidence z AI výsledku (nic vymyšleného).
+    const gaugeR=30,gaugeCirc=2*Math.PI*gaugeR;
+    const conf=R&&R.confidence!=null?Math.max(0,Math.min(100,R.confidence)):null;
+    const gaugeFrac=conf!=null?conf/100:0, gaugeCol=conf==null?MC.text2:conf>=66?MC.green:conf>=40?MC.amber:MC.red;
     return h('div',{style:{display:'grid',gridTemplateColumns:'320px minmax(0,1fr)',gap:16,alignItems:'start',maxWidth:1600}},
-      h('div',{style:{display:'flex',flexDirection:'column',gap:12}},
-        h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Screenshot grafu','ICT · SMC · Classical TA'),
-          h('label',{style:{display:'block',border:'1.5px dashed #2a3346',borderRadius:12,padding:'18px',textAlign:'center',cursor:'pointer',background:'#0a0d13'}},
-            st.aiImgUrl?h('img',{src:st.aiImgUrl,style:{maxWidth:'100%',borderRadius:8,maxHeight:200}}):h('div',{style:{fontSize:12.5,color:T.dim}},'📊 Klikni a nahraj screenshot grafu',h('div',{style:{fontSize:10.5,color:T.faint,marginTop:6}},'PNG / JPG / WebP')),
+      h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
+        h('div',{style:mcCard()},mcGlow,mcTitle('Screenshot grafu','ICT · SMC · Classical TA','VISION AI'),
+          h('label',{style:{display:'block',border:'1.5px dashed '+(st.aiImgUrl?MC.accent+'55':MC.border),borderRadius:12,padding:'18px',textAlign:'center',cursor:'pointer',background:MC.bg1}},
+            st.aiImgUrl?h('img',{src:st.aiImgUrl,style:{maxWidth:'100%',borderRadius:8,maxHeight:200,display:'block',margin:'0 auto'}}):h('div',{style:{fontSize:12.5,color:MC.text1}},'📊 Klikni a nahraj screenshot grafu',h('div',{style:{fontSize:10.5,color:MC.text2,marginTop:6}},'PNG / JPG / WebP')),
             h('input',{type:'file',accept:'image/*',style:{display:'none'},onChange:e=>{if(e.target.files[0])self.onAIFile(e.target.files[0]);e.target.value='';}})),
-          h('div',{style:{display:'flex',gap:8,marginTop:11}},
-            h('select',{value:p.pair||pairOpts[0],onChange:e=>self.setState({sel:e.target.value}),style:{flex:1,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'8px 10px',fontSize:12,cursor:'pointer',fontFamily:'inherit'}},pairOpts.map(x=>h('option',{key:x,value:x},x))),
-            h('select',{value:st.aiTf2,onChange:e=>self.setState({aiTf2:e.target.value}),style:{width:84,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'8px 10px',fontSize:12,cursor:'pointer',fontFamily:'inherit'}},tfs.map(x=>h('option',{key:x,value:x},x)))),
-          h('input',{type:'text',inputMode:'decimal',value:st.aiPrice,placeholder:'Aktuální cena (pro přesné úrovně)',onChange:e=>self.setState({aiPrice:e.target.value}),style:{width:'100%',boxSizing:'border-box',marginTop:8,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'8px 10px',fontSize:12,fontFamily:'inherit'}}),
-          h('button',{type:'button',disabled:st.aiBusy,onClick:()=>self.runVision(),style:{width:'100%',marginTop:11,border:'1px solid '+T.accent,background:st.aiBusy?'#0c0f16':'linear-gradient(180deg,#5e7cfb,#4c63d9)',color:st.aiBusy?T.faint:'#fff',borderRadius:10,padding:'11px',fontFamily:'inherit',fontSize:13,fontWeight:700,cursor:st.aiBusy?'default':'pointer'}},st.aiBusy?'⏳ Analyzuji…':'✦ Analyzovat graf'),
-          st.aiErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:10,lineHeight:1.5}},st.aiErr),
-          h('div',{style:{fontSize:10,color:T.faint,marginTop:10,lineHeight:1.5}},'Zadej aktuální cenu výš = přesné úrovně. Free vision modely čtou ceny nepřesně — pro lepší rozbor nastav v ⚙ silnější (placený) vision model, např. GPT-4o / Gemini Flash. Klíč přidej v Nastavení ⚙.')),
-        h('div',{style:self.card({padding:'14px 16px'})},h('div',{style:{fontSize:10.5,color:T.dim,lineHeight:1.6}},'Tip: foto grafu jde nahrát i v ',h('b',{style:{color:T.accent}},'mobilní appce'),' (záložka 🤖 AI), kde máš rovnou kameru.'))),
-      h('div',{style:self.card({padding:'20px 22px',minHeight:300})},
-        !R&&!st.aiBusy&&h('div',{style:{fontSize:13,color:T.faint,textAlign:'center',padding:'60px 0'}},'Nahraj screenshot a klikni Analyzovat — výsledek (bias, struktura, úrovně, entry setup) se zobrazí tady.'),
-        st.aiBusy&&h('div',{style:{fontSize:13,color:T.dim,textAlign:'center',padding:'60px 0'}},'⏳ AI čte graf…'),
+          h('div',{style:{display:'flex',gap:8,marginTop:12}},
+            h('select',{value:p.pair||pairOpts[0],onChange:e=>self.setState({sel:e.target.value}),style:{flex:1,background:MC.bg1,border:'1px solid '+MC.border,borderRadius:9,color:MC.text0,padding:'8px 10px',fontSize:12,cursor:'pointer',fontFamily:'inherit'}},pairOpts.map(x=>h('option',{key:x,value:x},x))),
+            h('select',{value:st.aiTf2,onChange:e=>self.setState({aiTf2:e.target.value}),style:{width:84,background:MC.bg1,border:'1px solid '+MC.border,borderRadius:9,color:MC.text0,padding:'8px 10px',fontSize:12,cursor:'pointer',fontFamily:'inherit'}},tfs.map(x=>h('option',{key:x,value:x},x)))),
+          h('input',{type:'text',inputMode:'decimal',value:st.aiPrice,placeholder:'Aktuální cena (pro přesné úrovně)',onChange:e=>self.setState({aiPrice:e.target.value}),style:{width:'100%',boxSizing:'border-box',marginTop:8,background:MC.bg1,border:'1px solid '+MC.border,borderRadius:9,color:MC.text0,padding:'8px 10px',fontSize:12,fontFamily:'inherit'}}),
+          h('button',{type:'button',disabled:st.aiBusy,onClick:()=>self.runVision(),style:{width:'100%',marginTop:12,border:'1px solid '+MC.accent,background:st.aiBusy?MC.panel2:'linear-gradient(180deg,'+MC.accent+','+MC.accent2+')',color:st.aiBusy?MC.text2:'#04151a',borderRadius:10,padding:'11px',fontFamily:'inherit',fontSize:13,fontWeight:800,cursor:st.aiBusy?'default':'pointer',boxShadow:st.aiBusy?'none':'0 8px 20px -8px rgba(34,211,238,.5)'}},st.aiBusy?'⏳ Analyzuji…':'✦ Analyzovat graf'),
+          st.aiErr&&h('div',{style:{fontSize:11.5,color:MC.red,marginTop:10,lineHeight:1.5,background:'rgba(255,92,122,.08)',border:'1px solid rgba(255,92,122,.25)',borderRadius:8,padding:'8px 10px'}},st.aiErr),
+          h('div',{style:{fontSize:10,color:MC.text2,marginTop:10,lineHeight:1.5}},'Zadej aktuální cenu výš = přesné úrovně. Free vision modely čtou ceny nepřesně — pro lepší rozbor nastav v ⚙ silnější (placený) vision model, např. GPT-4o / Gemini Flash. Klíč přidej v Nastavení ⚙.')),
+        h('div',{style:mcCard('14px 16px')},h('div',{style:{fontSize:10.5,color:MC.text1,lineHeight:1.6}},'Tip: foto grafu jde nahrát i v ',h('b',{style:{color:MC.accent}},'mobilní appce'),' (záložka 🤖 AI), kde máš rovnou kameru.'))),
+      h('div',{style:Object.assign(mcCard('22px 24px'),{minHeight:340})},mcGlow,
+        !R&&!st.aiBusy&&h('div',{style:{fontSize:13,color:MC.text2,textAlign:'center',padding:'70px 20px'}},h('div',{style:{fontSize:34,marginBottom:14,opacity:.55}},'🧭'),'Nahraj screenshot a klikni Analyzovat — výsledek (bias, struktura, úrovně, entry setup) se zobrazí tady.'),
+        st.aiBusy&&h('div',{style:{fontSize:13,color:MC.text1,textAlign:'center',padding:'70px 20px'}},h('div',{style:{fontSize:34,marginBottom:14}},'⏳'),'AI čte graf…'),
         R&&h('div',null,
-          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}},h('div',{style:{display:'flex',alignItems:'center',gap:10}},h('span',{style:{fontSize:14,fontWeight:800,color:biasC,background:biasC+'1c',border:'1px solid '+biasC+'44',borderRadius:8,padding:'5px 12px'}},R.bias||'—'),h('span',{style:self.mono({fontSize:13,fontWeight:700})},(p.pair||'')+' · '+(R.tf||st.aiTf2))),R.confidence!=null&&h('span',{style:self.mono({fontSize:12,color:T.dim})},'Confidence '+R.confidence+'%')),
-          R.market_structure&&sec('Struktura trhu',h('div',null,chip('Trend: '+(R.market_structure.trend||'?'),T.accent),R.market_structure.notes&&h('div',{style:{fontSize:12.5,color:T.dim,marginTop:6,lineHeight:1.55}},R.market_structure.notes))),
-          Array.isArray(R.key_levels)&&R.key_levels.length&&sec('Klíčové úrovně',h('div',null,R.key_levels.slice(0,6).map((l,i)=>h('div',{key:i,style:{display:'flex',gap:10,fontSize:12.5,color:T.text,padding:'5px 0'}},h('b',{style:self.mono({color:T.amber,minWidth:90})},l.zone||l.price||''),h('span',{style:{color:T.dim}},(l.type||'')+(l.strength?(' · '+l.strength):'')))))),
-          R.entry_setup&&sec('Entry setup',h('div',{style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:11,padding:'13px 15px'}},h('div',{style:{marginBottom:8}},chip('Směr: '+(R.entry_setup.direction||'?'),R.entry_setup.direction==='LONG'?T.green:R.entry_setup.direction==='SHORT'?T.red:T.amber),R.entry_setup.rr_estimate&&chip('RR '+R.entry_setup.rr_estimate,T.accent)),h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(90px,1fr))',gap:8,fontSize:12}},[['Vstup',R.entry_setup.entry_zone],['SL',R.entry_setup.stop_loss],['TP1',R.entry_setup.tp1],['TP2',R.entry_setup.tp2]].map(([l,v])=>v?h('div',{key:l,style:{background:'#0c0f16',borderRadius:8,padding:'8px 10px'}},h('div',{style:{fontSize:9.5,color:T.faint}},l),h('div',{style:self.mono({fontSize:12.5,fontWeight:700,color:T.text})},v)):null).filter(Boolean)),R.entry_setup.entry_trigger&&h('div',{style:{fontSize:12,color:T.dim,marginTop:9}},'Trigger: ',R.entry_setup.entry_trigger),R.entry_setup.invalidation&&h('div',{style:{fontSize:12,color:T.red,marginTop:5}},'Invalidace: ',R.entry_setup.invalidation))),
-          Array.isArray(R.risk_warnings)&&R.risk_warnings.length&&sec('Rizika',h('div',null,R.risk_warnings.map((w,i)=>h('div',{key:i,style:{fontSize:12.5,color:T.amber,padding:'3px 0'}},'⚠ '+w)))),
-          R.summary&&sec('Shrnutí',h('div',{style:{fontSize:13,color:T.text,lineHeight:1.6}},R.summary)))));
+          h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap'}},
+            h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+              h('span',{style:{fontSize:13,fontWeight:800,letterSpacing:'.02em',color:biasC,background:biasC+'1c',border:'1px solid '+biasC+'44',borderRadius:8,padding:'6px 13px'}},biasLabel),
+              h('span',{style:mono2({fontSize:13,fontWeight:700,color:MC.text0})},(p.pair||'')+' · '+(R.tf||st.aiTf2))),
+            conf!=null&&h('div',{style:{display:'flex',alignItems:'center',gap:8}},
+              h('svg',{width:34,height:34,viewBox:'0 0 74 74'},
+                h('circle',{cx:37,cy:37,r:gaugeR,fill:'none',stroke:MC.panel2,strokeWidth:7}),
+                h('circle',{cx:37,cy:37,r:gaugeR,fill:'none',stroke:gaugeCol,strokeWidth:7,strokeLinecap:'round',strokeDasharray:gaugeCirc.toFixed(1),strokeDashoffset:(gaugeCirc*(1-gaugeFrac)).toFixed(1),transform:'rotate(-90 37 37)'})),
+              h('div',null,h('div',{style:mono2({fontSize:14,fontWeight:800,color:MC.text0,lineHeight:1})},conf+'%'),h('div',{style:{fontSize:9.5,color:MC.text2}},'confidence')))),
+          R.market_structure&&sec('📐','Struktura trhu',h('div',null,chip('Trend: '+(R.market_structure.trend||'?'),MC.accent),R.market_structure.notes&&h('div',{style:{fontSize:12.5,color:MC.text1,marginTop:8,lineHeight:1.55}},R.market_structure.notes))),
+          kl.length>0&&sec('📍','Klíčové úrovně',h('div',null,kl.map((l,i)=>h('div',{key:i,style:{display:'flex',gap:10,fontSize:12.5,color:MC.text0,padding:'7px 0',borderBottom:i<kl.length-1?'1px solid '+MC.borderSoft:'none'}},h('b',{style:mono2({color:MC.amber,minWidth:90})},l.zone||l.price||''),h('span',{style:{color:MC.text1}},(l.type||'')+(l.strength?(' · '+l.strength):'')))))),
+          R.entry_setup&&sec('🎯','Entry setup',h('div',{style:{background:MC.bg1,border:'1px solid '+MC.borderSoft,borderRadius:11,padding:'14px 16px'}},
+            h('div',{style:{marginBottom:10}},chip('Směr: '+(R.entry_setup.direction||'?'),R.entry_setup.direction==='LONG'?MC.green:R.entry_setup.direction==='SHORT'?MC.red:MC.amber),R.entry_setup.rr_estimate&&chip('RR '+R.entry_setup.rr_estimate,MC.accent)),
+            h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(90px,1fr))',gap:8,fontSize:12}},[['Vstup',R.entry_setup.entry_zone],['SL',R.entry_setup.stop_loss],['TP1',R.entry_setup.tp1],['TP2',R.entry_setup.tp2]].map(([l,v])=>v?h('div',{key:l,style:{background:MC.panel2,border:'1px solid '+MC.borderSoft,borderRadius:8,padding:'8px 10px'}},h('div',{style:{fontSize:9.5,color:MC.text2}},l),h('div',{style:mono2({fontSize:12.5,fontWeight:700,color:MC.text0})},v)):null).filter(Boolean)),
+            R.entry_setup.entry_trigger&&h('div',{style:{fontSize:12,color:MC.text1,marginTop:10}},'Trigger: ',R.entry_setup.entry_trigger),
+            R.entry_setup.invalidation&&h('div',{style:{fontSize:12,color:MC.red,marginTop:6}},'Invalidace: ',R.entry_setup.invalidation))),
+          Array.isArray(R.risk_warnings)&&R.risk_warnings.length&&sec('⚠','Rizika',h('div',null,R.risk_warnings.map((w,i)=>h('div',{key:i,style:{fontSize:12.5,color:MC.amber,padding:'3px 0'}},'⚠ '+w)))),
+          R.summary&&sec('📝','Shrnutí',h('div',{style:{fontSize:13,color:MC.text0,lineHeight:1.6}},R.summary)))));
   }
   // **tučné** z markdown odpovědi modelu — bez toho se hvězdičky zobrazovaly doslova.
   // \n se renderuje sám (bublina má whiteSpace:'pre-wrap'), takže tu stačí jen bold.
