@@ -17,16 +17,24 @@ name: Data Refresh (kalendář + VIX + ropa + retail + ceny + AI radar)
 # workflow. timeout-minutes jako pojistka proti zaseknutému fetchi, co by
 # jinak zdržel zbytek běhu (běžná doba jednoho kroku je řádově desítky vteřin).
 #
-# 16.9.2026 — retail.yml (*/30) a prices.yml (hodinově) sloučeny sem STEJNÝM
-# principem (viz "Časové okno" krok níž) — přesně tenhle typ problému se za
-# 15.-16.9.2026 zopakoval 3× (retail.yml i tenhle workflow se ve stejnou
-# chvíli na hodiny zasekly, cot.yml mělo běh 4h16min pozdě). "Časové okno"
-# krok drží PŮVODNÍ kadenci (retail ob jeden běh ~30 min, ceny jednou za
-# hodinu) i přes to, že celý workflow teď jede po 15 minutách — u retailu
-# kvůli Myfxbooku (appka má z dřívějška vestavěný cirkulární jistič proti
-# moc častému loginování, viz PR #220) nemá smysl zkoušet přihlásit se 4×
-# častěji než dřív. Oba dřívější workflow soubory zůstávají (jen bez cronu,
-# workflow_dispatch) pro ruční/debug spuštění.
+# 16.9.2026 — retail.yml (*/30) a prices.yml (hodinově) sloučeny sem stejným
+# principem — přesně tenhle typ problému se za 15.-16.9.2026 zopakoval 3×
+# (retail.yml i tenhle workflow se ve stejnou chvíli na hodiny zasekly,
+# cot.yml mělo běh 4h16min pozdě). Oba dřívější workflow soubory zůstávají
+# (jen bez cronu, workflow_dispatch) pro ruční/debug spuštění.
+#
+# PŮVODNĚ tu bylo ještě "časové okno" (spočítat z aktuální minuty, jestli má
+# retail/ceny v tomhle běhu reálně naskočit, ať appka Myfxbook nedotazuje 4×
+# častěji než dřív) — ZRUŠENO SAMÝ DEN, protože se ukázalo jako škodlivé.
+# Předpokládalo, že tenhle cron reálně naskakuje +- na čas (:00/:15/:30/:45).
+# Živě naměřené reálné časy naskočení (16.9.2026): 11:57, 06:28, 01:25,
+# 23:03, 20:24, 17:29 — prakticky nahodilé minuty, ne ta pravidelná mřížka,
+# co okno předpokládalo. Výsledek: okno vycházelo skoro pokaždé "přeskočit",
+# takže retail sentiment neaktualizovaný celé hodiny, HŮŘ než před sloučením.
+# Appka teď fetchuje retail/ceny při KAŽDÉM běhu bez podmínky — bezpečné,
+# protože tenhle cron sám o sobě běhá nespolehlivě/řídce (viz výš), takže
+# "4× častěji" reálně nehrozí, a fetch-retail.js má navíc svůj vlastní
+# cirkulární jistič proti přílišnému loginování (PR #220).
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -48,25 +56,12 @@ jobs:
         with:
           node-version: "20"
 
-      # Kolik uplynulo od začátku aktuálního 15minutového okna určuje, jestli
-      # se v TOMHLE běhu má reálně fetchnout retail (run30, dřív cron */30 —
-      # okna :00-:14 a :30-:44) a/nebo ceny (run60, dřív hodinově — jen okno
-      # :00-:14). date -u +%-M (bez úvodní nuly) kvůli bash aritmetice — "08"
-      # by se jinak parsovalo jako neplatné osmičkové číslo.
-      - name: "Časové okno (kadence pro retail/ceny)"
-        id: window
-        run: |
-          MIN=$(date -u +%-M)
-          if [ $((MIN % 30)) -lt 15 ]; then echo "run30=1" >> "$GITHUB_OUTPUT"; else echo "run30=0" >> "$GITHUB_OUTPUT"; fi
-          if [ "$MIN" -lt 15 ]; then echo "run60=1" >> "$GITHUB_OUTPUT"; else echo "run60=0" >> "$GITHUB_OUTPUT"; fi
-
       - name: "Stáhnout FX ceny (dřív prices.yml, hodinově)"
-        if: ${{ steps.window.outputs.run60 == '1' }}
         timeout-minutes: 5
         continue-on-error: true
         run: node scripts/fetch-prices.js
       - name: "Commit: FX ceny při změně"
-        if: ${{ always() && steps.window.outputs.run60 == '1' }}
+        if: always()
         run: |
           git config user.name "prices-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -83,8 +78,7 @@ jobs:
             echo "FX ceny beze změny."
           fi
 
-      - name: "Stáhnout retail sentiment (dřív retail.yml, ob jeden běh ~30 min)"
-        if: ${{ steps.window.outputs.run30 == '1' }}
+      - name: "Stáhnout retail sentiment (dřív retail.yml)"
         timeout-minutes: 5
         continue-on-error: true
         env:
@@ -92,7 +86,7 @@ jobs:
           MYFXBOOK_PASSWORD: ${{ secrets.MYFXBOOK_PASSWORD }}
         run: node scripts/fetch-retail.js
       - name: "Commit: retail sentiment při změně"
-        if: ${{ always() && steps.window.outputs.run30 == '1' }}
+        if: always()
         run: |
           git config user.name "retail-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -110,12 +104,11 @@ jobs:
           fi
 
       - name: "Stáhnout retail: US100 (dřív retail.yml)"
-        if: ${{ steps.window.outputs.run30 == '1' }}
         timeout-minutes: 5
         continue-on-error: true
         run: node scripts/fetch-us100-retail.js
       - name: "Commit: US100 retail při změně"
-        if: ${{ always() && steps.window.outputs.run30 == '1' }}
+        if: always()
         continue-on-error: true
         run: |
           git config user.name "retail-bot"
