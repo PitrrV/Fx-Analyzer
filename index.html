@@ -2181,7 +2181,7 @@ class FXApp extends React.Component{
             h('div',{style:{display:'flex',flexDirection:'column',gap:6}},rows.map(r=>{const pos=r.score>=0,col=pos?T.green:T.red,w=Math.abs(r.score)/10*100;return h('div',{key:r.c,style:{display:'grid',gridTemplateColumns:'40px 1fr 42px',alignItems:'center',gap:9}},h('span',{style:self.mono({fontSize:11.5,fontWeight:700})},r.c),h('div',{style:{height:8,background:'#0a0d13',border:'1px solid #161b27',borderRadius:5,overflow:'hidden'}},h('div',{style:{height:'100%',width:w+'%',background:col,opacity:.9,borderRadius:5}})),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:col,textAlign:'right'})},self.sgn(r.score)));})))); })());
   }
   renderStrength(){ const self=this,h=this.h,T=this.tok;
-    return h('div',{style:{display:'flex',flexDirection:'column',gap:16,maxWidth:1600}},
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
       h('div',{className:'fx-strength-grid',style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) 340px',gap:16,alignItems:'start'}},
         h('div',{style:{display:'flex',flexDirection:'column',gap:16,minWidth:0}},
           h('div',{style:self.card({padding:'20px 22px'})},self.ptitle('Ranking síly měn','Skóre = fundamenty + CB policy + real yield + COT + retail + sezónnost'),h('div',{style:{marginTop:6}},this.StrengthChart())),
@@ -2205,7 +2205,7 @@ class FXApp extends React.Component{
     let cotMeta={},histN=0; try{cotMeta=loadCOTMeta()||{};}catch(e){} try{histN=Object.keys(loadCOTHistory()||{}).length;}catch(e){}
     const cotAge=cotMeta&&cotMeta.asOf?Math.round((Date.now()-new Date(cotMeta.asOf).getTime())/86400000):null;
     const dbtn=(label,busy,on,col)=>h('button',{type:'button',disabled:busy,onClick:on,style:{border:'1px solid '+col,background:busy?'#0c0f16':col+'1c',color:busy?T.faint:col,borderRadius:10,padding:'9px 15px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,cursor:busy?'default':'pointer'}},label);
-    return h('div',{style:{display:'flex',flexDirection:'column',gap:16,maxWidth:1600}},
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
       h('div',{style:self.card({padding:'18px 22px'})},h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap'}},
         h('div',null,h('div',{style:{fontSize:13.5,fontWeight:800}},'Data COT & Retail'),h('div',{style:self.mono({fontSize:10.5,color:T.faint,marginTop:4})},'COT '+(cotMeta.source||'—')+(cotAge!=null?(' · '+cotAge+' d staré'):'')+' · historie '+histN+' týdnů · 18měs+ zachováno')),
         h('div',{style:{display:'flex',gap:9,flexWrap:'wrap'}},dbtn(st.cotBusy?'⏳ COT…':'🔄 Stáhnout COT',st.cotBusy,()=>self.fetchCOTNow(),T.accent),dbtn(st.retailBusy?'⏳ Retail…':'🔄 Retail sentiment',st.retailBusy,()=>self.fetchRetailNow(),T.violet))),
@@ -2230,7 +2230,7 @@ class FXApp extends React.Component{
     const inp={background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 11px',fontSize:12.5,fontFamily:"'Manrope',sans-serif",outline:'none',width:'100%'};
     const lab=t=>h('div',{style:{fontSize:10,color:T.faint,marginBottom:4}},t);
     const pairOpts=this.PAIRS.map(p=>p.pair); const curPair=f.pair||pairOpts[0]||'EURUSD';
-    return h('div',{style:{display:'flex',flexDirection:'column',gap:16,maxWidth:1600}},h('div',{style:{display:'flex',gap:14,flexWrap:'wrap'}},kpi('Win Rate',j.wr+'%',T.green),kpi('Profit Factor',(j.pf||0).toFixed(1),T.green),kpi('Obchodů',j.trades),kpi('Průměr R',self.sgn(j.avgR,2),T.green),kpi('Nejlepší R','+'+(j.bestR||0).toFixed(1),T.accent)),
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},h('div',{style:{display:'flex',gap:14,flexWrap:'wrap'}},kpi('Win Rate',j.wr+'%',T.green),kpi('Profit Factor',(j.pf||0).toFixed(1),T.green),kpi('Obchodů',j.trades),kpi('Průměr R',self.sgn(j.avgR,2),T.green),kpi('Nejlepší R','+'+(j.bestR||0).toFixed(1),T.accent)),
       h('div',{style:self.card({padding:'18px 20px'})},
         h('div',{onClick:()=>self.setState(s=>({jImportOpen:!s.jImportOpen})),style:{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',marginBottom:st.jImportOpen?14:0}},
           h('div',null,h('div',{style:{fontSize:13.5,fontWeight:800,letterSpacing:'-.01em'}},'Import obchodů (JSON)'),h('div',{style:self.mono({fontSize:10.5,color:T.faint,marginTop:3,letterSpacing:'.02em'})},'Zpětné doplnění z brokerského reportu — bez duplicit')),
@@ -2333,7 +2333,7 @@ class FXApp extends React.Component{
         list.length?list.map((e,i)=>{const dt=new Date(parseEventTime(e.time));const dlabel=dt.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric',weekday:'long'});const dayHdr=dlabel!==lastDay;lastDay=dlabel;const s=surprise(e);
           return h('div',{key:i},dayHdr&&h('div',{style:self.mono({fontSize:10.5,fontWeight:700,color:T.dim,letterSpacing:'.04em',padding:'13px 0 7px',marginTop:i?4:0})},dlabel),h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,alignItems:'center',padding:'10px 0',boxShadow:'0 1px 0 #14182333'}},h('span',{style:self.mono({fontSize:11.5,color:T.dim})},dt.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})),h('span',{style:self.mono({fontSize:12,fontWeight:700})},ev2ccy(e)),h('span',{style:{fontSize:12.5,color:T.text}},e.event),h('span',{style:{fontSize:9,fontWeight:700,color:ic(impUp(e.impact)),background:ic(impUp(e.impact))+'1c',border:'1px solid '+ic(impUp(e.impact))+'40',borderRadius:5,padding:'3px 7px',justifySelf:'start'}},impUp(e.impact)),h('span',{title:'Klikni pro ruční doplnění Actual',onClick:()=>self.setManualActual(e),style:self.mono({fontSize:12,fontWeight:700,color:e._manual?T.amber:(e.actual?T.text:T.faint),textAlign:'right',cursor:'pointer',textDecoration:'underline dotted'})},(e._manual?'✎ ':'')+(e.actual||'—')),h('span',{style:self.mono({fontSize:12,color:T.dim,textAlign:'right'})},(e.estimate||e.forecast)||'—'),h('span',{style:self.mono({fontSize:12,color:T.faint,textAlign:'right'})},(e.prev||e.previous)||'—'),h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:sc(s),textAlign:'right'})},s?(s==='beat'?'BEAT ▲':s==='miss'?'MISS ▼':'INLINE'):'PENDING')));
         }):h('div',{style:{fontSize:12,color:T.faint,padding:'20px 0'}},'Žádné události neodpovídají filtru.')));
-    return h('div',{style:{maxWidth:1920}},this.renderMacroSnapshot(),h('div',{style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) 300px',gap:16,alignItems:'start'}},calCard,self.renderCalendarSidebar(full)));
+    return h('div',null,this.renderMacroSnapshot(),h('div',{style:{display:'grid',gridTemplateColumns:'minmax(0,1fr) 300px',gap:16,alignItems:'start'}},calCard,self.renderCalendarSidebar(full)));
   }
   // Pravý panel kalendáře — "Tento týden" (HIGH/MEDIUM/LOW), nejvíc zatížené
   // měny a varování na kolizi víc HIGH událostí ve stejný den. Nezávislé na
@@ -2377,7 +2377,7 @@ class FXApp extends React.Component{
     const tfs=['M15','H1','H4','D1']; const pairOpts=this.PAIRS.map(x=>x.pair);
     const sec=(title,body)=>h('div',{style:{marginTop:14}},h('div',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:T.dim,marginBottom:7}},title),body);
     const chip=(t,c)=>h('span',{style:{fontSize:11,fontWeight:700,color:c||T.text,background:(c||T.dim)+'1c',border:'1px solid '+(c||T.dim)+'40',borderRadius:6,padding:'3px 8px',marginRight:6,marginBottom:6,display:'inline-block'}},t);
-    return h('div',{style:{display:'grid',gridTemplateColumns:'320px minmax(0,1fr)',gap:16,alignItems:'start',maxWidth:1600}},
+    return h('div',{style:{display:'grid',gridTemplateColumns:'320px minmax(0,1fr)',gap:16,alignItems:'start'}},
       h('div',{style:{display:'flex',flexDirection:'column',gap:12}},
         h('div',{style:self.card({padding:'16px 18px'})},self.ptitle('Screenshot grafu','ICT · SMC · Classical TA'),
           h('label',{style:{display:'block',border:'1.5px dashed #2a3346',borderRadius:12,padding:'18px',textAlign:'center',cursor:'pointer',background:'#0a0d13'}},
@@ -2439,7 +2439,7 @@ class FXApp extends React.Component{
         h('button',{type:'button',onClick:()=>self.clearCoachThread(active.id),title:'Vymazat historii tohohle chatu (jméno a pár zůstanou)',style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:9,padding:'8px 11px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer'}},'🗑 Vymazat')),
       h('div',{ref:self.setCoachScrollEl,style:{flex:1,overflow:'auto',padding:'20px',display:'flex',flexDirection:'column',gap:14}},active.msgs.map((m,i)=>{const me=m.role==='user';return h('div',{key:i,style:{display:'flex',justifyContent:me?'flex-end':'flex-start'}},h('div',{style:{maxWidth:me?'76%':780,display:'flex',gap:10,flexDirection:me?'row-reverse':'row',alignItems:'flex-end'}},!me&&h('div',{style:self.mono({width:28,height:28,borderRadius:9,background:'#10131c',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:10,flex:'none',color:T.dim})},'AT'),h('div',{style:{fontSize:13,lineHeight:1.55,padding:'11px 14px',borderRadius:me?'14px 14px 4px 14px':'14px 14px 14px 4px',whiteSpace:'pre-wrap',color:me?'#eaf0ff':T.text,background:me?'linear-gradient(180deg,rgba(94,124,251,.22),rgba(94,124,251,.12))':'linear-gradient(180deg,#0f131c,#0b0e14)',border:'1px solid '+(me?'rgba(94,124,251,.32)':'#1b2130')}},me?m.text:self.formatCoachMsg(m.text))));}),active.busy&&h('div',{style:{fontSize:12,color:T.faint,paddingLeft:38}},'⏳ Coach přemýšlí…')),
       h('div',{style:{padding:'12px 16px',borderTop:'1px solid #1b2130'}},h('div',{style:{display:'flex',gap:7,flexWrap:'wrap',marginBottom:11}},chips.map(c=>h('button',{key:c,type:'button',onClick:()=>send(c),style:{fontSize:11,color:T.dim,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:999,padding:'6px 12px',cursor:'pointer',fontFamily:'inherit'}},c))),h('div',{style:{display:'flex',gap:9}},h('input',{value:active.input,onChange:e=>self.setThreadInput(active.id,e.target.value),onKeyDown:e=>{if(e.key==='Enter')send(null);},placeholder:'Zeptej se na setup, riziko, korelace…',style:{flex:1,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:11,color:T.text,padding:'12px 14px',fontSize:13,fontFamily:"'Manrope',sans-serif",outline:'none'}}),h('button',{type:'button',disabled:active.busy,onClick:()=>send(null),style:{border:'none',borderRadius:11,padding:'0 18px',fontFamily:'inherit',fontSize:13,fontWeight:800,color:'#06140f',cursor:active.busy?'default':'pointer',opacity:active.busy?.6:1,background:'linear-gradient(180deg,#4be0a8,'+T.green+')'}},'Odeslat'))));
-    return h('div',{style:{maxWidth:1980,margin:'0 auto',display:'flex',gap:16,alignItems:'flex-start'}},self.renderCoachThreadRail(threads,active.id),chatCard,self.renderCoachContextPanel(active));
+    return h('div',{style:{display:'flex',gap:16,alignItems:'flex-start'}},self.renderCoachThreadRail(threads,active.id),chatCard,self.renderCoachContextPanel(active));
   }
   // Panel "Co Coach právě vidí" — stejný kontext, jaký se posílá do promptu
   // (viz buildCoachContext), jen zhuštěný na pár řádků, ať je vidět, na jak
@@ -2646,7 +2646,7 @@ class FXApp extends React.Component{
           h('div',{style:{display:'grid',gridTemplateColumns:'62px 1fr 46px 60px 78px',gap:8,padding:'0 11px 6px',fontSize:9.5,fontWeight:800,color:T.faint,letterSpacing:'.04em'}},h('span',null,'PÁR'),h('span',null,'SMĚR'),h('span',{style:{textAlign:'right'}},'ČISTOTA'),h('span',{style:{textAlign:'right'}},'POHYB'),h('span',{style:{textAlign:'right'}},'OBDOBÍ')),
           rn.map(radarRow)));
     })();
-    return h('div',{style:{display:'flex',flexDirection:'column',gap:16,maxWidth:1600}},
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
       fullYearCard,
       h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(420px,1fr))',gap:16,alignItems:'start'}},
       h('div',{style:{display:'flex',flexDirection:'column',gap:16}},
