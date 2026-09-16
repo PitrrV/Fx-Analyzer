@@ -2,17 +2,18 @@ name: COT History
 
 on:
   schedule:
-    - cron: "0 22 * * 5"   # pátek 22:00 UTC — po pátečním CFTC releasu (~15:30 ET)
-    - cron: "0 12 * * 6"   # + sobota dopoledne (jistota, kdyby release byl pozdě)
-    # Když pátek padne na americký svátek (např. 4.7.), CFTC report o týden
-    # nezpozdí, ale o pár dní — vyjde v pondělí/úterý. Bez těchhle běhů by na
-    # to appka čekala celý další týden do příštího pátku (viz reálný nález:
-    # COT zaseklé na 23.6., zatímco 30.6. na CFTC už dávno bylo). fetch-cot.js
-    # je idempotentní (commitne jen při změně), takže tyhle běhy navíc nic nekazí.
-    - cron: "0 12 * * 0"   # neděle dopoledne
-    - cron: "0 12 * * 1"   # pondělí dopoledne
-    - cron: "0 22 * * 1"   # pondělí večer
-    - cron: "0 12 * * 2"   # úterý dopoledne — poslední záchranná síť
+    # Dřív 6 samostatných cron řádků (pá/so/ne/po×2/út), aby appka chytila
+    # CFTC report i když pátek padne na svátek a report vyjde o pár dní
+    # později (reálný nález: COT zaseklé na 23.6., zatímco 30.6. na CFTC už
+    # dávno bylo). GitHub ale registruje KAŽDÝ cron řádek zvlášť, i když jde
+    # o jeden workflow — 6 registrací na jeden účet dělalo (spolu s dalšími
+    # cron workflow appky) scheduled spouštění nespolehlivé (živě potvrzeno
+    # 15.-16.9.2026: retail.yml i data-refresh.yml se na hodiny zasekly,
+    # cot.yml mělo běh 4h16min pozdě). fetch-cot.js je idempotentní (commitne
+    # jen při reálné změně), takže denní kontrola je STEJNĚ bezpečná jako
+    # dřívější patchwork dnů — jen o 5 registrací míň a navíc pokryje
+    # doslova každý den, ne jen předem vytipované.
+    - cron: "30 13 * * *"   # jednou denně, mimo přesnou hodinu (viz doporučení GitHubu)
   workflow_dispatch:        # ruční/API spuštění
 
 permissions:

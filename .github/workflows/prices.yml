@@ -1,8 +1,10 @@
-name: FX Prices
+name: FX Prices (jen ruční/debug — cron viz data-refresh.yml)
 
+# Naplánovaný cron (dřív "17 * * * *", hodinově) přesunut do data-refresh.yml
+# (16.9.2026) — stejný důvod jako u retail.yml (viz komentář tam): moc
+# samostatně registrovaných scheduled triggerů na účtu dělalo spouštění
+# nespolehlivé. Soubor zůstává kvůli workflow_dispatch pro ruční/debug běh.
 on:
-  schedule:
-    - cron: "17 * * * *"   # každou hodinu (commit jen při změně kurzů)
   workflow_dispatch:        # ruční/API spuštění
 
 permissions:
