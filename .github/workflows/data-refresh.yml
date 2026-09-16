@@ -1,4 +1,4 @@
-name: Data Refresh (kalendář + VIX + ropa + AI radar)
+name: Data Refresh (kalendář + VIX + ropa + retail + ceny + AI radar)
 
 # Sloučení 4 dřív samostatných workflow (calendar.yml, vix.yml, oil.yml,
 # radar.yml) — všechny na cron */15 * * * *. GitHub měl na účtu s víc
@@ -16,6 +16,17 @@ name: Data Refresh (kalendář + VIX + ropa + AI radar)
 # zablokovat commit ostatních tří — přesně jako když běžely jako 4 nezávislé
 # workflow. timeout-minutes jako pojistka proti zaseknutému fetchi, co by
 # jinak zdržel zbytek běhu (běžná doba jednoho kroku je řádově desítky vteřin).
+#
+# 16.9.2026 — retail.yml (*/30) a prices.yml (hodinově) sloučeny sem STEJNÝM
+# principem (viz "Časové okno" krok níž) — přesně tenhle typ problému se za
+# 15.-16.9.2026 zopakoval 3× (retail.yml i tenhle workflow se ve stejnou
+# chvíli na hodiny zasekly, cot.yml mělo běh 4h16min pozdě). "Časové okno"
+# krok drží PŮVODNÍ kadenci (retail ob jeden běh ~30 min, ceny jednou za
+# hodinu) i přes to, že celý workflow teď jede po 15 minutách — u retailu
+# kvůli Myfxbooku (appka má z dřívějška vestavěný cirkulární jistič proti
+# moc častému loginování, viz PR #220) nemá smysl zkoušet přihlásit se 4×
+# častěji než dřív. Oba dřívější workflow soubory zůstávají (jen bez cronu,
+# workflow_dispatch) pro ruční/debug spuštění.
 on:
   schedule:
     - cron: "*/15 * * * *"
@@ -36,6 +47,91 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      # Kolik uplynulo od začátku aktuálního 15minutového okna určuje, jestli
+      # se v TOMHLE běhu má reálně fetchnout retail (run30, dřív cron */30 —
+      # okna :00-:14 a :30-:44) a/nebo ceny (run60, dřív hodinově — jen okno
+      # :00-:14). date -u +%-M (bez úvodní nuly) kvůli bash aritmetice — "08"
+      # by se jinak parsovalo jako neplatné osmičkové číslo.
+      - name: "Časové okno (kadence pro retail/ceny)"
+        id: window
+        run: |
+          MIN=$(date -u +%-M)
+          if [ $((MIN % 30)) -lt 15 ]; then echo "run30=1" >> "$GITHUB_OUTPUT"; else echo "run30=0" >> "$GITHUB_OUTPUT"; fi
+          if [ "$MIN" -lt 15 ]; then echo "run60=1" >> "$GITHUB_OUTPUT"; else echo "run60=0" >> "$GITHUB_OUTPUT"; fi
+
+      - name: "Stáhnout FX ceny (dřív prices.yml, hodinově)"
+        if: ${{ steps.window.outputs.run60 == '1' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        run: node scripts/fetch-prices.js
+      - name: "Commit: FX ceny při změně"
+        if: ${{ always() && steps.window.outputs.run60 == '1' }}
+        run: |
+          git config user.name "prices-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/prices.json)" ]; then
+            git add data/prices.json
+            git commit -m "chore: update fx prices [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "FX ceny beze změny."
+          fi
+
+      - name: "Stáhnout retail sentiment (dřív retail.yml, ob jeden běh ~30 min)"
+        if: ${{ steps.window.outputs.run30 == '1' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          MYFXBOOK_EMAIL: ${{ secrets.MYFXBOOK_EMAIL }}
+          MYFXBOOK_PASSWORD: ${{ secrets.MYFXBOOK_PASSWORD }}
+        run: node scripts/fetch-retail.js
+      - name: "Commit: retail sentiment při změně"
+        if: ${{ always() && steps.window.outputs.run30 == '1' }}
+        run: |
+          git config user.name "retail-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/retail_hist.json data/gold_retail.json)" ]; then
+            git add data/retail_hist.json data/gold_retail.json
+            git commit -m "chore: update retail sentiment [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Retail beze změny."
+          fi
+
+      - name: "Stáhnout retail: US100 (dřív retail.yml)"
+        if: ${{ steps.window.outputs.run30 == '1' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        run: node scripts/fetch-us100-retail.js
+      - name: "Commit: US100 retail při změně"
+        if: ${{ always() && steps.window.outputs.run30 == '1' }}
+        continue-on-error: true
+        run: |
+          git config user.name "retail-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/us100_retail.json)" ]; then
+            git add data/us100_retail.json
+            git commit -m "chore: update US100 retail sentiment [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "US100 retail beze změny."
+          fi
 
       - name: Stáhnout kalendář
         timeout-minutes: 5

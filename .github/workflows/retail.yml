@@ -1,11 +1,12 @@
-name: Retail Sentiment
+name: Retail Sentiment (jen ruční/debug — cron viz data-refresh.yml)
 
+# Naplánovaný cron (dřív */30 * * * *) přesunut do data-refresh.yml (16.9.2026)
+# — appka měla moc samostatně registrovaných scheduled triggerů na účtu, což
+# GitHubu dělalo spouštění nespolehlivé (živě potvrzeno 15.-16.9.2026: tenhle
+# workflow i data-refresh.yml se opakovaně na hodiny zasekly). Soubor
+# zůstává kvůli workflow_dispatch — hodí se pro ruční/debug spuštění stejné
+# logiky bez čekání na příští 15minutové okno v data-refresh.yml.
 on:
-  schedule:
-    # každých 30 min jako dřív — FXSSI Current Ratio je veřejný endpoint bez klíče
-    # a bez rate limitu, sám se obnovuje ~10 min, takže 30min cron ho vzorkuje
-    # s rezervou a data rostou po celý den.
-    - cron: "*/30 * * * *"
   workflow_dispatch:        # ruční/API spuštění
 
 permissions:
