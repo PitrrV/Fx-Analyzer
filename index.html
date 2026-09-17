@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260915e"></script>
+<script src="engine.js?v=20260917a"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
 *{box-sizing:border-box}
@@ -330,6 +330,7 @@ class FXApp extends React.Component{
       try{ await fetchActionUS100Cot(); }catch(e){}
       try{ await fetchActionUS100Retail(); }catch(e){}
       try{ await fetchActionUS100Macro(); }catch(e){}
+      try{ await fetchActionUS100Price(); }catch(e){}
       try{ this.US100=scoreUS100(); saveUS100ScoreHistory(this.US100); }catch(e){ this.US100=null; }
       // ZLATO (XAUUSD) — taky samostatný nástroj (vlastní COT/retail/cena,
       // viz engine.js), ale NA ROZDÍL od US100 appka ho níž vpraví přímo do
@@ -1647,7 +1648,7 @@ class FXApp extends React.Component{
     // Trojkombinace s fundamentem (dnešní nález): fade funguje LÍP, když fundament
     // NESOUHLASÍ se směrem chase (souhlas PF~0.90 — nejhorší, proti PF~1.9-2.2) —
     // proto se "souhlasící" bucket vůbec nezobrazuje (svítí jen potvrzené).
-    let rp=null,er=null; try{ if(p.isGold){rp=getGoldRangePosition(10); er=getGoldEfficiencyRatio(10);} else {rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);} }catch(e){}
+    let rp=null,er=null; try{ if(p.isGold){rp=getGoldRangePosition(10); er=getGoldEfficiencyRatio(10);} else if(p.isUS100){rp=getUS100RangePosition(10); er=getUS100EfficiencyRatio(10);} else {rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);} }catch(e){}
     if(!rp||!er) return null;
     const diff=(sb.score||0)-(sq.score||0), NEUTRAL=0.3;
     const bandPF=(type,e)=>{ const bands=type==='SHORT'?[[0.5,0.65,1.19],[0.65,0.8,1.37],[0.8,1.01,2.45]]:[[0.2,0.35,1.66],[0.35,0.5,1.39],[0.5,0.65,1.64]];
@@ -1659,10 +1660,13 @@ class FXApp extends React.Component{
   // "COT vs Retail" karta — vytažená z renderDetail() do vlastní metody, ať ji
   // beze změny může použít i renderGoldDetail() (this.D.XAU má STEJNÝ tvar
   // .retail/.inst jako 8 FX měn, viz komentář u refreshData — zero-special-case).
+  // sq===null → samostatný nástroj bez přirozené "protistrany" (US100) —
+  // na rozdíl od zlata (má reálné USD jako quote) se retail/inst bere přímo
+  // z sb, ne jako base−quote průměr/rozdíl.
   cotVsRetailCard(p,sb,sq){ const self=this,h=this.h,T=this.tok;
     return h('div',{style:self.card({padding:'16px 18px'})},(()=>{
-      const rLong=Math.max(0,Math.min(100,Math.round((sb.retail+(100-sq.retail))/2))), rShort=100-rLong;
-      const iDiff=Math.round(sb.inst-sq.inst), iSide=iDiff>2?'LONG':iDiff<-2?'SHORT':'NEUTRÁL', iMag=Math.min(50,Math.abs(iDiff)/2);
+      const rLong=sq?Math.max(0,Math.min(100,Math.round((sb.retail+(100-sq.retail))/2))):Math.max(0,Math.min(100,Math.round(sb.retail))), rShort=100-rLong;
+      const iDiff=sq?Math.round(sb.inst-sq.inst):Math.round(sb.inst), iSide=iDiff>2?'LONG':iDiff<-2?'SHORT':'NEUTRÁL', iMag=Math.min(50,Math.abs(iDiff)/2);
       const instPct=Math.max(0,Math.min(100,50+(iDiff>=0?iMag:-iMag)));
       const rSide=rLong>=55?'LONG':rShort>=55?'SHORT':'NEUTRÁL';
       const opp=(iSide==='LONG'&&rSide==='SHORT')||(iSide==='SHORT'&&rSide==='LONG');
@@ -1688,7 +1692,7 @@ class FXApp extends React.Component{
   // RP+ER karta — vytažená z renderDetail() do vlastní metody (viz komentář
   // u cotVsRetailCard výš), ať ji beze změny použije i renderGoldDetail().
   rpErCard(p,sb,sq){ const self=this,h=this.h,T=this.tok;
-    let rp=null,er=null; try{ if(p.isGold){rp=getGoldRangePosition(10); er=getGoldEfficiencyRatio(10);} else {rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);} }catch(e){}
+    let rp=null,er=null; try{ if(p.isGold){rp=getGoldRangePosition(10); er=getGoldEfficiencyRatio(10);} else if(p.isUS100){rp=getUS100RangePosition(10); er=getUS100EfficiencyRatio(10);} else {rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);} }catch(e){}
     if(!rp&&!er) return null;
     const sig=self.getRPERSignal(p,sb,sq);
     const verdict=sig?(sig.type==='SHORT'?{t:'SILNÝ SHORT',c:T.red,bg:'rgba(242,96,110,.07)'}:{t:'SILNÝ LONG',c:T.green,bg:'rgba(46,211,160,.07)'}):{t:'ŽÁDNÝ SIGNÁL',c:T.faint,bg:'transparent'};
@@ -1755,6 +1759,57 @@ class FXApp extends React.Component{
       h('textarea',{value:this.state.notes[p.pair]||'',onChange:e=>self.setNote(p.pair,e.target.value),placeholder:'Tvoje teze, plán vstupu…',style:{marginTop:12,minHeight:70,resize:'vertical',width:'100%',background:'#0a0d13',border:'1px solid #1b2130',borderRadius:10,color:T.text,padding:'11px 13px',fontSize:12.5,fontFamily:"'Manrope',sans-serif",lineHeight:1.55,outline:'none'}}),
       tsTxt?h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,textAlign:'right'}},'Poslední editace: '+tsTxt):null);
   }
+  // Sdílené vizuální pomocníky pro grafové karty (skóre/retail/COT) —
+  // vytažené z renderPairCharts() do vlastních metod, ať je beze změny
+  // použije i renderGoldDetail()/renderUS100Detail() (dřív měly obě vlastní
+  // duplicitní "cell" bez donut⇄graf přepínače, na rozdíl od FX párů).
+  chartCell(title,sub,subCol,enough,body,zoom,extraHeader){ const self=this,h=this.h,T=this.tok;
+    return h('div',{onClick:(enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(enough&&zoom)?'Klikni pro zvětšení':undefined,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,cursor:(enough&&zoom)?'pointer':'default'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),h('div',{style:{display:'flex',alignItems:'center',gap:6}},extraHeader||null,sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,(enough&&zoom)?h('span',{style:{fontSize:11,color:T.faint}},'⤢'):null)),
+      enough?body:h('div',{style:{fontSize:10.5,color:T.faint,padding:'24px 4px',textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
+  }
+  // Prstencový (donut) graf L/S poměru — glow prstenec + text uprostřed (vždy
+  // "Long" strana, zeleně) + legenda vpravo se čtverečkovými značkami.
+  donutViz(id,longPct,sz){ const self=this,h=this.h,T=this.tok;
+    const size=sz||104,r=42,cx=55,cy=55,circ=2*Math.PI*r,lp=Math.max(0,Math.min(100,longPct)),lLen=circ*lp/100;
+    return h('div',{style:{position:'relative',width:size,height:size,flex:'none'}},
+      h('svg',{width:size,height:size,viewBox:'0 0 110 110'},
+        h('defs',null,h('filter',{id:id,x:'-50%',y:'-50%',width:'200%',height:'200%'},h('feGaussianBlur',{stdDeviation:3.5,result:'blur'}),h('feMerge',null,h('feMergeNode',{in:'blur'}),h('feMergeNode',{in:'SourceGraphic'})))),
+        h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:'#0a0d13',strokeWidth:16}),
+        h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:'#161b27',strokeWidth:14}),
+        lLen>0&&h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:T.green,strokeWidth:14,strokeLinecap:'round',strokeDasharray:lLen+' '+circ,transform:'rotate(-90 '+cx+' '+cy+')',filter:'url(#'+id+')'}),
+        lLen<circ&&h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:T.red,strokeWidth:14,strokeLinecap:'round',strokeDasharray:(circ-lLen)+' '+circ,strokeDashoffset:-lLen,transform:'rotate(-90 '+cx+' '+cy+')',filter:'url(#'+id+')'})),
+      (()=>{ const shortDom=lp<50; const domPct=shortDom?100-lp:lp, domCol=shortDom?T.red:T.green;
+        return h('div',{style:{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
+          h('div',{style:self.mono({fontSize:19,fontWeight:800,color:domCol,lineHeight:1})},Math.round(domPct)+'%'),
+          h('div',{style:{fontSize:8.5,color:T.faint,letterSpacing:'.08em',marginTop:4}},shortDom?'SHORT':'LONG')); })());
+  }
+  donutLegend(lp){ const self=this,h=this.h,T=this.tok;
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:11}},[['Long',lp,T.green],['Short',100-lp,T.red]].map(([lbl,v,col])=>
+      h('div',{key:lbl,style:{display:'flex',alignItems:'center',gap:8}},h('span',{style:{width:9,height:9,borderRadius:2.5,background:col,flex:'none'}}),
+        h('div',null,h('div',{style:{fontSize:10.5,color:T.faint}},lbl),h('div',{style:self.mono({fontSize:14,fontWeight:800,color:col})},Math.round(v)+'%')))));
+  }
+  // Přepínač donut ⇄ historický graf — jedno tlačítko v hlavičce; ikona
+  // ukazuje CÍLOVÝ režim (co se zobrazí po kliknutí).
+  viewModeBtn(view,onClick){ const h=this.h,T=this.tok;
+    return h('button',{type:'button',onClick:e=>{e.stopPropagation();onClick();},title:view==='donut'?'Zobrazit historii (graf)':'Zobrazit aktuální poměr (donut)',style:{width:22,height:22,borderRadius:6,border:'1px solid #1b2130',background:'#0c0f16',color:T.dim,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flex:'none'}},
+      view==='donut'
+        ?h('svg',{width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},h('path',{d:'M4 19V10M12 19V5M20 19v-7'}))
+        :h('svg',{width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},h('circle',{cx:12,cy:12,r:8.5}),h('path',{d:'M12 3.5V12l7 3.9'})));
+  }
+  // Karta se dvěma přepínatelnými režimy (donut = aktuální poměr, graf =
+  // historie v čase) — pro Retail L/S a COT L/S, výchozí = donut.
+  dualViewCell(title,sub,subCol,enough,longPct,filterId,view,onToggle,chartBody,zoom){ const self=this,h=this.h,T=this.tok;
+    const showChart=view==='chart';
+    return h('div',{onClick:(showChart&&enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(showChart&&enough&&zoom)?'Klikni pro zvětšení':undefined,
+      style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,minHeight:128,display:'flex',flexDirection:'column',cursor:(showChart&&enough&&zoom)?'pointer':'default'}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:9,gap:6}},
+        h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),
+        h('div',{style:{display:'flex',alignItems:'center',gap:6}},sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,self.viewModeBtn(view,onToggle))),
+      !enough?h('div',{style:{flex:1,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10.5,color:T.faint,textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.')
+        :showChart?h('div',{style:{flex:1,display:'flex',alignItems:'center'}},chartBody)
+        :h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:18,flex:1}},self.donutViz(filterId,longPct),self.donutLegend(longPct)));
+  }
   agoTxt(ts){ if(!ts) return ''; const m=Math.round((Date.now()-ts)/60000); if(m<60) return 'před '+m+' min'; const hh=Math.floor(m/60); return hh<24?('před '+hh+' h'):('před '+Math.floor(hh/24)+' dny'); }
   flipInfo(pairId){ return (this._flips||[]).find(f=>f.pair===pairId)||null; }
   flipBanner(p){ const self=this,h=this.h,T=this.tok; const f=this.flipInfo(p.pair); if(!f) return null;
@@ -1804,45 +1859,8 @@ class FXApp extends React.Component{
     const cdates=Object.keys(ch).sort((a,b)=>new Date(a)-new Date(b)).filter(inWin);
     const cotLS=cur=>{ const lng=[],sht=[]; cdates.forEach(d=>{ const r=ch[d]&&ch[d].raw&&ch[d].raw[cur]; const l=(r&&+r.levLong)||0,s=(r&&+r.levShort)||0,tot=l+s; lng.push(tot?Math.round(l/tot*100):50); sht.push(tot?Math.round(s/tot*100):50); }); return [{name:'Long',col:T.green,vals:lng},{name:'Short',col:T.red,vals:sht}]; };
     const pctFmt=v=>Math.round(v)+'%';
-    const cell=(title,sub,subCol,enough,body,zoom,extraHeader)=>h('div',{onClick:(enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(enough&&zoom)?'Klikni pro zvětšení':undefined,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,cursor:(enough&&zoom)?'pointer':'default'}},
-      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),h('div',{style:{display:'flex',alignItems:'center',gap:6}},extraHeader||null,sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,(enough&&zoom)?h('span',{style:{fontSize:11,color:T.faint}},'⤢'):null)),
-      enough?body:h('div',{style:{fontSize:10.5,color:T.faint,padding:'24px 4px',textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
-    // Prstencový (donut) graf L/S poměru — glow prstenec + text uprostřed (vždy
-    // "Long" strana, zeleně) + legenda vpravo se čtverečkovými značkami.
-    // Velikost roste s prostorem karty (128px), ať nepůsobí drobně.
-    const donut=(id,longPct,sz)=>{ const size=sz||104,r=42,cx=55,cy=55,circ=2*Math.PI*r,lp=Math.max(0,Math.min(100,longPct)),lLen=circ*lp/100;
-      return h('div',{style:{position:'relative',width:size,height:size,flex:'none'}},
-        h('svg',{width:size,height:size,viewBox:'0 0 110 110'},
-          h('defs',null,h('filter',{id:id,x:'-50%',y:'-50%',width:'200%',height:'200%'},h('feGaussianBlur',{stdDeviation:3.5,result:'blur'}),h('feMerge',null,h('feMergeNode',{in:'blur'}),h('feMergeNode',{in:'SourceGraphic'})))),
-          h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:'#0a0d13',strokeWidth:16}),
-          h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:'#161b27',strokeWidth:14}),
-          lLen>0&&h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:T.green,strokeWidth:14,strokeLinecap:'round',strokeDasharray:lLen+' '+circ,transform:'rotate(-90 '+cx+' '+cy+')',filter:'url(#'+id+')'}),
-          lLen<circ&&h('circle',{cx:cx,cy:cy,r:r,fill:'none',stroke:T.red,strokeWidth:14,strokeLinecap:'round',strokeDasharray:(circ-lLen)+' '+circ,strokeDashoffset:-lLen,transform:'rotate(-90 '+cx+' '+cy+')',filter:'url(#'+id+')'})),
-        (()=>{ const shortDom=lp<50; const domPct=shortDom?100-lp:lp, domCol=shortDom?T.red:T.green;
-          return h('div',{style:{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}},
-            h('div',{style:self.mono({fontSize:19,fontWeight:800,color:domCol,lineHeight:1})},Math.round(domPct)+'%'),
-            h('div',{style:{fontSize:8.5,color:T.faint,letterSpacing:'.08em',marginTop:4}},shortDom?'SHORT':'LONG')); })()); };
-    const legend=lp=>h('div',{style:{display:'flex',flexDirection:'column',gap:11}},[['Long',lp,T.green],['Short',100-lp,T.red]].map(([lbl,v,col])=>
-      h('div',{key:lbl,style:{display:'flex',alignItems:'center',gap:8}},h('span',{style:{width:9,height:9,borderRadius:2.5,background:col,flex:'none'}}),
-        h('div',null,h('div',{style:{fontSize:10.5,color:T.faint}},lbl),h('div',{style:self.mono({fontSize:14,fontWeight:800,color:col})},Math.round(v)+'%')))));
-    // Přepínač donut ⇄ historický graf — jedno tlačítko v hlavičce; ikona
-    // ukazuje CÍLOVÝ režim (co se zobrazí po kliknutí).
-    const modeBtn=(view,onClick)=>h('button',{type:'button',onClick:e=>{e.stopPropagation();onClick();},title:view==='donut'?'Zobrazit historii (graf)':'Zobrazit aktuální poměr (donut)',style:{width:22,height:22,borderRadius:6,border:'1px solid #1b2130',background:'#0c0f16',color:T.dim,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',flex:'none'}},
-      view==='donut'
-        ?h('svg',{width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},h('path',{d:'M4 19V10M12 19V5M20 19v-7'}))
-        :h('svg',{width:12,height:12,viewBox:'0 0 24 24',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'},h('circle',{cx:12,cy:12,r:8.5}),h('path',{d:'M12 3.5V12l7 3.9'})));
-    // Karta se dvěma přepínatelnými režimy (donut = aktuální poměr, graf =
-    // historie v čase) — pro Retail L/S a oba COT L/S.
-    const dualCell=(title,sub,subCol,enough,longPct,filterId,view,onToggle,chartBody,zoom)=>{
-      const showChart=view==='chart';
-      return h('div',{onClick:(showChart&&enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(showChart&&enough&&zoom)?'Klikni pro zvětšení':undefined,
-        style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,minHeight:128,display:'flex',flexDirection:'column',cursor:(showChart&&enough&&zoom)?'pointer':'default'}},
-        h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:9,gap:6}},
-          h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),
-          h('div',{style:{display:'flex',alignItems:'center',gap:6}},sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,modeBtn(view,onToggle))),
-        !enough?h('div',{style:{flex:1,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10.5,color:T.faint,textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.')
-          :showChart?h('div',{style:{flex:1,display:'flex',alignItems:'center'}},chartBody)
-          :h('div',{style:{display:'flex',alignItems:'center',justifyContent:'center',gap:18,flex:1}},donut(filterId,longPct),legend(longPct))); };
+    const cell=self.chartCell.bind(self);
+    const dualCell=self.dualViewCell.bind(self);
     const cotBase=cotLS(p.base), cotQuote=cotLS(p.quote);
     const retailLongPct=rlong.length?rlong[rlong.length-1]:50;
     const cotBaseLongPct=cotBase[0].vals.length?cotBase[0].vals[cotBase[0].vals.length-1]:50;
@@ -2008,9 +2026,19 @@ class FXApp extends React.Component{
     const cotLS=(()=>{ const lng=[],sht=[]; cdatesW.forEach(d=>{ const r=cotHist[d]; const l=(r&&+r.levLong)||0,s=(r&&+r.levShort)||0,tot=l+s; lng.push(tot?Math.round(l/tot*100):50); sht.push(tot?Math.round(s/tot*100):50); }); return [{name:'Long',col:T.green,vals:lng},{name:'Short',col:T.red,vals:sht}]; })();
     const pctFmt=v=>Math.round(v)+'%';
     const rng=['14D','1M','3M','6M','ALL'];
-    const cell=(title,sub,subCol,enough,body,zoom)=>h('div',{onClick:(enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(enough&&zoom)?'Klikni pro zvětšení':undefined,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,cursor:(enough&&zoom)?'pointer':'default'}},
-      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),h('div',{style:{display:'flex',alignItems:'center',gap:6}},sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,(enough&&zoom)?h('span',{style:{fontSize:11,color:T.faint}},'⤢'):null)),
-      enough?body:h('div',{style:{fontSize:10.5,color:T.faint,padding:'24px 4px',textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
+    const cell=self.chartCell.bind(self);
+    const dualCell=self.dualViewCell.bind(self);
+    const retailLongPct=rptsW.length?retailSeries[0].vals[retailSeries[0].vals.length-1]:50;
+    const cotLongPct=cotLS[0].vals.length?cotLS[0].vals[cotLS[0].vals.length-1]:50;
+    const retailView=st.us100RetailView==='chart'?'chart':'donut';
+    const cotView=st.us100CotView==='chart'?'chart':'donut';
+    // Syntetický nástroj pro sdílené karty (COT vs Retail / RP+ER / AI analýza /
+    // poznámka) — STEJNÝ princip jako goldPair/sbG/sqG u renderGoldDetail(), ale
+    // US100 na rozdíl od zlata nemá přirozenou "protistranu" (žádné USD jako
+    // quote) → sqUS je jen {score:0} pro RP+ER diff a cotVsRetailCard dostává
+    // sq===null (single-instrument režim, viz komentář u cotVsRetailCard výš).
+    const us100Pair={pair:'US100',dir:buy?'BUY':'SELL',isUS100:true};
+    const sbUS={score:D.score,retail:D.retailPct!=null?Math.round(D.retailPct):50,inst:Math.round(Math.max(-100,Math.min(100,(D.cotScore||0)*12)))};
     return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
       h('div',{style:self.card({padding:'18px 20px'})},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}},
@@ -2035,10 +2063,19 @@ class FXApp extends React.Component{
           h('div',{style:{display:'flex',gap:5}},rng.map(r=>{const on=gr===r;return h('button',{key:r,type:'button',onClick:()=>self.setState({us100Range:r}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:7,padding:'4px 9px',fontSize:10,fontWeight:700,cursor:'pointer'})},r);}))),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginTop:8}},
           cell('Vývoj skóre',D.score!=null?self.sgn(D.score):null,dc,sdatesW.length>=2,h(self.HoverChart,{key:'sc-us100-'+gr,dates:sdatesW,series:scoreSeries,height:128,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0}),{title:'US100 — Vývoj skóre',subtitle:'COT + retail · '+gr,dates:sdatesW,series:scoreSeries,mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)}),
-          cell('Retail L/S',lastRetail?('L '+lastRetail.l+'% · S '+lastRetail.s+'%'):null,T.green,rptsW.length>=2,h(self.HoverChart,{key:'rt-us100-'+gr,dates:rdatesW,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'US100 — Retail Long/Short',subtitle:'NAS100 · FXSSI Current Ratio · '+gr,dates:rdatesW,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
-          cell('COT Leveraged Funds L/S',D.cot?((D.cot.levNet>=0?'net +':'net ')+D.cot.levNet.toLocaleString('cs-CZ')):null,D.cot&&D.cot.levNet>=0?T.green:T.red,cdatesW.length>=2,h(self.HoverChart,{key:'cot-us100-'+gr,dates:cdatesW,series:cotLS,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'US100 — COT Leveraged Funds Long/Short',subtitle:'CFTC TFF · Nasdaq-100 Consolidated · '+gr,dates:cdatesW,series:cotLS,yMin:0,yMax:100,mid:50,fmt:pctFmt})),
+          dualCell('Retail L/S',retailView==='chart'&&lastRetail?('L '+lastRetail.l+'% · S '+lastRetail.s+'%'):null,T.green,rptsW.length>=2,retailLongPct,'donutGlowUs100Rt',retailView,()=>self.setState({us100RetailView:retailView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'rt-us100-'+gr,dates:rdatesW,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'US100 — Retail Long/Short',subtitle:'NAS100 · FXSSI Current Ratio · '+gr,dates:rdatesW,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
+          dualCell('COT Leveraged Funds L/S',cotView==='chart'&&D.cot?((D.cot.levNet>=0?'net +':'net ')+D.cot.levNet.toLocaleString('cs-CZ')):null,D.cot&&D.cot.levNet>=0?T.green:T.red,cdatesW.length>=2,cotLongPct,'donutGlowUs100Cot',cotView,()=>self.setState({us100CotView:cotView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'cot-us100-'+gr,dates:cdatesW,series:cotLS,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'US100 — COT Leveraged Funds Long/Short',subtitle:'CFTC TFF · Nasdaq-100 Consolidated · '+gr,dates:cdatesW,series:cotLS,yMin:0,yMax:100,mid:50,fmt:pctFmt})),
         lastRetail&&h('div',{style:{fontSize:11,color:T.dim,marginTop:10,lineHeight:1.5}},
-          lastRetail.l>=80?'Dav extrémně LONG → kontrariánsky bearish signál.':lastRetail.l<=20?'Dav extrémně SHORT → kontrariánsky bullish signál.':lastRetail.l>=70?'Dav silně LONG → mírný kontrariánský tlak dolů.':lastRetail.l<=30?'Dav silně SHORT → mírný kontrariánský tlak nahoru.':'Dav rozdělený — bez extrému.'))
+          lastRetail.l>=80?'Dav extrémně LONG → kontrariánsky bearish signál.':lastRetail.l<=20?'Dav extrémně SHORT → kontrariánsky bullish signál.':lastRetail.l>=70?'Dav silně LONG → mírný kontrariánský tlak dolů.':lastRetail.l<=30?'Dav silně SHORT → mírný kontrariánský tlak nahoru.':'Dav rozdělený — bez extrému.')),
+      // Stejné karty jako u FX párů/zlata (viz renderGoldDetail) — COT vs Retail +
+      // RP+ER exhaustion signál (z us100_price.json, viz getUS100RangePosition/
+      // getUS100EfficiencyRatio v engine.js) + AI analýza + poznámka.
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,alignItems:'start'}},
+        self.cotVsRetailCard(us100Pair,sbUS,null),
+        self.rpErCard(us100Pair,{score:D.score},{score:0})),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,alignItems:'start'}},
+        self.aiAnalysisCard(us100Pair),
+        self.notesCard(us100Pair))
     );
   }
   // Zlato (XAUUSD) — vlastní detail, stejný princip jako renderUS100Detail()
@@ -2076,9 +2113,12 @@ class FXApp extends React.Component{
     // rpErCard, které normálně dostávají FX pár z pairObj().
     const goldPair=buildGoldPair(D);
     const sbG=this.D.XAU,sqG=this.D.USD;
-    const cell=(title,sub,subCol,enough,body,zoom)=>h('div',{onClick:(enough&&zoom)?()=>self.setState({chartModal:zoom}):undefined,title:(enough&&zoom)?'Klikni pro zvětšení':undefined,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:12,padding:'11px 13px',minWidth:0,cursor:(enough&&zoom)?'pointer':'default'}},
-      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:7,gap:6}},h('span',{style:{fontSize:11,fontWeight:800,color:T.dim}},title),h('div',{style:{display:'flex',alignItems:'center',gap:6}},sub?h('span',{style:self.mono({fontSize:10.5,fontWeight:700,color:subCol||T.faint})},sub):null,(enough&&zoom)?h('span',{style:{fontSize:11,color:T.faint}},'⤢'):null)),
-      enough?body:h('div',{style:{fontSize:10.5,color:T.faint,padding:'24px 4px',textAlign:'center',lineHeight:1.5}},'Málo historie pro toto období — nasbírá se.'));
+    const cell=self.chartCell.bind(self);
+    const dualCell=self.dualViewCell.bind(self);
+    const retailLongPct=rptsW.length?retailSeries[0].vals[retailSeries[0].vals.length-1]:50;
+    const cotLongPct=cotLS[0].vals.length?cotLS[0].vals[cotLS[0].vals.length-1]:50;
+    const retailView=st.goldRetailView==='chart'?'chart':'donut';
+    const cotView=st.goldCotView==='chart'?'chart':'donut';
     return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},
       h('div',{style:self.card({padding:'18px 20px'})},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10}},
@@ -2107,8 +2147,8 @@ class FXApp extends React.Component{
           h('div',{style:{display:'flex',gap:5}},rng.map(r=>{const on=gr===r;return h('button',{key:r,type:'button',onClick:()=>self.setState({goldRange:r}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:7,padding:'4px 9px',fontSize:10,fontWeight:700,cursor:'pointer'})},r);}))),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginTop:8}},
           cell('Vývoj skóre',D.score!=null?self.sgn(D.score):null,dc,sdatesW.length>=2,h(self.HoverChart,{key:'sc-gold-'+gr,dates:sdatesW,series:scoreSeries,height:128,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0}),{title:'Zlato — Vývoj skóre',subtitle:'COT + retail · '+gr,dates:sdatesW,series:scoreSeries,mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)}),
-          cell('Retail L/S',lastRetail?('L '+lastRetail.l+'% · S '+lastRetail.s+'%'):null,T.green,rptsW.length>=2,h(self.HoverChart,{key:'rt-gold-'+gr,dates:rdatesW,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'Zlato — Retail Long/Short',subtitle:'XAUUSD · Myfxbook/FXSSI · '+gr,dates:rdatesW,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
-          cell('COT Managed Money L/S',D.cot?((D.cot.mMoneyNet>=0?'net +':'net ')+D.cot.mMoneyNet.toLocaleString('cs-CZ')):null,D.cot&&D.cot.mMoneyNet>=0?T.green:T.red,cdatesW.length>=2,h(self.HoverChart,{key:'cot-gold-'+gr,dates:cdatesW,series:cotLS,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'Zlato — COT Managed Money Long/Short',subtitle:'CFTC Disaggregated · GOLD - COMMODITY EXCHANGE INC. · '+gr,dates:cdatesW,series:cotLS,yMin:0,yMax:100,mid:50,fmt:pctFmt})),
+          dualCell('Retail L/S',retailView==='chart'&&lastRetail?('L '+lastRetail.l+'% · S '+lastRetail.s+'%'):null,T.green,rptsW.length>=2,retailLongPct,'donutGlowGoldRt',retailView,()=>self.setState({goldRetailView:retailView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'rt-gold-'+gr,dates:rdatesW,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'Zlato — Retail Long/Short',subtitle:'XAUUSD · Myfxbook/FXSSI · '+gr,dates:rdatesW,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
+          dualCell('COT Managed Money L/S',cotView==='chart'&&D.cot?((D.cot.mMoneyNet>=0?'net +':'net ')+D.cot.mMoneyNet.toLocaleString('cs-CZ')):null,D.cot&&D.cot.mMoneyNet>=0?T.green:T.red,cdatesW.length>=2,cotLongPct,'donutGlowGoldCot',cotView,()=>self.setState({goldCotView:cotView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'cot-gold-'+gr,dates:cdatesW,series:cotLS,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'Zlato — COT Managed Money Long/Short',subtitle:'CFTC Disaggregated · GOLD - COMMODITY EXCHANGE INC. · '+gr,dates:cdatesW,series:cotLS,yMin:0,yMax:100,mid:50,fmt:pctFmt})),
         lastRetail&&h('div',{style:{fontSize:11,color:T.dim,marginTop:10,lineHeight:1.5}},
           lastRetail.l>=80?'Dav extrémně LONG → kontrariánsky bearish signál.':lastRetail.l<=20?'Dav extrémně SHORT → kontrariánsky bullish signál.':lastRetail.l>=70?'Dav silně LONG → mírný kontrariánský tlak dolů.':lastRetail.l<=30?'Dav silně SHORT → mírný kontrariánský tlak nahoru.':'Dav rozdělený — bez extrému.')),
       // Stejné karty jako u FX párů (viz renderDetail) — COT vs Retail + RP+ER

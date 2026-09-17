@@ -3768,6 +3768,48 @@ async function fetchActionUS100Macro(){
 }
 function loadUS100Macro(){ try{ const v=JSON.parse(localStorage.getItem("us100_macro")||"null"); return (v&&typeof v==="object")?v:null; }catch(e){ return null; } }
 
+// Cena US100 (data/us100_price.json, scripts/fetch-us100-price.js — Yahoo
+// ^NDX) — stejný tvar jako gold_price.json. US100 dřív žádnou cenovou
+// historii nemělo (skóre je jen COT+retail+makro); tohle slouží VÝHRADNĚ
+// pro RP+ER exhaustion signál (getUS100RangePosition/getUS100EfficiencyRatio
+// níž), ne pro skóre samotné.
+async function fetchActionUS100Price(){
+  const r=await fetch("data/us100_price.json?t="+Date.now());
+  if(!r.ok) throw new Error("us100_price.json HTTP "+r.status);
+  const j=await r.json();
+  if(!j) throw new Error("us100_price.json: prázdná odpověď");
+  localStorage.setItem("us100_price",JSON.stringify(j));
+  return j;
+}
+function loadUS100Price(){ try{ const v=JSON.parse(localStorage.getItem("us100_price")||"null"); return (v&&typeof v==="object")?v:null; }catch(e){ return null; } }
+
+// ── US100: RP+ER exhaustion signál ──────────────────────────────────────
+// Stejná matematika jako getGoldRangePosition/getGoldEfficiencyRatio výš —
+// US100 taky NENÍ v STANDARD_PAIRS, takže obecné getRangePosition/
+// getEfficiencyRatio (čtou _PRICES.hist, FX měnové kurzy) na něj nesednou.
+// Vlastní cenová historie (loadUS100Price().series — 130 denních closes).
+function getUS100RangePosition(days=10){
+  const gp=loadUS100Price(); if(!gp||!Array.isArray(gp.series)||gp.series.length<2) return null;
+  const s=gp.series.slice(-days);
+  let mn=Infinity,mx=-Infinity,last=null;
+  s.forEach(px=>{ if(typeof px!=="number"||!isFinite(px)) return; if(px<mn)mn=px; if(px>mx)mx=px; last=px; });
+  if(last==null||!(mx>mn)) return null;
+  const rp=(last-mn)/(mx-mn);
+  const zone=rp<=0.33?"low":rp>=0.67?"high":"mid";
+  return {rp:parseFloat(rp.toFixed(3)),zone,min:mn,max:mx,days};
+}
+function getUS100EfficiencyRatio(days=10){
+  const gp=loadUS100Price(); if(!gp||!Array.isArray(gp.series)||gp.series.length<days+1) return null;
+  const s=gp.series.slice(-(days+1));
+  const p0=s[0],p1=s[s.length-1];
+  if(typeof p0!=="number"||typeof p1!=="number") return null;
+  let sumAbs=0;
+  for(let i=1;i<s.length;i++){ if(typeof s[i-1]==="number"&&typeof s[i]==="number") sumAbs+=Math.abs(s[i]-s[i-1]); }
+  if(sumAbs===0) return null;
+  const er=Math.abs(p1-p0)/sumAbs;
+  return {er:parseFloat(er.toFixed(3)),days};
+}
+
 const clamp=(lo,hi,v)=>Math.max(lo,Math.min(hi,v));
 
 // Skóre US100 — COT (stejný 70 % Leveraged Funds / 30 % Asset Managers blend
