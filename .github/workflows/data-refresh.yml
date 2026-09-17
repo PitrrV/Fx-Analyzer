@@ -216,6 +216,32 @@ jobs:
             echo "Zlato beze změny."
           fi
 
+      # US100 (Nasdaq-100) cena — vlastní soubor (data/us100_price.json),
+      # nezávislý na krocích výš. Stejný vzor jako zlato (Yahoo ^NDX) — nová
+      # cenová komponenta pro RP+ER exhaustion signál (US100 dřív žádnou
+      # cenovou historii nemělo, jen COT/retail/makro).
+      - name: Stáhnout cenu US100 (Nasdaq-100)
+        timeout-minutes: 5
+        continue-on-error: true
+        run: node scripts/fetch-us100-price.js
+      - name: "Commit: US100 cena při změně"
+        if: always()
+        run: |
+          git config user.name "us100-price-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/us100_price.json)" ]; then
+            git add data/us100_price.json
+            git commit -m "chore: update US100 price [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "US100 cena beze změny."
+          fi
+
       - name: Stáhnout a analyzovat zprávy (AI Market Radar)
         timeout-minutes: 8
         continue-on-error: true
