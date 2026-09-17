@@ -2018,7 +2018,13 @@ class FXApp extends React.Component{
     const gr=st.us100Range||'1M'; const days=({'14D':14,'1M':30,'3M':90,'6M':180,'ALL':4000})[gr]||30; const cut=Date.now()-days*86400000;
     const inWin=iso=>{ const t=new Date(iso).getTime(); return !isNaN(t)&&t>=cut; };
     const sdatesW=scoreDates.filter(inWin);
-    const scoreSeries=[{name:'Skóre',col:T.yellow,vals:sdatesW.map(d=>+(scoreHist[d].score||0))}];
+    // Vývoj skóre — stejný vizuál (area fill + glow, barva podle znaménka) jako
+    // FX páry/zlato mají v "Základní" (diff) režimu. US100 je ale samostatný
+    // nástroj bez přirozené "quote" protistrany (na rozdíl od zlata, které má
+    // USD) — jedna reálná časová řada, takže bez diff⇄2-měny přepínače.
+    const scoreVals=sdatesW.map(d=>+(scoreHist[d].score||0));
+    const scoreCol=scoreVals.length&&scoreVals[scoreVals.length-1]<0?T.red:T.green;
+    const scoreSeries=[{name:'Skóre',col:scoreCol,vals:scoreVals}];
     const rptsW=retailHist.filter(pt=>inWin(pt.t));
     const rdatesW=rptsW.map(pt=>pt.t);
     const retailSeries=[{name:'Long',col:T.green,vals:rptsW.map(pt=>pt.l)},{name:'Short',col:T.red,vals:rptsW.map(pt=>pt.s)}];
@@ -2062,7 +2068,7 @@ class FXApp extends React.Component{
           self.ptitle('US100 — grafy','Vývoj skóre · Retail · COT — stejný princip jako u FX párů'),
           h('div',{style:{display:'flex',gap:5}},rng.map(r=>{const on=gr===r;return h('button',{key:r,type:'button',onClick:()=>self.setState({us100Range:r}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:7,padding:'4px 9px',fontSize:10,fontWeight:700,cursor:'pointer'})},r);}))),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginTop:8}},
-          cell('Vývoj skóre',D.score!=null?self.sgn(D.score):null,dc,sdatesW.length>=2,h(self.HoverChart,{key:'sc-us100-'+gr,dates:sdatesW,series:scoreSeries,height:128,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0}),{title:'US100 — Vývoj skóre',subtitle:'COT + retail · '+gr,dates:sdatesW,series:scoreSeries,mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)}),
+          cell('Vývoj skóre',D.score!=null?self.sgn(D.score):null,dc,sdatesW.length>=2,h('div',{style:{filter:'drop-shadow(0 0 5px '+scoreCol+'55)'}},h(self.HoverChart,{key:'sc-us100-'+gr,dates:sdatesW,series:scoreSeries,height:128,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0,area:true})),{title:'US100 — Vývoj skóre',subtitle:'COT + retail · '+gr,dates:sdatesW,series:scoreSeries,mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)}),
           dualCell('Retail L/S',retailView==='chart'&&lastRetail?('L '+lastRetail.l+'% · S '+lastRetail.s+'%'):null,T.green,rptsW.length>=2,retailLongPct,'donutGlowUs100Rt',retailView,()=>self.setState({us100RetailView:retailView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'rt-us100-'+gr,dates:rdatesW,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'US100 — Retail Long/Short',subtitle:'NAS100 · FXSSI Current Ratio · '+gr,dates:rdatesW,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
           dualCell('COT Leveraged Funds L/S',cotView==='chart'&&D.cot?((D.cot.levNet>=0?'net +':'net ')+D.cot.levNet.toLocaleString('cs-CZ')):null,D.cot&&D.cot.levNet>=0?T.green:T.red,cdatesW.length>=2,cotLongPct,'donutGlowUs100Cot',cotView,()=>self.setState({us100CotView:cotView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'cot-us100-'+gr,dates:cdatesW,series:cotLS,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'US100 — COT Leveraged Funds Long/Short',subtitle:'CFTC TFF · Nasdaq-100 Consolidated · '+gr,dates:cdatesW,series:cotLS,yMin:0,yMax:100,mid:50,fmt:pctFmt})),
         lastRetail&&h('div',{style:{fontSize:11,color:T.dim,marginTop:10,lineHeight:1.5}},
@@ -2091,6 +2097,7 @@ class FXApp extends React.Component{
     const cotDates=Object.keys(cotHist).sort();
     const scoreHist=(typeof loadGoldScoreHistory==='function')?loadGoldScoreHistory():{};
     const scoreDates=Object.keys(scoreHist).sort();
+    let sh={}; try{sh=loadScoreHistory()||{};}catch(e){}
     const retailHist=(typeof loadGoldRetailHistory==='function')?loadGoldRetailHistory():[];
     const ageTxt=iso=>{ if(!iso) return 'nenačteno'; const h_=Math.round((Date.now()-new Date(iso).getTime())/3600000); return h_<1?'právě teď':h_<48?('před '+h_+' h'):('před '+Math.round(h_/24)+' dny'); };
     const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
@@ -2098,7 +2105,20 @@ class FXApp extends React.Component{
     const gr=st.goldRange||'1M'; const days=({'14D':14,'1M':30,'3M':90,'6M':180,'ALL':4000})[gr]||30; const cut=Date.now()-days*86400000;
     const inWin=iso=>{ const t=new Date(iso).getTime(); return !isNaN(t)&&t>=cut; };
     const sdatesW=scoreDates.filter(inWin);
-    const scoreSeries=[{name:'Skóre',col:T.yellow,vals:sdatesW.map(d=>+(scoreHist[d].score||0))}];
+    // Vývoj skóre — STEJNÝ diff⇄2-měny přepínač jako u FX párů (renderPairCharts):
+    // zlato má reálnou "quote" (USD, viz this.D.XAU/this.D.USD), takže base−quote
+    // diferenciál dává smysl stejně jako u FX. Sdílený state klíč scoreChartMode
+    // (stejný, jaký používají FX páry) — jde o globální preferenci zobrazení, ne
+    // per-instrument, takže se nemusí duplikovat a ChartModal (napojený na stejný
+    // klíč) funguje beze změny.
+    const scoreSeriesDual=[{name:'XAU',col:T.accent,vals:sdatesW.map(d=>+(scoreHist[d].score||0))},{name:'USD',col:T.violet,vals:sdatesW.map(d=>+((sh[d]&&sh[d].USD)||0))}];
+    const diffVals=sdatesW.map(d=>+(((+(scoreHist[d].score||0))-(+((sh[d]&&sh[d].USD)||0))).toFixed(2)));
+    const diffCol=diffVals.length&&diffVals[diffVals.length-1]<0?T.red:T.green;
+    const diffSeries=[{name:'XAU−USD',col:diffCol,vals:diffVals}];
+    const scMode=(st.scoreChartMode==='dual')?'dual':'diff';
+    const scActive=scMode==='diff'?diffSeries:scoreSeriesDual;
+    const scYMin=scMode==='diff'?null:-10, scYMax=scMode==='diff'?null:10;
+    const scoreToggle=h('div',{onClick:e=>e.stopPropagation(),style:{display:'flex',gap:2,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:8,padding:2}},['diff','dual'].map(m=>{const on=scMode===m;return h('button',{key:m,type:'button',onClick:e=>{e.stopPropagation();self.setState({scoreChartMode:m});},style:self.mono({border:'none',background:on?'#e9edf5':'transparent',color:on?'#0b0d13':T.faint,borderRadius:6,padding:'4px 10px',fontSize:9.5,fontWeight:700,cursor:'pointer'})},m==='diff'?'Základní':'Rozšířený');}));
     const rptsW=retailHist.filter(pt=>inWin(pt.t));
     const rdatesW=rptsW.map(pt=>pt.t);
     const retailSeries=[{name:'Long',col:T.green,vals:rptsW.map(pt=>pt.l)},{name:'Short',col:T.red,vals:rptsW.map(pt=>pt.s)}];
@@ -2146,7 +2166,7 @@ class FXApp extends React.Component{
           self.ptitle('Zlato — grafy','Vývoj skóre · Retail · COT — stejný princip jako u FX párů'),
           h('div',{style:{display:'flex',gap:5}},rng.map(r=>{const on=gr===r;return h('button',{key:r,type:'button',onClick:()=>self.setState({goldRange:r}),style:self.mono({border:'1px solid '+(on?T.accent+'88':'#1b2130'),background:on?'rgba(94,124,251,.1)':'#0c0f16',color:on?'#cdd6ff':T.dim,borderRadius:7,padding:'4px 9px',fontSize:10,fontWeight:700,cursor:'pointer'})},r);}))),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,marginTop:8}},
-          cell('Vývoj skóre',D.score!=null?self.sgn(D.score):null,dc,sdatesW.length>=2,h(self.HoverChart,{key:'sc-gold-'+gr,dates:sdatesW,series:scoreSeries,height:128,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0}),{title:'Zlato — Vývoj skóre',subtitle:'COT + retail · '+gr,dates:sdatesW,series:scoreSeries,mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)}),
+          cell('Vývoj skóre',scMode==='diff'?self.sgn(D.score-sqG.score):self.sgn(D.score)+' / '+self.sgn(sqG.score),T.dim,sdatesW.length>=2,h('div',{style:{filter:'drop-shadow(0 0 5px '+(scMode==='diff'?diffCol:T.accent)+'55)'}},h(self.HoverChart,{key:'sc-gold-'+gr+scMode,dates:sdatesW,series:scActive,height:128,yMin:scYMin,yMax:scYMax,fmt:v=>(v>0?'+':'')+v.toFixed(1),mid:0,area:true})),{title:'Zlato — Vývoj skóre',subtitle:'XAU vs USD · '+gr,dates:sdatesW,variants:{dual:{series:scoreSeriesDual,yMin:-10,yMax:10},diff:{series:diffSeries,yMin:null,yMax:null}},mid:0,fmt:v=>(v>0?'+':'')+v.toFixed(1)},scoreToggle),
           dualCell('Retail L/S',retailView==='chart'&&lastRetail?('L '+lastRetail.l+'% · S '+lastRetail.s+'%'):null,T.green,rptsW.length>=2,retailLongPct,'donutGlowGoldRt',retailView,()=>self.setState({goldRetailView:retailView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'rt-gold-'+gr,dates:rdatesW,series:retailSeries,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'Zlato — Retail Long/Short',subtitle:'XAUUSD · Myfxbook/FXSSI · '+gr,dates:rdatesW,series:retailSeries,yMin:0,yMax:100,mid:50,fmt:pctFmt}),
           dualCell('COT Managed Money L/S',cotView==='chart'&&D.cot?((D.cot.mMoneyNet>=0?'net +':'net ')+D.cot.mMoneyNet.toLocaleString('cs-CZ')):null,D.cot&&D.cot.mMoneyNet>=0?T.green:T.red,cdatesW.length>=2,cotLongPct,'donutGlowGoldCot',cotView,()=>self.setState({goldCotView:cotView==='donut'?'chart':'donut'}),h(self.HoverChart,{key:'cot-gold-'+gr,dates:cdatesW,series:cotLS,height:128,yMin:0,yMax:100,fmt:pctFmt,mid:50}),{title:'Zlato — COT Managed Money Long/Short',subtitle:'CFTC Disaggregated · GOLD - COMMODITY EXCHANGE INC. · '+gr,dates:cdatesW,series:cotLS,yMin:0,yMax:100,mid:50,fmt:pctFmt})),
         lastRetail&&h('div',{style:{fontSize:11,color:T.dim,marginTop:10,lineHeight:1.5}},
