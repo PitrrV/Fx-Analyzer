@@ -1,8 +1,8 @@
-name: "Test: ukázková Telegram zpráva (skóre alert)"
+name: "Test: ukázková Telegram zpráva (bias alert)"
 
 # Jen workflow_dispatch — spouští se ručně, jednorázově, ať uživatel vidí
 # přesný formát/znění zprávy dřív, než začnou chodit ostré alerty ze
-# scripts/score-alerts.js. Nezapisuje nic, nemění žádná data.
+# scripts/bias-alerts.js. Nezapisuje nic, nemění žádná data.
 on:
   workflow_dispatch:
 

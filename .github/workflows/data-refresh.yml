@@ -328,26 +328,30 @@ jobs:
             echo "Engine snapshot beze změny."
           fi
 
-      # Telegram alert na výrazný pohyb skóre páru (|Δdiff| >= 1.0 od posledního
-      # alertu) — počítá živé skóre ze stejného enginu jako appka nad daty, co
-      # tenhle běh krok výš už osvěžil (kalendář/VIX/ropa), takže chytí i pohyb
-      # UVNITŘ dne, ne jen jednou večer. Samostatný bot/chat (SCORE_TELEGRAM_*),
-      # jiné secrets než Market Radar (RADAR_TELEGRAM_*).
-      - name: "Skóre alert (Telegram, práh 1.0 od posledního alertu)"
+      # Telegram alert na DISKRÉTNÍ události — otočení biasu (BUY↔SELL flip)
+      # + RP+ER exhaustion signál (náběžná hrana) — počítá živé skóre ze
+      # stejného enginu jako appka nad daty, co tenhle běh krok výš už osvěžil
+      # (kalendář/VIX/ropa), takže chytí i změnu UVNITŘ dne. Nahrazuje dřívější
+      # "|Δdiff| >= 1.0 od posledního alertu" (scripts/score-alerts.js) — ta
+      # měla baseline klidně 16+ dní starou, takže pomalý drift vypadal stejně
+      # dramaticky jako čerstvý pohyb (uživatelská zpětná vazba 2026-09-18).
+      # Samostatný bot/chat (SCORE_TELEGRAM_*), jiné secrets než Market Radar
+      # (RADAR_TELEGRAM_*).
+      - name: "Bias alert (Telegram: otočení biasu + RP+ER signál)"
         timeout-minutes: 3
         continue-on-error: true
         env:
           SCORE_TELEGRAM_BOT_TOKEN: ${{ secrets.SCORE_TELEGRAM_BOT_TOKEN }}
           SCORE_TELEGRAM_CHAT_ID: ${{ secrets.SCORE_TELEGRAM_CHAT_ID }}
-        run: node scripts/score-alerts.js
-      - name: "Commit: stav skóre alertů při změně"
+        run: node scripts/bias-alerts.js
+      - name: "Commit: stav bias alertů při změně"
         if: always()
         run: |
-          git config user.name "score-alert-bot"
+          git config user.name "bias-alert-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -n "$(git status --porcelain data/score_alert_state.json)" ]; then
-            git add data/score_alert_state.json
-            git commit -m "chore: update score alert state [skip ci]"
+          if [ -n "$(git status --porcelain data/bias_alert_state.json)" ]; then
+            git add data/bias_alert_state.json
+            git commit -m "chore: update bias alert state [skip ci]"
             for i in 1 2 3 4 5; do
               git pull --rebase origin main
               git push && break
@@ -355,7 +359,7 @@ jobs:
               sleep $((i*2))
             done
           else
-            echo "Score alert state beze změny."
+            echo "Bias alert state beze změny."
           fi
 
       # AI Smart Alerts — no-code pravidla z přirozeného jazyka (admin je píše

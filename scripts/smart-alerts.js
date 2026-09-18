@@ -30,7 +30,7 @@ const readJSON = (p, fallback) => {
   catch (e) { return fallback; }
 };
 
-// Stejný trik jako scripts/score-alerts.js — reálný engine.js přes localStorage
+// Stejný trik jako scripts/bias-alerts.js — reálný engine.js přes localStorage
 // stub, ať skóre i retail % nikdy neujedou appce v prohlížeči.
 function computeLiveState() {
   const store = {};
@@ -61,7 +61,7 @@ function computeLiveState() {
   const E = factory({}, localStorageStub, prices);
 
   // Akumulovaná historie (data/calendar_hist.json), ne jen rolling ~8týdenní
-  // okno — viz stejný komentář ve scripts/score-alerts.js.
+  // okno — viz stejný komentář ve scripts/bias-alerts.js.
   const calHist = readJSON("data/calendar_hist.json", null);
   const cal = (calHist && Array.isArray(calHist.events) && calHist.events.length) ? calHist : readJSON("data/calendar.json", { events: [] });
   const events = (cal.events || []).map(E.mapFFEvent);
