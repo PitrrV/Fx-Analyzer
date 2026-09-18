@@ -48,7 +48,7 @@ const E = factory({}, localStorageStub, prices);
 
 // ── Výpočet přesně jako frontend refreshData() ────────────────────────
 // Akumulovaná historie (data/calendar_hist.json), ne jen rolling ~8týdenní
-// okno — viz stejný komentář ve scripts/score-alerts.js.
+// okno — viz stejný komentář ve scripts/bias-alerts.js.
 let cal = null;
 try { const h = readJSON("data/calendar_hist.json"); if (h && Array.isArray(h.events) && h.events.length) cal = h; } catch (e) {}
 if (!cal) cal = readJSON("data/calendar.json");

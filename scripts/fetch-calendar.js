@@ -116,7 +116,7 @@ function norm(e) {
 
   // ── Akumulovaná historie (data/calendar_hist.json) ──────────────────────
   // data/calendar.json je jen ROLLING okno (~8 týdnů, tenhle cron ho každý běh
-  // přepíše) — server-side skripty, co z něj počítaly skóre (score-alerts.js,
+  // přepíše) — server-side skripty, co z něj počítaly skóre (bias-alerts.js,
   // snapshot-engine.js, smart-alerts.js), tak měly k dispozici jen zlomek
   // FUND_HIST_WINDOW_WEEKS (80 týdnů/~18 měsíců), zatímco appka v prohlížeči
   // si stejná data průběžně slučuje do vlastní dlouhodobé historie
