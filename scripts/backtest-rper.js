@@ -189,7 +189,10 @@ function summarize(episodes) {
 
   console.log("Stahuji historii US100 (Yahoo ^NDX, 1y — 2y na tomhle indexu vrací 404, viz scripts/fetch-us100-price.js)…");
   try {
-    const us100Rows = await fetchYahooDaily("%5ENDX", "1y");
+    // fetchYahooDaily() si symbol sama URL-enkóduje — "^NDX" SUROVĚ, ne
+    // předem enkódované "%5ENDX" (to by se enkódovalo podruhé na neplatné
+    // "%255ENDX" → Yahoo 404, živě odchyceno v prvních dvou bězích workflow).
+    const us100Rows = await fetchYahooDaily("^NDX", "1y");
     const dates = us100Rows.map((r) => r.date), prices = us100Rows.map((r) => r.close);
     const episodes = findEpisodes(dates, prices);
     results.US100 = { episodes, stats: summarize(episodes) };
