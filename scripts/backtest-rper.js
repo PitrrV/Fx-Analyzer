@@ -96,8 +96,18 @@ function efficiencyRatioAt(prices, endIdx, days = 10) {
 
 // ── Epizody: RP≥80%+ER>0.5 → SHORT / RP≤20%+ER 0.20-0.65 → LONG (stejné
 // prahy jako getRPERSignal v index.html). Epizoda běží, dokud RP neopustí
-// zónu, ve které vznikla (viz komentář v hlavičce souboru). ────────────────
-function findEpisodes(dates, prices) {
+// zónu, ve které vznikla (viz komentář v hlavičce souboru).
+//
+// fundGate(date) — volitelný: vrátí fundamentální diff (base−quote) pro dané
+// datum, nebo null když pro něj appka žádnou historii nemá. Když je zadaný,
+// nová epizoda se otevře jen když navíc projde STEJNOU podmínkou jako
+// getRPERSignal (fundament nesmí silně SOUHLASIT se směrem chase) — a jen
+// v datech, kde fundGate vůbec vrací číslo (jinak žádný verdikt, žádná
+// epizoda — ne "předpokládat neutrální"). Rozlišení epizody (kdy RP opustí
+// zónu) se NEMĚNÍ — filtr ovlivňuje jen to, co se POČÍTÁ za spuštění, ne jak
+// se měří výsledek, ať jde filtrovaná a nefiltrovaná varianta čestně srovnat.
+function findEpisodes(dates, prices, fundGate) {
+  const NEUTRAL = 0.3;
   const episodes = [];
   let open = null;
   for (let i = 0; i < prices.length; i++) {
@@ -110,9 +120,11 @@ function findEpisodes(dates, prices) {
       episodes.push(open); open = null;
     }
     if (!open && rp && er) {
-      if (zone === "high" && er.er > 0.5) {
+      let diff = null;
+      if (fundGate) { diff = fundGate(dates[i]); if (diff == null) continue; }
+      if (zone === "high" && er.er > 0.5 && !(fundGate && diff < -NEUTRAL)) {
         open = { type: "SHORT", zone: "high", onsetIdx: i, onsetDate: dates[i], onsetPrice: prices[i], onsetRP: +rp.rp.toFixed(3), onsetER: +er.er.toFixed(3) };
-      } else if (zone === "low" && er.er >= 0.2 && er.er < 0.65) {
+      } else if (zone === "low" && er.er >= 0.2 && er.er < 0.65 && !(fundGate && diff > NEUTRAL)) {
         open = { type: "LONG", zone: "low", onsetIdx: i, onsetDate: dates[i], onsetPrice: prices[i], onsetRP: +rp.rp.toFixed(3), onsetER: +er.er.toFixed(3) };
       }
     }
@@ -164,6 +176,7 @@ function summarize(episodes) {
   console.log(`FX: ${fxDates.length} obchodních dní`);
 
   const results = {};
+  const fxSeries = {}; // pair -> {dates, prices} — znovu použito níž pro fundamentálně filtrovanou variantu
   for (const { pair, base, quote } of STANDARD_PAIRS) {
     const dates = [], prices = [];
     for (const d of fxDates) {
@@ -173,6 +186,7 @@ function summarize(episodes) {
       dates.push(d); prices.push(q / b);
     }
     if (prices.length < 30) { console.log(`${pair}: málo dat (${prices.length}), přeskakuji`); continue; }
+    fxSeries[pair] = { dates, prices, base, quote };
     const episodes = findEpisodes(dates, prices);
     results[pair] = { episodes, stats: summarize(episodes) };
     console.log(`${pair}: ${prices.length} dní, ${episodes.length} epizod, win rate ${results[pair].stats.winRate}%`);
@@ -203,11 +217,69 @@ function summarize(episodes) {
   const overall = summarize(allEpisodes);
   const byType = { SHORT: summarize(allEpisodes.filter((e) => e.type === "SHORT")), LONG: summarize(allEpisodes.filter((e) => e.type === "LONG")) };
 
+  // ── Fundamentální filtr — porovnání se stejnou podmínkou, jakou appka
+  // navíc vyžaduje živě (getRPERSignal: fundament nesmí souhlasit se
+  // směrem chase). Jen pro FX páry, jen v okně, kde appka reálně má
+  // historii denního fundamentálního skóre (data/engine_hist.json — ~2
+  // měsíce, zlato/US100 tuhle historii vůbec nemají). Srovnání je čestné:
+  // nefiltrovaná varianta se počítá ZNOVU, omezená na STEJNÉ okno a STEJNÉ
+  // páry, ať rozdíl ve výsledku ukazuje efekt filtru, ne jen víc dat. ──────
+  let fundamentalComparison = null;
+  try {
+    const engineHist = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "engine_hist.json"), "utf8"));
+    const fundDates = Object.keys(engineHist.days || {}).sort();
+    if (fundDates.length >= 10) {
+      const fundStart = fundDates[0], fundEnd = fundDates[fundDates.length - 1];
+      console.log(`\nFundamentální filtr: historie skóre ${fundStart} → ${fundEnd} (${fundDates.length} dní) — počítám srovnání pro FX…`);
+      const TOLERANCE_DAYS = 3;
+      function scoreOnOrBefore(cur, targetDate) {
+        const tMs = new Date(targetDate + "T00:00:00Z").getTime();
+        let best = null, bestDiff = Infinity;
+        for (const d of fundDates) {
+          const dMs = new Date(d + "T00:00:00Z").getTime();
+          const delta = tMs - dMs;
+          if (delta >= 0 && delta <= TOLERANCE_DAYS * 86400000 && delta < bestDiff) {
+            const v = engineHist.days[d].cur[cur]; if (typeof v === "number") { best = v; bestDiff = delta; }
+          }
+        }
+        return best;
+      }
+
+      const filteredByPair = {}, unfilteredByPair = {};
+      let allFilteredEp = [], allWindowUnfilteredEp = [];
+      for (const { pair, base, quote } of STANDARD_PAIRS) {
+        const s = fxSeries[pair]; if (!s) continue;
+        const fundGate = (date) => {
+          const b = scoreOnOrBefore(base, date), q = scoreOnOrBefore(quote, date);
+          return (b == null || q == null) ? null : +(b - q).toFixed(2);
+        };
+        const filteredEp = findEpisodes(s.dates, s.prices, fundGate);
+        const unfilteredInWindow = results[pair].episodes.filter((e) => e.onsetDate >= fundStart && e.onsetDate <= fundEnd);
+        filteredByPair[pair] = summarize(filteredEp);
+        unfilteredByPair[pair] = summarize(unfilteredInWindow);
+        allFilteredEp = allFilteredEp.concat(filteredEp);
+        allWindowUnfilteredEp = allWindowUnfilteredEp.concat(unfilteredInWindow);
+        console.log(`  ${pair}: bez filtru (okno) ${unfilteredByPair[pair].winRate}% (n=${unfilteredByPair[pair].total}) → s filtrem ${filteredByPair[pair].winRate}% (n=${filteredByPair[pair].total})`);
+      }
+      fundamentalComparison = {
+        window: { start: fundStart, end: fundEnd, days: fundDates.length },
+        note: "Jen FX (zlato/US100 nemají historii denního fundamentálního skóre). 'unfiltered' = STEJNÉ okno/páry jako 'filtered', ne celé 2leté okno nahoře — čestné srovnání efektu filtru samotného.",
+        unfiltered: summarize(allWindowUnfilteredEp),
+        filtered: summarize(allFilteredEp),
+        perPair: Object.fromEntries(STANDARD_PAIRS.filter((p) => filteredByPair[p.pair]).map((p) => [p.pair, { unfiltered: unfilteredByPair[p.pair], filtered: filteredByPair[p.pair] }])),
+      };
+      console.log(`\nCelkem (okno ${fundStart}→${fundEnd}): bez filtru ${fundamentalComparison.unfiltered.winRate}% (n=${fundamentalComparison.unfiltered.total}) → s filtrem ${fundamentalComparison.filtered.winRate}% (n=${fundamentalComparison.filtered.total})`);
+    } else {
+      console.log("Fundamentální historie příliš krátká (data/engine_hist.json), přeskakuji srovnání.");
+    }
+  } catch (e) { console.log("Fundamentální srovnání ERR", e.message); }
+
   const out = {
     generated: new Date().toISOString(),
-    methodology: "Point-in-time RP(10)/ER(10), STEJNÉ prahy jako getRPERSignal (index.html), BEZ fundamentálního filtru (appka ho navíc vyžaduje pro živé zobrazení/alert). Epizoda = od prvního dne v extrému+ER pásmu do dne, kdy RP opustí tu zónu. MIN_MOVE_PCT=" + MIN_MOVE_PCT + "% (pod tím je CHOP).",
+    methodology: "Point-in-time RP(10)/ER(10), STEJNÉ prahy jako getRPERSignal (index.html), BEZ fundamentálního filtru (appka ho navíc vyžaduje pro živé zobrazení/alert). Epizoda = od prvního dne v extrému+ER pásmu do dne, kdy RP opustí tu zónu. MIN_MOVE_PCT=" + MIN_MOVE_PCT + "% (pod tím je CHOP). fundamentalComparison = druhé, menší srovnání JEN pro FX v okně, kde appka má historii denního fundamentálního skóre — ukazuje, jestli živý fundamentální filtr win rate skutečně zlepšuje.",
     range: { startDate, endDate, years: YEARS_BACK },
     overall, byType,
+    fundamentalComparison,
     perInstrument: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.stats])),
     episodes: results,
   };
