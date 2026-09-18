@@ -187,9 +187,9 @@ function summarize(episodes) {
     console.log(`XAUUSD: ${prices.length} dní, ${episodes.length} epizod, win rate ${results.XAUUSD.stats.winRate}%`);
   } catch (e) { console.log("Zlato ERR", e.message); }
 
-  console.log("Stahuji historii US100 (Yahoo ^NDX, 2y)…");
+  console.log("Stahuji historii US100 (Yahoo ^NDX, 1y — 2y na tomhle indexu vrací 404, viz scripts/fetch-us100-price.js)…");
   try {
-    const us100Rows = await fetchYahooDaily("%5ENDX", "2y");
+    const us100Rows = await fetchYahooDaily("%5ENDX", "1y");
     const dates = us100Rows.map((r) => r.date), prices = us100Rows.map((r) => r.close);
     const episodes = findEpisodes(dates, prices);
     results.US100 = { episodes, stats: summarize(episodes) };
