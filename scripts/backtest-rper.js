@@ -239,7 +239,12 @@ function summarize(episodes) {
           const dMs = new Date(d + "T00:00:00Z").getTime();
           const delta = tMs - dMs;
           if (delta >= 0 && delta <= TOLERANCE_DAYS * 86400000 && delta < bestDiff) {
-            const v = engineHist.days[d].cur[cur]; if (typeof v === "number") { best = v; bestDiff = delta; }
+            // engineHist.days[d].cur[cur] je OBJEKT {score,comp,cot_pct} (viz
+            // snapshot-engine.js), ne holé číslo — .score vytáhnout, jinak
+            // typeof v==="number" nikdy neprojde a fundGate vrací null pro
+            // úplně všechno (živě odchyceno v prvním běhu tohohle srovnání).
+            const rec = engineHist.days[d].cur[cur]; const v = rec && rec.score;
+            if (typeof v === "number") { best = v; bestDiff = delta; }
           }
         }
         return best;
