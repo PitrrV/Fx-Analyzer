@@ -2,6 +2,8 @@
 
 *2026-07-20 · Cíl: vyvrátit `RESEARCH_AUDIT_2026-07.md` a `ARCHITECTURE_AUDIT_2026-07.md`, ne je potvrdit. Nová evidence: `data/research/{fdr_correction,regime_breakdown,oos_split_test,ml_comparison,model_compare}.json`, reprodukce `scripts/counter-audit-*.{py,js}`.*
 
+> **Ověřeno 2026-08-15**: čísla "7 při q=0,10 / 16 při q=0,20" níže se vztahují k **currency-level FDR (304 testů)**, ne k pooled FDR přes všech 1368 testů najednou (pooled dává jiná čísla — 16/24, viz `data/research/fdr_correction.json` sekce `pooled_1368`). Dřívější verze `fdr_correction.json` ukládala jen pooled výsledek bez téhle poznámky, což na první pohled vypadalo jako rozpor s prózou v tomhle dokumentu — `scripts/counter-audit-fdr.py` teď počítá a ukládá obě metodiky zvlášť (`pooled_1368` / `currency_level_304`), reprodukováno a sedí přesně: 7/16.
+
 ---
 
 ## Verdikt úvodem
