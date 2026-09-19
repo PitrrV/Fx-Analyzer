@@ -3107,15 +3107,20 @@ class FXApp extends React.Component{
       let rpEr=null; try{rpEr=self.getRPERSignal(p,sb,sq);}catch(e){}
       const stC=this.statusColor(p.status);
       // Sekundární badge napravo od pásma — jen jedna věc, ať řádek nepůsobí
-      // nabitě: ropa u CAD párů > RP+ER exhaustion signál > mini graf vývoje.
+      // nabitě: RP+ER exhaustion signál > ropa u CAD párů > mini graf vývoje.
+      // Pořadí obráceno (byla to chyba, ne záměr) — ropa byla u CAD párů
+      // (USDCAD/EURCAD/GBPCAD/AUDCAD/NZDCAD/CADJPY/CADCHF) skoro vždy k
+      // dispozici, takže RP+ER badge se u nich nikdy neukázal, i když byl
+      // signál aktivní (reálný nález: NZDCAD hlásilo SILNÝ LONG v detailu,
+      // ale v seznamu párů to nebylo vidět vůbec, na rozdíl od ne-CAD párů).
       const diffVals=scoreHist.dates.map(d=>{const r=scoreHist.sh[d]; return r?((+(r[p.base]||0))-(+(r[p.quote]||0))):null;}).filter(v=>v!=null);
       let miniSpark=null;
       if(diffVals.length>=3){ const W=60,H=20,mn=Math.min(...diffVals),mx=Math.max(...diffVals),span=(mx-mn)||1;
         const X=k=>W*(k/(diffVals.length-1)), Y=v=>H-((v-mn)/span)*H;
         const dpath=self.smooth(diffVals.map((v,k)=>[X(k),Y(v)]));
         miniSpark=h('svg',{width:W,height:H,viewBox:'0 0 '+W+' '+H,style:{display:'block',flex:'none'}},h('path',{d:dpath,fill:'none',stroke:dc,strokeWidth:1.6,strokeLinecap:'round',strokeLinejoin:'round'})); }
-      const secondary=isCADrow&&oilSt?h('span',{title:'WTI ropa '+oilSt.direction+' · 4t '+(oilSt.mom4w>0?'+':'')+oilSt.mom4w+'%',style:self.mono({fontSize:9,fontWeight:700,letterSpacing:'.04em',color:oilSt.color,background:oilSt.color+'1c',border:'1px solid '+oilSt.color+'44',borderRadius:999,padding:'3px 8px'})},'🛢 $'+oilSt.price.toFixed(1))
-        :rpEr?h('span',{title:'RP+ER exhaustion signál — potvrzeno technikou i fundamentem, viz detail páru',style:self.mono({display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:800,letterSpacing:'.02em',color:rpEr.type==='SHORT'?T.red:T.green,background:(rpEr.type==='SHORT'?T.red:T.green)+'22',border:'1.5px solid '+(rpEr.type==='SHORT'?T.red:T.green)+'66',borderRadius:999,padding:'3px 8px'})},rpEr.type==='SHORT'?'⇩':'⇧','SILNÝ '+rpEr.type)
+      const secondary=rpEr?h('span',{title:'RP+ER exhaustion signál — potvrzeno technikou i fundamentem, viz detail páru',style:self.mono({display:'inline-flex',alignItems:'center',gap:4,fontSize:10,fontWeight:800,letterSpacing:'.02em',color:rpEr.type==='SHORT'?T.red:T.green,background:(rpEr.type==='SHORT'?T.red:T.green)+'22',border:'1.5px solid '+(rpEr.type==='SHORT'?T.red:T.green)+'66',borderRadius:999,padding:'3px 8px'})},rpEr.type==='SHORT'?'⇩':'⇧','SILNÝ '+rpEr.type)
+        :isCADrow&&oilSt?h('span',{title:'WTI ropa '+oilSt.direction+' · 4t '+(oilSt.mom4w>0?'+':'')+oilSt.mom4w+'%',style:self.mono({fontSize:9,fontWeight:700,letterSpacing:'.04em',color:oilSt.color,background:oilSt.color+'1c',border:'1px solid '+oilSt.color+'44',borderRadius:999,padding:'3px 8px'})},'🛢 $'+oilSt.price.toFixed(1))
         :miniSpark;
       return h('button',{key:p.pair,type:'button',onClick:()=>this.setState({sel:p.pair}),onMouseEnter:()=>this.setState({hoverFav:p.pair}),onMouseLeave:()=>this.setState({hoverFav:null}),style:{display:'block',width:'100%',textAlign:'left',border:'1px solid '+(sel?T.accent:'#191e2b'),borderLeft:'3px solid '+(sel?T.accent:stC),background:sel?'linear-gradient(180deg,rgba(94,124,251,.12),rgba(11,13,19,.7))':'linear-gradient(180deg,#0d1017,#0a0c12)',borderRadius:13,padding:'12px 13px',marginBottom:8,cursor:'pointer',fontFamily:'inherit',boxShadow:sel?'0 0 0 1px '+T.accent+'40,0 10px 26px rgba(94,124,251,.12)':'none'}},
         h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}},h('div',{style:{display:'flex',alignItems:'center',gap:9,minWidth:0}},
