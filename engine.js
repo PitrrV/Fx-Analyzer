@@ -3370,7 +3370,14 @@ function computeWindowSeasonality(daily,startM,startD,endM,endD,maxYears){
   }
   if(!results.length) return null;
   const wins=results.filter(r=>r.ret>0).length;
-  return {n:results.length,wr:Math.round(wins/results.length*100),avg:+(results.reduce((a,b)=>a+b.ret,0)/results.length).toFixed(2),results:results.sort((a,b)=>b.year-a.year)};
+  // Medián vedle průměru — u jednoho odlehlého roku (např. -7% krize) průměr
+  // strhne úplně jinam, medián na to skoro nereaguje (je to jen prostřední
+  // hodnota v pořadí, ne součet) — ukazuje, jestli je sezónní edge konzistentní
+  // napříč lety, nebo ho táhne jediná anomálie.
+  const sortedRet=results.map(r=>r.ret).slice().sort((a,b)=>a-b);
+  const mid=Math.floor(sortedRet.length/2);
+  const median=sortedRet.length%2?sortedRet[mid]:(sortedRet[mid-1]+sortedRet[mid])/2;
+  return {n:results.length,wr:Math.round(wins/results.length*100),avg:+(results.reduce((a,b)=>a+b.ret,0)/results.length).toFixed(2),median:+median.toFixed(2),results:results.sort((a,b)=>b.year-a.year)};
 }
 // Průměrná cesta OKNEM napříč lety — pro každý obchodní den v okně (0=start)
 // zprůměruje kumulativní % pohyb od startu přes všechny roky, co pro dané
