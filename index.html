@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20260917a"></script>
+<script src="engine.js?v=20260920a"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
 *{box-sizing:border-box}
@@ -1502,7 +1502,13 @@ class FXApp extends React.Component{
       const showHover=hoverIdx!=null&&!(drag&&drag.dragging);
       return h('div',null,
         zoomed&&h('div',{style:{display:'flex',justifyContent:'flex-end',marginBottom:4}},h('button',{type:'button',onClick:resetZoom,style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:7,padding:'3px 9px',fontSize:10.5,fontFamily:'inherit',cursor:'pointer'}},'🔍 Reset přiblížení')),
-        h('svg',{ref:svgRef,viewBox:'0 0 '+W+' '+H,width:'100%',style:{display:'block',cursor:'crosshair',userSelect:'none',touchAction:'none',overflow:'visible'},
+        // height (atribut, ne jen viewBox) + preserveAspectRatio:'none' — bez
+        // toho prohlížeč dopočítával výšku z poměru stran vůči ŠÍŘCE (width:
+        // '100%' + jen viewBox, žádná explicitní výška), takže po odstranění
+        // maxWidth capu na kartách (PR #238) se graf roztáhl na celou šířku
+        // obrazovky a úměrně s tím i do výšky — reálný nález, výška teď
+        // zůstává pevná (H) bez ohledu na to, jak široký je kontejner.
+        h('svg',{ref:svgRef,viewBox:'0 0 '+W+' '+H,width:'100%',height:H,preserveAspectRatio:'none',style:{display:'block',cursor:'crosshair',userSelect:'none',touchAction:'none',overflow:'visible'},
           onMouseDown:onDown,onMouseMove:onMove,onMouseUp:onUp,onMouseLeave:onLeave,onDoubleClick:resetZoom},
           [0,0.5,1].map((t,k)=>{ const v=lo+span*t; return h('g',{key:'y'+k},h('line',{x1:PL,x2:W-PR,y1:Y(v),y2:Y(v),stroke:'#161b27',strokeWidth:1,strokeDasharray:'3 5'}),h('text',{x:W-PR+6,y:Y(v)+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},(v>0?'+':'')+v.toFixed(2)+'%')); }),
           zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'#2a3242',strokeWidth:1}),
@@ -2674,7 +2680,7 @@ class FXApp extends React.Component{
         st.seasFullErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:11,lineHeight:1.5}},'⚠ '+st.seasFullErr),
         !busy&&!ready&&!st.seasFullErr&&h('div',{style:{fontSize:12,color:T.faint,marginTop:14}},'Načítám…'),
         ready&&h('div',{style:{marginTop:14}},
-          h(self.SeasonalCurveChart,{cum:FP.avg,dates:FP.dates,height:220}),
+          h(self.SeasonalCurveChart,{cum:FP.avg,dates:FP.dates,height:170}),
           h('div',{style:{fontSize:10.5,color:T.faint,marginTop:6,lineHeight:1.5}},'Kumulativní % pohyb den po dni od 1. ledna, zprůměrovaný přes posledních '+FP.n+' kompletních let (n='+FP.n+') — oranžová čára ukazuje, kde na téhle křivce leží dnešní datum ('+new Date().toLocaleDateString('cs-CZ')+'). Táhni myší mezi dvěma body pro přesnou % vzdálenost. Tendence z historie, ne předpověď.')));
     })();
     // Sezónní radar — jasně jednosměrné (ne-šumové) sezónní signály napříč
@@ -2749,7 +2755,8 @@ class FXApp extends React.Component{
             h('div',{style:{display:'flex',gap:22,flexWrap:'wrap',alignItems:'baseline',padding:'14px 16px',background:wrCol+'14',border:'1px solid '+wrCol+'33',borderRadius:12}},
               h('div',null,h('div',{style:{display:'flex',alignItems:'baseline',gap:7}},h('span',{style:self.mono({fontSize:26,fontWeight:800,color:wrCol})},domPct+'%'),h('span',{style:{fontSize:11,fontWeight:800,color:wrCol,letterSpacing:'.04em'}},domLabel)),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'win rate ('+R.n+' let)')),
               h('div',null,h('div',{style:self.mono({fontSize:20,fontWeight:700,color:R.avg>=0?T.green:T.red})},(R.avg>0?'+':'')+R.avg+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'průměrný pohyb')),
-              h('div',{style:{fontSize:11,color:T.dim,lineHeight:1.5,flex:1,minWidth:200}},cur+' šel v tomhle okně '+(dirLong?'nahoru':'dolů')+' v '+domCount+' z '+R.n+' let. ',(R.wr>=50)!==(R.avg>=0)&&h('span',{style:{color:T.faint}},'Win rate a průměrný pohyb tu ukazují opačný směr — '+(R.wr>=50?'víc let bylo v plusu, ale ztrátové roky byly v průměru výraznější než ziskové':'víc let bylo v mínusu, ale ziskové roky byly v průměru výraznější než ztrátové')+', takže průměr táhne na '+(R.avg<0?'mínus':'plus')+'.'))),
+              (R.median!=null)&&h('div',{title:'Prostřední hodnota, když roky seřadíš od nejhoršího po nejlepší — na rozdíl od průměru ji jeden extrémní rok skoro nevychýlí.'},h('div',{style:self.mono({fontSize:20,fontWeight:700,color:R.median>=0?T.green:T.red})},(R.median>0?'+':'')+R.median+'%'),h('div',{style:{fontSize:10,color:T.faint,marginTop:2}},'mediánový pohyb')),
+              h('div',{style:{fontSize:11,color:T.dim,lineHeight:1.5,flex:1,minWidth:200}},cur+' šel v tomhle okně '+(dirLong?'nahoru':'dolů')+' v '+domCount+' z '+R.n+' let. ',(R.wr>=50)!==(R.avg>=0)&&h('span',{style:{color:T.faint}},'Win rate a průměrný pohyb tu ukazují opačný směr — '+(R.wr>=50?'víc let bylo v plusu, ale ztrátové roky byly v průměru výraznější než ziskové':'víc let bylo v mínusu, ale ziskové roky byly v průměru výraznější než ztrátové')+', takže průměr táhne na '+(R.avg<0?'mínus':'plus')+'.'),(R.median!=null)&&Math.abs(R.avg-R.median)>1&&h('span',{style:{color:T.faint}},' Průměr a medián se výrazně liší ('+(R.avg>0?'+':'')+R.avg+'% vs. '+(R.median>0?'+':'')+R.median+'%) — výsledek pravděpodobně táhne jeden odlehlý rok, zkontroluj dlaždice níže.'))),
             h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(90px,1fr))',gap:6,marginTop:10}},R.results.map(r=>h('div',{key:r.year,title:r.from+' → '+r.to,style:{background:'#0a0d13',border:'1px solid #161b27',borderRadius:8,padding:'7px 9px',textAlign:'center'}},h('div',{style:{fontSize:9.5,color:T.faint}},r.year),h('div',{style:self.mono({fontSize:12,fontWeight:700,color:r.ret>=0?T.green:T.red})},(r.ret>0?'+':'')+r.ret+'%')))),
             AP&&AP.avg&&AP.avg.length>1&&(()=>{
               const cum=AP.avg;
