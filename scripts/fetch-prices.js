@@ -69,8 +69,19 @@ async function getRates() {
   if (same) { console.log("Kurzy beze změny, nepřepisuji."); process.exit(0); }
 
   const today = new Date().toISOString().slice(0, 10);
-  const hist = (Array.isArray(prev.hist) ? prev.hist : []).filter(h => h && h.d !== today);
-  hist.push({ d: today, rates: full });
+  // FX spot je o víkendu zavřený, ale Yahoo pořád vrací (mírně cukající)
+  // kotaci — bez týhle pojistky by se so/ne zapsaly do `hist` jako
+  // plnohodnotný "obchodní den" se skoro identickou cenou jako pátek.
+  // getRangePosition/getEfficiencyRatio (engine.js) počítají RP+ER z
+  // POSLEDNÍCH N ZÁZNAMŮ POLE, ne z posledních N obchodních dní — dva
+  // víkendové "duch" dny tak posunou 10denní okno a vyřadí z něj 2 reálné
+  // obchodní dny, což dokázalo spustit falešný RP+ER signál i když se cena
+  // celý víkend vůbec nehnula (ověřeno živě na EURAUD/USDJPY, 2026-09-20).
+  // Filtr běží na KAŽDÉM běhu (ne jen dnes), takže se historie sama vyčistí
+  // od už zapsaných víkendových záznamů hned při prvním běhu v týdnu.
+  const isWeekend = (d) => { const day = new Date(d + "T00:00:00Z").getUTCDay(); return day === 0 || day === 6; };
+  const hist = (Array.isArray(prev.hist) ? prev.hist : []).filter(h => h && h.d !== today && !isWeekend(h.d));
+  if (!isWeekend(today)) hist.push({ d: today, rates: full });
   const trimmed = hist.slice(-150);
 
   const out = { updated: new Date().toISOString(), source: src, base: "USD", rates: full, hist: trimmed };
