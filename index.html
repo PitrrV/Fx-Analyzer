@@ -1404,10 +1404,17 @@ class FXApp extends React.Component{
   // aproximace přes syntetickou cenu. Bez zoomu/panu (roční okno je fixní,
   // na rozdíl od víceleté denní historie u Sezónního okna).
   buildSeasonalCurveChart(){ const self=this,h=this.h;
-    this.SeasonalCurveChart=({cum,dates,height})=>{
+    this.SeasonalCurveChart=({cum,dates,height,responsive})=>{
       const T=self.tok;
       const n=cum.length;
-      const W=1000,H=height||200,PL=10,PR=46,PT=18,PB=26;
+      // responsive=true (karta v Sezónnosti): žádná pevná výška v px — ta na
+      // širokém monitoru (karta přes 1300px) dělala z roční křivky plochý
+      // proužek, na užším okně zas zbytečně "zmáčklý" tvar. Místo toho CSS
+      // aspect-ratio (W:H_ASPECT), takže výška vždy škáluje s AKTUÁLNÍ šířkou
+      // karty — capnuté minHeight/maxHeight, ať to na ultrawide nenaroste přes
+      // míru a na malém okně se nezhroutí. "Zvětšit" modal dál posílá pevné
+      // height (vlastní, už kontrolovanou šířku okna) — nedotčeno.
+      const H_ASPECT=260,H=responsive?H_ASPECT:(height||200),PL=10,PR=46,PT=20,PB=30;
       const svgRef=React.useRef(null);
       // Zoom kolečkem — stejný princip jako PriceMeasureChart: view={s,e} žije
       // v Reactu, takže se NEVRACÍ zpátky po puštění kolečka (dokud uživatel
@@ -1502,14 +1509,19 @@ class FXApp extends React.Component{
       const showHover=hoverIdx!=null&&!(drag&&drag.dragging);
       return h('div',null,
         zoomed&&h('div',{style:{display:'flex',justifyContent:'flex-end',marginBottom:4}},h('button',{type:'button',onClick:resetZoom,style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:7,padding:'3px 9px',fontSize:10.5,fontFamily:'inherit',cursor:'pointer'}},'🔍 Reset přiblížení')),
-        // height (atribut, ne jen viewBox) + preserveAspectRatio:'none' — bez
-        // toho prohlížeč dopočítával výšku z poměru stran vůči ŠÍŘCE (width:
-        // '100%' + jen viewBox, žádná explicitní výška), takže po odstranění
-        // maxWidth capu na kartách (PR #238) se graf roztáhl na celou šířku
-        // obrazovky a úměrně s tím i do výšky — reálný nález, výška teď
-        // zůstává pevná (H) bez ohledu na to, jak široký je kontejner.
-        h('svg',{ref:svgRef,viewBox:'0 0 '+W+' '+H,width:'100%',height:H,preserveAspectRatio:'none',style:{display:'block',cursor:'crosshair',userSelect:'none',touchAction:'none',overflow:'visible'},
+        // Nereponzivní (modal): height (atribut, ne jen viewBox) +
+        // preserveAspectRatio:'none' — bez toho by prohlížeč dopočítával výšku
+        // z poměru stran vůči ŠÍŘCE, takže po odstranění maxWidth capu na
+        // kartách (PR #238) se graf roztáhl do výšky spolu se šířkou (reálný
+        // nález) — tady je H pevné, modal má vlastní kontrolovanou šířku.
+        // Responzivní (karta): žádné pevné height, misto něj CSS aspect-ratio
+        // s min/maxHeight capem — výška TEĎ ZÁMĚRNĚ škáluje s šířkou karty
+        // (na širokém monitoru víc, na užším míň), na rozdíl od modalu výš.
+        h('svg',Object.assign({ref:svgRef,viewBox:'0 0 '+W+' '+H,width:'100%',preserveAspectRatio:'none',
           onMouseDown:onDown,onMouseMove:onMove,onMouseUp:onUp,onMouseLeave:onLeave,onDoubleClick:resetZoom},
+          responsive
+            ?{style:{display:'block',cursor:'crosshair',userSelect:'none',touchAction:'none',overflow:'visible',aspectRatio:W+'/'+H,minHeight:150,maxHeight:320}}
+            :{height:H,style:{display:'block',cursor:'crosshair',userSelect:'none',touchAction:'none',overflow:'visible'}}),
           [0,0.5,1].map((t,k)=>{ const v=lo+span*t; return h('g',{key:'y'+k},h('line',{x1:PL,x2:W-PR,y1:Y(v),y2:Y(v),stroke:'#161b27',strokeWidth:1,strokeDasharray:'3 5'}),h('text',{x:W-PR+6,y:Y(v)+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},(v>0?'+':'')+v.toFixed(2)+'%')); }),
           zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'#2a3242',strokeWidth:1}),
           h('path',{d:pathD+' L '+X(i1)+' '+zeroY+' L '+X(i0)+' '+zeroY+' Z',fill:col,fillOpacity:.12}),
@@ -2680,7 +2692,7 @@ class FXApp extends React.Component{
         st.seasFullErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:11,lineHeight:1.5}},'⚠ '+st.seasFullErr),
         !busy&&!ready&&!st.seasFullErr&&h('div',{style:{fontSize:12,color:T.faint,marginTop:14}},'Načítám…'),
         ready&&h('div',{style:{marginTop:14}},
-          h(self.SeasonalCurveChart,{cum:FP.avg,dates:FP.dates,height:200}),
+          h(self.SeasonalCurveChart,{cum:FP.avg,dates:FP.dates,responsive:true}),
           h('div',{style:{fontSize:10.5,color:T.faint,marginTop:6,lineHeight:1.5}},'Kumulativní % pohyb den po dni od 1. ledna, zprůměrovaný přes posledních '+FP.n+' kompletních let (n='+FP.n+') — oranžová čára ukazuje, kde na téhle křivce leží dnešní datum ('+new Date().toLocaleDateString('cs-CZ')+'). Táhni myší mezi dvěma body pro přesnou % vzdálenost. Tendence z historie, ne předpověď.')));
     })();
     // Sezónní radar — jasně jednosměrné (ne-šumové) sezónní signály napříč
