@@ -1414,7 +1414,7 @@ class FXApp extends React.Component{
       // karty — capnuté minHeight/maxHeight, ať to na ultrawide nenaroste přes
       // míru a na malém okně se nezhroutí. "Zvětšit" modal dál posílá pevné
       // height (vlastní, už kontrolovanou šířku okna) — nedotčeno.
-      const H_ASPECT=260,H=responsive?H_ASPECT:(height||200),PL=10,PR=46,PT=20,PB=30;
+      const W=1000,H_ASPECT=260,H=responsive?H_ASPECT:(height||200),PL=10,PR=46,PT=20,PB=30;
       const svgRef=React.useRef(null);
       // Zoom kolečkem — stejný princip jako PriceMeasureChart: view={s,e} žije
       // v Reactu, takže se NEVRACÍ zpátky po puštění kolečka (dokud uživatel
