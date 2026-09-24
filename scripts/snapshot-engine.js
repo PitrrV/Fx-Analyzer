@@ -31,6 +31,12 @@ let retailLatest = null;
 try { const rh = readJSON("data/retail_hist.json"); if (rh && Array.isArray(rh.points) && rh.points.length) retailLatest = rh.points[rh.points.length - 1]; } catch (e) {}
 let prices = null;
 try { prices = readJSON("data/prices.json"); } catch (e) {}
+// VIX risk režim — bez něj computeAutoRiskSentiment() spadl na náhradní
+// heuristiku z momentum AUDJPY/NZDJPY a snapshot měl jiný risk režim než
+// appka a scripts/bias-alerts.js (reálný nález 24.9.2026: VIX RISK_ON, snapshot
+// neutrál → falešný propad AUD/NZD/CAD/GBP v grafu "Vývoj skóre").
+let vix = null;
+try { vix = readJSON("data/vix.json"); } catch (e) {}
 
 // ── Načtení engine.js do izolovaného scope ────────────────────────────
 const engineSrc = fs.readFileSync(path.join(ROOT, "engine.js"), "utf8");
@@ -41,10 +47,10 @@ const exportsList = [
   "autoUpdateFromCalendar", "applyAutoRiskSentiment", "getLivePrices",
 ].join(",");
 const factory = new Function(
-  "window", "localStorage", "__prices",
-  engineSrc + "\n;if(__prices){_PRICES=__prices;}\nreturn {" + exportsList + "};"
+  "window", "localStorage", "__prices", "__vix",
+  engineSrc + "\n;if(__prices){_PRICES=__prices;}\nif(__vix){_VIX_LATEST=__vix;}\nreturn {" + exportsList + "};"
 );
-const E = factory({}, localStorageStub, prices);
+const E = factory({}, localStorageStub, prices, vix);
 
 // ── Výpočet přesně jako frontend refreshData() ────────────────────────
 // Akumulovaná historie (data/calendar_hist.json), ne jen rolling ~8týdenní
