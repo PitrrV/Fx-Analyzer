@@ -1936,6 +1936,17 @@ function getCurrencyFromEvent(ev){
   }
   return null;
 }
+// Jen přímá země měny, bez INDIRECT_COUNTRIES fallbacku. Pro skórování dat je
+// proxy (CN→AUD, EU/US→CHF…) záměr, ale inflace a sazba CB jsou hodnoty jedné
+// konkrétní země — přes proxy se k AUD dostala čínská CPI y/y (0,8 %) místo
+// australské (3,5 %) a nafoukla AUD real yield (reálný nález 24.9.2026).
+function getDirectCurrencyFromEvent(ev){
+  const country=(ev.country||"").toUpperCase();
+  for(const [cur,codes] of Object.entries(CURRENCY_COUNTRIES)){
+    if(codes.some(c=>country.includes(c))) return cur;
+  }
+  return null;
+}
 
 // Extrahuje CB sazby z Interest Rate Decision eventů
 function extractCBRatesFromCalendar(calData){
@@ -1946,7 +1957,7 @@ function extractCBRatesFromCalendar(calData){
 
   const rates={}; const histories={};
   for(const ev of rateEvents){
-    const cur=getCurrencyFromEvent(ev);
+    const cur=getDirectCurrencyFromEvent(ev);
     if(!cur) continue;
     // "MPC Official Bank Rate Votes" (actual "2-0-7") matchuje keyword "bank rate", ale není to sazba
     if(/votes?/i.test(ev.event||"")) continue;
@@ -2004,7 +2015,7 @@ function extractCPIFromCalendar(calData){
   const isRegionalCPI=name=>/\b(german|france|french|spanish|spain|italian|italy|tokyo)\b/i.test(name);
   // 1. průchod: preferuj YoY události (pozor: CPI 0.0 je falsy — nutný "in" test)
   for(const ev of sorted){
-    const cur=getCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
+    const cur=getDirectCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
     const name=(ev.event||"").toLowerCase();
     if(!isCPIName(name)||isRegionalCPI(name)) continue;
     const isYoY=name.includes("yoy")||name.includes("y/y")||name.includes("annual")||name.includes("year");
@@ -2021,7 +2032,7 @@ function extractCPIFromCalendar(calData){
   // lepší přiblížení než ponechat úplně starou/výchozí hodnotu, když měna
   // nemá žádnou celoblokovou roční CPI zprávu vůbec.
   for(const ev of sorted){
-    const cur=getCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
+    const cur=getDirectCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
     const name=(ev.event||"").toLowerCase();
     if(!isCPIName(name)) continue;
     if(/m\/?m|monthly|q\/?q|quarterly/i.test(name)) continue;
