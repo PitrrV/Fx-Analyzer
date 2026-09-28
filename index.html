@@ -1407,15 +1407,37 @@ class FXApp extends React.Component{
     this.SeasonalCurveChart=({cum,dates,height,responsive})=>{
       const T=self.tok;
       const n=cum.length;
-      // responsive=true (karta v Sezónnosti): žádná pevná výška v px — ta na
-      // širokém monitoru (karta přes 1300px) dělala z roční křivky plochý
-      // proužek, na užším okně zas zbytečně "zmáčklý" tvar. Místo toho CSS
-      // aspect-ratio (W:H_ASPECT), takže výška vždy škáluje s AKTUÁLNÍ šířkou
-      // karty — capnuté minHeight/maxHeight, ať to na ultrawide nenaroste přes
-      // míru a na malém okně se nezhroutí. "Zvětšit" modal dál posílá pevné
-      // height (vlastní, už kontrolovanou šířku okna) — nedotčeno.
-      const W=1000,H_ASPECT=260,H=responsive?H_ASPECT:(height||200),PL=10,PR=46,PT=20,PB=30;
+      // responsive=true (karta v Sezónnosti): výška je teď VIEWPORT-aware
+      // (CSS clamp na vh), ne odvozená od šířky karty — na ultrawide monitoru
+      // (karta přes 1300px) dřívější aspect-ratio+maxHeight dělalo z roční
+      // křivky plochý proužek, protože výšku capovalo bez ohledu na to, jak
+      // vysoké okno uživatel má. clamp(360px, 34vh, 480px) drží 1920×1080 v
+      // ~360-430px pásmu a 2560×1440/3440×1440 v ~420-480px pásmu (oba mají
+      // stejnou výšku okna, jen jinou šířku) a na nižších oknech samo klesá k
+      // 360px podlaze. "Zvětšit" modal dál posílá pevné height (vlastní, už
+      // kontrolovanou šířku okna) — nedotčeno.
+      const W=1000,H_ASPECT=420,H=responsive?H_ASPECT:(height||200),PL=12,PR=54,PT=26,PB=34;
       const svgRef=React.useRef(null);
+      // preserveAspectRatio="none" + nezávisle dané width/height = SVG mapuje
+      // viewBox na viewport NEROVNOMĚRNĚ (jiný scaleX než scaleY), jakmile se
+      // poměr stran kontejneru liší od poměru viewBoxu — na širokém monitoru
+      // s nízkým grafem to vizuálně "natáhne" text a kruhové značky do elips
+      // (ověřeno screenshotem). Změří se REÁLNÁ vykreslená velikost SVG a na
+      // text/kruhové značky se aplikuje korekční transform, který je drží
+      // opticky rovnoměrné (kruh = kruh, písmo = nezkreslené), zatímco
+      // samotná křivka (osa X=čas, Y=%) zůstává přirozeně neúměrná, jak má.
+      const uid=React.useId();
+      const [box,setBox]=React.useState(null);
+      React.useEffect(()=>{
+        const el=svgRef.current; if(!el||typeof ResizeObserver==='undefined') return;
+        const ro=new ResizeObserver(entries=>{ const r=entries[0].contentRect; setBox({w:r.width,h:r.height}); });
+        ro.observe(el);
+        return ()=>ro.disconnect();
+      },[]);
+      const sx=(box&&box.w)?box.w/W:1, sy=(box&&box.h)?box.h/H:1;
+      const scaleTarget=Math.min(sx,sy)||1;
+      const lsx=sx?scaleTarget/sx:1, lsy=sy?scaleTarget/sy:1;
+      const corrAt=(x,y)=>'translate('+x+' '+y+') scale('+lsx+' '+lsy+') translate('+(-x)+' '+(-y)+')';
       // Zoom kolečkem — stejný princip jako PriceMeasureChart: view={s,e} žije
       // v Reactu, takže se NEVRACÍ zpátky po puštění kolečka (dokud uživatel
       // sám neresetuje nebo se nezmění vstupní data). Reset jen když se
@@ -1507,6 +1529,7 @@ class FXApp extends React.Component{
         measure={a,b,pct:+((cum[b]-cum[a]).toFixed(2))};
       }
       const showHover=hoverIdx!=null&&!(drag&&drag.dragging);
+      const gradId='seasAreaGrad-'+uid, glowId='seasGlow-'+uid, tipShadowId='seasTipShadow-'+uid;
       return h('div',null,
         zoomed&&h('div',{style:{display:'flex',justifyContent:'flex-end',marginBottom:4}},h('button',{type:'button',onClick:resetZoom,style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:7,padding:'3px 9px',fontSize:10.5,fontFamily:'inherit',cursor:'pointer'}},'🔍 Reset přiblížení')),
         // Nereponzivní (modal): height (atribut, ne jen viewBox) +
@@ -1514,40 +1537,53 @@ class FXApp extends React.Component{
         // z poměru stran vůči ŠÍŘCE, takže po odstranění maxWidth capu na
         // kartách (PR #238) se graf roztáhl do výšky spolu se šířkou (reálný
         // nález) — tady je H pevné, modal má vlastní kontrolovanou šířku.
-        // Responzivní (karta): žádné pevné height, misto něj CSS aspect-ratio
-        // s min/maxHeight capem — výška TEĎ ZÁMĚRNĚ škáluje s šířkou karty
-        // (na širokém monitoru víc, na užším míň), na rozdíl od modalu výš.
+        // Responzivní (karta): výška je CSS clamp na vh (viz komentář výš u
+        // konstant) — nezávislá na šířce karty, proto teď funguje i na
+        // ultrawide monitoru.
         h('svg',Object.assign({ref:svgRef,viewBox:'0 0 '+W+' '+H,width:'100%',preserveAspectRatio:'none',
           onMouseDown:onDown,onMouseMove:onMove,onMouseUp:onUp,onMouseLeave:onLeave,onDoubleClick:resetZoom},
           responsive
-            ?{style:{display:'block',cursor:'crosshair',userSelect:'none',touchAction:'none',overflow:'visible',aspectRatio:W+'/'+H,minHeight:150,maxHeight:320}}
+            ?{style:{display:'block',cursor:'crosshair',userSelect:'none',touchAction:'none',overflow:'visible',height:'clamp(360px, 34vh, 480px)'}}
             :{height:H,style:{display:'block',cursor:'crosshair',userSelect:'none',touchAction:'none',overflow:'visible'}}),
-          [0,0.5,1].map((t,k)=>{ const v=lo+span*t; return h('g',{key:'y'+k},h('line',{x1:PL,x2:W-PR,y1:Y(v),y2:Y(v),stroke:'#161b27',strokeWidth:1,strokeDasharray:'3 5'}),h('text',{x:W-PR+6,y:Y(v)+3,fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},(v>0?'+':'')+v.toFixed(2)+'%')); }),
-          zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'#2a3242',strokeWidth:1}),
-          h('path',{d:pathD+' L '+X(i1)+' '+zeroY+' L '+X(i0)+' '+zeroY+' Z',fill:col,fillOpacity:.12}),
-          h('path',{d:pathD,fill:'none',stroke:col,strokeWidth:2.4,strokeLinecap:'round',strokeLinejoin:'round'}),
-          todayVisible&&h('line',{x1:todayX,x2:todayX,y1:PT,y2:H-PB,stroke:T.amber,strokeWidth:1.4,strokeDasharray:'4 3'}),
-          todayVisible&&h('text',{x:todayX,y:PT-7,fontSize:9,fontWeight:800,textAnchor:'middle',fill:T.amber},'DNES'),
-          todayVisible&&h('circle',{cx:todayX,cy:todayY,r:3.6,fill:T.amber,stroke:'#0b0d13',strokeWidth:1.4}),
-          monthTicks.map((t,k)=>h('text',{key:k,x:X(t.i),y:H-PB+15,fontSize:9,textAnchor:'middle',fill:T.faint},t.label)),
+          h('defs',null,
+            h('linearGradient',{id:gradId,x1:'0',y1:'0',x2:'0',y2:'1'},
+              h('stop',{offset:'0%',stopColor:col,stopOpacity:0.28}),
+              h('stop',{offset:'100%',stopColor:col,stopOpacity:0})),
+            h('filter',{id:glowId,x:'-30%',y:'-80%',width:'160%',height:'260%'},
+              h('feGaussianBlur',{stdDeviation:3.2})),
+            h('filter',{id:tipShadowId,x:'-40%',y:'-40%',width:'180%',height:'220%'},
+              h('feDropShadow',{dx:0,dy:3,stdDeviation:5,floodColor:'#000',floodOpacity:0.45}))),
+          [0,0.5,1].map((t,k)=>{ const v=lo+span*t, ty=Y(v), lx=W-PR+8; return h('g',{key:'y'+k},h('line',{x1:PL,x2:W-PR,y1:ty,y2:ty,stroke:'#141924',strokeWidth:1,strokeDasharray:'2 6'}),h('text',{x:lx,y:ty+3,transform:corrAt(lx,ty+3),fontSize:9,fill:T.faint,fontFamily:"'JetBrains Mono',monospace"},(v>0?'+':'')+v.toFixed(2)+'%')); }),
+          zeroY>=PT&&zeroY<=H-PB&&h('line',{x1:PL,x2:W-PR,y1:zeroY,y2:zeroY,stroke:'#333d52',strokeWidth:1.2}),
+          h('path',{d:pathD+' L '+X(i1)+' '+zeroY+' L '+X(i0)+' '+zeroY+' Z',fill:'url(#'+gradId+')'}),
+          h('path',{d:pathD,fill:'none',stroke:col,strokeWidth:5,strokeLinecap:'round',strokeLinejoin:'round',opacity:0.32,filter:'url(#'+glowId+')'}),
+          h('path',{d:pathD,fill:'none',stroke:col,strokeWidth:2.2,strokeLinecap:'round',strokeLinejoin:'round'}),
+          todayVisible&&h('line',{x1:todayX,x2:todayX,y1:PT,y2:H-PB,stroke:T.amber,strokeWidth:1,strokeDasharray:'2 4',opacity:.55}),
+          todayVisible&&h('circle',{cx:todayX,cy:todayY,r:7,fill:T.amber,opacity:.14,transform:corrAt(todayX,todayY)}),
+          todayVisible&&h('circle',{cx:todayX,cy:todayY,r:3.2,fill:T.amber,stroke:'#0b0d13',strokeWidth:1.2,transform:corrAt(todayX,todayY)}),
+          todayVisible&&h('g',{transform:corrAt(todayX,PT-9)},
+            h('rect',{x:todayX-15,y:PT-19,width:30,height:13,rx:4,fill:'rgba(232,171,63,.12)',stroke:'rgba(232,171,63,.4)',strokeWidth:1}),
+            h('text',{x:todayX,y:PT-10,fontSize:8.5,fontWeight:700,letterSpacing:'.03em',textAnchor:'middle',fill:T.amber},'DNES')),
+          monthTicks.map((t,k)=>{ const tx=X(t.i),ty=H-PB+17; return h('text',{key:k,x:tx,y:ty,transform:corrAt(tx,ty),fontSize:9,textAnchor:'middle',fill:T.faint,letterSpacing:'.02em'},t.label); }),
           measure&&h('rect',{x:X(measure.a),y:PT,width:Math.max(1,X(measure.b)-X(measure.a)),height:H-PT-PB,fill:measure.pct>=0?T.green:T.red,fillOpacity:.12}),
           drag&&h('line',{x1:X(drag.startIdx),x2:X(drag.startIdx),y1:PT,y2:H-PB,stroke:T.accent,strokeWidth:1,strokeDasharray:'3 3'}),
           drag&&h('line',{x1:X(drag.endIdx),x2:X(drag.endIdx),y1:PT,y2:H-PB,stroke:T.accent,strokeWidth:1,strokeDasharray:'3 3'}),
-          drag&&h('circle',{cx:X(drag.startIdx),cy:Y(cum[drag.startIdx]),r:3.5,fill:T.accent,stroke:'#0b0d13',strokeWidth:1.2}),
-          drag&&h('circle',{cx:X(drag.endIdx),cy:Y(cum[drag.endIdx]),r:3.5,fill:measure?(measure.pct>=0?T.green:T.red):T.accent,stroke:'#0b0d13',strokeWidth:1.2}),
-          measure&&(()=>{ const boxW=196,boxH=54; const bx=Math.min(W-PR-boxW,Math.max(PL,X(measure.b)+10)); const by=PT+6;
-            return h('g',{style:{pointerEvents:'none'}},
-              h('rect',{x:bx,y:by,width:boxW,height:boxH,rx:8,fill:'#11151d',stroke:'#2a3242'}),
-              h('text',{x:bx+10,y:by+19,fontSize:9.5,fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},(dates[drag.startIdx]?dfmt(dates[drag.startIdx]):'')+' → '+(dates[drag.endIdx]?dfmt(dates[drag.endIdx]):'')),
-              h('text',{x:bx+10,y:by+40,fontSize:16,fontWeight:800,fill:measure.pct>=0?T.green:T.red,fontFamily:"'JetBrains Mono',monospace"},(measure.pct>0?'+':'')+measure.pct+'%')); })(),
-          showHover&&(()=>{ const hx=X(hoverIdx),hy=Y(cum[hoverIdx]); const boxW=112,boxH=32; let bx=Math.min(W-PR-boxW,Math.max(PL,hx-boxW/2)); let by=hy-boxH-10; if(by<PT) by=hy+10; if(by>H-PB-boxH) by=H-PB-boxH;
+          drag&&h('circle',{cx:X(drag.startIdx),cy:Y(cum[drag.startIdx]),r:3.5,fill:T.accent,stroke:'#0b0d13',strokeWidth:1.2,transform:corrAt(X(drag.startIdx),Y(cum[drag.startIdx]))}),
+          drag&&h('circle',{cx:X(drag.endIdx),cy:Y(cum[drag.endIdx]),r:3.5,fill:measure?(measure.pct>=0?T.green:T.red):T.accent,stroke:'#0b0d13',strokeWidth:1.2,transform:corrAt(X(drag.endIdx),Y(cum[drag.endIdx]))}),
+          measure&&(()=>{ const boxW=200,boxH=56; const bx=Math.min(W-PR-boxW,Math.max(PL,X(measure.b)+10)); const by=PT+8; const cx0=bx+boxW/2, cy0=by+boxH/2;
+            return h('g',{style:{pointerEvents:'none'},transform:corrAt(cx0,cy0)},
+              h('rect',{x:bx,y:by,width:boxW,height:boxH,rx:10,fill:'rgba(15,18,26,.92)',stroke:'rgba(255,255,255,.08)',strokeWidth:1,filter:'url(#'+tipShadowId+')'}),
+              h('text',{x:bx+12,y:by+21,fontSize:9.5,fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},(dates[drag.startIdx]?dfmt(dates[drag.startIdx]):'')+' → '+(dates[drag.endIdx]?dfmt(dates[drag.endIdx]):'')),
+              h('text',{x:bx+12,y:by+42,fontSize:16.5,fontWeight:800,fill:measure.pct>=0?T.green:T.red,fontFamily:"'JetBrains Mono',monospace"},(measure.pct>0?'+':'')+measure.pct+'%')); })(),
+          showHover&&(()=>{ const hx=X(hoverIdx),hy=Y(cum[hoverIdx]); const boxW=116,boxH=34; let bx=Math.min(W-PR-boxW,Math.max(PL,hx-boxW/2)); let by=hy-boxH-10; if(by<PT) by=hy+10; if(by>H-PB-boxH) by=H-PB-boxH; const cx0=bx+boxW/2, cy0=by+boxH/2;
             return h('g',{style:{pointerEvents:'none'}},
               h('line',{x1:hx,x2:hx,y1:PT,y2:H-PB,stroke:'#2a3242',strokeWidth:1,strokeDasharray:'2 3'}),
-              h('circle',{cx:hx,cy:hy,r:3,fill:T.accent,stroke:'#0b0d13',strokeWidth:1}),
-              h('rect',{x:bx,y:by,width:boxW,height:boxH,rx:6,fill:'#11151d',stroke:'#2a3242'}),
-              h('text',{x:bx+8,y:by+14,fontSize:9.5,fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},dates[hoverIdx]?dfmt(dates[hoverIdx]):''),
-              h('text',{x:bx+8,y:by+27,fontSize:10.5,fontWeight:700,fill:T.text,fontFamily:"'JetBrains Mono',monospace"},(cum[hoverIdx]>=0?'+':'')+cum[hoverIdx].toFixed(2)+'%')); })(),
-          !measure&&!showHover&&h('text',{x:PL+8,y:PT+16,fontSize:10.5,fill:T.faint},'Táhni pro měření % vzdálenosti · kolečkem myši přibliž/oddal · najeď pro hodnotu bodu.')),
+              h('circle',{cx:hx,cy:hy,r:3,fill:T.accent,stroke:'#0b0d13',strokeWidth:1,transform:corrAt(hx,hy)}),
+              h('g',{transform:corrAt(cx0,cy0)},
+                h('rect',{x:bx,y:by,width:boxW,height:boxH,rx:8,fill:'rgba(15,18,26,.92)',stroke:'rgba(255,255,255,.08)',strokeWidth:1,filter:'url(#'+tipShadowId+')'}),
+                h('text',{x:bx+9,y:by+15,fontSize:9.5,fill:T.dim,fontFamily:"'JetBrains Mono',monospace"},dates[hoverIdx]?dfmt(dates[hoverIdx]):''),
+                h('text',{x:bx+9,y:by+29,fontSize:10.5,fontWeight:700,fill:T.text,fontFamily:"'JetBrains Mono',monospace"},(cum[hoverIdx]>=0?'+':'')+cum[hoverIdx].toFixed(2)+'%'))); })(),
+          !measure&&!showHover&&h('text',{x:PL+8,y:PT+16,transform:corrAt(PL+8,PT+16),fontSize:10.5,fill:T.faint},'Táhni pro měření % vzdálenosti · kolečkem myši přibliž/oddal · najeď pro hodnotu bodu.')),
         zoomed&&h('div',{ref:trackRef,onMouseDown:onThumbDown,style:{position:'relative',height:8,background:'#11151d',borderRadius:5,marginTop:6,cursor:'pointer'}},
           h('div',{style:{position:'absolute',top:0,bottom:0,left:(vs/(n-1)*100)+'%',width:Math.max(3,((ve-vs)/(n-1)*100))+'%',background:T.accent,opacity:.55,borderRadius:5}})));
     };
@@ -2682,18 +2718,22 @@ class FXApp extends React.Component{
     const fullYearCard=(()=>{
       const FP=st.seasFullPath, busy=st.seasFullBusy;
       const ready=!busy&&FP&&FP.pair===cur&&FP.years===st.seasFullYears&&FP.avg&&FP.avg.length>1;
-      return h('div',{style:self.card({padding:'18px 22px'})},
+      return h('div',{style:self.card({padding:'20px 24px 22px',borderRadius:12,background:T.surfaceElevated,boxShadow:'0 12px 30px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.03)'})},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:10}},
-          self.ptitle('Roční sezónní křivka — '+cur,'Den po dni, celý rok · zdroj Stooq (zdarma, bez klíče)'),
+          h('div',null,
+            h('div',{style:{display:'flex',alignItems:'baseline',gap:9,flexWrap:'wrap'}},
+              h('div',{style:{fontSize:13.5,fontWeight:800,letterSpacing:'-.01em',color:T.text}},'Roční sezónní křivka'),
+              h('div',{style:{fontSize:11,fontWeight:800,letterSpacing:'.03em',color:T.accent,background:T.accent+'1c',border:'1px solid '+T.accent+'44',borderRadius:6,padding:'2px 8px'}},cur)),
+            h('div',{style:self.mono({fontSize:10.5,color:T.faint,marginTop:4,letterSpacing:'.02em'})},'Den po dni, celý rok · zdroj Stooq (zdarma, bez klíče)')),
           h('div',{style:{display:'flex',gap:9,alignItems:'center',flexWrap:'wrap'}},
-            h('div',{style:{display:'flex',gap:5}},[3,5,10,15,20].map(y=>h('button',{key:y,type:'button',onClick:()=>self.setState({seasFullYears:y}),style:{border:'1px solid '+(st.seasFullYears===y?T.accent:'#1b2130'),background:st.seasFullYears===y?'rgba(94,124,251,.14)':'#0a0d13',color:st.seasFullYears===y?T.text:T.dim,borderRadius:8,padding:'6px 10px',fontFamily:'inherit',fontSize:11.5,fontWeight:700,cursor:'pointer'}},y+' let'))),
+            h('div',{style:{display:'flex',gap:2,border:'1px solid #1b2130',borderRadius:9,padding:2,background:'#0a0d13'}},[3,5,10,15,20].map(y=>h('button',{key:y,type:'button',onClick:()=>self.setState({seasFullYears:y}),style:{border:'none',background:st.seasFullYears===y?'rgba(94,124,251,.16)':'transparent',color:st.seasFullYears===y?T.text:T.dim,borderRadius:7,padding:'6px 10px',fontFamily:'inherit',fontSize:11.5,fontWeight:700,cursor:'pointer'}},y+' let'))),
             ready&&h('button',{type:'button',onClick:()=>self.setState({seasFullChartModal:true}),title:'Zvětšit na celou obrazovku',style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:8,padding:'6px 11px',fontSize:11,fontFamily:'inherit',cursor:'pointer'}},'⤢ Zvětšit'))),
         busy&&h('div',{style:{fontSize:12,color:T.faint,marginTop:14}},'⏳ Počítám roční průměr…'),
         st.seasFullErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:11,lineHeight:1.5}},'⚠ '+st.seasFullErr),
         !busy&&!ready&&!st.seasFullErr&&h('div',{style:{fontSize:12,color:T.faint,marginTop:14}},'Načítám…'),
-        ready&&h('div',{style:{marginTop:14}},
+        ready&&h('div',{style:{marginTop:16}},
           h(self.SeasonalCurveChart,{cum:FP.avg,dates:FP.dates,responsive:true}),
-          h('div',{style:{fontSize:10.5,color:T.faint,marginTop:6,lineHeight:1.5}},'Kumulativní % pohyb den po dni od 1. ledna, zprůměrovaný přes posledních '+FP.n+' kompletních let (n='+FP.n+') — oranžová čára ukazuje, kde na téhle křivce leží dnešní datum ('+new Date().toLocaleDateString('cs-CZ')+'). Táhni myší mezi dvěma body pro přesnou % vzdálenost. Tendence z historie, ne předpověď.')));
+          h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8,lineHeight:1.5}},'Kumulativní % pohyb den po dni od 1. ledna, zprůměrovaný přes posledních '+FP.n+' kompletních let (n='+FP.n+') — oranžová čára ukazuje, kde na téhle křivce leží dnešní datum ('+new Date().toLocaleDateString('cs-CZ')+'). Táhni myší mezi dvěma body pro přesnou % vzdálenost. Tendence z historie, ne předpověď.')));
     })();
     // Sezónní radar — jasně jednosměrné (ne-šumové) sezónní signály napříč
     // všemi 28 páry pro nejbližších N dní. Vloženo do stejného gridového
