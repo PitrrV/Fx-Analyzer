@@ -950,6 +950,26 @@ async function fetchActionCOTHistory(){
       const srvTrim={}; sk.forEach(k=>srvTrim[k]=srv[k]);
       if(sk.length>=12) localStorage.setItem("cot_pct_server",JSON.stringify(srvTrim));
     }catch(e){}
+    // Stejný problém (a stejná oprava) jako výš, ale pro percentil PER KATEGORII
+    // (getCOTCategoryPercentile — sloupce LV/AM) — ten dřív četl přímo z cot_hist
+    // (lokální union), takže na dvou zařízeních s jinak složenou historií vycházel
+    // jinak (reálný nález: appka 100p, ruční výpočet ze 2letého serverového okna
+    // ~93p pro stejnou měnu/týden). Vlastní snapshot jen s levRatio/assetRatio,
+    // odděleně od cot_pct_server (ten drží kombinované skóre, ne raw ratio).
+    try{
+      const srvCat={};
+      Object.entries(j.weeks).forEach(([d,w])=>{
+        if(!w||!w.raw) return;
+        const row={};
+        Object.entries(w.raw).forEach(([ccy,r])=>{
+          if(r&&(Number.isFinite(r.levRatio)||Number.isFinite(r.assetRatio))) row[ccy]={levRatio:r.levRatio,assetRatio:r.assetRatio};
+        });
+        if(Object.keys(row).length) srvCat[cotWeekKey(d)]=row;
+      });
+      const ck=Object.keys(srvCat).sort().slice(-COT_PCT_WINDOW);
+      const srvCatTrim={}; ck.forEach(k=>srvCatTrim[k]=srvCat[k]);
+      if(ck.length>=12) localStorage.setItem("cot_pct_server_cat",JSON.stringify(srvCatTrim));
+    }catch(e){}
     // Srovnej i cot_data/cot_meta (scalar sync klíče, "lokál vždy vyhrává" bez
     // rozlišení server/live — viz KEYS_SCALAR v sync.js). Bez tohohle getCOTLongShort()
     // fallback, loadCOT() fallback i "stáří dat" watchdog dál četly starou
@@ -2881,19 +2901,35 @@ function getCOTNetSeries(currency,limit=104,category='lev'){
 // od getCOTPercentile, který bere appkou používané kombinované skóre lev*0.70+asset*0.30).
 // Skóre dopočítáno z uloženého ratio (long-short)/(long+short) přes stejný vzorec jako
 // cotNetScore (clamp(ratio*6,-3,3)) — ratio je v raw historii vždy, i pro bulk import.
-// POZOR: na rozdíl od getCOTPercentile NEMÁ server-snapshot fallback (ten je jen pro
-// kombinované skóre), takže se počítá z lokální (per-zařízení) cot_hist historie —
-// hodnota se mezi zařízeními může mírně lišit podle toho, kolik historie má dané
-// zařízení naimportované/nasbírané.
+// Primárně čte cot_pct_server_cat (čistě serverový snapshot levRatio/assetRatio,
+// stejný trik jako cot_pct_server u getCOTPercentile výš) — dokud appka poprvé
+// nestáhne data/cot_hist.json (fetchActionCOTHistory ho dopočítá a uloží), spadne
+// zpátky na starší chování (lokální cot_hist union). BEZ tohohle snapshotu se
+// hodnota mezi zařízeními mohla mírně lišit podle toho, kolik historie má dané
+// zařízení naimportované/nasbírané (reálný nález: appka 100p vs ruční výpočet ze
+// 2letého serverového okna ~93p pro stejnou měnu/týden).
 function getCOTCategoryPercentile(currency,category='lev',limit=104){
   try{
     const field=category==='asset'?'assetRatio':'levRatio';
-    const hist=loadCOTHistory();
-    const dates=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-limit);
-    const scores=[];
-    for(const d of dates){
-      const r=hist[d]?.raw?.[currency];
-      if(r&&Number.isFinite(r[field])) scores.push(Math.max(-3,Math.min(3,r[field]*6)));
+    let scores=null;
+    try{
+      const srv=JSON.parse(localStorage.getItem("cot_pct_server_cat")||"null");
+      if(srv&&typeof srv==="object"){
+        const vals=Object.keys(srv).sort().slice(-limit)
+          .map(k=>srv[k]?.[currency]?.[field])
+          .filter(v=>Number.isFinite(v))
+          .map(v=>Math.max(-3,Math.min(3,v*6)));
+        if(vals.length>=12) scores=vals;
+      }
+    }catch(e){}
+    if(!scores){
+      const hist=loadCOTHistory();
+      const dates=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b)).slice(-limit);
+      scores=[];
+      for(const d of dates){
+        const r=hist[d]?.raw?.[currency];
+        if(r&&Number.isFinite(r[field])) scores.push(Math.max(-3,Math.min(3,r[field]*6)));
+      }
     }
     if(scores.length<12) return null;
     const cur=scores[scores.length-1], h2=scores.slice(0,-1);
