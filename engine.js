@@ -986,6 +986,34 @@ async function fetchActionCOTHistory(){
     return j;
   }catch(e){return null;}
 }
+// Stáhne data/bias_alert_state.json — serverový soubor, co scripts/bias-alerts.js
+// (cron) používá k rozhodnutí, kdy poslat Telegram alert (edge-trigger). Appka
+// ho dřív vůbec nečetla — RP+ER signál si appka vždycky počítala sama živě
+// (getRPERSignal), ale neměla odkud vzít DATUM VZNIKU signálu (kdy se poprvé
+// objevil), takže nešlo ukázat "trvá už X dní". Soubor je identický na všech
+// zařízeních (jeden cron, jeden soubor), takže i "od kdy" bude všude stejné —
+// stejný princip jako cot_pct_server u COT percentilu.
+async function fetchActionBiasAlertState(){
+  try{
+    const r=await fetch("data/bias_alert_state.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"});
+    if(!r.ok) return null;
+    const j=await r.json();
+    if(j&&j.rpEr&&typeof j.rpEr==="object") localStorage.setItem("rp_er_since",JSON.stringify(j.rpEr));
+    return j;
+  }catch(e){return null;}
+}
+// key = pair.pair (FX/zlato) nebo "US100". Vrací {type,since} nebo null —
+// "since" chybí u starých záznamů z doby před touhle funkcí (prostý string
+// typu misto objektu) i u páru, který appka ještě žádný cyklus neviděla.
+function getRPERSince(key){
+  try{
+    const m=JSON.parse(localStorage.getItem("rp_er_since")||"null");
+    if(!m||typeof m!=="object") return null;
+    const rec=m[key];
+    if(!rec||typeof rec!=="object"||!rec.since) return null;
+    return rec;
+  }catch(e){return null;}
+}
 async function fetchTextWithFallback(url){
   const urls=[url,"https://r.jina.ai/"+url,"https://api.allorigins.win/raw?url="+encodeURIComponent(url),"https://corsproxy.io/?"+encodeURIComponent(url)];
   let lastErr=null;
