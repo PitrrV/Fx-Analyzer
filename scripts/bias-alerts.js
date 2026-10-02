@@ -173,21 +173,31 @@ async function sendTelegramMessage(token, chatId, text) {
   const flipMoves = flippedPairs.map((pair) => recentFlips.find((f) => f.pair === pair)).filter(Boolean);
 
   // ── 2) RP+ER EXHAUSTION (náběžná hrana) ─────────────────────────────────
+  // rpEr ukládá {type,since} místo prostého typu — "since" appka čte
+  // (fetchActionBiasAlertState/getRPERSince v engine.js), aby mohla ukázat
+  // "trvá už X dní". Starý formát (prostý string) se bere jako "typ bez
+  // known since" — při prvním běhu po týhle změně se "since" nastaví na teď,
+  // i když signál mohl běžet už dřív (jednorázová mez, dřív se to netrackovalo).
   const prevRpEr = state.rpEr || {};
+  const prevType = (pair) => { const r = prevRpEr[pair]; return r && typeof r === "object" ? r.type : (r || null); };
+  const prevSince = (pair) => { const r = prevRpEr[pair]; return r && typeof r === "object" ? r.since : null; };
+  const nowIso = new Date().toISOString();
   const newRpEr = {};
   const rpErMoves = [];
   for (const p of ranked) {
     const sbScore = p.isGold ? goldScoreObj.score : sc[p.base].score;
     const sqScore = p.isGold ? sc.USD.score : sc[p.quote].score;
     const sig = rpErSignal(E, p, sbScore, sqScore);
-    newRpEr[p.pair] = sig ? sig.type : null;
-    if (sig && sig.type !== prevRpEr[p.pair]) rpErMoves.push({ pair: p.pair, ...sig });
+    const pType = prevType(p.pair);
+    newRpEr[p.pair] = sig ? { type: sig.type, since: (sig.type === pType && prevSince(p.pair)) || nowIso } : null;
+    if (sig && sig.type !== pType) rpErMoves.push({ pair: p.pair, ...sig });
   }
   if (us100ScoreObj) {
     const us100Pair = { pair: "US100", isUS100: true };
     const sig = rpErSignal(E, us100Pair, us100ScoreObj.score, 0);
-    newRpEr.US100 = sig ? sig.type : null;
-    if (sig && sig.type !== prevRpEr.US100) rpErMoves.push({ pair: "US100", ...sig });
+    const pType = prevType("US100");
+    newRpEr.US100 = sig ? { type: sig.type, since: (sig.type === pType && prevSince("US100")) || nowIso } : null;
+    if (sig && sig.type !== pType) rpErMoves.push({ pair: "US100", ...sig });
   }
 
   const token = (process.env.SCORE_TELEGRAM_BOT_TOKEN || "").trim();
