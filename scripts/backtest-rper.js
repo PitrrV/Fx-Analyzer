@@ -262,6 +262,7 @@ function summarize(episodes) {
           return (b == null || q == null) ? null : +(b - q).toFixed(2);
         };
         const filteredEp = findEpisodes(s.dates, s.prices, fundGate);
+        filteredEp.forEach((e) => { e.pair = pair; });
         const unfilteredInWindow = results[pair].episodes.filter((e) => e.onsetDate >= fundStart && e.onsetDate <= fundEnd);
         filteredByPair[pair] = summarize(filteredEp);
         unfilteredByPair[pair] = summarize(unfilteredInWindow);
@@ -271,9 +272,10 @@ function summarize(episodes) {
       }
       fundamentalComparison = {
         window: { start: fundStart, end: fundEnd, days: fundDates.length },
-        note: "Jen FX (zlato/US100 nemají historii denního fundamentálního skóre). 'unfiltered' = STEJNÉ okno/páry jako 'filtered', ne celé 2leté okno nahoře — čestné srovnání efektu filtru samotného.",
+        note: "Jen FX (zlato/US100 nemají historii denního fundamentálního skóre). 'unfiltered' = STEJNÉ okno/páry jako 'filtered', ne celé 2leté okno nahoře — čestné srovnání efektu filtru samotného. 'filteredEpisodes' = syrové epizody (s onsetDate/resolvedDate) PŘESNĚ v tom tvaru, co by appka před 2026-10-02 reálně ukázala/poslala na Telegram — pro zpětnou rekonstrukci toho, co appka skutečně alertovala v libovolném dílčím okně.",
         unfiltered: summarize(allWindowUnfilteredEp),
         filtered: summarize(allFilteredEp),
+        filteredEpisodes: allFilteredEp,
         perPair: Object.fromEntries(STANDARD_PAIRS.filter((p) => filteredByPair[p.pair]).map((p) => [p.pair, { unfiltered: unfilteredByPair[p.pair], filtered: filteredByPair[p.pair] }])),
       };
       console.log(`\nCelkem (okno ${fundStart}→${fundEnd}): bez filtru ${fundamentalComparison.unfiltered.winRate}% (n=${fundamentalComparison.unfiltered.total}) → s filtrem ${fundamentalComparison.filtered.winRate}% (n=${fundamentalComparison.filtered.total})`);
