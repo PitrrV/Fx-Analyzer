@@ -284,12 +284,82 @@ function summarize(episodes) {
     }
   } catch (e) { console.log("Fundamentální srovnání ERR", e.message); }
 
+  // ── COT pozicování vs. RP+ER — stejná myšlenka jako fundamentální filtr
+  // výš, ale COT týdenní historie (data/cot_hist.json) pokrývá CELÉ 2leté
+  // okno (na rozdíl od denního kalendářního skóre, co appka trackuje jen
+  // ~3 měsíce) — tohle srovnání je proto na mnohem větším a spolehlivějším
+  // vzorku. Pro každou (nefiltrovanou, VYŘEŠENOU — ongoing vynechány, u nich
+  // není co počítat do win rate) technickou epizodu najde COT skóre base/
+  // quote k datu vzniku (nejbližší PŘEDCHOZÍ týdenní report, tolerance 10
+  // dní — COT vychází jednou týdně, ne denně) a rozdělí do stejných tří
+  // košů jako kalendářní fundament (souhlasí/nesouhlasí/neutrál se směrem
+  // chase, stejný práh NEUTRAL=0.3) — čistě diagnostické, appka COT jako
+  // filtr RP+ER signálu nepoužívá, dokud se tady neukáže, že to fakt pomáhá.
+  let cotComparison = null;
+  try {
+    const cotHist = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "cot_hist.json"), "utf8"));
+    const cotDates = Object.keys(cotHist.weeks || {}).sort();
+    if (cotDates.length >= 12) {
+      const COT_TOLERANCE_DAYS = 10;
+      function cotScoreOnOrBefore(cur, targetDate) {
+        const tMs = new Date(targetDate + "T00:00:00Z").getTime();
+        let best = null, bestDiff = Infinity;
+        for (const d of cotDates) {
+          const dMs = new Date(d + "T00:00:00Z").getTime();
+          const delta = tMs - dMs;
+          if (delta >= 0 && delta <= COT_TOLERANCE_DAYS * 86400000 && delta < bestDiff) {
+            const v = cotHist.weeks[d].scores && cotHist.weeks[d].scores[cur];
+            if (typeof v === "number") { best = v; bestDiff = delta; }
+          }
+        }
+        return best;
+      }
+      const NEUTRAL = 0.3;
+      const byBucket = { souhlas: [], proti: [], neutral: [] };
+      const perPairCot = {};
+      for (const { pair, base, quote } of STANDARD_PAIRS) {
+        const r = results[pair]; if (!r) continue;
+        const tagged = [];
+        for (const ep of r.episodes) {
+          if (ep.ongoing) continue;
+          const b = cotScoreOnOrBefore(base, ep.onsetDate), q = cotScoreOnOrBefore(quote, ep.onsetDate);
+          if (b == null || q == null) continue;
+          const diff = +(b - q).toFixed(2);
+          const bucket = ep.type === "SHORT"
+            ? (diff > NEUTRAL ? "proti" : diff < -NEUTRAL ? "souhlas" : "neutral")
+            : (diff < -NEUTRAL ? "proti" : diff > NEUTRAL ? "souhlas" : "neutral");
+          const taggedEp = Object.assign({}, ep, { pair, cotDiff: diff, cotBucket: bucket });
+          byBucket[bucket].push(taggedEp);
+          tagged.push(taggedEp);
+        }
+        if (tagged.length) perPairCot[pair] = {
+          souhlas: summarize(tagged.filter((e) => e.cotBucket === "souhlas")),
+          proti: summarize(tagged.filter((e) => e.cotBucket === "proti")),
+          neutral: summarize(tagged.filter((e) => e.cotBucket === "neutral")),
+        };
+      }
+      const allTagged = [].concat(byBucket.souhlas, byBucket.proti, byBucket.neutral);
+      cotComparison = {
+        window: { start: cotDates[0], end: cotDates[cotDates.length - 1], weeks: cotDates.length },
+        note: "COT (týdenní, scores[] = stejné blendované skóre jako COT percentil v appce) spárované s onsetDate KAŽDÉ vyřešené nefiltrované technické epizody za celé 2leté okno — tolerance 10 dní (týdenní cadence COT reportu). 'souhlas'/'proti'/'neutral' = stejná konvence jako fundBucket u kalendářního fundamentu (getRPERSignal), jen jiný zdroj skóre. 'filteredOutSouhlas' = co by appka ukázala, kdyby filtrovala COT stejně jako dřív kalendářní fundament — pro přímé srovnání, jestli by COT filtr pomohl tam, kde kalendářní fundament nepomohl.",
+        byBucket: { souhlas: summarize(byBucket.souhlas), proti: summarize(byBucket.proti), neutral: summarize(byBucket.neutral) },
+        filteredOutSouhlas: summarize([].concat(byBucket.proti, byBucket.neutral)),
+        unfiltered: summarize(allTagged),
+        perPair: perPairCot,
+      };
+      console.log(`\nCOT srovnání (${cotComparison.window.start}→${cotComparison.window.end}, ${allTagged.length} spárovaných epizod): souhlas ${cotComparison.byBucket.souhlas.winRate}% (n=${cotComparison.byBucket.souhlas.total}) · neutral ${cotComparison.byBucket.neutral.winRate}% (n=${cotComparison.byBucket.neutral.total}) · proti ${cotComparison.byBucket.proti.winRate}% (n=${cotComparison.byBucket.proti.total})`);
+    } else {
+      console.log("COT historie příliš krátká (data/cot_hist.json), přeskakuji COT srovnání.");
+    }
+  } catch (e) { console.log("COT srovnání ERR", e.message); }
+
   const out = {
     generated: new Date().toISOString(),
     methodology: "Point-in-time RP(10)/ER(10), STEJNÉ prahy jako getRPERSignal (index.html), BEZ fundamentálního filtru — appka od 2026-10-02 filtr sama nepoužívá (čestné přeměření ukázalo, že kvalitu zhoršoval, ne zlepšoval), takže tohle číslo teď odpovídá PŘESNĚ tomu, co appka živě posílá. Epizoda = od prvního dne v extrému+ER pásmu do dne, kdy RP opustí tu zónu. MIN_MOVE_PCT=" + MIN_MOVE_PCT + "% (pod tím je CHOP). fundamentalComparison = diagnostické srovnání JEN pro FX v okně, kde appka má historii denního fundamentálního skóre — ukazuje, že filtr by kvalitu NEzlepšil, proto appka filtr nepoužívá.",
     range: { startDate, endDate, years: YEARS_BACK },
     overall, byType,
     fundamentalComparison,
+    cotComparison,
     perInstrument: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.stats])),
     episodes: results,
   };
