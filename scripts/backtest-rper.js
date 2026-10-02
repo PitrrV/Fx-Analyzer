@@ -10,10 +10,11 @@
 // getEfficiencyRatio/getGoldRangePosition/…), ale nad libovolným historickým
 // okamžikem, ne jen "posledních 10 dní". Epizoda signálu = první den, kdy RP
 // vstoupí do extrému (≥80 % nebo ≤20 %) SOUČASNĚ s ER v pásmu (stejné prahy
-// jako getRPERSignal v index.html) — VYNECHÁVÁ fundamentální filtr (appka ho
-// navíc vyžaduje pro reálné zobrazení/alert), protože appka nemá k dispozici
-// historii denního fundamentálního skóre pro zlato/US100 a pro FX jen ~2
-// měsíce (data/engine_hist.json) — tohle testuje ČISTĚ technický spouštěč.
+// jako getRPERSignal v index.html) — BEZ fundamentálního filtru, protože appka
+// ho od 2026-10-02 už sama nepoužívá (viz getRPERSignal v index.html — čestné
+// přeměření ukázalo, že filtr kvalitu zhoršoval, ne zlepšoval). fundGate níž
+// zůstává jen jako volitelný DIAGNOSTICKÝ nástroj pro zpětné srovnání, appka
+// ho při živém rozhodování nepoužívá.
 // Epizoda končí (= "vyřešena"), když RP opustí ZÓNU, ve které vznikla — bez
 // ohledu na to, jestli ER mezitím na chvíli vypadlo z pásma.
 //
@@ -217,13 +218,15 @@ function summarize(episodes) {
   const overall = summarize(allEpisodes);
   const byType = { SHORT: summarize(allEpisodes.filter((e) => e.type === "SHORT")), LONG: summarize(allEpisodes.filter((e) => e.type === "LONG")) };
 
-  // ── Fundamentální filtr — porovnání se stejnou podmínkou, jakou appka
-  // navíc vyžaduje živě (getRPERSignal: fundament nesmí souhlasit se
-  // směrem chase). Jen pro FX páry, jen v okně, kde appka reálně má
-  // historii denního fundamentálního skóre (data/engine_hist.json — ~2
-  // měsíce, zlato/US100 tuhle historii vůbec nemají). Srovnání je čestné:
-  // nefiltrovaná varianta se počítá ZNOVU, omezená na STEJNÉ okno a STEJNÉ
-  // páry, ať rozdíl ve výsledku ukazuje efekt filtru, ne jen víc dat. ──────
+  // ── Fundamentální filtr — DIAGNOSTICKÉ srovnání (appka ho při živém
+  // rozhodování od 2026-10-02 už nepoužívá, viz getRPERSignal v index.html —
+  // čestné přeměření ukázalo 70.1 %/PF1.28 bez filtru vs 63.2 %/PF1.03 s ním,
+  // tedy filtr kvalitu zhoršoval). Necháno tu jen pro budoucí zpětnou kontrolu.
+  // Jen pro FX páry, jen v okně, kde appka reálně má historii denního
+  // fundamentálního skóre (data/engine_hist.json — ~2 měsíce, zlato/US100
+  // tuhle historii vůbec nemají). Srovnání je čestné: nefiltrovaná varianta
+  // se počítá ZNOVU, omezená na STEJNÉ okno a STEJNÉ páry, ať rozdíl ve
+  // výsledku ukazuje efekt filtru, ne jen víc dat. ──────
   let fundamentalComparison = null;
   try {
     const engineHist = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "engine_hist.json"), "utf8"));
@@ -281,7 +284,7 @@ function summarize(episodes) {
 
   const out = {
     generated: new Date().toISOString(),
-    methodology: "Point-in-time RP(10)/ER(10), STEJNÉ prahy jako getRPERSignal (index.html), BEZ fundamentálního filtru (appka ho navíc vyžaduje pro živé zobrazení/alert). Epizoda = od prvního dne v extrému+ER pásmu do dne, kdy RP opustí tu zónu. MIN_MOVE_PCT=" + MIN_MOVE_PCT + "% (pod tím je CHOP). fundamentalComparison = druhé, menší srovnání JEN pro FX v okně, kde appka má historii denního fundamentálního skóre — ukazuje, jestli živý fundamentální filtr win rate skutečně zlepšuje.",
+    methodology: "Point-in-time RP(10)/ER(10), STEJNÉ prahy jako getRPERSignal (index.html), BEZ fundamentálního filtru — appka od 2026-10-02 filtr sama nepoužívá (čestné přeměření ukázalo, že kvalitu zhoršoval, ne zlepšoval), takže tohle číslo teď odpovídá PŘESNĚ tomu, co appka živě posílá. Epizoda = od prvního dne v extrému+ER pásmu do dne, kdy RP opustí tu zónu. MIN_MOVE_PCT=" + MIN_MOVE_PCT + "% (pod tím je CHOP). fundamentalComparison = diagnostické srovnání JEN pro FX v okně, kde appka má historii denního fundamentálního skóre — ukazuje, že filtr by kvalitu NEzlepšil, proto appka filtr nepoužívá.",
     range: { startDate, endDate, years: YEARS_BACK },
     overall, byType,
     fundamentalComparison,

@@ -115,7 +115,12 @@ function computeLive(prevBiasState) {
 
 // Port getRPERSignal() z index.html (FXApp metoda) do samostatné funkce —
 // STEJNÁ logika/prahy/PF tabulka, jen bez React/self. Viz komentář u
-// getRPERSignal v index.html pro odůvodnění pásem.
+// getRPERSignal v index.html — dřívější fundamentální blokování (souhlas se
+// směrem chase → signál se vůbec nepošle) bylo zrušeno (2026-10-02): čestné
+// přeměření na 72denním okně ukázalo, že filtr kvalitu aktuálně ZHORŠUJE
+// (70.1 %/PF1.28 bez filtru vs 63.2 %/PF1.03 s filtrem) a schovával reálně
+// profitabilní signály (CADCHF LONG 22.9, +0.49 %, nikdy neposláno). fundBucket
+// zůstává jako informační kontext v samotné zprávě, nic už neblokuje.
 function rpErSignal(E, p, sbScore, sqScore) {
   let rp = null, er = null;
   try {
@@ -131,12 +136,10 @@ function rpErSignal(E, p, sbScore, sqScore) {
     return b[2];
   };
   if (rp.rp >= 0.8 && er.er > 0.5) {
-    if (diff < -NEUTRAL) return null;
-    return { type: "SHORT", rp: rp.rp, er: er.er, diff, pf: bandPF("SHORT", er.er) };
+    return { type: "SHORT", rp: rp.rp, er: er.er, diff, pf: bandPF("SHORT", er.er), fundBucket: diff > NEUTRAL ? "proti" : diff < -NEUTRAL ? "souhlas" : "neutral" };
   }
   if (rp.rp <= 0.2 && er.er >= 0.2 && er.er < 0.65) {
-    if (diff > NEUTRAL) return null;
-    return { type: "LONG", rp: rp.rp, er: er.er, diff, pf: bandPF("LONG", er.er) };
+    return { type: "LONG", rp: rp.rp, er: er.er, diff, pf: bandPF("LONG", er.er), fundBucket: diff < -NEUTRAL ? "proti" : diff > NEUTRAL ? "souhlas" : "neutral" };
   }
   return null;
 }
@@ -198,8 +201,9 @@ async function sendTelegramMessage(token, chatId, text) {
   }
   for (const m of rpErMoves) {
     const icon = m.type === "SHORT" ? "🔴" : "🟢";
+    const bucketTxt = m.fundBucket === "proti" ? " (nesouhlasí ⚡)" : m.fundBucket === "souhlas" ? " (souhlasí ⚠)" : " (neutrál)";
     blocks.push(`${icon} <b>${escapeTgHtml(m.pair)}</b> — RP+ER exhaustion (${m.type})\n`
-      + `RP ${Math.round(m.rp * 100)}% · ER ${m.er.toFixed(2)} · historicky PF ${m.pf.toFixed(2)} · fundament ${fmtNum(m.diff)}`);
+      + `RP ${Math.round(m.rp * 100)}% · ER ${m.er.toFixed(2)} · historicky PF ${m.pf.toFixed(2)} · fundament ${fmtNum(m.diff)}${bucketTxt}`);
   }
 
   if (blocks.length && token && chatId) {
