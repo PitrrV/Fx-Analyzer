@@ -1693,22 +1693,30 @@ class FXApp extends React.Component{
       dd>0&&h('div',{style:{fontSize:10.5,color:T.faint,marginTop:8}},'Max drawdown: ',h('b',{style:{color:T.red}},'−'+dd.toFixed(2)+'R'),' (obchod #'+ddIdx+')'));
   }
   getRPERSignal(p,sb,sq){
-    // RP+ER "exhaustion fade" — technický signál (žádná nová data, jen cena) +
-    // fundament jako kontrola "je pohyb vysvětlený, nebo podezřelý". Backtest
-    // (28 párů, 2024-05→2026-07, point-in-time, half-split+tercily ověřeno), PF
-    // roste uvnitř zóny s ER — proto se nepoužívá jedno pooled číslo, ale pásmo:
+    // RP+ER "exhaustion fade" — technický signál (žádná nová data, jen cena).
+    // Backtest (28 párů, 2024-05→2026-07, point-in-time, half-split+tercily
+    // ověřeno), PF roste uvnitř zóny s ER — proto se nepoužívá jedno pooled
+    // číslo, ale pásmo:
     // SHORT (RP≥80%): ER .50-.65→PF1.19 · .65-.80→PF1.37 · .80-1.01→PF2.45
     // LONG  (RP≤20%): ER .20-.35→PF1.66 · .35-.50→PF1.39 · .50-.65→PF1.64
-    // Trojkombinace s fundamentem (dnešní nález): fade funguje LÍP, když fundament
-    // NESOUHLASÍ se směrem chase (souhlas PF~0.90 — nejhorší, proti PF~1.9-2.2) —
-    // proto se "souhlasící" bucket vůbec nezobrazuje (svítí jen potvrzené).
+    // Fundamentální "souhlas/nesouhlas se směrem chase" (diff) se dál počítá a
+    // zobrazuje jako kontext (fundBucket) — RANĚJŠÍ verze tu navíc blokovala
+    // signál celý, když fundament souhlasil (domnělé PF~0.90 vs 1.9-2.2 pro
+    // nesouhlas). Živé přeměření na delším/čerstvějším okně (2026-10-02,
+    // 72 dní se skutečnou denní fundamentální historií, čestné srovnání stejných
+    // párů/okna) ukázalo opak: bez filtru 70.1 % / PF 1.28, s filtrem jen
+    // 63.2 % / PF 1.03 — filtr tedy aktuálně kvalitu NEZLEPŠUJE, naopak schovává
+    // reálně profitabilní signály (živý nález: CADCHF LONG 22.9, fundament
+    // silně souhlasil → appka ho nikdy neukázala ani neposlala, přitom vyšel
+    // +0.49 %). Blokování proto zrušeno — appka teď posílá/ukazuje PŘESNĚ to,
+    // co měří backtest (scripts/backtest-rper.js, bez filtru).
     let rp=null,er=null; try{ if(p.isGold){rp=getGoldRangePosition(10); er=getGoldEfficiencyRatio(10);} else if(p.isUS100){rp=getUS100RangePosition(10); er=getUS100EfficiencyRatio(10);} else {rp=getRangePosition(p.pair,10); er=getEfficiencyRatio(p.pair,10);} }catch(e){}
     if(!rp||!er) return null;
     const diff=(sb.score||0)-(sq.score||0), NEUTRAL=0.3;
     const bandPF=(type,e)=>{ const bands=type==='SHORT'?[[0.5,0.65,1.19],[0.65,0.8,1.37],[0.8,1.01,2.45]]:[[0.2,0.35,1.66],[0.35,0.5,1.39],[0.5,0.65,1.64]];
       const b=bands.find(([lo,hi])=>e>=lo&&e<hi)||bands[bands.length-1]; return b[2]; };
-    if(rp.rp>=0.8&&er.er>0.5){ if(diff<-NEUTRAL) return null; return {type:'SHORT',rp:rp.rp,er:er.er,diff,pf:bandPF('SHORT',er.er),fundBucket:diff>NEUTRAL?'proti':'neutral'}; }
-    if(rp.rp<=0.2&&er.er>=0.2&&er.er<0.65){ if(diff>NEUTRAL) return null; return {type:'LONG',rp:rp.rp,er:er.er,diff,pf:bandPF('LONG',er.er),fundBucket:diff<-NEUTRAL?'proti':'neutral'}; }
+    if(rp.rp>=0.8&&er.er>0.5){ return {type:'SHORT',rp:rp.rp,er:er.er,diff,pf:bandPF('SHORT',er.er),fundBucket:diff>NEUTRAL?'proti':diff<-NEUTRAL?'souhlas':'neutral'}; }
+    if(rp.rp<=0.2&&er.er>=0.2&&er.er<0.65){ return {type:'LONG',rp:rp.rp,er:er.er,diff,pf:bandPF('LONG',er.er),fundBucket:diff<-NEUTRAL?'proti':diff>NEUTRAL?'souhlas':'neutral'}; }
     return null;
   }
   // "COT vs Retail" karta — vytažená z renderDetail() do vlastní metody, ať ji
@@ -1772,12 +1780,12 @@ class FXApp extends React.Component{
         h('span',{style:{fontSize:11,fontWeight:800,letterSpacing:'.04em',color:verdict.c,background:sig?verdict.c+'1c':'#0c0f16',border:'1px solid '+(sig?verdict.c+'44':'#232b3d'),borderRadius:7,padding:'5px 12px',whiteSpace:'nowrap'}},verdict.t)),
       h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}},rpBar||h('div'),erBar||h('div',{style:{fontSize:10.5,color:T.faint}},'Málo cenové historie pro ER.')),
       sig?(()=>{ const priceTxt=sig.type==='SHORT'?('Cena je na vrcholu 10d rozpětí a dostala se tam hladce (ER '+sig.er.toFixed(2)+') — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). '):('Cena je na dně 10d rozpětí s přiměřeným ER ('+sig.er.toFixed(2)+', ne chaos, ne panika) — historicky fade zóna (PF '+sig.pf.toFixed(2)+' pro tohle ER pásmo). ');
-        const isProti=sig.fundBucket==='proti';
-        const fundTxt=isProti?('Fundament s tímhle '+sig.type+'em nesouhlasí (sám zůstává '+(sig.type==='SHORT'?'bullish':'bearish')+', '+self.sgn(sig.diff)+') — zní to jako varování, ale přesně tahle kombinace byla v testu nejsilnější'):('Fundament je neutrální ('+self.sgn(sig.diff)+'), nekazí ani nepotvrzuje');
+        const isProti=sig.fundBucket==='proti', isSouhlas=sig.fundBucket==='souhlas';
+        const fundTxt=isProti?('Fundament s tímhle '+sig.type+'em nesouhlasí (sám zůstává '+(sig.type==='SHORT'?'bullish':'bearish')+', '+self.sgn(sig.diff)+') — zní to jako varování, ale přesně tahle kombinace byla v testu nejsilnější'):isSouhlas?('Fundament s tímhle '+sig.type+'em naopak silně souhlasí ('+self.sgn(sig.diff)+') — tahle kombinace v testu vychází slabší, ber jako rizikovější'):('Fundament je neutrální ('+self.sgn(sig.diff)+'), nekazí ani nepotvrzuje');
         return h('div',{style:{display:'flex',alignItems:'center',gap:10,background:verdict.c+'16',border:'1px solid '+verdict.c+'44',borderRadius:10,padding:'11px 14px',marginTop:14}},
         h('span',{style:{fontSize:16,flex:'none'}},'🎯'),
-        h('span',{style:{fontSize:13,fontWeight:700,color:T.text,lineHeight:1.5}},priceTxt,fundTxt,isProti?h('span',{style:{marginLeft:7,fontSize:9.5,fontWeight:800,letterSpacing:'.05em',color:verdict.c,background:verdict.c+'22',border:'1px solid '+verdict.c+'55',borderRadius:6,padding:'2px 7px',verticalAlign:'middle'}},'⚡ SILNĚJŠÍ'):null,' → ',h('b',{style:{color:verdict.c}},'POTVRZENO.'))); })():
-        h('div',{style:{fontSize:11,color:T.dim,marginTop:14,lineHeight:1.5,paddingTop:12,borderTop:'1px solid #ffffff0f'}},'RP/ER nejsou v žádné zóně, nebo fundament silně souhlasí se směrem chase — v tom případě signál nesvítí (historicky nejhorší kombinace, PF~0.9). Čistě informační, neovlivňuje skóre ani diferenciál.'));
+        h('span',{style:{fontSize:13,fontWeight:700,color:T.text,lineHeight:1.5}},priceTxt,fundTxt,isProti?h('span',{style:{marginLeft:7,fontSize:9.5,fontWeight:800,letterSpacing:'.05em',color:verdict.c,background:verdict.c+'22',border:'1px solid '+verdict.c+'55',borderRadius:6,padding:'2px 7px',verticalAlign:'middle'}},'⚡ SILNĚJŠÍ'):isSouhlas?h('span',{style:{marginLeft:7,fontSize:9.5,fontWeight:800,letterSpacing:'.05em',color:T.amber,background:T.amber+'22',border:'1px solid '+T.amber+'55',borderRadius:6,padding:'2px 7px',verticalAlign:'middle'}},'⚠ RIZIKOVĚJŠÍ'):null,' → ',h('b',{style:{color:verdict.c}},'POTVRZENO.'))); })():
+        h('div',{style:{fontSize:11,color:T.dim,marginTop:14,lineHeight:1.5,paddingTop:12,borderTop:'1px solid #ffffff0f'}},'RP/ER nejsou v žádné zóně — pak signál nesvítí. Čistě informační, neovlivňuje skóre ani diferenciál.'));
   }
   // AI analýza karta (z uloženého screenshotu grafu, ai_analyses_v1) — vytažená
   // z renderDetail() do vlastní metody (viz komentář u cotVsRetailCard výš).
