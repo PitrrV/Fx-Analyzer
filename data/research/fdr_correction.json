@@ -2,9 +2,20 @@
  "n_tests": 1368,
  "n_prior_robust": 202,
  "p_lt_10_raw": 224,
- "bh_survivors": {
-  "0.05": 16,
-  "0.1": 16,
-  "0.2": 24
+ "pooled_1368": {
+  "note": "Naivní FDR přes všech 1368 testů najednou (currency+pair). COUNTER_AUDIT_2026-07.md bias #2: příliš přísné, protože desítky párových testů (např. 28× AUD) testují týž efekt vícekrát a vyždímají FDR budget. Ponecháno pro transparentnost, NENÍ autoritativní číslo appky.",
+  "bh_survivors": {
+   "0.05": 16,
+   "0.1": 16,
+   "0.2": 24
+  }
+ },
+ "currency_level_304": {
+  "note": "FDR jen přes 304 currency-scope testů (bez redundantních párových). Tohle je metodika, na kterou se COUNTER_AUDIT_2026-07.md odkazuje v §'Multiple testing bias' ('7 nálezů na úrovni měn').",
+  "bh_survivors": {
+   "0.05": 4,
+   "0.1": 7,
+   "0.2": 16
+  }
  }
 }
