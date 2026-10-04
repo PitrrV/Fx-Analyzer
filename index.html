@@ -998,6 +998,10 @@ class FXApp extends React.Component{
       this.setState({aiResult:parsed,aiBusy:false});
     }catch(e){ this.setState({aiErr:'Analýza selhala: '+(e&&e.message||e),aiBusy:false}); } }
   onAIFile(file){ if(!file||!file.type.startsWith('image/')){ this.setState({aiErr:'Nahrej obrázek (PNG/JPG/WebP).'}); return; } if(this._aiUrl)URL.revokeObjectURL(this._aiUrl); const url=URL.createObjectURL(file); this._aiUrl=url; this._aiFile=file; this.setState({aiImgUrl:url,aiErr:'',aiResult:null}); }
+  // Smaže uloženou AI analýzu pro daný pár (ai_analyses_v1 v localStorage —
+  // mimo React state, proto po smazání prázdný setState jen vynutí re-render,
+  // ať se karta hned přepne zpátky na "Zatím bez analýzy").
+  deleteAIAnalysis(pair){ try{ let store={}; try{store=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){} delete store[pair]; localStorage.setItem('ai_analyses_v1',JSON.stringify(store)); }catch(e){} this.setState({}); }
   setCBRate(c,v){ const n=parseFloat(v); if(isNaN(n))return; try{ const cur=JSON.parse(localStorage.getItem('v5_cb_rates')||'{}'); cur[c]=n; localStorage.setItem('v5_cb_rates',JSON.stringify(cur)); }catch(e){} try{ if(typeof CENTRAL_BANK_RATES!=='undefined')CENTRAL_BANK_RATES[c]=n; }catch(e){} this.refreshData(); }
   async loadSeasonality(pair){ const p=pair||this.state.seasPair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD'; this.setState({seasPair:p,seasBusy:true,seasErr:'',seasData:null});
     try{ const av=(localStorage.getItem('av')||'').trim(); const data=await fetchSeasonality(p,av); this.setState({seasData:data,seasBusy:false}); }
@@ -1819,8 +1823,16 @@ class FXApp extends React.Component{
     const biasC=ai.bias==='BULLISH'?T.green:ai.bias==='BEARISH'?T.red:T.amber; const aiDir=ai.bias==='BULLISH'?'BUY':ai.bias==='BEARISH'?'SELL':((ai.entry_setup&&ai.entry_setup.direction)||null);
     const agree=aiDir?(aiDir===p.dir?{t:'✓ SOUHLASÍ S BIASEM',c:T.green,m:'AI ('+ai.bias+') potvrzuje fundamentální '+p.dir+' — silnější konfluence.'}:{t:'⚠ PROTI BIASU',c:T.red,m:'AI vidí '+ai.bias+', ale fundamentální bias je '+p.dir+' → konflikt, opatrně.'}):{t:'NEUTRÁL',c:T.amber,m:'AI vidí '+(ai.bias||'SIDEWAYS')+' — bez jasné směrové shody s biasem.'};
     const kl=(ai.key_levels||[]).slice(0,4);
+    // "Vzniklo před X" — stejné formátování data jako u notesCard výš (tsTxt),
+    // ať uživatel vidí, jak dlouho už je tahle AI analýza v appce zobrazená
+    // (živě se nepřepočítává, zůstává, dokud ji sám nesmaže nebo nenahraje novou).
+    const savedTxt=(()=>{ if(!ai.savedAt)return null; const d=new Date(ai.savedAt); if(isNaN(d))return null; const now=new Date(); const hm=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); return (d.toDateString()===now.toDateString()?'dnes ':(d.getDate()+'.'+(d.getMonth()+1)+'. '))+hm; })();
     return h('div',{style:self.card({padding:'16px 18px',borderColor:agree.c+'33',borderLeft:'3px solid '+agree.c})},
-      h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:10}},self.ptitle('AI Analýza — '+p.pair,'Z fotky grafu · '+(ai.tf||'TF')),h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:agree.c,background:agree.c+'1c',border:'1px solid '+agree.c+'44',borderRadius:7,padding:'5px 10px',whiteSpace:'nowrap'}},agree.t)),
+      h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:10}},
+        self.ptitle('AI Analýza — '+p.pair,'Z fotky grafu · '+(ai.tf||'TF')+(savedTxt?' · '+savedTxt:'')),
+        h('div',{style:{display:'flex',alignItems:'center',gap:7}},
+          h('span',{style:{fontSize:10.5,fontWeight:800,letterSpacing:'.04em',color:agree.c,background:agree.c+'1c',border:'1px solid '+agree.c+'44',borderRadius:7,padding:'5px 10px',whiteSpace:'nowrap'}},agree.t),
+          h('button',{type:'button',title:'Smazat tuhle AI analýzu',onClick:()=>self.deleteAIAnalysis(p.pair),style:{display:'flex',alignItems:'center',justifyContent:'center',width:26,height:26,border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:7,cursor:'pointer',fontSize:13,lineHeight:1,flex:'none'}},'✕'))),
       h('div',{style:{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:10}},h('span',{style:{fontSize:13,fontWeight:800,color:biasC,background:biasC+'1c',border:'1px solid '+biasC+'44',borderRadius:8,padding:'4px 11px'}},ai.bias||'—'),ai.confidence!=null&&h('span',{style:self.mono({fontSize:12,fontWeight:700,color:ai.confidence>=70?T.green:T.amber})},'Confidence '+ai.confidence+'%')),
       h('div',{style:{display:'flex',alignItems:'center',gap:9,background:agree.c+'12',border:'1px solid '+agree.c+'33',borderRadius:10,padding:'10px 13px',marginBottom:kl.length?12:(ai.entry_setup?12:0)}},h('span',{style:{fontSize:15}},agree.c===T.green?'🎯':agree.c===T.red?'⚠️':'•'),h('span',{style:{fontSize:12.5,color:T.text,lineHeight:1.5}},agree.m)),
       kl.length&&h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}},kl.map((l,i)=>h('div',{key:i,style:{display:'flex',justifyContent:'space-between',gap:8,background:'#0a0d13',border:'1px solid #161b27',borderRadius:8,padding:'7px 10px'}},h('span',{style:{fontSize:10.5,fontWeight:700,color:(l.type==='SUPPORT'?T.green:l.type==='RESISTANCE'?T.red:T.dim)}},l.type||'LEVEL'),h('span',{style:self.mono({fontSize:11.5,fontWeight:700})},l.zone||'—')))),
