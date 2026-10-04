@@ -211,7 +211,7 @@ async function sendTelegramMessage(token, chatId, text) {
   }
   for (const m of rpErMoves) {
     const icon = m.type === "SHORT" ? "🔴" : "🟢";
-    const bucketTxt = m.fundBucket === "proti" ? " (nesouhlasí ⚡)" : m.fundBucket === "souhlas" ? " (souhlasí ⚠)" : " (neutrál)";
+    const bucketTxt = m.fundBucket === "proti" ? " (nesouhlasí)" : m.fundBucket === "souhlas" ? " (souhlasí)" : " (neutrál)";
     blocks.push(`${icon} <b>${escapeTgHtml(m.pair)}</b> — RP+ER exhaustion (${m.type})\n`
       + `RP ${Math.round(m.rp * 100)}% · ER ${m.er.toFixed(2)} · historicky PF ${m.pf.toFixed(2)} · fundament ${fmtNum(m.diff)}${bucketTxt}`);
   }
