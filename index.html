@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20261002a"></script>
+<script src="engine.js?v=20261005a"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
 *{box-sizing:border-box}
@@ -289,7 +289,17 @@ class FXApp extends React.Component{
       const av=(localStorage.getItem('av')||'').trim(); if(av){ try{ await fetchOilPrice(av); }catch(e){} }
       try{ await fetchActionOil(); }catch(e){}
       try{ await fetchActionPrices(); }catch(e){}
-      try{ await fetchActionBiasAlertState(); }catch(e){}
+      try{
+        await fetchActionBiasAlertState();
+        // Auto-zobrazení Sezónního radaru ze serveru (cron), ať uživatel
+        // nemusí ručně klikat "Spočítat", aby viděl, co appka už dávno ví
+        // z historické křivky — jen když ještě nic nemá (ruční/cache výsledek
+        // se nepřepisuje). Viz audit 2026-10-05.
+        if(!this.state.seasRadarResults){
+          const srv=getSeasonalRadarServerState();
+          if(srv) this.setState({seasRadarResults:srv,seasRadarAt:Date.now(),seasRadarSource:'server'});
+        }
+      }catch(e){}
       try{ await fetchActionVix(); }catch(e){}
       try{ applyAutoRiskSentiment(); }catch(e){}
       try{ await fetchActionCOTHistory(); }catch(e){}
@@ -1080,14 +1090,14 @@ class FXApp extends React.Component{
       const results=rows.filter(r=>r.containsToday&&r.er>=0.6&&Math.abs(r.net)>=1.0)
         .sort((a,b)=>b.er-a.er||Math.abs(b.net)-Math.abs(a.net));
       const at=Date.now();
-      this.setState({seasRadarResults:results,seasRadarAt:at,seasRadarBusy:false});
+      this.setState({seasRadarResults:results,seasRadarAt:at,seasRadarBusy:false,seasRadarSource:'live'});
       try{localStorage.setItem('seas_radar_v2',JSON.stringify({at,results}));}catch(e){}
     }catch(e){ this.setState({seasRadarErr:String(e&&e.message||e),seasRadarBusy:false}); }
   }
   loadSeasonalRadarFromCache(){
     try{
       const c=JSON.parse(localStorage.getItem('seas_radar_v2')||'null');
-      if(c&&c.at&&(Date.now()-c.at)<12*3600000&&Array.isArray(c.results)) this.setState({seasRadarResults:c.results,seasRadarAt:c.at});
+      if(c&&c.at&&(Date.now()-c.at)<12*3600000&&Array.isArray(c.results)) this.setState({seasRadarResults:c.results,seasRadarAt:c.at,seasRadarSource:'live'});
     }catch(e){}
   }
   // Klik na řádek radaru → rovnou otevře detail v "Sezónní okno" se stejným
@@ -2780,23 +2790,31 @@ class FXApp extends React.Component{
       const dLbl=(s)=>{ const d=new Date(s); return isNaN(d)?'':(d.getDate()+'.'+(d.getMonth()+1)+'.'); };
       const radarRow=r=>{
         const col=r.rising?T.green:T.red;
-        return h('button',{key:r.pair,type:'button',onClick:()=>self.openRadarPair(r),style:{display:'grid',gridTemplateColumns:'62px 1fr 46px 60px 78px',gap:8,alignItems:'center',width:'100%',textAlign:'left',border:'1px solid #161b27',background:'#0a0d13',borderRadius:9,padding:'8px 11px',marginBottom:6,cursor:'pointer',fontFamily:'inherit'}},
+        // "since" — appka to teď sama trackuje serverem (scripts/bias-alerts.js
+        // cron), stejný princip jako RP+ER "⏱ N dní" výš. r.since (ze serveru)
+        // má přednost, jinak dopočítat z lokálně cachovaného stavu — ale jen
+        // pokud směr pořád sedí (jinak jde o starý záznam z JINÉHO švihu).
+        const sinceRec=r.since?r:(()=>{try{const s=getSeasonalRadarSince(r.pair);return (s&&s.dir===(r.rising?'LONG':'SHORT'))?Object.assign({},r,s):null;}catch(e){return null;}})();
+        const sinceDays=sinceRec?Math.max(0,Math.floor((Date.now()-new Date(sinceRec.since).getTime())/86400000)):null;
+        return h('button',{key:r.pair,type:'button',onClick:()=>self.openRadarPair(r),style:{display:'grid',gridTemplateColumns:'62px 1fr 46px 60px 92px',gap:8,alignItems:'center',width:'100%',textAlign:'left',border:'1px solid #161b27',background:'#0a0d13',borderRadius:9,padding:'8px 11px',marginBottom:6,cursor:'pointer',fontFamily:'inherit'}},
           h('span',{style:self.mono({fontWeight:700,fontSize:12,color:T.text})},r.pair),
           h('span',{style:{fontSize:11,color:col,fontWeight:700,display:'flex',alignItems:'center',gap:4}},r.rising?'↑':'↓',r.rising?'LONG':'SHORT'),
           h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:col,textAlign:'right'}),title:'Čistota švihu (Efficiency Ratio) — 1 = hladká přímka, 0 = chaos'},Math.round(r.er*100)+'%'),
           h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:col,textAlign:'right'})},(r.net>0?'+':'')+r.net+'%'),
-          h('span',{style:self.mono({fontSize:10,color:T.faint,textAlign:'right'})},dLbl(r.fromLabel)+'–'+dLbl(r.toLabel)));
+          h('span',{style:{textAlign:'right'}},
+            h('div',{style:self.mono({fontSize:10,color:T.faint})},dLbl(r.fromLabel)+'–'+dLbl(r.toLabel)),
+            sinceDays!=null&&h('div',{style:self.mono({fontSize:9.5,color:T.accent,marginTop:2}),title:'Appka tenhle švih sleduje od '+new Date(sinceRec.since).toLocaleDateString('cs-CZ')},'⏱ '+(sinceDays===0?'dnes':sinceDays+'d'))));
       };
       return h('div',{style:self.card({padding:'18px 22px'})},
         self.ptitle('🎯 Sezónní radar','Čistý švih dno→vrchol na roční průměrné křivce kolem dneška — ne šum'),
         h('div',{style:{display:'flex',gap:9,alignItems:'center',flexWrap:'wrap',marginTop:10}},
           h('button',{type:'button',disabled:st.seasRadarBusy,onClick:()=>self.loadSeasonalRadar(),style:{border:'1px solid '+T.accent,background:st.seasRadarBusy?'#0c0f16':'linear-gradient(180deg,#5e7cfb,#4c63d9)',color:st.seasRadarBusy?T.faint:'#fff',borderRadius:10,padding:'8px 14px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:st.seasRadarBusy?'default':'pointer'}},st.seasRadarBusy?'⏳ Počítám (28 párů)…':(st.seasRadarAt?'🔄 Přepočítat':'🎯 Spočítat')),
-          st.seasRadarAt&&h('span',{style:{fontSize:10.5,color:T.faint}},'Aktualizováno '+radarAge(st.seasRadarAt)+' · '+rn.length+' z 28 párů má jasný švih')),
+          st.seasRadarAt&&h('span',{style:{fontSize:10.5,color:T.faint}},(st.seasRadarSource==='server'?'🤖 Automaticky · ':'')+'Aktualizováno '+radarAge(st.seasRadarAt)+' · '+rn.length+' z 28 párů má jasný švih')),
         st.seasRadarErr&&h('div',{style:{fontSize:11.5,color:T.red,marginTop:9,lineHeight:1.5}},'⚠ '+st.seasRadarErr),
         !st.seasRadarAt&&!st.seasRadarBusy&&h('div',{style:{fontSize:11.5,color:T.faint,marginTop:12,lineHeight:1.6}},'Projde roční průměrnou křivku (stejná jako "Roční sezónní křivka" výš) u všech 28 párů a najde ty, kde kolem dneška probíhá čistý, souvislý švih nahoru/dolů (dno→vrchol nebo naopak) — ne cik-cak šum.'),
         st.seasRadarAt&&!rn.length&&!st.seasRadarBusy&&!st.seasRadarErr&&h('div',{style:{fontSize:11.5,color:T.faint,marginTop:12}},'Žádný pár teď nemá dost čistý švih kolem dneška nad prahem (čistota ≥60 %, pohyb ≥1 %).'),
         rn.length>0&&h('div',{style:{marginTop:14}},
-          h('div',{style:{display:'grid',gridTemplateColumns:'62px 1fr 46px 60px 78px',gap:8,padding:'0 11px 6px',fontSize:9.5,fontWeight:800,color:T.faint,letterSpacing:'.04em'}},h('span',null,'PÁR'),h('span',null,'SMĚR'),h('span',{style:{textAlign:'right'}},'ČISTOTA'),h('span',{style:{textAlign:'right'}},'POHYB'),h('span',{style:{textAlign:'right'}},'OBDOBÍ')),
+          h('div',{style:{display:'grid',gridTemplateColumns:'62px 1fr 46px 60px 92px',gap:8,padding:'0 11px 6px',fontSize:9.5,fontWeight:800,color:T.faint,letterSpacing:'.04em'}},h('span',null,'PÁR'),h('span',null,'SMĚR'),h('span',{style:{textAlign:'right'}},'ČISTOTA'),h('span',{style:{textAlign:'right'}},'POHYB'),h('span',{style:{textAlign:'right'}},'OBDOBÍ')),
           rn.map(radarRow)));
     })();
     return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},

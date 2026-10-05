@@ -67,6 +67,7 @@ function computeLive(prevBiasState) {
     "getRangePosition", "getEfficiencyRatio",
     "getGoldRangePosition", "getGoldEfficiencyRatio",
     "getUS100RangePosition", "getUS100EfficiencyRatio",
+    "computeWindowAvgPath",
   ].join(",");
   const factory = new Function(
     "window", "localStorage", "__prices", "__vix",
@@ -144,6 +145,40 @@ function rpErSignal(E, p, sbScore, sqScore) {
   return null;
 }
 
+// Port loadSeasonalRadar()/radarRow z index.html — STEJNÝ algoritmus a prahy
+// (±30 obch. dní kolem dneška, ER≥0.6, |pohyb|≥1 %, dnešek uvnitř švihu + 5denní
+// grace), jen čte server/data/fx_daily/{PAIR}.json místo browser fetch. Appka
+// dřív tenhle radar nikde neukládala/nealertovala — uživatel musel kliknout
+// "Spočítat" ručně, takže i dávno platný sezónní pattern appka nikdy sama
+// neohlásila (zjištěno v auditu 2026-10-05, uživatel: "appka tu křivku zná
+// dávno dopředu, měla by o tom hlásit sama, ne čekat na ruční klik").
+function seasonalRadarSignal(E, pair) {
+  const daily = readJSON("data/fx_daily/" + pair + ".json", null);
+  if (!daily || !Array.isArray(daily.dates) || daily.dates.length < 200) return null;
+  const path = E.computeWindowAvgPath(daily, 1, 1, 12, 31, 20);
+  if (!path || !path.avg || path.avg.length < 60) return null;
+  const K = 30, now = new Date();
+  const avg = path.avg, dates = path.dates;
+  let todayIdx = -1, bestDist = Infinity;
+  for (let i = 0; i < dates.length; i++) {
+    const d = new Date(dates[i]); if (isNaN(d)) continue;
+    const dist = Math.abs((d.getMonth() + 1) - (now.getMonth() + 1)) * 31 + Math.abs(d.getDate() - now.getDate());
+    if (dist < bestDist) { bestDist = dist; todayIdx = i; }
+  }
+  if (todayIdx < 0) return null;
+  const lo = Math.max(0, todayIdx - K), hi = Math.min(avg.length - 1, todayIdx + K);
+  let minIdx = lo, maxIdx = lo;
+  for (let i = lo; i <= hi; i++) { if (avg[i] < avg[minIdx]) minIdx = i; if (avg[i] > avg[maxIdx]) maxIdx = i; }
+  if (minIdx === maxIdx) return null;
+  const s = Math.min(minIdx, maxIdx), e = Math.max(minIdx, maxIdx);
+  const net = +(avg[e] - avg[s]).toFixed(2);
+  let sumAbs = 0; for (let i = s + 1; i <= e; i++) sumAbs += Math.abs(avg[i] - avg[i - 1]);
+  const er = sumAbs ? +(Math.abs(net) / sumAbs).toFixed(3) : 0;
+  const containsToday = todayIdx >= s && todayIdx <= e + 5;
+  if (!containsToday || er < 0.6 || Math.abs(net) < 1.0) return null;
+  return { dir: minIdx < maxIdx ? "LONG" : "SHORT", er, net, from: dates[s], to: dates[e] };
+}
+
 function escapeTgHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 async function sendTelegramMessage(token, chatId, text) {
   try {
@@ -157,7 +192,7 @@ async function sendTelegramMessage(token, chatId, text) {
 }
 
 (async () => {
-  const state = readJSON("data/bias_alert_state.json", { biasState: {}, rpEr: {} });
+  const state = readJSON("data/bias_alert_state.json", { biasState: {}, rpEr: {}, seasonal: {} });
   const prevBiasState = state.biasState || {};
   const { E, ranked, sc, rawEvents, up, goldScoreObj, us100ScoreObj } = computeLive(prevBiasState);
 
@@ -200,6 +235,23 @@ async function sendTelegramMessage(token, chatId, text) {
     if (sig && sig.type !== pType) rpErMoves.push({ pair: "US100", ...sig });
   }
 
+  // ── 3) SEZÓNNÍ RADAR (náběžná hrana) ────────────────────────────────────
+  // Stejné "since" carry-forward jako RP+ER výš — appka tenhle radar dřív
+  // uměla jen ručně na vyžádání (viz hlavička seasonalRadarSignal). Jen FX
+  // (STANDARD_PAIRS) — zlato/US100 nemají data/fx_daily/*.json.
+  const prevSeason = state.seasonal || {};
+  const prevSeasonDir = (pair) => { const r = prevSeason[pair]; return r ? r.dir : null; };
+  const prevSeasonSince = (pair) => { const r = prevSeason[pair]; return r ? r.since : null; };
+  const newSeason = {};
+  const seasonMoves = [];
+  for (const p of E.STANDARD_PAIRS) {
+    const sig = seasonalRadarSignal(E, p.pair);
+    const pDir = prevSeasonDir(p.pair);
+    newSeason[p.pair] = sig ? { dir: sig.dir, since: (sig.dir === pDir && prevSeasonSince(p.pair)) || nowIso, er: sig.er, net: sig.net, from: sig.from, to: sig.to } : null;
+    if (sig && sig.dir !== pDir) seasonMoves.push({ pair: p.pair, ...sig });
+  }
+
+  const dLbl = (s) => { const d = new Date(s); return isNaN(d) ? "?" : (d.getUTCDate() + "." + (d.getUTCMonth() + 1) + "."); };
   const token = (process.env.SCORE_TELEGRAM_BOT_TOKEN || "").trim();
   const chatId = (process.env.SCORE_TELEGRAM_CHAT_ID || "").trim();
   const fmtNum = (n) => { const r = +n.toFixed(2); return (r >= 0 ? "+" : "") + r; };
@@ -215,6 +267,11 @@ async function sendTelegramMessage(token, chatId, text) {
     blocks.push(`${icon} <b>${escapeTgHtml(m.pair)}</b> — RP+ER exhaustion (${m.type})\n`
       + `RP ${Math.round(m.rp * 100)}% · ER ${m.er.toFixed(2)} · historicky PF ${m.pf.toFixed(2)} · fundament ${fmtNum(m.diff)}${bucketTxt}`);
   }
+  for (const m of seasonMoves) {
+    const icon = m.dir === "LONG" ? "🟢" : "🔴";
+    blocks.push(`🎯 <b>${escapeTgHtml(m.pair)}</b> — sezónní radar (${m.dir}) ${icon}\n`
+      + `čistota ${Math.round(m.er * 100)}% · pohyb ${(m.net > 0 ? "+" : "") + m.net}% · historicky ${dLbl(m.from)}–${dLbl(m.to)}`);
+  }
 
   if (blocks.length && token && chatId) {
     const header = blocks.length > 1 ? `🔔 <b>${blocks.length} nová událost(i):</b>\n\n` : "";
@@ -229,9 +286,9 @@ async function sendTelegramMessage(token, chatId, text) {
   } else if (blocks.length) {
     console.log(blocks.length + " událost(i), ale chybí SCORE_TELEGRAM_BOT_TOKEN/SCORE_TELEGRAM_CHAT_ID — nic neposláno.");
   } else {
-    console.log("Žádné otočení biasu ani nový RP+ER signál od minulého běhu.");
+    console.log("Žádné otočení biasu, nový RP+ER signál ani nový sezónní švih od minulého běhu.");
   }
 
   fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
-  fs.writeFileSync(path.join(ROOT, "data", "bias_alert_state.json"), JSON.stringify({ biasState: newBiasState, rpEr: newRpEr }));
+  fs.writeFileSync(path.join(ROOT, "data", "bias_alert_state.json"), JSON.stringify({ biasState: newBiasState, rpEr: newRpEr, seasonal: newSeason }));
 })().catch((e) => { console.error("FATAL", e.message); process.exit(1); });
