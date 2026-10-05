@@ -35,9 +35,21 @@ name: Data Refresh (kalendář + VIX + ropa + retail + ceny + AI radar)
 # protože tenhle cron sám o sobě běhá nespolehlivě/řídce (viz výš), takže
 # "4× častěji" reálně nehrozí, a fetch-retail.js má navíc svůj vlastní
 # cirkulární jistič proti přílišnému loginování (PR #220).
+#
+# 5.10.2026 — GitHubův vlastní `schedule:` trigger ODSTRANĚN. Audit ukázal,
+# že i po sloučení 4 workflow do 1 je reálný průměrný rozestup mezi
+# naplánovanými běhy ~4,9 h (místo 15 min) — GitHubův scheduler je u tohohle
+# účtu dlouhodobě nespolehlivý (61 % mezer ≥4 h, 25 % ≥6 h, naměřeno na 36
+# po sobě jdoucích "schedule" bězích). Nahrazeno Supabase pg_cron+pg_net
+# (stejný vzor, co appka Fundamet-app už měsíc spolehlivě používá pro svůj
+# fetch-calendar.yml — ověřeno přesně na 15min mřížce, samé HTTP 204):
+# Supabase cron job "fx-analyzer-data-refresh-dispatch" volá
+# trigger_fx_analyzer_data_refresh_dispatch(), co přes workflow_dispatch
+# REST API spustí TENHLE workflow — viz GitHub PAT ve Vaultu pod jménem
+# github_pat_fx_analyzer_data_refresh. workflow_dispatch trigger níž proto
+# zůstává (Supabase i ruční spuštění ho obojí potřebují), jen `schedule:`
+# mizí.
 on:
-  schedule:
-    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
