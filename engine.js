@@ -999,6 +999,7 @@ async function fetchActionBiasAlertState(){
     if(!r.ok) return null;
     const j=await r.json();
     if(j&&j.rpEr&&typeof j.rpEr==="object") localStorage.setItem("rp_er_since",JSON.stringify(j.rpEr));
+    if(j&&j.seasonal&&typeof j.seasonal==="object") localStorage.setItem("seasonal_radar_since",JSON.stringify(j.seasonal));
     return j;
   }catch(e){return null;}
 }
@@ -1012,6 +1013,37 @@ function getRPERSince(key){
     const rec=m[key];
     if(!rec||typeof rec!=="object"||!rec.since) return null;
     return rec;
+  }catch(e){return null;}
+}
+// Sezónní radar — STEJNÝ princip jako getRPERSince výš, jen pro sezónní švih
+// (scripts/bias-alerts.js cron ho teď taky trackuje/alertuje, appka dřív uměla
+// jen ruční přepočet na vyžádání bez paměti "od kdy", viz CLAUDE.md audit
+// 2026-10-05). Vrací {dir,since,er,net,from,to} nebo null.
+function getSeasonalRadarSince(pair){
+  try{
+    const m=JSON.parse(localStorage.getItem("seasonal_radar_since")||"null");
+    if(!m||typeof m!=="object") return null;
+    const rec=m[pair];
+    if(!rec||typeof rec!=="object"||!rec.dir||!rec.since) return null;
+    return rec;
+  }catch(e){return null;}
+}
+// Celý seznam párů, co server (cron) právě flaguje jako aktivní sezónní švih —
+// umožňuje appce ukázat radar hned při otevření záložky, bez nutnosti ručně
+// kliknout "Spočítat" (appka dřív žádnou automatickou/serverovou variantu
+// neměla, viz audit 2026-10-05). Tvar řádků odpovídá tomu, co appka sama
+// počítá v loadSeasonalRadar() (index.html), aby šlo render sdílet 1:1.
+function getSeasonalRadarServerState(){
+  try{
+    const m=JSON.parse(localStorage.getItem("seasonal_radar_since")||"null");
+    if(!m||typeof m!=="object") return null;
+    const rows=Object.keys(m).filter(k=>m[k]&&m[k].dir&&m[k].from&&m[k].to).map(k=>{
+      const r=m[k],sd=new Date(r.from),ed=new Date(r.to);
+      return {pair:k,rising:r.dir==="LONG",net:r.net,er:r.er,
+        fromM:sd.getUTCMonth()+1,fromD:sd.getUTCDate(),toM:ed.getUTCMonth()+1,toD:ed.getUTCDate(),
+        fromLabel:r.from,toLabel:r.to,since:r.since};
+    }).sort((a,b)=>b.er-a.er||Math.abs(b.net)-Math.abs(a.net));
+    return rows.length?rows:null;
   }catch(e){return null;}
 }
 async function fetchTextWithFallback(url){
