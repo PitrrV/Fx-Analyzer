@@ -94,6 +94,18 @@ function efficiencyRatioAt(prices, endIdx, days = 10) {
   if (sumAbs === 0) return null;
   return { er: Math.abs(p1 - p0) / sumAbs };
 }
+// Denní trend v okamžiku vzniku signálu — cena vs 50denní SMA (point-in-time,
+// jen z dat PŘED/VČETNĚ onsetIdx, žádný look-ahead). Vrací null, pokud na to
+// ještě není dost historie (prvních ~50 dní série).
+function smaAt(prices, endIdx, days = 50) {
+  const start = endIdx - days + 1; if (start < 0) return null;
+  let sum = 0, n = 0;
+  for (let i = start; i <= endIdx; i++) {
+    const px = prices[i]; if (px == null || !isFinite(px)) return null;
+    sum += px; n++;
+  }
+  return n === days ? sum / days : null;
+}
 
 // ── Epizody: RP≥80%+ER>0.5 → SHORT / RP≤20%+ER 0.20-0.65 → LONG (stejné
 // prahy jako getRPERSignal v index.html). Epizoda běží, dokud RP neopustí
@@ -137,6 +149,17 @@ function findEpisodes(dates, prices, fundGate) {
       const idx = ep.onsetIdx + h;
       if (idx < prices.length) ep["ret" + h + "d"] = +(((prices[idx] - ep.onsetPrice) / ep.onsetPrice) * 100).toFixed(3);
     });
+    const sma50 = smaAt(prices, ep.onsetIdx, 50);
+    if (sma50 != null) {
+      ep.trendAtOnset = ep.onsetPrice > sma50 ? "UP" : ep.onsetPrice < sma50 ? "DOWN" : "FLAT";
+      // "aligned" = signál sází na směr, který SOUHLASÍ s denním trendem (SHORT
+      // v downtrendu, LONG v uptrendu — pullback ve směru trendu); "counter" =
+      // sází PROTI dennímu trendu (SHORT v uptrendu, LONG v downtrendu — čistá
+      // sázka na vyčerpání/zvrat). FLAT (cena == SMA50) se nezapočítává nikam.
+      ep.trendAligned = ep.trendAtOnset === "FLAT" ? null : (ep.type === "SHORT" ? ep.trendAtOnset === "DOWN" : ep.trendAtOnset === "UP");
+    } else {
+      ep.trendAtOnset = null; ep.trendAligned = null;
+    }
     if (ep.ongoing) continue;
     const pctChange = ((ep.resolvedPrice - ep.onsetPrice) / ep.onsetPrice) * 100;
     ep.daysToResolution = ep.resolvedIdx - ep.onsetIdx;
@@ -353,6 +376,25 @@ function summarize(episodes) {
     }
   } catch (e) { console.log("COT srovnání ERR", e.message); }
 
+  // ── Denní trend vs. signál — sází RP+ER vždy PROTI dennímu trendu, nebo
+  // jen "pullback" ve směru trendu? trendAligned je spočítaný už ve
+  // findEpisodes (cena vs 50denní SMA v den vzniku, point-in-time, bez
+  // look-aheadu) — tady se jen agreguje přes VŠECHNY nástroje (FX+zlato+
+  // US100) a VYŘEŠENÉ epizody (ongoing vynechány, u nich není co počítat do
+  // win rate). Jen Daily — appka ani backtest zatím nemají žádný zdroj
+  // intradenních (4H) cen, viz diskuze s uživatelem 2026-10-05.
+  const trendTagged = allEpisodes.filter((e) => !e.ongoing && e.trendAligned !== null);
+  const trendAligned = trendTagged.filter((e) => e.trendAligned === true);
+  const trendCounter = trendTagged.filter((e) => e.trendAligned === false);
+  const trendComparison = {
+    note: "Denní trend = cena vs 50denní SMA v den vzniku signálu (point-in-time). 'aligned' = signál souhlasí se směrem denního trendu (SHORT v downtrendu / LONG v uptrendu — pullback). 'counter' = signál sází PROTI dennímu trendu (SHORT v uptrendu / LONG v downtrendu — čistý fade/vyčerpání). Přes všechny nástroje (FX+zlato+US100), jen vyřešené epizody. Žádná 4H data v pipeline nejsou (appka ani backtest žádný zdroj intradenních cen nemá) — toto je jen Daily.",
+    aligned: summarize(trendAligned),
+    counter: summarize(trendCounter),
+    byTypeAligned: { SHORT: summarize(trendAligned.filter((e) => e.type === "SHORT")), LONG: summarize(trendAligned.filter((e) => e.type === "LONG")) },
+    byTypeCounter: { SHORT: summarize(trendCounter.filter((e) => e.type === "SHORT")), LONG: summarize(trendCounter.filter((e) => e.type === "LONG")) },
+  };
+  console.log(`\nDenní trend vs. signál (n=${trendTagged.length}): ALIGNED (ve směru trendu) ${trendComparison.aligned.winRate}% (n=${trendComparison.aligned.total}) · COUNTER (proti trendu) ${trendComparison.counter.winRate}% (n=${trendComparison.counter.total})`);
+
   const out = {
     generated: new Date().toISOString(),
     methodology: "Point-in-time RP(10)/ER(10), STEJNÉ prahy jako getRPERSignal (index.html), BEZ fundamentálního filtru — appka od 2026-10-02 filtr sama nepoužívá (čestné přeměření ukázalo, že kvalitu zhoršoval, ne zlepšoval), takže tohle číslo teď odpovídá PŘESNĚ tomu, co appka živě posílá. Epizoda = od prvního dne v extrému+ER pásmu do dne, kdy RP opustí tu zónu. MIN_MOVE_PCT=" + MIN_MOVE_PCT + "% (pod tím je CHOP). fundamentalComparison = diagnostické srovnání JEN pro FX v okně, kde appka má historii denního fundamentálního skóre — ukazuje, že filtr by kvalitu NEzlepšil, proto appka filtr nepoužívá.",
@@ -360,6 +402,7 @@ function summarize(episodes) {
     overall, byType,
     fundamentalComparison,
     cotComparison,
+    trendComparison,
     perInstrument: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, v.stats])),
     episodes: results,
   };
