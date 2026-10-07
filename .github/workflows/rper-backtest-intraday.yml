@@ -1,0 +1,43 @@
+name: RP+ER Backtest (intradenní srovnání)
+
+# Jen ruční spuštění — diagnostický nástroj (scripts/backtest-rper-intraday.js),
+# appka ho nečte, engine se jím neupravuje. Srovnává denní backtest
+# (scripts/backtest-rper.js) proti PŘESNĚ tomu, co appka naživo posílá —
+# RP+ER přepočítávané z intradenní (Yahoo) cenové cesty, ne jen z uzavírací
+# ceny. Viz hlavička scripts/backtest-rper-intraday.js.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rper-backtest-intraday
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Spustit intradenní RP+ER backtest
+        run: node scripts/backtest-rper-intraday.js
+      - name: Commit při změně
+        run: |
+          git config user.name "rper-backtest-intraday-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/backtest_rper_intraday.json)" ]; then
+            git add data/backtest_rper_intraday.json
+            git commit -m "chore: update RP+ER intraday backtest [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Beze změny."
+          fi
