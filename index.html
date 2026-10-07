@@ -368,6 +368,21 @@ class FXApp extends React.Component{
           retail:Math.round(goldScoreObj.retailPct!=null?goldScoreObj.retailPct:50)
         };
       }
+      // Stejný princip jako this.D.XAU výš — umožní sidebaru "RP+ER" složku
+      // (filtr 'rper' níž) spočítat signál i pro US100, přes stejný
+      // getRPERSignal(p,sb,sq) jako u FX párů/zlata, místo zvláštní cesty jen
+      // pro detail stránku. cotPct zůstává neutrální (50) — US100 na rozdíl
+      // od FX/zlata nemá přirozený COT percentil, jen cotScore.
+      if(this.US100){
+        this.D.US100={
+          score:+(this.US100.score||0), fund:+(this.US100.macroScore||0), policy:0, yield:+(this.US100.yieldScore||0),
+          cot:+(this.US100.cotScore||0), sent:+(this.US100.sentScore||0), season:0,
+          cotPct:50, cotPctDelta:null, chg7:0, chg7d:null, cb:'—',
+          inst:Math.round(Math.max(-100,Math.min(100,(this.US100.cotScore||0)*12))),
+          cotLong:null,
+          retail:Math.round(this.US100.retailPct!=null?this.US100.retailPct:50)
+        };
+      }
       // PAIRS
       const fcLog={};
       // Plné rozlišení stavů z getPairDailyState (conflict/confirm/upcoming/done/tomorrow/none)
@@ -383,7 +398,13 @@ class FXApp extends React.Component{
       const rankedAll=goldScoreObj?ranked.concat([buildGoldPair(goldScoreObj)]):ranked;
       this.PAIRS=rankedAll.map(p=>{ let status='none',prob=50,fdir=p.dir;
         if(!p.isGold){ try{const ds=getPairDailyState(p,sc,cal,up);status=ds.level||'none';}catch(e){} try{const fc=buildForecastV5(p,sc,calScoring,up)||{};prob=fc.prob||50;fdir=fc.dir||p.dir;fcLog[p.pair]=fc;}catch(e){} }
-        return {pair:p.pair,base:p.base,quote:p.quote,dir:p.dir,fdir,diff:+p.diff,conv:Math.min(5,p.conviction||0),convReasons:p.convictionReasons||[],crowdedLate:!!p.crowdedLate,prob,status}; });
+        // isGold se MUSÍ zachovat (byla tu dřív tichá chyba) — getRPERSignal
+        // ho čte, aby věděl počítat RP/ER z getGoldRangePosition místo
+        // getRangePosition(p.pair,…), co pro "XAUUSD" nic nenajde (není ve
+        // STANDARD_PAIRS). Bez týhle vlastnosti zlato v sidebaru nikdy
+        // neprojde filtrem "RP+ER", i když detail stránka (renderGoldDetail,
+        // co isGold čte přímo z goldScoreObj) signál správně ukazovala.
+        return {pair:p.pair,base:p.base,quote:p.quote,dir:p.dir,fdir,diff:+p.diff,conv:Math.min(5,p.conviction||0),convReasons:p.convictionReasons||[],crowdedLate:!!p.crowdedLate,prob,status,isGold:!!p.isGold}; });
       try{ if(typeof logForecastSnapshot==='function') logForecastSnapshot(fcLog); }catch(e){}
       if(!this.state.sel&&this.PAIRS[0]) this.state.sel=this.PAIRS[0].pair;
       try{ updateBiasFlips(this.PAIRS); this._flips=getRecentFlips(this.PAIRS,cal,up,36)||[]; }catch(e){ this._flips=this._flips||[]; }
@@ -3192,7 +3213,17 @@ class FXApp extends React.Component{
     };
     const titles={dashboard:'AT Trading FX Command Center',strength:'Síla měn',cot:'COT & Sentiment',season:'Sezónnost',calendar:'Fundamentální kalendář',ai:'AI Analýza grafu',coach:'AI Coach',journal:'Trading deník',smart:'AI Smart Alerts',settings:'Nastavení'};
     const subs={dashboard:'Fundamentální bias · skóre, COT, sentiment, sezónnost',strength:'Ranking 8 měn na škále −10 až +10',cot:'Instituce vs retail · contrarian příležitosti',season:'Reálná měsíční výkonnost z historických cen',calendar:'Příštích 14 dní · HIGH / MEDIUM / LOW impact',ai:'Foto grafu → ICT/SMC rozbor (v mobilu)',coach:'Tvůj parťák — vidí skóre, COT i pozice',journal:'Statistiky, edge a historie obchodů',smart:'Napiš větu, appka ji sama sleduje a pošle Telegram — jen ty (👑 admin)',settings:'Cloud sync · stav dat'};
-    let list=this.PAIRS.slice(); if(st.filter==='rper')list=list.filter(p=>{try{return !!self.getRPERSignal(p,this.D[p.base],this.D[p.quote]);}catch(e){return false;}}); else if(st.filter==='sweet')list=list.filter(p=>p.diff>=2&&p.diff<3); else if(st.filter==='favs')list=list.filter(p=>st.favs.has(p.pair));
+    let list=this.PAIRS.slice();
+    if(st.filter==='rper'){
+      list=list.filter(p=>{try{return !!self.getRPERSignal(p,this.D[p.base],this.D[p.quote]);}catch(e){return false;}});
+      // US100 na rozdíl od zlata v this.PAIRS vůbec není (vlastní samostatná
+      // navigace, ne položka seznamu párů) — syntetická položka jen pro
+      // tenhle filtr, stejný princip jako buildGoldPair pro zlato výš.
+      if(this.D.US100){
+        const us100Item={pair:'US100',base:'US100',quote:'USD',dir:this.D.US100.score>=0?'BUY':'SELL',fdir:this.D.US100.score>=0?'BUY':'SELL',diff:Math.abs(this.D.US100.score),conv:0,convReasons:[],crowdedLate:false,prob:50,status:'none',isUS100:true};
+        try{ if(self.getRPERSignal(us100Item,this.D.US100,this.D.USD)) list.push(us100Item); }catch(e){}
+      }
+    } else if(st.filter==='sweet')list=list.filter(p=>p.diff>=2&&p.diff<3); else if(st.filter==='favs')list=list.filter(p=>st.favs.has(p.pair));
     const pairQ=(st.pairSearch||'').trim().toUpperCase(); if(pairQ)list=list.filter(p=>p.pair.includes(pairQ)||p.base.includes(pairQ)||p.quote.includes(pairQ));
     let oilSt=null; try{oilSt=getOilStatus();}catch(e){}
     const aside=h('aside',{className:'fx-aside',style:{width:248,flex:'none',position:'sticky',top:0,height:'100vh',overflow:'auto',borderRight:'1px solid #1b2130',background:'linear-gradient(180deg,rgba(11,13,19,.7),rgba(7,8,12,.9))',backdropFilter:'blur(8px)',padding:'20px 16px',display:'flex',flexDirection:'column',gap:18}},
