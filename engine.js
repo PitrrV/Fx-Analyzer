@@ -3128,11 +3128,26 @@ function getBiasConfirmation(pair,dir,days=5){
   if((isBuy&&down)||(!isBuy&&up)) return {state:"diverges",mom:m,days};
   return {state:"flat",mom:m,days};
 }
+// Poslední záznam data/prices.json.hist se přepisuje ŽIVOU tikující cenou při
+// KAŽDÉM 15min cronu (scripts/fetch-prices.js), ne jen jednou na close — ale
+// scripts/backtest-rper.js (co RP+ER validoval na 72 %/PF 1,77) počítá VÝHRADNĚ
+// z jedné uzavírací ceny za den. Srovnávací zkouška (2026-10-07,
+// scripts/backtest-rper-intraday.js) ukázala, že appka naživo s tikující cenou
+// dělá 6,3× víc "signálů" než backtest, 41 % zmizí do hodiny jako šum, a
+// CELKOVĚ je to ztrátové (PF 0,80 vs backtestovaných 1,77 za stejné okno).
+// getRangePosition/getEfficiencyRatio (a gold/US100 ekvivalenty níž) proto
+// ignorují dnešní ještě neuzavřený záznam, i když existuje — RP+ER se tak
+// mění nanejvýš 1× denně, přesně jako backtest.
+function _dropUnclosedToday(arr,lastDateISO){
+  if(!arr.length) return arr;
+  return lastDateISO===new Date().toISOString().slice(0,10) ? arr.slice(0,-1) : arr;
+}
 // Range Position — čistě INFORMAČNÍ ukazatel (žádný vliv na skóre/diff/bias).
 // Pozice aktuální ceny páru v jejím N-denním high/low rozpětí, 0 = na dně, 1 = na vrcholu.
 function getRangePosition(pair,days=10){
   const p=_pxPair(pair); if(!p||!_PRICES||!Array.isArray(_PRICES.hist)||_PRICES.hist.length<2) return null;
-  const h=_PRICES.hist;
+  const h=_dropUnclosedToday(_PRICES.hist,_PRICES.hist.length?_PRICES.hist[_PRICES.hist.length-1].d:null);
+  if(h.length<2) return null;
   const start=Math.max(0,h.length-days);
   let mn=Infinity,mx=-Infinity,last=null;
   for(let i=start;i<h.length;i++){
@@ -3153,7 +3168,8 @@ function getRangePosition(pair,days=10){
 // RP≥80%+ER>0.5 → fade (SHORT) PF 1.45; RP≤20%+ER 0.20-0.65 → fade (LONG) PF 1.55.
 function getEfficiencyRatio(pair,days=10){
   const p=_pxPair(pair); if(!p||!_PRICES||!Array.isArray(_PRICES.hist)||_PRICES.hist.length<days+1) return null;
-  const h=_PRICES.hist;
+  const h=_dropUnclosedToday(_PRICES.hist,_PRICES.hist.length?_PRICES.hist[_PRICES.hist.length-1].d:null);
+  if(h.length<days+1) return null;
   const startIdx=h.length-1-days; if(startIdx<0) return null;
   const p0=_pxFrom(h[startIdx].rates,p), p1=_pxFrom(h[h.length-1].rates,p);
   if(p0==null||p1==null) return null;
@@ -3904,7 +3920,10 @@ function loadUS100Price(){ try{ const v=JSON.parse(localStorage.getItem("us100_p
 // Vlastní cenová historie (loadUS100Price().series — 130 denních closes).
 function getUS100RangePosition(days=10){
   const gp=loadUS100Price(); if(!gp||!Array.isArray(gp.series)||gp.series.length<2) return null;
-  const s=gp.series.slice(-days);
+  // Stejný důvod/komentář jako u _dropUnclosedToday výš (viz getRangePosition).
+  const series=_dropUnclosedToday(gp.series,gp.date?new Date(gp.date).toISOString().slice(0,10):null);
+  if(series.length<2) return null;
+  const s=series.slice(-days);
   let mn=Infinity,mx=-Infinity,last=null;
   s.forEach(px=>{ if(typeof px!=="number"||!isFinite(px)) return; if(px<mn)mn=px; if(px>mx)mx=px; last=px; });
   if(last==null||!(mx>mn)) return null;
@@ -3914,7 +3933,9 @@ function getUS100RangePosition(days=10){
 }
 function getUS100EfficiencyRatio(days=10){
   const gp=loadUS100Price(); if(!gp||!Array.isArray(gp.series)||gp.series.length<days+1) return null;
-  const s=gp.series.slice(-(days+1));
+  const series=_dropUnclosedToday(gp.series,gp.date?new Date(gp.date).toISOString().slice(0,10):null);
+  if(series.length<days+1) return null;
+  const s=series.slice(-(days+1));
   const p0=s[0],p1=s[s.length-1];
   if(typeof p0!=="number"||typeof p1!=="number") return null;
   let sumAbs=0;
@@ -4196,7 +4217,11 @@ function getGoldCOTPercentile(){
 // které jsou čistě z cen, ne z data).
 function getGoldRangePosition(days=10){
   const gp=loadGoldPrice(); if(!gp||!Array.isArray(gp.series)||gp.series.length<2) return null;
-  const s=gp.series.slice(-days);
+  // Stejný důvod/komentář jako u _dropUnclosedToday výš — gp.series poslední
+  // bod je dnešní ještě neuzavřená (živě tikující) cena, pokud gp.date je dnes.
+  const series=_dropUnclosedToday(gp.series,gp.date?new Date(gp.date).toISOString().slice(0,10):null);
+  if(series.length<2) return null;
+  const s=series.slice(-days);
   let mn=Infinity,mx=-Infinity,last=null;
   s.forEach(px=>{ if(typeof px!=="number"||!isFinite(px)) return; if(px<mn)mn=px; if(px>mx)mx=px; last=px; });
   if(last==null||!(mx>mn)) return null;
@@ -4206,7 +4231,9 @@ function getGoldRangePosition(days=10){
 }
 function getGoldEfficiencyRatio(days=10){
   const gp=loadGoldPrice(); if(!gp||!Array.isArray(gp.series)||gp.series.length<days+1) return null;
-  const s=gp.series.slice(-(days+1));
+  const series=_dropUnclosedToday(gp.series,gp.date?new Date(gp.date).toISOString().slice(0,10):null);
+  if(series.length<days+1) return null;
+  const s=series.slice(-(days+1));
   const p0=s[0],p1=s[s.length-1];
   if(typeof p0!=="number"||typeof p1!=="number") return null;
   let sumAbs=0;
