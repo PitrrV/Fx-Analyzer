@@ -1,0 +1,1646 @@
+{
+ "generated": "2026-10-08T18:49:29.784Z",
+ "methodology": "MAE/MFE na dostupném ~60denním intradenním (Yahoo) okně, pro VYŘEŠENÉ (CORRECT/WRONG) nefiltrované RP+ER epizody z data/backtest_rper.json, jejichž onsetDate padne do okna. MAE = nejhlubší pohyb proti směru obchodu mezi onsetem a resolvedDate, MFE = nejlepší pohyb ve směru. Orientační vodítko pro SL/entry, NE náhrada denního backtestu (ten měří výsledek, tohle cestu k němu).",
+ "coverage": {
+  "EURUSD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5673,
+   "episodesInWindow": 4
+  },
+  "USDJPY": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5655,
+   "episodesInWindow": 5
+  },
+  "GBPUSD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5673,
+   "episodesInWindow": 7
+  },
+  "AUDUSD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5678,
+   "episodesInWindow": 6
+  },
+  "USDCAD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5668,
+   "episodesInWindow": 2
+  },
+  "USDCHF": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5652,
+   "episodesInWindow": 6
+  },
+  "NZDUSD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5678,
+   "episodesInWindow": 4
+  },
+  "EURGBP": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5676,
+   "episodesInWindow": 3
+  },
+  "EURCHF": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5674,
+   "episodesInWindow": 3
+  },
+  "EURAUD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5679,
+   "episodesInWindow": 2
+  },
+  "EURCAD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5681,
+   "episodesInWindow": 7
+  },
+  "EURJPY": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5673,
+   "episodesInWindow": 4
+  },
+  "EURNZD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5675,
+   "episodesInWindow": 2
+  },
+  "GBPCHF": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5678,
+   "episodesInWindow": 4
+  },
+  "GBPJPY": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5672,
+   "episodesInWindow": 5
+  },
+  "GBPAUD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5675,
+   "episodesInWindow": 5
+  },
+  "GBPCAD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5676,
+   "episodesInWindow": 5
+  },
+  "GBPNZD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5675,
+   "episodesInWindow": 2
+  },
+  "AUDCAD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5675,
+   "episodesInWindow": 4
+  },
+  "AUDJPY": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5675,
+   "episodesInWindow": 6
+  },
+  "AUDNZD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5674,
+   "episodesInWindow": 1
+  },
+  "AUDCHF": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5679,
+   "episodesInWindow": 4
+  },
+  "NZDCAD": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5674,
+   "episodesInWindow": 7
+  },
+  "NZDJPY": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5675,
+   "episodesInWindow": 4
+  },
+  "NZDCHF": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5674,
+   "episodesInWindow": 5
+  },
+  "CADJPY": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5674,
+   "episodesInWindow": 3
+  },
+  "CADCHF": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5679,
+   "episodesInWindow": 4
+  },
+  "CHFJPY": {
+   "range": "60d",
+   "interval": "15m",
+   "barsTotal": 5671,
+   "episodesInWindow": 3
+  }
+ },
+ "summary": {
+  "winners": {
+   "n": 83,
+   "avgMaePips": 25.6,
+   "medianMaePips": 20.8,
+   "avgMaePct": -0.232,
+   "maeDistribution": [
+    {
+     "th": 5,
+     "pct": 23
+    },
+    {
+     "th": 10,
+     "pct": 34
+    },
+    {
+     "th": 15,
+     "pct": 40
+    },
+    {
+     "th": 20,
+     "pct": 49
+    },
+    {
+     "th": 30,
+     "pct": 66
+    },
+    {
+     "th": 50,
+     "pct": 88
+    }
+   ]
+  },
+  "losers": {
+   "n": 34,
+   "avgMaePips": 183.5,
+   "medianMaePips": 199,
+   "avgMaePct": -1.405,
+   "maeDistribution": [
+    {
+     "th": 5,
+     "pct": 0
+    },
+    {
+     "th": 10,
+     "pct": 3
+    },
+    {
+     "th": 15,
+     "pct": 3
+    },
+    {
+     "th": 20,
+     "pct": 3
+    },
+    {
+     "th": 30,
+     "pct": 3
+    },
+    {
+     "th": 50,
+     "pct": 12
+    }
+   ]
+  }
+ },
+ "episodes": [
+  {
+   "pair": "EURUSD",
+   "type": "LONG",
+   "onsetDate": "2026-07-23",
+   "resolvedDate": "2026-07-30",
+   "outcome": "CORRECT",
+   "maePct": -0.136,
+   "mfePct": 1.431,
+   "maePips": 15.5,
+   "mfePips": 162.7,
+   "finalPct": 0.738
+  },
+  {
+   "pair": "EURUSD",
+   "type": "SHORT",
+   "onsetDate": "2026-08-05",
+   "resolvedDate": "2026-08-13",
+   "outcome": "CORRECT",
+   "maePct": -0.208,
+   "mfePct": 0.3,
+   "maePips": 24.1,
+   "mfePips": 34.6,
+   "finalPct": -0.173
+  },
+  {
+   "pair": "EURUSD",
+   "type": "SHORT",
+   "onsetDate": "2026-08-20",
+   "resolvedDate": "2026-08-24",
+   "outcome": "CORRECT",
+   "maePct": -0.269,
+   "mfePct": 0.175,
+   "maePips": 31.5,
+   "mfePips": 20.4,
+   "finalPct": -0.146
+  },
+  {
+   "pair": "EURUSD",
+   "type": "LONG",
+   "onsetDate": "2026-09-11",
+   "resolvedDate": "2026-10-06",
+   "outcome": "WRONG",
+   "maePct": -3.741,
+   "mfePct": 0,
+   "maePips": 434.1,
+   "mfePips": 0,
+   "finalPct": -2.787
+  },
+  {
+   "pair": "USDJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-07-24",
+   "resolvedDate": "2026-07-30",
+   "outcome": "CORRECT",
+   "maePct": -0.16,
+   "mfePct": 2.988,
+   "maePips": 26.2,
+   "mfePips": 489,
+   "finalPct": -0.537
+  },
+  {
+   "pair": "USDJPY",
+   "type": "LONG",
+   "onsetDate": "2026-07-31",
+   "resolvedDate": "2026-08-07",
+   "outcome": "WRONG",
+   "maePct": -1.264,
+   "mfePct": 0.713,
+   "maePips": 199,
+   "mfePips": 112.3,
+   "finalPct": -1.186
+  },
+  {
+   "pair": "USDJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-08-17",
+   "resolvedDate": "2026-08-19",
+   "outcome": "CORRECT",
+   "maePct": -0.213,
+   "mfePct": 0.819,
+   "maePips": 34,
+   "mfePips": 130.6,
+   "finalPct": -0.088
+  },
+  {
+   "pair": "USDJPY",
+   "type": "LONG",
+   "onsetDate": "2026-09-03",
+   "resolvedDate": "2026-09-15",
+   "outcome": "WRONG",
+   "maePct": -1.798,
+   "mfePct": 0.459,
+   "maePips": 280.2,
+   "mfePips": 71.5,
+   "finalPct": -0.647
+  },
+  {
+   "pair": "USDJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-09-23",
+   "resolvedDate": "2026-09-25",
+   "outcome": "CORRECT",
+   "maePct": -0.431,
+   "mfePct": 0.804,
+   "maePips": 68.2,
+   "mfePips": 127.2,
+   "finalPct": -0.209
+  },
+  {
+   "pair": "GBPUSD",
+   "type": "LONG",
+   "onsetDate": "2026-07-24",
+   "resolvedDate": "2026-07-30",
+   "outcome": "CORRECT",
+   "maePct": -0.313,
+   "mfePct": 1.179,
+   "maePips": 41.7,
+   "mfePips": 157,
+   "finalPct": 0.485
+  },
+  {
+   "pair": "GBPUSD",
+   "type": "SHORT",
+   "onsetDate": "2026-08-10",
+   "resolvedDate": "2026-08-13",
+   "outcome": "CORRECT",
+   "maePct": -0.25,
+   "mfePct": 0.222,
+   "maePips": 33.8,
+   "mfePips": 30,
+   "finalPct": -0.094
+  },
+  {
+   "pair": "GBPUSD",
+   "type": "SHORT",
+   "onsetDate": "2026-08-21",
+   "resolvedDate": "2026-08-27",
+   "outcome": "CORRECT",
+   "maePct": -0.055,
+   "mfePct": 0.539,
+   "maePips": 7.5,
+   "mfePips": 73.5,
+   "finalPct": -0.543
+  },
+  {
+   "pair": "GBPUSD",
+   "type": "LONG",
+   "onsetDate": "2026-09-02",
+   "resolvedDate": "2026-09-04",
+   "outcome": "CORRECT",
+   "maePct": -0.057,
+   "mfePct": 0.432,
+   "maePips": 7.6,
+   "mfePips": 58.3,
+   "finalPct": 0.348
+  },
+  {
+   "pair": "GBPUSD",
+   "type": "LONG",
+   "onsetDate": "2026-09-14",
+   "resolvedDate": "2026-09-21",
+   "outcome": "WRONG",
+   "maePct": -1.238,
+   "mfePct": 0.007,
+   "maePips": 167.1,
+   "mfePips": 0.9,
+   "finalPct": -0.739
+  },
+  {
+   "pair": "GBPUSD",
+   "type": "LONG",
+   "onsetDate": "2026-09-22",
+   "resolvedDate": "2026-09-30",
+   "outcome": "WRONG",
+   "maePct": -1.044,
+   "mfePct": 0.029,
+   "maePips": 139.4,
+   "mfePips": 3.9,
+   "finalPct": -0.575
+  },
+  {
+   "pair": "GBPUSD",
+   "type": "LONG",
+   "onsetDate": "2026-10-01",
+   "resolvedDate": "2026-10-06",
+   "outcome": "CORRECT",
+   "maePct": -0.096,
+   "mfePct": 0.666,
+   "maePips": 12.7,
+   "mfePips": 87.8,
+   "finalPct": 0.323
+  },
+  {
+   "pair": "AUDUSD",
+   "type": "LONG",
+   "onsetDate": "2026-07-29",
+   "resolvedDate": "2026-07-30",
+   "outcome": "CORRECT",
+   "maePct": -0.111,
+   "mfePct": 1.126,
+   "maePips": 7.7,
+   "mfePips": 78.3,
+   "finalPct": 0.586
+  },
+  {
+   "pair": "AUDUSD",
+   "type": "SHORT",
+   "onsetDate": "2026-08-12",
+   "resolvedDate": "2026-08-13",
+   "outcome": "CORRECT",
+   "maePct": -0.057,
+   "mfePct": 0.219,
+   "maePips": 4,
+   "mfePips": 15.4,
+   "finalPct": -0.275
+  },
+  {
+   "pair": "AUDUSD",
+   "type": "SHORT",
+   "onsetDate": "2026-08-17",
+   "resolvedDate": "2026-08-19",
+   "outcome": "CORRECT",
+   "maePct": -0.292,
+   "mfePct": 0.558,
+   "maePips": 20.8,
+   "mfePips": 39.7,
+   "finalPct": -0.693
+  },
+  {
+   "pair": "AUDUSD",
+   "type": "SHORT",
+   "onsetDate": "2026-08-27",
+   "resolvedDate": "2026-08-31",
+   "outcome": "CORRECT",
+   "maePct": -0.18,
+   "mfePct": 0.515,
+   "maePips": 13,
+   "mfePips": 37.1,
+   "finalPct": -0.394
+  },
+  {
+   "pair": "AUDUSD",
+   "type": "LONG",
+   "onsetDate": "2026-09-17",
+   "resolvedDate": "2026-09-21",
+   "outcome": "CORRECT",
+   "maePct": -0.078,
+   "mfePct": 0.357,
+   "maePips": 5.6,
+   "mfePips": 25.4,
+   "finalPct": 0.335
+  },
+  {
+   "pair": "AUDUSD",
+   "type": "LONG",
+   "onsetDate": "2026-09-22",
+   "resolvedDate": "2026-10-06",
+   "outcome": "WRONG",
+   "maePct": -2.924,
+   "mfePct": 0.007,
+   "maePips": 208.2,
+   "mfePips": 0.5,
+   "finalPct": -1.801
+  },
+  {
+   "pair": "USDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-08-06",
+   "resolvedDate": "2026-08-24",
+   "outcome": "WRONG",
+   "maePct": -1.956,
+   "mfePct": 0.147,
+   "maePips": 274,
+   "mfePips": 20.6,
+   "finalPct": -1.064
+  },
+  {
+   "pair": "USDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-09-08",
+   "resolvedDate": "2026-09-10",
+   "outcome": "CORRECT",
+   "maePct": -0.116,
+   "mfePct": 0.414,
+   "maePips": 16,
+   "mfePips": 57.1,
+   "finalPct": 0.08
+  },
+  {
+   "pair": "USDCHF",
+   "type": "LONG",
+   "onsetDate": "2026-07-17",
+   "resolvedDate": "2026-07-20",
+   "outcome": "CORRECT",
+   "maePct": -0.305,
+   "mfePct": 0.224,
+   "maePips": 24.7,
+   "mfePips": 18.1,
+   "finalPct": 0.165
+  },
+  {
+   "pair": "USDCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-07-24",
+   "resolvedDate": "2026-07-27",
+   "outcome": "CORRECT",
+   "maePct": -0.198,
+   "mfePct": 0.47,
+   "maePips": 16.2,
+   "mfePips": 38.4,
+   "finalPct": -0.298
+  },
+  {
+   "pair": "USDCHF",
+   "type": "LONG",
+   "onsetDate": "2026-08-06",
+   "resolvedDate": "2026-08-12",
+   "outcome": "CORRECT",
+   "maePct": -0.683,
+   "mfePct": 0.227,
+   "maePips": 55.5,
+   "mfePips": 18.4,
+   "finalPct": 0.188
+  },
+  {
+   "pair": "USDCHF",
+   "type": "LONG",
+   "onsetDate": "2026-08-20",
+   "resolvedDate": "2026-08-24",
+   "outcome": "CORRECT",
+   "maePct": -0.216,
+   "mfePct": 0.339,
+   "maePips": 17.3,
+   "mfePips": 27.1,
+   "finalPct": 0.457
+  },
+  {
+   "pair": "USDCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-09-17",
+   "resolvedDate": "2026-09-21",
+   "outcome": "CORRECT",
+   "maePct": -0.194,
+   "mfePct": 0.436,
+   "maePips": 16,
+   "mfePips": 35.9,
+   "finalPct": -0.374
+  },
+  {
+   "pair": "USDCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-09-24",
+   "resolvedDate": "2026-10-02",
+   "outcome": "CORRECT",
+   "maePct": -1.218,
+   "mfePct": 0.164,
+   "maePips": 100.8,
+   "mfePips": 13.6,
+   "finalPct": -0.134
+  },
+  {
+   "pair": "NZDUSD",
+   "type": "LONG",
+   "onsetDate": "2026-07-29",
+   "resolvedDate": "2026-07-30",
+   "outcome": "CORRECT",
+   "maePct": -0.058,
+   "mfePct": 1.512,
+   "maePips": 3.4,
+   "mfePips": 87.7,
+   "finalPct": 1.168
+  },
+  {
+   "pair": "NZDUSD",
+   "type": "SHORT",
+   "onsetDate": "2026-08-06",
+   "resolvedDate": "2026-08-12",
+   "outcome": "CORRECT",
+   "maePct": -0.573,
+   "mfePct": 0.24,
+   "maePips": 33.6,
+   "mfePips": 14.1,
+   "finalPct": -0.258
+  },
+  {
+   "pair": "NZDUSD",
+   "type": "LONG",
+   "onsetDate": "2026-09-08",
+   "resolvedDate": "2026-09-09",
+   "outcome": "CORRECT",
+   "maePct": -0.42,
+   "mfePct": 0.111,
+   "maePips": 24.6,
+   "mfePips": 6.5,
+   "finalPct": 0.199
+  },
+  {
+   "pair": "NZDUSD",
+   "type": "LONG",
+   "onsetDate": "2026-09-10",
+   "resolvedDate": "2026-10-06",
+   "outcome": "WRONG",
+   "maePct": -3.719,
+   "mfePct": 0.607,
+   "maePips": 215.7,
+   "mfePips": 35.2,
+   "finalPct": -3.573
+  },
+  {
+   "pair": "EURGBP",
+   "type": "LONG",
+   "onsetDate": "2026-07-20",
+   "resolvedDate": "2026-07-21",
+   "outcome": "CORRECT",
+   "maePct": -0.087,
+   "mfePct": 0.431,
+   "maePips": 7.4,
+   "mfePips": 36.6,
+   "finalPct": 0.373
+  },
+  {
+   "pair": "EURGBP",
+   "type": "SHORT",
+   "onsetDate": "2026-07-30",
+   "resolvedDate": "2026-08-10",
+   "outcome": "CORRECT",
+   "maePct": -0.279,
+   "mfePct": 0.24,
+   "maePips": 23.9,
+   "mfePips": 20.5,
+   "finalPct": -0.177
+  },
+  {
+   "pair": "EURGBP",
+   "type": "LONG",
+   "onsetDate": "2026-08-12",
+   "resolvedDate": "2026-08-13",
+   "outcome": "CORRECT",
+   "maePct": 0,
+   "mfePct": 0.184,
+   "maePips": 0,
+   "mfePips": 15.7,
+   "finalPct": 0.155
+  },
+  {
+   "pair": "EURCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-07-23",
+   "resolvedDate": "2026-07-27",
+   "outcome": "CORRECT",
+   "maePct": -0.269,
+   "mfePct": 0.099,
+   "maePips": 25,
+   "mfePips": 9.2,
+   "finalPct": -0.118
+  },
+  {
+   "pair": "EURCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-08-14",
+   "resolvedDate": "2026-08-20",
+   "outcome": "CORRECT",
+   "maePct": -0.028,
+   "mfePct": 1.066,
+   "maePips": 2.6,
+   "mfePips": 100.3,
+   "finalPct": -0.606
+  },
+  {
+   "pair": "EURCHF",
+   "type": "LONG",
+   "onsetDate": "2026-10-02",
+   "resolvedDate": "2026-10-06",
+   "outcome": "CORRECT",
+   "maePct": -0.473,
+   "mfePct": 0.461,
+   "maePips": 44.1,
+   "mfePips": 43,
+   "finalPct": 0.862
+  },
+  {
+   "pair": "EURAUD",
+   "type": "LONG",
+   "onsetDate": "2026-08-18",
+   "resolvedDate": "2026-08-19",
+   "outcome": "CORRECT",
+   "maePct": -0.033,
+   "mfePct": 0.422,
+   "maePips": 5.4,
+   "mfePips": 68.9,
+   "finalPct": 0.757
+  },
+  {
+   "pair": "EURAUD",
+   "type": "LONG",
+   "onsetDate": "2026-08-27",
+   "resolvedDate": "2026-09-09",
+   "outcome": "WRONG",
+   "maePct": -0.671,
+   "mfePct": 0.367,
+   "maePips": 108.7,
+   "mfePips": 59.4,
+   "finalPct": -0.421
+  },
+  {
+   "pair": "EURCAD",
+   "type": "LONG",
+   "onsetDate": "2026-07-23",
+   "resolvedDate": "2026-07-27",
+   "outcome": "CORRECT",
+   "maePct": 0,
+   "mfePct": 0.465,
+   "maePips": 0,
+   "mfePips": 74.5,
+   "finalPct": 0.187
+  },
+  {
+   "pair": "EURCAD",
+   "type": "LONG",
+   "onsetDate": "2026-07-28",
+   "resolvedDate": "2026-07-29",
+   "outcome": "CORRECT",
+   "maePct": -0.139,
+   "mfePct": 0.327,
+   "maePips": 22.3,
+   "mfePips": 52.5,
+   "finalPct": 0.094
+  },
+  {
+   "pair": "EURCAD",
+   "type": "SHORT",
+   "onsetDate": "2026-08-03",
+   "resolvedDate": "2026-08-06",
+   "outcome": "CORRECT",
+   "maePct": -0.551,
+   "mfePct": 0.103,
+   "maePips": 89,
+   "mfePips": 16.7,
+   "finalPct": -0.153
+  },
+  {
+   "pair": "EURCAD",
+   "type": "LONG",
+   "onsetDate": "2026-08-14",
+   "resolvedDate": "2026-08-19",
+   "outcome": "CORRECT",
+   "maePct": -0.019,
+   "mfePct": 0.497,
+   "maePips": 3,
+   "mfePips": 79.7,
+   "finalPct": 0.307
+  },
+  {
+   "pair": "EURCAD",
+   "type": "LONG",
+   "onsetDate": "2026-09-03",
+   "resolvedDate": "2026-09-07",
+   "outcome": "CORRECT",
+   "maePct": -0.012,
+   "mfePct": 0.4,
+   "maePips": 1.9,
+   "mfePips": 64.2,
+   "finalPct": 0.264
+  },
+  {
+   "pair": "EURCAD",
+   "type": "LONG",
+   "onsetDate": "2026-09-08",
+   "resolvedDate": "2026-09-10",
+   "outcome": "CORRECT",
+   "maePct": -0.018,
+   "mfePct": 0.315,
+   "maePips": 2.9,
+   "mfePips": 50.5,
+   "finalPct": 0.097
+  },
+  {
+   "pair": "EURCAD",
+   "type": "LONG",
+   "onsetDate": "2026-10-02",
+   "resolvedDate": "2026-10-06",
+   "outcome": "CORRECT",
+   "maePct": -0.478,
+   "mfePct": 0.175,
+   "maePips": 76.7,
+   "mfePips": 28.1,
+   "finalPct": 0.463
+  },
+  {
+   "pair": "EURJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-07-24",
+   "resolvedDate": "2026-07-31",
+   "outcome": "CORRECT",
+   "maePct": -0.638,
+   "mfePct": 2.553,
+   "maePips": 118.8,
+   "mfePips": 475.4,
+   "finalPct": -1.256
+  },
+  {
+   "pair": "EURJPY",
+   "type": "LONG",
+   "onsetDate": "2026-07-31",
+   "resolvedDate": "2026-08-05",
+   "outcome": "WRONG",
+   "maePct": -1.061,
+   "mfePct": 0.426,
+   "maePips": 192.6,
+   "mfePips": 77.4,
+   "finalPct": -1.063
+  },
+  {
+   "pair": "EURJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-08-17",
+   "resolvedDate": "2026-08-31",
+   "outcome": "WRONG",
+   "maePct": -0.78,
+   "mfePct": 0.15,
+   "maePips": 143.9,
+   "mfePips": 27.7,
+   "finalPct": 0.34
+  },
+  {
+   "pair": "EURJPY",
+   "type": "LONG",
+   "onsetDate": "2026-09-04",
+   "resolvedDate": "2026-09-18",
+   "outcome": "WRONG",
+   "maePct": -1.986,
+   "mfePct": 0.015,
+   "maePips": 360.4,
+   "mfePips": 2.7,
+   "finalPct": -0.359
+  },
+  {
+   "pair": "EURNZD",
+   "type": "LONG",
+   "onsetDate": "2026-08-27",
+   "resolvedDate": "2026-08-28",
+   "outcome": "CORRECT",
+   "maePct": -0.261,
+   "mfePct": 0.182,
+   "maePips": 51.1,
+   "mfePips": 35.7,
+   "finalPct": 0.096
+  },
+  {
+   "pair": "EURNZD",
+   "type": "SHORT",
+   "onsetDate": "2026-09-08",
+   "resolvedDate": "2026-09-22",
+   "outcome": "WRONG",
+   "maePct": -1.425,
+   "mfePct": 0.013,
+   "maePips": 282.7,
+   "mfePips": 2.5,
+   "finalPct": 0.632
+  },
+  {
+   "pair": "GBPCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-07-20",
+   "resolvedDate": "2026-07-21",
+   "outcome": "CORRECT",
+   "maePct": -0.213,
+   "mfePct": 0.179,
+   "maePips": 23.1,
+   "mfePips": 19.5,
+   "finalPct": -0.123
+  },
+  {
+   "pair": "GBPCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-08-12",
+   "resolvedDate": "2026-08-20",
+   "outcome": "CORRECT",
+   "maePct": -0.43,
+   "mfePct": 1.091,
+   "maePips": 47.1,
+   "mfePips": 119.6,
+   "finalPct": -0.778
+  },
+  {
+   "pair": "GBPCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-09-17",
+   "resolvedDate": "2026-09-21",
+   "outcome": "CORRECT",
+   "maePct": -0.284,
+   "mfePct": 0.259,
+   "maePips": 31.2,
+   "mfePips": 28.5,
+   "finalPct": -0.237
+  },
+  {
+   "pair": "GBPCHF",
+   "type": "LONG",
+   "onsetDate": "2026-10-02",
+   "resolvedDate": "2026-10-05",
+   "outcome": "CORRECT",
+   "maePct": -0.118,
+   "mfePct": 0.205,
+   "maePips": 12.9,
+   "mfePips": 22.5,
+   "finalPct": 0.714
+  },
+  {
+   "pair": "GBPJPY",
+   "type": "LONG",
+   "onsetDate": "2026-07-31",
+   "resolvedDate": "2026-08-06",
+   "outcome": "WRONG",
+   "maePct": -1.148,
+   "mfePct": 0.49,
+   "maePips": 243.6,
+   "mfePips": 103.9,
+   "finalPct": -1.168
+  },
+  {
+   "pair": "GBPJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-08-17",
+   "resolvedDate": "2026-08-27",
+   "outcome": "WRONG",
+   "maePct": -0.725,
+   "mfePct": 0.425,
+   "maePips": 156.5,
+   "mfePips": 91.8,
+   "finalPct": 0.268
+  },
+  {
+   "pair": "GBPJPY",
+   "type": "LONG",
+   "onsetDate": "2026-09-03",
+   "resolvedDate": "2026-09-16",
+   "outcome": "WRONG",
+   "maePct": -1.681,
+   "mfePct": 0.479,
+   "maePips": 354.3,
+   "mfePips": 101,
+   "finalPct": -0.919
+  },
+  {
+   "pair": "GBPJPY",
+   "type": "LONG",
+   "onsetDate": "2026-09-17",
+   "resolvedDate": "2026-09-18",
+   "outcome": "CORRECT",
+   "maePct": -0.043,
+   "mfePct": 1.389,
+   "maePips": 9,
+   "mfePips": 289.3,
+   "finalPct": 1.168
+  },
+  {
+   "pair": "GBPJPY",
+   "type": "LONG",
+   "onsetDate": "2026-10-02",
+   "resolvedDate": "2026-10-05",
+   "outcome": "CORRECT",
+   "maePct": -0.342,
+   "mfePct": 0.092,
+   "maePips": 71.5,
+   "mfePips": 19.2,
+   "finalPct": 0.537
+  },
+  {
+   "pair": "GBPAUD",
+   "type": "LONG",
+   "onsetDate": "2026-07-21",
+   "resolvedDate": "2026-07-29",
+   "outcome": "CORRECT",
+   "maePct": -0.49,
+   "mfePct": 0.677,
+   "maePips": 93.6,
+   "mfePips": 129.2,
+   "finalPct": 0.238
+  },
+  {
+   "pair": "GBPAUD",
+   "type": "LONG",
+   "onsetDate": "2026-08-18",
+   "resolvedDate": "2026-08-19",
+   "outcome": "CORRECT",
+   "maePct": -0.101,
+   "mfePct": 0.365,
+   "maePips": 19.2,
+   "mfePips": 69.7,
+   "finalPct": 0.73
+  },
+  {
+   "pair": "GBPAUD",
+   "type": "LONG",
+   "onsetDate": "2026-08-26",
+   "resolvedDate": "2026-09-01",
+   "outcome": "WRONG",
+   "maePct": -0.426,
+   "mfePct": 0.127,
+   "maePips": 80.7,
+   "mfePips": 24,
+   "finalPct": -0.119
+  },
+  {
+   "pair": "GBPAUD",
+   "type": "LONG",
+   "onsetDate": "2026-09-02",
+   "resolvedDate": "2026-09-10",
+   "outcome": "WRONG",
+   "maePct": -0.415,
+   "mfePct": 0.365,
+   "maePips": 78.1,
+   "mfePips": 68.6,
+   "finalPct": -0.247
+  },
+  {
+   "pair": "GBPAUD",
+   "type": "SHORT",
+   "onsetDate": "2026-10-01",
+   "resolvedDate": "2026-10-05",
+   "outcome": "CORRECT",
+   "maePct": -0.268,
+   "mfePct": 0.324,
+   "maePips": 50.9,
+   "mfePips": 61.7,
+   "finalPct": -0.213
+  },
+  {
+   "pair": "GBPCAD",
+   "type": "LONG",
+   "onsetDate": "2026-07-17",
+   "resolvedDate": "2026-07-20",
+   "outcome": "CORRECT",
+   "maePct": -0.112,
+   "mfePct": 0.202,
+   "maePips": 21.1,
+   "mfePips": 38.1,
+   "finalPct": 0.225
+  },
+  {
+   "pair": "GBPCAD",
+   "type": "LONG",
+   "onsetDate": "2026-07-21",
+   "resolvedDate": "2026-07-30",
+   "outcome": "WRONG",
+   "maePct": -0.77,
+   "mfePct": 0.112,
+   "maePips": 145.2,
+   "mfePips": 21.1,
+   "finalPct": -0.283
+  },
+  {
+   "pair": "GBPCAD",
+   "type": "LONG",
+   "onsetDate": "2026-08-14",
+   "resolvedDate": "2026-08-19",
+   "outcome": "CORRECT",
+   "maePct": -0.123,
+   "mfePct": 0.358,
+   "maePips": 23.1,
+   "mfePips": 67.3,
+   "finalPct": 0.122
+  },
+  {
+   "pair": "GBPCAD",
+   "type": "LONG",
+   "onsetDate": "2026-08-20",
+   "resolvedDate": "2026-08-24",
+   "outcome": "CORRECT",
+   "maePct": -0.197,
+   "mfePct": 0.553,
+   "maePips": 37,
+   "mfePips": 103.8,
+   "finalPct": 0.633
+  },
+  {
+   "pair": "GBPCAD",
+   "type": "LONG",
+   "onsetDate": "2026-09-03",
+   "resolvedDate": "2026-09-04",
+   "outcome": "CORRECT",
+   "maePct": -0.029,
+   "mfePct": 0.381,
+   "maePips": 5.4,
+   "mfePips": 71,
+   "finalPct": 0.302
+  },
+  {
+   "pair": "GBPNZD",
+   "type": "LONG",
+   "onsetDate": "2026-08-27",
+   "resolvedDate": "2026-08-31",
+   "outcome": "CORRECT",
+   "maePct": -0.187,
+   "mfePct": 0.427,
+   "maePips": 42.8,
+   "mfePips": 97.4,
+   "finalPct": 0.279
+  },
+  {
+   "pair": "GBPNZD",
+   "type": "SHORT",
+   "onsetDate": "2026-09-10",
+   "resolvedDate": "2026-09-17",
+   "outcome": "WRONG",
+   "maePct": -0.871,
+   "mfePct": 0.508,
+   "maePips": 202.7,
+   "mfePips": 118.2,
+   "finalPct": 0.366
+  },
+  {
+   "pair": "AUDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-07-17",
+   "resolvedDate": "2026-07-20",
+   "outcome": "CORRECT",
+   "maePct": -0.011,
+   "mfePct": 0.698,
+   "maePips": 1.1,
+   "mfePips": 68.3,
+   "finalPct": 0.513
+  },
+  {
+   "pair": "AUDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-08-19",
+   "resolvedDate": "2026-08-21",
+   "outcome": "CORRECT",
+   "maePct": -0.375,
+   "mfePct": 0.592,
+   "maePips": 36.8,
+   "mfePips": 58.1,
+   "finalPct": 0.341
+  },
+  {
+   "pair": "AUDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-09-10",
+   "resolvedDate": "2026-09-11",
+   "outcome": "CORRECT",
+   "maePct": -0.028,
+   "mfePct": 0.662,
+   "maePips": 2.8,
+   "mfePips": 65.5,
+   "finalPct": 0.131
+  },
+  {
+   "pair": "AUDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-09-30",
+   "resolvedDate": "2026-10-05",
+   "outcome": "CORRECT",
+   "maePct": -0.464,
+   "mfePct": 0.641,
+   "maePips": 45.8,
+   "mfePips": 63.3,
+   "finalPct": 0.389
+  },
+  {
+   "pair": "AUDJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-07-21",
+   "resolvedDate": "2026-07-28",
+   "outcome": "WRONG",
+   "maePct": -0.409,
+   "mfePct": 0.212,
+   "maePips": 46.7,
+   "mfePips": 24.2,
+   "finalPct": 0.052
+  },
+  {
+   "pair": "AUDJPY",
+   "type": "LONG",
+   "onsetDate": "2026-08-04",
+   "resolvedDate": "2026-08-05",
+   "outcome": "CORRECT",
+   "maePct": -0.144,
+   "mfePct": 0.247,
+   "maePips": 16,
+   "mfePips": 27.4,
+   "finalPct": 0.404
+  },
+  {
+   "pair": "AUDJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-08-17",
+   "resolvedDate": "2026-08-19",
+   "outcome": "CORRECT",
+   "maePct": -0.274,
+   "mfePct": 0.741,
+   "maePips": 31,
+   "mfePips": 83.9,
+   "finalPct": -0.781
+  },
+  {
+   "pair": "AUDJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-08-27",
+   "resolvedDate": "2026-08-31",
+   "outcome": "CORRECT",
+   "maePct": -0.31,
+   "mfePct": 0.31,
+   "maePips": 35.5,
+   "mfePips": 35.5,
+   "finalPct": -0.181
+  },
+  {
+   "pair": "AUDJPY",
+   "type": "LONG",
+   "onsetDate": "2026-09-04",
+   "resolvedDate": "2026-09-17",
+   "outcome": "WRONG",
+   "maePct": -2.515,
+   "mfePct": 0.016,
+   "maePips": 283.1,
+   "mfePips": 1.8,
+   "finalPct": -1.599
+  },
+  {
+   "pair": "AUDJPY",
+   "type": "LONG",
+   "onsetDate": "2026-09-30",
+   "resolvedDate": "2026-10-05",
+   "outcome": "CORRECT",
+   "maePct": -0.44,
+   "mfePct": 0.8,
+   "maePips": 48.1,
+   "mfePips": 87.4,
+   "finalPct": 0.678
+  },
+  {
+   "pair": "AUDNZD",
+   "type": "SHORT",
+   "onsetDate": "2026-09-02",
+   "resolvedDate": "2026-09-22",
+   "outcome": "WRONG",
+   "maePct": -1.984,
+   "mfePct": 0.221,
+   "maePips": 242.9,
+   "mfePips": 27,
+   "finalPct": 1.162
+  },
+  {
+   "pair": "AUDCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-08-14",
+   "resolvedDate": "2026-08-19",
+   "outcome": "CORRECT",
+   "maePct": -0.426,
+   "mfePct": 1.38,
+   "maePips": 24.5,
+   "mfePips": 79.4,
+   "finalPct": -0.291
+  },
+  {
+   "pair": "AUDCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-09-03",
+   "resolvedDate": "2026-09-09",
+   "outcome": "WRONG",
+   "maePct": -0.82,
+   "mfePct": 0.119,
+   "maePips": 47.6,
+   "mfePips": 6.9,
+   "finalPct": 0.271
+  },
+  {
+   "pair": "AUDCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-09-11",
+   "resolvedDate": "2026-09-14",
+   "outcome": "CORRECT",
+   "maePct": -0.05,
+   "mfePct": 0.559,
+   "maePips": 2.9,
+   "mfePips": 32.7,
+   "finalPct": -0.456
+  },
+  {
+   "pair": "AUDCHF",
+   "type": "LONG",
+   "onsetDate": "2026-10-01",
+   "resolvedDate": "2026-10-05",
+   "outcome": "WRONG",
+   "maePct": -0.172,
+   "mfePct": 0.835,
+   "maePips": 9.9,
+   "mfePips": 48,
+   "finalPct": -0.362
+  },
+  {
+   "pair": "NZDCAD",
+   "type": "SHORT",
+   "onsetDate": "2026-07-20",
+   "resolvedDate": "2026-07-22",
+   "outcome": "CORRECT",
+   "maePct": -0.582,
+   "mfePct": 0.363,
+   "maePips": 47.8,
+   "mfePips": 29.8,
+   "finalPct": -0.208
+  },
+  {
+   "pair": "NZDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-08-13",
+   "resolvedDate": "2026-08-17",
+   "outcome": "CORRECT",
+   "maePct": 0,
+   "mfePct": 0.876,
+   "maePips": 0,
+   "mfePips": 71.3,
+   "finalPct": 0.583
+  },
+  {
+   "pair": "NZDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-08-18",
+   "resolvedDate": "2026-08-20",
+   "outcome": "CORRECT",
+   "maePct": -0.181,
+   "mfePct": 0.705,
+   "maePips": 14.8,
+   "mfePips": 57.5,
+   "finalPct": 0.229
+  },
+  {
+   "pair": "NZDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-09-03",
+   "resolvedDate": "2026-09-17",
+   "outcome": "WRONG",
+   "maePct": -1.439,
+   "mfePct": 0.68,
+   "maePips": 116.5,
+   "mfePips": 55.1,
+   "finalPct": -0.766
+  },
+  {
+   "pair": "NZDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-09-18",
+   "resolvedDate": "2026-09-21",
+   "outcome": "CORRECT",
+   "maePct": -0.03,
+   "mfePct": 0.341,
+   "maePips": 2.4,
+   "mfePips": 27.3,
+   "finalPct": 0.381
+  },
+  {
+   "pair": "NZDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-09-24",
+   "resolvedDate": "2026-09-25",
+   "outcome": "CORRECT",
+   "maePct": -0.045,
+   "mfePct": 0.335,
+   "maePips": 3.6,
+   "mfePips": 26.8,
+   "finalPct": 0.207
+  },
+  {
+   "pair": "NZDCAD",
+   "type": "LONG",
+   "onsetDate": "2026-10-01",
+   "resolvedDate": "2026-10-06",
+   "outcome": "CORRECT",
+   "maePct": -0.095,
+   "mfePct": 0.592,
+   "maePips": 7.6,
+   "mfePips": 47.1,
+   "finalPct": 0.067
+  },
+  {
+   "pair": "NZDJPY",
+   "type": "LONG",
+   "onsetDate": "2026-07-31",
+   "resolvedDate": "2026-08-06",
+   "outcome": "WRONG",
+   "maePct": -0.875,
+   "mfePct": 0.631,
+   "maePips": 80.9,
+   "mfePips": 58.4,
+   "finalPct": -1.168
+  },
+  {
+   "pair": "NZDJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-08-17",
+   "resolvedDate": "2026-08-19",
+   "outcome": "CORRECT",
+   "maePct": -0.111,
+   "mfePct": 0.687,
+   "maePips": 10.4,
+   "mfePips": 64.6,
+   "finalPct": -0.716
+  },
+  {
+   "pair": "NZDJPY",
+   "type": "LONG",
+   "onsetDate": "2026-09-03",
+   "resolvedDate": "2026-09-18",
+   "outcome": "WRONG",
+   "maePct": -2.836,
+   "mfePct": 0.713,
+   "maePips": 259.7,
+   "mfePips": 65.3,
+   "finalPct": -1.575
+  },
+  {
+   "pair": "NZDJPY",
+   "type": "LONG",
+   "onsetDate": "2026-09-30",
+   "resolvedDate": "2026-10-06",
+   "outcome": "CORRECT",
+   "maePct": -0.554,
+   "mfePct": 0.381,
+   "maePips": 49.1,
+   "mfePips": 33.8,
+   "finalPct": 0.202
+  },
+  {
+   "pair": "NZDCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-07-24",
+   "resolvedDate": "2026-07-27",
+   "outcome": "CORRECT",
+   "maePct": -0.085,
+   "mfePct": 0.404,
+   "maePips": 4,
+   "mfePips": 19.1,
+   "finalPct": -0.229
+  },
+  {
+   "pair": "NZDCHF",
+   "type": "LONG",
+   "onsetDate": "2026-09-08",
+   "resolvedDate": "2026-09-11",
+   "outcome": "CORRECT",
+   "maePct": -0.591,
+   "mfePct": 0.291,
+   "maePips": 28,
+   "mfePips": 13.8,
+   "finalPct": 0.092
+  },
+  {
+   "pair": "NZDCHF",
+   "type": "LONG",
+   "onsetDate": "2026-09-14",
+   "resolvedDate": "2026-09-17",
+   "outcome": "CORRECT",
+   "maePct": -0.513,
+   "mfePct": 0.305,
+   "maePips": 24.2,
+   "mfePips": 14.4,
+   "finalPct": 0.466
+  },
+  {
+   "pair": "NZDCHF",
+   "type": "LONG",
+   "onsetDate": "2026-09-18",
+   "resolvedDate": "2026-09-25",
+   "outcome": "WRONG",
+   "maePct": -0.702,
+   "mfePct": 0.279,
+   "maePips": 33,
+   "mfePips": 13.1,
+   "finalPct": -0.38
+  },
+  {
+   "pair": "NZDCHF",
+   "type": "LONG",
+   "onsetDate": "2026-10-02",
+   "resolvedDate": "2026-10-06",
+   "outcome": "CORRECT",
+   "maePct": -0.43,
+   "mfePct": 0.438,
+   "maePips": 20,
+   "mfePips": 20.4,
+   "finalPct": 0.564
+  },
+  {
+   "pair": "CADJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-07-28",
+   "resolvedDate": "2026-07-29",
+   "outcome": "CORRECT",
+   "maePct": -0.261,
+   "mfePct": 0.191,
+   "maePips": 30.3,
+   "mfePips": 22.2,
+   "finalPct": -0.119
+  },
+  {
+   "pair": "CADJPY",
+   "type": "LONG",
+   "onsetDate": "2026-07-31",
+   "resolvedDate": "2026-08-06",
+   "outcome": "WRONG",
+   "maePct": -1.173,
+   "mfePct": 0.707,
+   "maePips": 131.7,
+   "mfePips": 79.4,
+   "finalPct": -1.201
+  },
+  {
+   "pair": "CADJPY",
+   "type": "LONG",
+   "onsetDate": "2026-09-03",
+   "resolvedDate": "2026-09-18",
+   "outcome": "WRONG",
+   "maePct": -1.996,
+   "mfePct": 0.457,
+   "maePips": 225.3,
+   "mfePips": 51.6,
+   "finalPct": -0.37
+  },
+  {
+   "pair": "CADCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-07-17",
+   "resolvedDate": "2026-07-27",
+   "outcome": "WRONG",
+   "maePct": -0.967,
+   "mfePct": 0.073,
+   "maePips": 55.6,
+   "mfePips": 4.2,
+   "finalPct": 0.425
+  },
+  {
+   "pair": "CADCHF",
+   "type": "SHORT",
+   "onsetDate": "2026-08-14",
+   "resolvedDate": "2026-08-19",
+   "outcome": "CORRECT",
+   "maePct": -0.085,
+   "mfePct": 1.406,
+   "maePips": 5,
+   "mfePips": 82.3,
+   "finalPct": -0.178
+  },
+  {
+   "pair": "CADCHF",
+   "type": "LONG",
+   "onsetDate": "2026-09-22",
+   "resolvedDate": "2026-09-24",
+   "outcome": "CORRECT",
+   "maePct": -0.034,
+   "mfePct": 0.707,
+   "maePips": 2,
+   "mfePips": 41.2,
+   "finalPct": 0.494
+  },
+  {
+   "pair": "CADCHF",
+   "type": "LONG",
+   "onsetDate": "2026-10-02",
+   "resolvedDate": "2026-10-05",
+   "outcome": "CORRECT",
+   "maePct": -0.007,
+   "mfePct": 0.487,
+   "maePips": 0.4,
+   "mfePips": 28.3,
+   "finalPct": 0.441
+  },
+  {
+   "pair": "CHFJPY",
+   "type": "LONG",
+   "onsetDate": "2026-07-31",
+   "resolvedDate": "2026-08-07",
+   "outcome": "WRONG",
+   "maePct": -1.073,
+   "mfePct": 0.332,
+   "maePips": 209.1,
+   "mfePips": 64.8,
+   "finalPct": -1.213
+  },
+  {
+   "pair": "CHFJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-08-17",
+   "resolvedDate": "2026-08-26",
+   "outcome": "WRONG",
+   "maePct": -1.176,
+   "mfePct": 0.256,
+   "maePips": 231.4,
+   "mfePips": 50.4,
+   "finalPct": 0.651
+  },
+  {
+   "pair": "CHFJPY",
+   "type": "SHORT",
+   "onsetDate": "2026-08-28",
+   "resolvedDate": "2026-08-31",
+   "outcome": "CORRECT",
+   "maePct": -0.018,
+   "mfePct": 0.262,
+   "maePips": 3.5,
+   "mfePips": 51.8,
+   "finalPct": -0.499
+  }
+ ]
+}
