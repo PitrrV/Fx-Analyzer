@@ -1751,8 +1751,34 @@ class FXApp extends React.Component{
     const diff=(sb.score||0)-(sq.score||0), NEUTRAL=0.3;
     const bandPF=(type,e)=>{ const bands=type==='SHORT'?[[0.5,0.65,1.19],[0.65,0.8,1.37],[0.8,1.01,2.45]]:[[0.2,0.35,1.66],[0.35,0.5,1.39],[0.5,0.65,1.64]];
       const b=bands.find(([lo,hi])=>e>=lo&&e<hi)||bands[bands.length-1]; return b[2]; };
-    if(rp.rp>=0.8&&er.er>0.5){ return {type:'SHORT',rp:rp.rp,er:er.er,diff,pf:bandPF('SHORT',er.er),fundBucket:diff>NEUTRAL?'proti':diff<-NEUTRAL?'souhlas':'neutral'}; }
-    if(rp.rp<=0.2&&er.er>=0.2&&er.er<0.65){ return {type:'LONG',rp:rp.rp,er:er.er,diff,pf:bandPF('LONG',er.er),fundBucket:diff<-NEUTRAL?'proti':diff>NEUTRAL?'souhlas':'neutral'}; }
+    // COT kontext — NE "souhlasí fundament se směrem" (to je fundBucket výš),
+    // ale JAK SILNÉ/SLABÉ jsou obě měny páru vůči VLASTNÍ 2leté COT historii
+    // (cotPct — getCOTPercentile, ne absolutní skóre, to je mezi měnami
+    // nesrovnatelně zešikmené). Zdroj: scripts/audcheck backtest nad celým
+    // 2letým oknem (1321 nefiltrovaných epizod) — SILNÁ-vs-SLABÁ (čistá
+    // divergence) 74,3 %/PF 2,66 > SLABÁ-vs-SLABÁ 68,5 %/PF 1,52 ≈ SILNÁ-vs-
+    // SILNÁ 68,9 %/PF 1,30. A uvnitř SILNÁ-vs-SLABÁ: obchod jedoucí PROTI
+    // té nahuštěné COT pozici (kontrariánsky) 78,3 %/PF 4,13 > obchod jedoucí
+    // S divergencí 70,1 %/PF 1,75 — ověřeno robustně (1./2. půlka okna i
+    // LONG/SHORT zvlášť, rozložené přes ~20 párů). Čistě informativní tag,
+    // signál NEfiltruje ani neovlivňuje (na rozdíl od fundBucketu dřív, co se
+    // ukázalo škodit — viz komentář výš).
+    const cotCtxFor=(type)=>{
+      const state=v=>v==null?'NEUTRAL':v>=67?'STRONG':v<=33?'WEAK':'NEUTRAL';
+      const bC=state(sb.cotPct), qC=state(sq.cotPct);
+      if((bC==='STRONG'&&qC==='WEAK')||(bC==='WEAK'&&qC==='STRONG')){
+        const expectBaseUp=bC==='STRONG';
+        const agrees=expectBaseUp?type==='LONG':type==='SHORT';
+        return agrees
+          ? {combo:'divergenceAgree',agrees:true,label:'COT: s divergencí',note:'Obchod jede SE směrem, který COT vlastní historie ukazuje jako silnější/slabší (2y backtest: 74,3 % / PF 1,75).'}
+          : {combo:'divergenceContra',agrees:false,label:'COT: proti divergenci (kontrarián)',note:'Obchod jede PROTI nahuštěné COT pozici — v 2y backtestu tahle kombinace vycházela nejlépe (78,3 % / PF 4,13).'};
+      }
+      if(bC==='STRONG'&&qC==='STRONG') return {combo:'bothStrong',agrees:null,label:'COT: obě silné',note:'Obě měny COT-silné vůči vlastní historii — slabší kombinace v backtestu (68,9 % / PF 1,30).'};
+      if(bC==='WEAK'&&qC==='WEAK') return {combo:'bothWeak',agrees:null,label:'COT: obě slabé',note:'Obě měny COT-slabé vůči vlastní historii — slabší kombinace v backtestu (68,5 % / PF 1,52).'};
+      return null;
+    };
+    if(rp.rp>=0.8&&er.er>0.5){ return {type:'SHORT',rp:rp.rp,er:er.er,diff,pf:bandPF('SHORT',er.er),fundBucket:diff>NEUTRAL?'proti':diff<-NEUTRAL?'souhlas':'neutral',cotContext:cotCtxFor('SHORT')}; }
+    if(rp.rp<=0.2&&er.er>=0.2&&er.er<0.65){ return {type:'LONG',rp:rp.rp,er:er.er,diff,pf:bandPF('LONG',er.er),fundBucket:diff<-NEUTRAL?'proti':diff>NEUTRAL?'souhlas':'neutral',cotContext:cotCtxFor('LONG')}; }
     return null;
   }
   // "COT vs Retail" karta — vytažená z renderDetail() do vlastní metody, ať ji
@@ -1832,9 +1858,17 @@ class FXApp extends React.Component{
         // HŮŘ) — žádné stabilní, spolehlivé pravidlo, takže appka už netvrdí
         // "silnější"/"rizikovější", jen ukazuje číslo.
         const fundTxt=isProti?('Fundament s tímhle '+sig.type+'em nesouhlasí (sám zůstává '+(sig.type==='SHORT'?'bullish':'bearish')+', '+self.sgn(sig.diff)+').'):isSouhlas?('Fundament s tímhle '+sig.type+'em naopak souhlasí ('+self.sgn(sig.diff)+').'):('Fundament je neutrální ('+self.sgn(sig.diff)+').');
-        return h('div',{style:{display:'flex',alignItems:'center',gap:10,background:verdict.c+'16',border:'1px solid '+verdict.c+'44',borderRadius:10,padding:'11px 14px',marginTop:14}},
+        const cc=sig.cotContext;
+        const ccCol=cc?(cc.agrees===false?T.green:cc.agrees===true?T.amber:T.faint):null;
+        return h('div',null,
+        h('div',{style:{display:'flex',alignItems:'center',gap:10,background:verdict.c+'16',border:'1px solid '+verdict.c+'44',borderRadius:10,padding:'11px 14px',marginTop:14}},
         h('span',{style:{fontSize:16,flex:'none'}},'🎯'),
-        h('span',{style:{fontSize:13,fontWeight:700,color:T.text,lineHeight:1.5}},priceTxt,fundTxt,' → ',h('b',{style:{color:verdict.c}},'POTVRZENO.'))); })():
+        h('span',{style:{fontSize:13,fontWeight:700,color:T.text,lineHeight:1.5}},priceTxt,fundTxt,' → ',h('b',{style:{color:verdict.c}},'POTVRZENO.'))),
+        cc&&h('div',{style:{display:'flex',alignItems:'flex-start',gap:10,background:ccCol+'14',border:'1px solid '+ccCol+'3c',borderRadius:10,padding:'10px 14px',marginTop:9}},
+        h('span',{style:{fontSize:15,flex:'none'}},'📊'),
+        h('div',null,
+          h('div',{style:{fontSize:11,fontWeight:800,letterSpacing:'.03em',color:ccCol,marginBottom:3}},cc.label.toUpperCase()),
+          h('span',{style:{fontSize:12.5,color:T.dim,lineHeight:1.5}},cc.note)))); })():
         h('div',{style:{fontSize:11,color:T.dim,marginTop:14,lineHeight:1.5,paddingTop:12,borderTop:'1px solid #ffffff0f'}},'RP/ER nejsou v žádné zóně — pak signál nesvítí. Čistě informační, neovlivňuje skóre ani diferenciál.'));
   }
   // AI analýza karta (z uloženého screenshotu grafu, ai_analyses_v1) — vytažená
