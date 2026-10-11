@@ -1,0 +1,43 @@
+name: RP+ER Backtest (entry model — TP/SL ATR + D+1 exit, 2y)
+
+# Jen ruční spuštění — diagnostický nástroj (scripts/backtest-rper-entry-model.js),
+# appka ho nečte, engine se jím neupravuje. Ověřuje na celém 2letém okně
+# hypotézu z vizuální kontroly Claude Cowork (TradingView/OANDA, 2026-10-11):
+# TP/SL v násobcích ATR a D+1 pin-proti-směru exit místo "drž do konce zóny".
+# Viz hlavička scripts/backtest-rper-entry-model.js.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rper-backtest-entry-model
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Spustit entry-model backtest
+        run: node scripts/backtest-rper-entry-model.js
+      - name: Commit při změně
+        run: |
+          git config user.name "rper-backtest-entry-model-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/backtest_rper_entry_model.json)" ]; then
+            git add data/backtest_rper_entry_model.json
+            git commit -m "chore: update RP+ER entry-model backtest [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Beze změny."
+          fi
