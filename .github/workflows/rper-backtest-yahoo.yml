@@ -1,0 +1,43 @@
+name: RP+ER Backtest (Yahoo denní close — srovnání se zdrojem appky)
+
+# Jen ruční spuštění — diagnostický nástroj (scripts/backtest-rper-yahoo-daily.js),
+# appka ho nečte, engine se jím neupravuje. Stejná metodika jako
+# rper-backtest.yml, ale cenový zdroj je Yahoo denní close místo Frankfurter/
+# ECB — ověřuje, jak moc se kalibrace změní na zdroji, co appka doopravdy
+# používá naživo. Viz hlavička scripts/backtest-rper-yahoo-daily.js.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rper-backtest-yahoo
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Spustit Yahoo denní backtest
+        run: node scripts/backtest-rper-yahoo-daily.js
+      - name: Commit při změně
+        run: |
+          git config user.name "rper-backtest-yahoo-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/backtest_rper_yahoo.json)" ]; then
+            git add data/backtest_rper_yahoo.json
+            git commit -m "chore: update RP+ER Yahoo-daily backtest [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Beze změny."
+          fi
