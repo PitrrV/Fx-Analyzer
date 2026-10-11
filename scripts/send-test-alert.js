@@ -20,9 +20,19 @@ async function sendTelegramMessage(token, chatId, text) {
   if (!token || !chatId) { console.error("Chybí SCORE_TELEGRAM_BOT_TOKEN/SCORE_TELEGRAM_CHAT_ID — nastav v repo secrets."); process.exit(1); }
 
   const intro = "🧪 <b>Testovací zpráva</b> — takhle bude vypadat ostrý alert, žádná skutečná událost:";
-  const sample = `⚡ <b>${escapeTgHtml("EURUSD")}</b> — otočení biasu\nSELL → <b>BUY</b> · driver: EUR\n\n`
-    + `🟢 <b>${escapeTgHtml("GBPJPY")}</b> — RP+ER exhaustion (LONG)\nRP 12% · ER 0.42 · historicky PF 1.39 · fundament +0.60`;
+  const sampleOpen = `⚡ <b>${escapeTgHtml("EURUSD")}</b> — otočení biasu\nSELL → <b>BUY</b> · driver: EUR\n\n`
+    + `🟢 <b>${escapeTgHtml("GBPJPY")}</b> — nový RP+ER signál (LONG)\nRP 12% · ER 0.42 · historicky PF 1.39 · fundament +0.60 (neutrál)`;
+  // Ukázka DRUHÉ zprávy — jak vypadá, až stejný signál o pár dní později
+  // skončí (RP opustí zónu). V ostrém provozu by to přišlo jako samostatný
+  // běh cronu o dny později, tady je to hned za sebou jen pro demo.
+  const sampleCloseWin = `✅ <b>${escapeTgHtml("GBPJPY")}</b> — RP+ER signál skončil (byl LONG)\ntrval 3 dny · výsledek +0.43%`;
+  const sampleCloseLoss = `❌ <b>${escapeTgHtml("GBPJPY")}</b> — RP+ER signál skončil (byl LONG)\ntrval 2 dny · výsledek -0.21%`;
+  const sampleCloseChop = `〰️ <b>${escapeTgHtml("GBPJPY")}</b> — RP+ER signál skončil (byl LONG)\ntrval 1 den · výsledek beze změny (šum)`;
 
   await sendTelegramMessage(token, chatId, intro);
-  await sendTelegramMessage(token, chatId, sample);
+  await sendTelegramMessage(token, chatId, sampleOpen);
+  await sendTelegramMessage(token, chatId, "🧪 Takhle vypadá konec signálu — tři možné výsledky (výhra/prohra/šum):");
+  await sendTelegramMessage(token, chatId, sampleCloseWin);
+  await sendTelegramMessage(token, chatId, sampleCloseLoss);
+  await sendTelegramMessage(token, chatId, sampleCloseChop);
 })();
