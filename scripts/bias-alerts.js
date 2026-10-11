@@ -12,7 +12,14 @@
 //      binární událost, ne kontinuální číslo — buď se bias otočil, nebo ne.
 //   2) RP+ER EXHAUSTION signál — stejná karta jako v detailu páru/zlata/
 //      US100 ("RP + ER — exhaustion signál"). Alertuje se na NÁBĚŽNOU HRANU
-//      (signál se právě objevil), ne opakovaně každých 15 min, dokud trvá.
+//      (signál se právě objevil), ne opakovaně každých 15 min, dokud trvá —
+//      a od 2026-10-11 i na SESTUPNOU HRANU (signál zmizel/RP opustil zónu,
+//      ve které vznikl = appka ho přestane ukazovat): uživatel chtěl vědět i
+//      KDY a JAK signál skončil, ne jen že nový vznikl (appka to dřív jen
+//      potichu přestala ukazovat, bez zprávy). Stav teď navíc nese cenu PŘI
+//      vzniku signálu (onsetPrice), aby alert o konci mohl rovnou ukázat
+//      výsledek (cena teď vs. tehdy) — stejná metodika/práh jako appka a
+//      scripts/backtest-rper*.js (MIN_MOVE_PCT=0.05%, pod tím "šum").
 //
 // Stav = data/bias_alert_state.json — VÝHRADNĚ tohoto skriptu, nezávislé na
 // "bias_state" v localStorage prohlížeče (to řídí per-zařízení UI panel);
@@ -64,9 +71,10 @@ function computeLive(prevBiasState) {
     "autoUpdateFromCalendar", "applyAutoRiskSentiment",
     "buildGoldPair", "scoreGold", "scoreUS100",
     "updateBiasFlips", "getRecentFlips", "deriveUpcomingFromEvents",
-    "getRangePosition", "getEfficiencyRatio",
+    "getRangePosition", "getEfficiencyRatio", "getPairPrice",
     "getGoldRangePosition", "getGoldEfficiencyRatio",
     "getUS100RangePosition", "getUS100EfficiencyRatio",
+    "loadGoldPrice", "loadUS100Price",
     "computeWindowAvgPath",
   ].join(",");
   const factory = new Function(
@@ -216,23 +224,59 @@ async function sendTelegramMessage(token, chatId, text) {
   const prevRpEr = state.rpEr || {};
   const prevType = (pair) => { const r = prevRpEr[pair]; return r && typeof r === "object" ? r.type : (r || null); };
   const prevSince = (pair) => { const r = prevRpEr[pair]; return r && typeof r === "object" ? r.since : null; };
+  const prevOnsetPrice = (pair) => { const r = prevRpEr[pair]; return r && typeof r === "object" && typeof r.onsetPrice === "number" ? r.onsetPrice : null; };
   const nowIso = new Date().toISOString();
+  // Cena PRO alert kontext — stejný live snapshot appka ukazuje v kartě
+  // (data/prices.json rates / gold_price.current / us100_price.current), ne
+  // historická denní uzávěrka — "teď" má smysl jen pro live porovnání se
+  // "since" cenou, ne pro přesnou kalibraci (na to je scripts/backtest-rper*).
+  const livePriceFor = (p) => {
+    try {
+      if (p.isGold) { const g = E.loadGoldPrice(); return g && typeof g.current === "number" ? g.current : null; }
+      if (p.isUS100) { const u = E.loadUS100Price(); return u && typeof u.current === "number" ? u.current : null; }
+      return E.getPairPrice(p.pair);
+    } catch (e) { return null; }
+  };
+  const RPER_MIN_MOVE_PCT = 0.05; // stejný práh jako backtest/appka — pod tím je "beze změny/šum", ne výsledek
+  const resolveOutcome = (type, onsetPrice, nowPrice) => {
+    if (onsetPrice == null || nowPrice == null || !isFinite(onsetPrice) || !isFinite(nowPrice) || onsetPrice === 0) return null;
+    const pctChange = ((nowPrice - onsetPrice) / onsetPrice) * 100;
+    const predictedDown = type === "SHORT";
+    const moved = Math.abs(pctChange) > RPER_MIN_MOVE_PCT;
+    const correct = moved && ((predictedDown && pctChange < 0) || (!predictedDown && pctChange > 0));
+    return { pctChange: +pctChange.toFixed(3), outcome: !moved ? "CHOP" : correct ? "CORRECT" : "WRONG" };
+  };
   const newRpEr = {};
   const rpErMoves = [];
+  // VYČERPÁNÍ signálu (sestupná hrana) — RP opustil zónu, ve které vznikl
+  // (appka si to stejně musí přepočítat, ale appka to nikde neoznamuje — jen
+  // si signál z karty/sidebaru potichu "ztratí"). Uživatel chtěl vědět, KDY
+  // konkrétní signál skončil a JAK dopadl (ne jen že nový vznikl), ať ví, k
+  // čemu se vztahuje (stejný pár/typ jako v otevírací zprávě).
+  const rpErResolved = [];
+  const trackRpEr = (p, sig) => {
+    const pType = prevType(p.pair);
+    const livePrice = livePriceFor(p);
+    if (sig) {
+      const carryOnset = sig.type === pType ? prevOnsetPrice(p.pair) : null;
+      newRpEr[p.pair] = { type: sig.type, since: (sig.type === pType && prevSince(p.pair)) || nowIso, onsetPrice: carryOnset != null ? carryOnset : livePrice };
+      if (sig.type !== pType) rpErMoves.push({ pair: p.pair, ...sig });
+    } else {
+      newRpEr[p.pair] = null;
+    }
+    if (pType && (!sig || sig.type !== pType)) {
+      const result = resolveOutcome(pType, prevOnsetPrice(p.pair), livePrice);
+      rpErResolved.push({ pair: p.pair, type: pType, since: prevSince(p.pair), result });
+    }
+  };
   for (const p of ranked) {
     const sbScore = p.isGold ? goldScoreObj.score : sc[p.base].score;
     const sqScore = p.isGold ? sc.USD.score : sc[p.quote].score;
-    const sig = rpErSignal(E, p, sbScore, sqScore);
-    const pType = prevType(p.pair);
-    newRpEr[p.pair] = sig ? { type: sig.type, since: (sig.type === pType && prevSince(p.pair)) || nowIso } : null;
-    if (sig && sig.type !== pType) rpErMoves.push({ pair: p.pair, ...sig });
+    trackRpEr(p, rpErSignal(E, p, sbScore, sqScore));
   }
   if (us100ScoreObj) {
     const us100Pair = { pair: "US100", isUS100: true };
-    const sig = rpErSignal(E, us100Pair, us100ScoreObj.score, 0);
-    const pType = prevType("US100");
-    newRpEr.US100 = sig ? { type: sig.type, since: (sig.type === pType && prevSince("US100")) || nowIso } : null;
-    if (sig && sig.type !== pType) rpErMoves.push({ pair: "US100", ...sig });
+    trackRpEr(us100Pair, rpErSignal(E, us100Pair, us100ScoreObj.score, 0));
   }
 
   // ── 3) SEZÓNNÍ RADAR (náběžná hrana) ────────────────────────────────────
@@ -264,8 +308,20 @@ async function sendTelegramMessage(token, chatId, text) {
   for (const m of rpErMoves) {
     const icon = m.type === "SHORT" ? "🔴" : "🟢";
     const bucketTxt = m.fundBucket === "proti" ? " (nesouhlasí)" : m.fundBucket === "souhlas" ? " (souhlasí)" : " (neutrál)";
-    blocks.push(`${icon} <b>${escapeTgHtml(m.pair)}</b> — RP+ER exhaustion (${m.type})\n`
+    blocks.push(`${icon} <b>${escapeTgHtml(m.pair)}</b> — nový RP+ER signál (${m.type})\n`
       + `RP ${Math.round(m.rp * 100)}% · ER ${m.er.toFixed(2)} · historicky PF ${m.pf.toFixed(2)} · fundament ${fmtNum(m.diff)}${bucketTxt}`);
+  }
+  // VYČERPÁNÍ — záměrně hned za "nový signál" blokem výš (ne až za sezónním
+  // radarem), ať jsou obě RP+ER zprávy v jedné skupině pohromadě — uživatel
+  // chtěl, aby bylo hned vidět, ke kterému páru/typu se "konec" váže.
+  for (const m of rpErResolved) {
+    const days = (() => { if (!m.since) return null; const d = Math.round((Date.now() - new Date(m.since).getTime()) / 86400000); return Math.max(0, d); })();
+    const durTxt = days == null ? "neznámo jak dlouho" : days < 1 ? "trval pod 1 den" : days === 1 ? "trval 1 den" : days < 5 ? `trval ${days} dny` : `trval ${days} dní`;
+    const r = m.result;
+    const icon = !r ? "⏹" : r.outcome === "CORRECT" ? "✅" : r.outcome === "WRONG" ? "❌" : "〰️";
+    const resultTxt = !r ? "bez dat o ceně" : r.outcome === "CHOP" ? "beze změny (šum)" : fmtNum(r.pctChange) + "%";
+    blocks.push(`${icon} <b>${escapeTgHtml(m.pair)}</b> — RP+ER signál skončil (byl ${m.type})\n`
+      + `${durTxt} · výsledek ${resultTxt}`);
   }
   for (const m of seasonMoves) {
     const icon = m.dir === "LONG" ? "🟢" : "🔴";
@@ -286,7 +342,7 @@ async function sendTelegramMessage(token, chatId, text) {
   } else if (blocks.length) {
     console.log(blocks.length + " událost(i), ale chybí SCORE_TELEGRAM_BOT_TOKEN/SCORE_TELEGRAM_CHAT_ID — nic neposláno.");
   } else {
-    console.log("Žádné otočení biasu, nový RP+ER signál ani nový sezónní švih od minulého běhu.");
+    console.log("Žádné otočení biasu, nový/vyčerpaný RP+ER signál ani nový sezónní švih od minulého běhu.");
   }
 
   fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
