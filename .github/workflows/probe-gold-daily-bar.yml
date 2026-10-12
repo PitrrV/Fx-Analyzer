@@ -1,0 +1,17 @@
+name: Probe Gold Daily Bar Timing
+
+# Dispatch-only diagnostika — žádný cron, nic necommituje. Viz hlavička
+# scripts/probe-gold-daily-bar.js.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Zjistit timing denního baru GC=F
+        run: node scripts/probe-gold-daily-bar.js
