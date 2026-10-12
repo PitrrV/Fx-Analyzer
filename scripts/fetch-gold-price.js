@@ -83,7 +83,23 @@ function closestOnOrBefore(rows, targetMs) {
   const w4ago = closestOnOrBefore(rows, nowMs - 28 * MS_DAY);
   const w8ago = closestOnOrBefore(rows, nowMs - 56 * MS_DAY);
   const w13ago = closestOnOrBefore(rows, nowMs - 91 * MS_DAY);
-  const series = rows.slice(-130).map((r) => r.close);
+  // KRITICKÉ: vyloučit ještě NEUZAVŘENÝ "dnešní" denní bar ze série, než se
+  // uloží — engine.js (_dropUnclosedToday, getGoldRangePosition/
+  // getGoldEfficiencyRatio) spoléhá, že series[series.length-1] je poslední
+  // SKUTEČNĚ uzavřený den, a sám to ověřuje jen porovnáním data/UTC dneška s
+  // `date` polem výš — jenže `date` je ŽIVÝ timestamp (regularMarketTime),
+  // ne datum posledního řádku v `rows`. Těsně po půlnoci/rollover zdroje
+  // (u GC=F denní bar vzniká ~04:00 UTC, ne o půlnoci) může mít `date` už
+  // "dnešní" datum, i když `rows` poslední řádek je ještě VČEREJŠÍ uzavřená
+  // cena — appka by ji pak omylem zahodila a posunula celé 10denní okno o
+  // den (živě ověřeno 2026-10-12: RP+ER signál zlata vznikl a zmizel během
+  // jediného 15min cyklu, zatímco appka u FX párů mění signál max 1x denně).
+  // Oprava: vyloučit poslední řádek PODLE JEHO VLASTNÍHO data, ne podle
+  // nesouvisejícího live timestampu — stejný princip jako fetch-prices.js
+  // (isWeekend/today filtr na `hist`).
+  const todayUTC = new Date().toISOString().slice(0, 10);
+  const closedRows = (rows.length && String(rows[rows.length - 1].date).slice(0, 10) === todayUTC) ? rows.slice(0, -1) : rows;
+  const series = closedRows.slice(-130).map((r) => r.close);
 
   const out = { updated: new Date().toISOString(), source, current: parseFloat(current.toFixed(2)), date, w4ago, w8ago, w13ago, series };
 
