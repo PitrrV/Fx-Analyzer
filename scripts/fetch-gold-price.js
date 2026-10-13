@@ -58,7 +58,7 @@ async function fromYahoo() {
   const res = j?.chart?.result?.[0];
   const ts = res?.timestamp, closes = res?.indicators?.quote?.[0]?.close;
   if (!Array.isArray(ts) || !Array.isArray(closes)) throw new Error("yahoo: neplatná struktura");
-  const rows = ts.map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), close: closes[i] }))
+  const rows = ts.map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), t: t * 1000, close: closes[i] }))
     .filter((r) => r.close != null && !isNaN(r.close));
   if (rows.length < 30) throw new Error("yahoo history málo řádků: " + rows.length);
   const current = res?.meta?.regularMarketPrice || rows[rows.length - 1].close;
@@ -86,19 +86,26 @@ function closestOnOrBefore(rows, targetMs) {
   // KRITICKÉ: vyloučit ještě NEUZAVŘENÝ "dnešní" denní bar ze série, než se
   // uloží — engine.js (_dropUnclosedToday, getGoldRangePosition/
   // getGoldEfficiencyRatio) spoléhá, že series[series.length-1] je poslední
-  // SKUTEČNĚ uzavřený den, a sám to ověřuje jen porovnáním data/UTC dneška s
-  // `date` polem výš — jenže `date` je ŽIVÝ timestamp (regularMarketTime),
-  // ne datum posledního řádku v `rows`. Těsně po půlnoci/rollover zdroje
-  // (u GC=F denní bar vzniká ~04:00 UTC, ne o půlnoci) může mít `date` už
-  // "dnešní" datum, i když `rows` poslední řádek je ještě VČEREJŠÍ uzavřená
-  // cena — appka by ji pak omylem zahodila a posunula celé 10denní okno o
-  // den (živě ověřeno 2026-10-12: RP+ER signál zlata vznikl a zmizel během
-  // jediného 15min cyklu, zatímco appka u FX párů mění signál max 1x denně).
-  // Oprava: vyloučit poslední řádek PODLE JEHO VLASTNÍHO data, ne podle
-  // nesouvisejícího live timestampu — stejný princip jako fetch-prices.js
-  // (isWeekend/today filtr na `hist`).
-  const todayUTC = new Date().toISOString().slice(0, 10);
-  const closedRows = (rows.length && String(rows[rows.length - 1].date).slice(0, 10) === todayUTC) ? rows.slice(0, -1) : rows;
+  // SKUTEČNĚ uzavřený den.
+  // 1. POKUS (2026-10-12): porovnání textových dat (datum posledního řádku
+  // vs. UTC dnešek) — fungovalo přes týden, ALE selhalo hned druhý den na
+  // prvním baru po víkendu (2026-10-13, 23:50 UTC pondělí) — živý bar
+  // pondělí 12.10. se do série dostal i přes tuhle kontrolu, nejspíš protože
+  // Yahoo label toho baru (den/čas) se první hodiny po vzniku ještě "ustaluje"
+  // a datumové porovnání je na tenhle přechod křehké.
+  // 2. POKUS (tenhle, robustnější): místo porovnávání DATUMOVÝCH ŘETĚZCŮ
+  // (křehké na label-nesrovnalosti) kontroluje STÁŘÍ baru podle jeho VLASTNÍHO
+  // unix timestampu (`t`, jen Yahoo cesta — Stooq historický CSV timestamp
+  // nedává, ale ten bug zatím nezpůsoboval, protože se Stooq na GH Actions IP
+  // dlouhodobě blokuje a appka tak fakticky vždy padá na Yahoo fallback).
+  // Denní bary GC=F jsou od sebe ~24h — pokud je poslední bar mladší než 23h,
+  // téměř jistě ještě žije (přibývá k němu), bez ohledu na to, jak přesně ho
+  // Yahoo zrovna labeluje. Žádné hádání kolem půlnoci/rollover hranice.
+  const CLOSE_GUARD_MS = 23 * 60 * 60 * 1000;
+  const lastRow = rows[rows.length - 1];
+  const lastIsFresh = lastRow && typeof lastRow.t === "number" ? (nowMs - lastRow.t) < CLOSE_GUARD_MS
+    : (lastRow && String(lastRow.date).slice(0, 10) === new Date().toISOString().slice(0, 10)); // Stooq fallback: bez timestampu, stará date-string kontrola
+  const closedRows = lastIsFresh ? rows.slice(0, -1) : rows;
   const series = closedRows.slice(-130).map((r) => r.close);
 
   const out = { updated: new Date().toISOString(), source, current: parseFloat(current.toFixed(2)), date, w4ago, w8ago, w13ago, series };

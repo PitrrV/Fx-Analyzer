@@ -20,7 +20,7 @@ async function fromYahoo() {
   const res = j && j.chart && j.chart.result && j.chart.result[0];
   const ts = res && res.timestamp, closes = res && res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close;
   if (!Array.isArray(ts) || !Array.isArray(closes)) throw new Error("neplatná struktura");
-  const rows = ts.map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), close: closes[i] }))
+  const rows = ts.map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), t: t * 1000, close: closes[i] }))
     .filter((r) => r.close != null && !isNaN(r.close));
   if (rows.length < 30) throw new Error("málo řádků: " + rows.length);
   const current = (res.meta && res.meta.regularMarketPrice) || rows[rows.length - 1].close;
@@ -41,12 +41,15 @@ function closestOnOrBefore(rows, targetMs) {
   const w4ago = closestOnOrBefore(rows, nowMs - 28 * MS_DAY);
   const w8ago = closestOnOrBefore(rows, nowMs - 56 * MS_DAY);
   const w13ago = closestOnOrBefore(rows, nowMs - 91 * MS_DAY);
-  // Stejná oprava jako scripts/fetch-gold-price.js (2026-10-12 nález, živě
-  // ověřeno na zlatě) — `date` výš je živý regularMarketTime, ne datum
-  // posledního řádku v `rows`; vyloučit "dnešní" ještě neuzavřený bar podle
-  // JEHO VLASTNÍHO data, ne podle toho nesouvisejícího live timestampu.
-  const todayUTC = new Date().toISOString().slice(0, 10);
-  const closedRows = (rows.length && String(rows[rows.length - 1].date).slice(0, 10) === todayUTC) ? rows.slice(0, -1) : rows;
+  // Stejná oprava jako scripts/fetch-gold-price.js (2026-10-13 nález #2 —
+  // 1. pokus přes porovnání datumových řetězců selhal na prvním baru po
+  // víkendu). Místo textového data kontroluje STÁŘÍ posledního baru podle
+  // jeho vlastního unix timestampu — pokud je mladší než 23h, téměř jistě
+  // ještě žije/přibývá k němu, bez ohledu na to, jak přesně ho Yahoo labeluje.
+  const CLOSE_GUARD_MS = 23 * 60 * 60 * 1000;
+  const lastRow = rows[rows.length - 1];
+  const lastIsFresh = lastRow && typeof lastRow.t === "number" && (nowMs - lastRow.t) < CLOSE_GUARD_MS;
+  const closedRows = lastIsFresh ? rows.slice(0, -1) : rows;
   const series = closedRows.slice(-130).map((r) => r.close);
 
   const out = { updated: new Date().toISOString(), source, current: parseFloat(current.toFixed(2)), date, w4ago, w8ago, w13ago, series };
