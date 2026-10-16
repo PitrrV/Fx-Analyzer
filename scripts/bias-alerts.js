@@ -308,7 +308,7 @@ async function sendTelegramMessage(token, chatId, text) {
   for (const m of rpErMoves) {
     const icon = m.type === "SHORT" ? "🔴" : "🟢";
     const bucketTxt = m.fundBucket === "proti" ? " (nesouhlasí)" : m.fundBucket === "souhlas" ? " (souhlasí)" : " (neutrál)";
-    blocks.push(`${icon} <b>${escapeTgHtml(m.pair)}</b> — nový RP+ER signál (${m.type})\n`
+    blocks.push(`${icon} <b>${escapeTgHtml(m.pair)}</b> — nový Edge Reversal signál (${m.type})\n`
       + `RP ${Math.round(m.rp * 100)}% · ER ${m.er.toFixed(2)} · historicky PF ${m.pf.toFixed(2)} · fundament ${fmtNum(m.diff)}${bucketTxt}`);
   }
   // VYČERPÁNÍ — záměrně hned za "nový signál" blokem výš (ne až za sezónním
@@ -320,7 +320,7 @@ async function sendTelegramMessage(token, chatId, text) {
     const r = m.result;
     const icon = !r ? "⏹" : r.outcome === "CORRECT" ? "✅" : r.outcome === "WRONG" ? "❌" : "〰️";
     const resultTxt = !r ? "bez dat o ceně" : r.outcome === "CHOP" ? "beze změny (šum)" : fmtNum(r.pctChange) + "%";
-    blocks.push(`${icon} <b>${escapeTgHtml(m.pair)}</b> — RP+ER signál skončil (byl ${m.type})\n`
+    blocks.push(`${icon} <b>${escapeTgHtml(m.pair)}</b> — Edge Reversal signál skončil (byl ${m.type})\n`
       + `${durTxt} · výsledek ${resultTxt}`);
   }
   for (const m of seasonMoves) {
@@ -342,7 +342,7 @@ async function sendTelegramMessage(token, chatId, text) {
   } else if (blocks.length) {
     console.log(blocks.length + " událost(i), ale chybí SCORE_TELEGRAM_BOT_TOKEN/SCORE_TELEGRAM_CHAT_ID — nic neposláno.");
   } else {
-    console.log("Žádné otočení biasu, nový/vyčerpaný RP+ER signál ani nový sezónní švih od minulého běhu.");
+    console.log("Žádné otočení biasu, nový/vyčerpaný Edge Reversal signál ani nový sezónní švih od minulého běhu.");
   }
 
   fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });

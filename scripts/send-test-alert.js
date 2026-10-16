@@ -21,13 +21,13 @@ async function sendTelegramMessage(token, chatId, text) {
 
   const intro = "🧪 <b>Testovací zpráva</b> — takhle bude vypadat ostrý alert, žádná skutečná událost:";
   const sampleOpen = `⚡ <b>${escapeTgHtml("EURUSD")}</b> — otočení biasu\nSELL → <b>BUY</b> · driver: EUR\n\n`
-    + `🟢 <b>${escapeTgHtml("GBPJPY")}</b> — nový RP+ER signál (LONG)\nRP 12% · ER 0.42 · historicky PF 1.39 · fundament +0.60 (neutrál)`;
+    + `🟢 <b>${escapeTgHtml("GBPJPY")}</b> — nový Edge Reversal signál (LONG)\nRP 12% · ER 0.42 · historicky PF 1.39 · fundament +0.60 (neutrál)`;
   // Ukázka DRUHÉ zprávy — jak vypadá, až stejný signál o pár dní později
   // skončí (RP opustí zónu). V ostrém provozu by to přišlo jako samostatný
   // běh cronu o dny později, tady je to hned za sebou jen pro demo.
-  const sampleCloseWin = `✅ <b>${escapeTgHtml("GBPJPY")}</b> — RP+ER signál skončil (byl LONG)\ntrval 3 dny · výsledek +0.43%`;
-  const sampleCloseLoss = `❌ <b>${escapeTgHtml("GBPJPY")}</b> — RP+ER signál skončil (byl LONG)\ntrval 2 dny · výsledek -0.21%`;
-  const sampleCloseChop = `〰️ <b>${escapeTgHtml("GBPJPY")}</b> — RP+ER signál skončil (byl LONG)\ntrval 1 den · výsledek beze změny (šum)`;
+  const sampleCloseWin = `✅ <b>${escapeTgHtml("GBPJPY")}</b> — Edge Reversal signál skončil (byl LONG)\ntrval 3 dny · výsledek +0.43%`;
+  const sampleCloseLoss = `❌ <b>${escapeTgHtml("GBPJPY")}</b> — Edge Reversal signál skončil (byl LONG)\ntrval 2 dny · výsledek -0.21%`;
+  const sampleCloseChop = `〰️ <b>${escapeTgHtml("GBPJPY")}</b> — Edge Reversal signál skončil (byl LONG)\ntrval 1 den · výsledek beze změny (šum)`;
 
   await sendTelegramMessage(token, chatId, intro);
   await sendTelegramMessage(token, chatId, sampleOpen);
