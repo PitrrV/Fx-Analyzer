@@ -914,12 +914,63 @@ try{ migrateCOTHistoryKeys(); }catch(e){}
 // (uživatel nebyl online/CFTC API zrovna nešlo) — bez nutnosti ručního
 // importu z classic.html. Stejné merge-not-overwrite jako saveCOTSnapshot,
 // jen pro víc týdnů najednou. Voláno z refreshData()/loadDataMobile().
+// ── Ochrana proti plnému localStorage (Chrome limit ~5 M znaků) ────────────────
+// Reálný nález (PC, 2026-10): seas_daily_* (20 párů, ~3,3 M znaků = zrcadlo
+// serverových data/fx_daily/*.json) zabíraly ~2/3 kvóty → setItem("cot_hist") a
+// setItem("cot_pct_server") tiše padaly na QuotaExceededError (spolkl je try/catch)
+// → PC drželo COT snapshot starý několik týdnů a COT percentil vycházel jinak než
+// na mobilu/serveru (NZD 81p vs 57p). Oprava: (1) percentil čerstvě staženou
+// serverovou řadu drží i v paměti, (2) zápis je kvóta-odolný, (3) denní cache
+// už se neukládá do localStorage.
+const _LS_QUOTA_CHARS=5*1024*1024;
+function _lsUsedChars(){ let n=0; try{ for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); n+=k.length+(localStorage.getItem(k)||"").length; } }catch(e){} return n; }
+// Uvolní místo POUZE v obnovitelné cache seas_daily_* (přesné zrcadlo serverových
+// souborů data/fx_daily/<pár>.json, appka si je znovu stáhne). Uživatelská data
+// (cot_hist, bt_*, engine_log, poznámky, pozice…) se NIKDY nemažou.
+function _lsFreeRecomputable(targetUsed){
+  try{
+    const rows=[];
+    for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(/^seas_daily_/.test(k)){ let at=0; try{ at=(JSON.parse(localStorage.getItem(k)||"null")||{}).at||0; }catch(e){} rows.push({k,at,n:k.length+(localStorage.getItem(k)||"").length}); } }
+    rows.sort((a,b)=>a.at-b.at);
+    let used=_lsUsedChars(), freed=0;
+    for(const r of rows){ if(used<=targetUsed) break; localStorage.removeItem(r.k); used-=r.n; freed+=r.n; }
+    if(freed) try{console.warn("localStorage plný — uvolněno",freed,"znaků z obnovitelné cache seas_daily_*");}catch(e){}
+  }catch(e){}
+}
+function _lsSetSafe(key,val){
+  try{ localStorage.setItem(key,val); return true; }catch(e1){
+    _lsFreeRecomputable(Math.max(0,_LS_QUOTA_CHARS-val.length-key.length-200000));
+    try{ localStorage.setItem(key,val); return true; }catch(e2){
+      try{console.warn("localStorage zápis selhal:",key,String(e2&&e2.name||e2));}catch(e){}
+      return false;
+    }
+  }
+}
+// Paměťová kopie serverových řad pro percentil (přežije plný localStorage).
+let _cotSrvMem={pct:null,cat:null};
+
 async function fetchActionCOTHistory(){
   try{
     const r=await fetch("data/cot_hist.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"});
     if(!r.ok) return null;
     const j=await r.json();
     if(!j||!j.weeks||typeof j.weeks!=="object") return null;
+    // Paměťová serverová řada (nezávislá na kvótě localStorage) — viz _cotPctSeries.
+    try{
+      const m={}; Object.entries(j.weeks).forEach(([d,w])=>{ if(w&&w.scores) m[cotWeekKey(d)]=w.scores; });
+      const mk=Object.keys(m).sort().slice(-COT_PCT_WINDOW);
+      if(mk.length>=12){ _cotSrvMem.pct={}; mk.forEach(k=>_cotSrvMem.pct[k]=m[k]); }
+      const c={};
+      Object.entries(j.weeks).forEach(([d,w])=>{
+        if(!w||!w.raw) return; const row={};
+        Object.entries(w.raw).forEach(([ccy,r])=>{ if(r&&(Number.isFinite(r.levRatio)||Number.isFinite(r.assetRatio))) row[ccy]={levRatio:r.levRatio,assetRatio:r.assetRatio}; });
+        if(Object.keys(row).length) c[cotWeekKey(d)]=row;
+      });
+      const ck2=Object.keys(c).sort().slice(-COT_PCT_WINDOW);
+      if(ck2.length>=12){ _cotSrvMem.cat={}; ck2.forEach(k=>_cotSrvMem.cat[k]=c[k]); }
+    }catch(e){}
+    // Proaktivně drž ≥ ~20 % volno (jen z obnovitelné cache seas_daily_*).
+    if(_lsUsedChars()>_LS_QUOTA_CHARS*0.8) _lsFreeRecomputable(_LS_QUOTA_CHARS*0.7);
     const hist=loadCOTHistory();
     for(const [date,week] of Object.entries(j.weeks)){
       const key=cotWeekKey(date);
@@ -937,7 +988,7 @@ async function fetchActionCOTHistory(){
     // Fantomové ne-úterní klíče nesmí přežít merge (viz isValidCOTWeekKey).
     const keys=Object.keys(hist).filter(isValidCOTWeekKey).sort((a,b)=>new Date(a)-new Date(b)).slice(-320);
     const trimmed={};keys.forEach(k=>trimmed[k]=hist[k]);
-    localStorage.setItem("cot_hist",JSON.stringify(trimmed));
+    _lsSetSafe("cot_hist",JSON.stringify(trimmed));
     // Kanonický snapshot ČISTĚ serverových týdnů (jen scores) pro percentil:
     // cot_hist je union se staršími lokálními týdny — na dlouho používaném PC má
     // posledních 78 záznamů jiné složení než na mobilu (staré live-fetche vmíchané
@@ -948,7 +999,7 @@ async function fetchActionCOTHistory(){
       Object.entries(j.weeks).forEach(([d,w])=>{ if(w&&w.scores) srv[cotWeekKey(d)]=w.scores; });
       const sk=Object.keys(srv).sort().slice(-COT_PCT_WINDOW);
       const srvTrim={}; sk.forEach(k=>srvTrim[k]=srv[k]);
-      if(sk.length>=12) localStorage.setItem("cot_pct_server",JSON.stringify(srvTrim));
+      if(sk.length>=12) _lsSetSafe("cot_pct_server",JSON.stringify(srvTrim));
     }catch(e){}
     // Stejný problém (a stejná oprava) jako výš, ale pro percentil PER KATEGORII
     // (getCOTCategoryPercentile — sloupce LV/AM) — ten dřív četl přímo z cot_hist
@@ -968,7 +1019,7 @@ async function fetchActionCOTHistory(){
       });
       const ck=Object.keys(srvCat).sort().slice(-COT_PCT_WINDOW);
       const srvCatTrim={}; ck.forEach(k=>srvCatTrim[k]=srvCat[k]);
-      if(ck.length>=12) localStorage.setItem("cot_pct_server_cat",JSON.stringify(srvCatTrim));
+      if(ck.length>=12) _lsSetSafe("cot_pct_server_cat",JSON.stringify(srvCatTrim));
     }catch(e){}
     // Srovnej i cot_data/cot_meta (scalar sync klíče, "lokál vždy vyhrává" bez
     // rozlišení server/live — viz KEYS_SCALAR v sync.js). Bez tohohle getCOTLongShort()
@@ -1950,7 +2001,7 @@ const COT_PCT_WINDOW=104; // 2 roky týdenních reportů
 // nevycházel stejně.
 function _cotPctSeries(currency){
   try{
-    const srv=JSON.parse(localStorage.getItem("cot_pct_server")||"null");
+    const srv=_cotSrvMem.pct||JSON.parse(localStorage.getItem("cot_pct_server")||"null");
     if(srv&&typeof srv==="object"){
       const vals=Object.keys(srv).sort().slice(-COT_PCT_WINDOW).map(k=>srv[k]?.[currency]).filter(v=>typeof v==="number");
       if(vals.length>=12) return vals;
@@ -2973,7 +3024,7 @@ function getCOTCategoryPercentile(currency,category='lev',limit=104){
     const field=category==='asset'?'assetRatio':'levRatio';
     let scores=null;
     try{
-      const srv=JSON.parse(localStorage.getItem("cot_pct_server_cat")||"null");
+      const srv=_cotSrvMem.cat||JSON.parse(localStorage.getItem("cot_pct_server_cat")||"null");
       if(srv&&typeof srv==="object"){
         const vals=Object.keys(srv).sort().slice(-limit)
           .map(k=>srv[k]?.[currency]?.[field])
@@ -3449,6 +3500,12 @@ function _isDailyResolution(dates){
   gaps.sort((a,b)=>a-b);
   return gaps.length>0 && gaps[Math.floor(gaps.length/2)]<=10;
 }
+async function _fxDailyCachePut(pair,data){
+  try{ if(typeof caches==="undefined") return; const c=await caches.open("fx-daily-v1"); await c.put("/__fx_daily/"+pair,new Response(JSON.stringify(data),{headers:{"Content-Type":"application/json"}})); }catch(e){}
+}
+async function _fxDailyCacheGet(pair){
+  try{ if(typeof caches==="undefined") return null; const c=await caches.open("fx-daily-v1"); const r=await c.match("/__fx_daily/"+pair); return r?await r.json():null; }catch(e){return null;}
+}
 async function fetchFXDailyHistory(pair){
   const ck="seas_daily_"+pair;
   try{
@@ -3456,12 +3513,13 @@ async function fetchFXDailyHistory(pair){
     if(r.ok){
       const data=await r.json();
       if(data&&Array.isArray(data.dates)&&_isDailyResolution(data.dates)){
-        try{localStorage.setItem(ck,JSON.stringify({at:Date.now(),data}));}catch(e){}
+        _fxDailyCachePut(pair,data); // Cache Storage (ne localStorage — ten byl z 2/3 plný touhle cache)
         return data;
       }
     }
   }catch(e){}
   // Fallback na dřívější lokální cache (i kdyby teď server soubor chyběl/byl nedostupný).
+  try{const d=await _fxDailyCacheGet(pair); if(d&&d.dates&&_isDailyResolution(d.dates)) return d;}catch(e){}
   try{const c=JSON.parse(localStorage.getItem(ck)||"null"); if(c&&c.data&&c.data.dates&&_isDailyResolution(c.data.dates)) return c.data;}catch(e){}
   throw new Error("Denní historie pro "+pair+" zatím není k dispozici — server ji stahuje na pozadí (cron běží jednou denně), zkus to prosím za chvíli nebo zítra.");
 }
