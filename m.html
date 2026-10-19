@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20261019a"></script>
+<script src="engine.js?v=20261019b"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -272,7 +272,7 @@ function PairCard({p,f,daily,onTap,isFav,onToggleFav}){
       <div className="between" style={{marginTop:8}}>
         <div className="row" style={{gap:12}}>
           <span style={{fontSize:13}}><span className="muted">skóre </span><b style={{color:cScore(buy?p.diff:-p.diff)}}>{(buy?"+":"-")+p.diff.toFixed(1)}</b></span>
-          {f&&f.prob!=null&&<span style={{fontSize:13}}><span className="muted">14d </span><b style={{color:f.prob>=65?"#2ed3a0":f.prob<=35?"#f2606e":"#e8ab3f"}}>{f.prob+"% "+f.dir}</b></span>}
+          {f&&f.prob!=null&&<span style={{fontSize:13}}><span className="muted">14d </span><b style={{color:f.prob>=60?"#2ed3a0":f.prob>=55?"#e8ab3f":"#8b93a3"}}>{f.prob+"% "+f.dir}</b></span>}
         </div>
         <div className="row" style={{gap:6}}>
           {oilSt&&<span className="chip" style={{color:oilSt.color,borderColor:oilSt.color+"55"}}>🛢 ${oilSt.price.toFixed(1)}</span>}
@@ -487,7 +487,7 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
         <div className="card">
           <div className="between">
             <div><div className="muted" style={{fontSize:12}}>Skóre páru</div><div className="bignum" style={{color:cScore(buy?p.diff:-p.diff)}}>{(buy?"+":"-")+p.diff.toFixed(1)}</div></div>
-            {f&&f.prob!=null&&<div style={{textAlign:"right"}}><div className="muted" style={{fontSize:12}}>14d výhled</div><div className="bignum" style={{color:f.prob>=65?"#2ed3a0":f.prob<=35?"#f2606e":"#e8ab3f"}}>{f.prob}%</div><div className="muted" style={{fontSize:11}}>{f.dir}</div></div>}
+            {f&&f.prob!=null&&<div style={{textAlign:"right"}}><div className="muted" style={{fontSize:12}}>14d výhled</div><div className="bignum" style={{color:f.prob>=60?"#2ed3a0":f.prob>=55?"#e8ab3f":"#8b93a3"}}>{f.prob}%</div><div className="muted" style={{fontSize:11}}>{f.dir}</div></div>}
           </div>
           {daily&&daily.dot&&<div style={{marginTop:8,fontSize:13}}>{daily.dot} <span className="muted">{daily.level==="conflict"?"Dnešní data jdou PROTI biasu":daily.level==="confirm"?"Dnešní data potvrzují bias":daily.level==="upcoming"?"Dnes přijde důležitá zpráva":daily.level==="done"?"Dnes proběhly velké zprávy (beze změny)":""}</span></div>}
         </div>

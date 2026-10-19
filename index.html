@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20261019a"></script>
+<script src="engine.js?v=20261019b"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
 *{box-sizing:border-box}
@@ -2045,7 +2045,7 @@ class FXApp extends React.Component{
   renderDetail(){ if(this.state.sel==='US100') return this.renderUS100Detail();
     if(this.state.sel==='XAUUSD') return this.renderGoldDetail();
     const self=this,h=this.h,T=this.tok, p=this.pairObj(this.state.sel); if(!p) return null;
-    const buy=p.dir==='BUY', ac=buy?T.green:T.red, sb=this.D[p.base], sq=this.D[p.quote]; const probC=p.prob>=65?T.green:p.prob<=35?T.red:T.amber;
+    const buy=p.dir==='BUY', ac=buy?T.green:T.red, sb=this.D[p.base], sq=this.D[p.quote]; const probC=p.prob>=60?T.green:p.prob>=55?T.amber:T.faint;
     const stars=n=>'★'.repeat(n)+'☆'.repeat(5-n);
     const stat=(label,val,col,sub)=>h('div',{style:{padding:'13px 16px',borderLeft:'1px solid #1b2130',flex:1}},h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:6,letterSpacing:'.02em'}},label),h('div',{style:self.mono({fontSize:18,fontWeight:700,color:col||T.text,lineHeight:1})},val),sub&&h('div',{style:{fontSize:10,color:T.dim,marginTop:5}},sub));
     // Vážené příspěvky (base − quote) ze scoreCurrency().components — Σ dlaždic
