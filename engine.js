@@ -142,7 +142,9 @@ try{
 // odkázaná na tenhle ruční seed / starou localStorage hodnotu. Teď filtr
 // přijímá i "main refinancing" a seed sedí na to, co appka fakticky umí
 // zachytit: 2,65 % (Main Refinancing Rate po hiku 10.9.2026).
-let CENTRAL_BANK_RATES={USD:3.75,EUR:2.65,GBP:3.75,JPY:1.00,AUD:4.35,NZD:2.75,CAD:2.25,CHF:0.00};
+// Seed = stav, který autoUpdateFromCalendar odvodí z data/calendar_hist.json (19.10.2026);
+// platí jen do načtení kalendáře / při jeho výpadku.
+let CENTRAL_BANK_RATES={USD:4.00,EUR:2.65,GBP:3.75,JPY:1.25,AUD:4.60,NZD:2.75,CAD:2.25,CHF:0.00};
 try{const usr=localStorage.getItem("v5_cb_rates");if(usr)CENTRAL_BANK_RATES={...CENTRAL_BANK_RATES,...JSON.parse(usr)};}catch(e){}
 
 // ── REAL CPI DATA (pro real yield = CB rate - CPI) ────────────
@@ -151,7 +153,7 @@ try{const usr=localStorage.getItem("v5_cb_rates");if(usr)CENTRAL_BANK_RATES={...
 // přesné zdroje/data. NZD: Stats NZ sám publikuje roční číslo (4,1 % k
 // červnu 2026) — NEJDE o dopočet z FF čtvrtletního q/q (viz komentář u
 // extractCPIFromCalendar výš/níž, appka se tomu záměrně vyhýbá).
-let REAL_CPI_DATA={USD:3.4,EUR:3.3,GBP:2.9,JPY:3.1,AUD:3.8,NZD:4.1,CAD:3.0,CHF:0.8};
+let REAL_CPI_DATA={USD:2.6,EUR:2.5,GBP:3.1,JPY:1.8,AUD:4.0,NZD:4.1,CAD:1.9,CHF:0.8}; // seed 19.10.2026, viz CENTRAL_BANK_RATES
 try{const u=localStorage.getItem("v5_real_cpi");if(u)REAL_CPI_DATA={...REAL_CPI_DATA,...JSON.parse(u)};}catch(e){}
 
 // ── CB POLICY CYCLE — nejdůležitější makro faktor ─────────────
@@ -163,11 +165,11 @@ try{const u=localStorage.getItem("v5_real_cpi");if(u)REAL_CPI_DATA={...REAL_CPI_
 // nikdy nespustil). GBP label upraven jen v počtu hlasů (2→3, MPC červenec
 // 2026) — score beze změny.
 let CB_POLICY_DATA={
-  USD:{score:0, label:"Fed — drží 3.50–3.75 %, dot plot rozdělený"},
+  USD:{score:1, label:"Fed — obrat k hikům, 4.00 %"},
   EUR:{score:2, label:"ECB — 2. hike v řadě (pauza v červenci) na 2,65 % (Main Refi)"},
   GBP:{score:0, label:"BoE — drží 3.75 %, 3 hlasy pro hike"},
-  JPY:{score:2, label:"BoJ — hike na 1.0 %, nejvýš od 1995"},
-  AUD:{score:1, label:"RBA — drží 4.35 %, připraven hikovat dál"},
+  JPY:{score:2, label:"BoJ — agresivní hiking, 1.25 %"},
+  AUD:{score:2, label:"RBA — agresivní hiking, 4.60 %"},
   NZD:{score:2, label:"RBNZ — aktivní cyklus hikování, 2. hike v řadě na 2,75 %"},
   CAD:{score:0, label:"BoC — drží 2.25 %, cuts i hikes na stole"},
   CHF:{score:0, label:"SNB — drží 0 %"},
@@ -3105,6 +3107,34 @@ async function fetchActionCalendar(){
   if(!j||!Array.isArray(j.events)||j.events.length<10) throw new Error("calendar.json prázdné");
   try{if(j.updated)localStorage.setItem("action_cal_updated",j.updated);}catch(e){}
   return j.events.map(mapFFEvent);
+}
+
+// Serverová historie kalendáře (data/calendar_hist.json, ~9 500 událostí od 12/2024).
+// Bez ní nové zařízení (nebo to, kterému localStorage kvóta ořízla v5_ff_hist)
+// skórovalo jen z ~8 týdnů calendar.json → reálný nález 19.10.2026: opačný bias
+// u 7 z 28 párů proti serveru/Telegram alertům. Drží se JEN v paměti (1,4 MB do
+// localStorage by narazilo na kvótu, viz _lsSetSafe), stahuje se 1× za načtení.
+let _calHistMem=null;
+async function fetchActionCalendarHist(){
+  if(_calHistMem) return _calHistMem;
+  try{
+    const r=await fetch("data/calendar_hist.json?h="+Math.floor(Date.now()/3600000));
+    if(!r.ok) return null;
+    const j=await r.json();
+    if(!j||!Array.isArray(j.events)||j.events.length<100) return null;
+    _calHistMem=j.events.map(mapFFEvent).filter(e=>e&&e.event&&e.time&&ffIsTracked(e));
+    return _calHistMem;
+  }catch(e){return null;}
+}
+function unionCalHistory(cal,extra){
+  if(!Array.isArray(extra)||!extra.length) return cal;
+  const map=new Map();
+  for(const e of extra) map.set(ffHistKey(e),e);
+  for(const e of (cal||[])){
+    const k=ffHistKey(e),prev=map.get(k);
+    map.set(k,prev?{...prev,...Object.fromEntries(Object.entries(e).filter(([,v])=>v!==""&&v!=null))}:e);
+  }
+  return [...map.values()].sort((a,b)=>new Date(a.time)-new Date(b.time));
 }
 
 // ── FX CENY + PRICE-MOMENTUM (sdílené PC i mobil) ───────────────
