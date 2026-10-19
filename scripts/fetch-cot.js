@@ -13,16 +13,31 @@ const CFTC_TFF_DATASET = "gpe5-46if";
 // TFF datasetu je "USD INDEX - ICE FUTURES U.S." (starší "U.S. DOLLAR INDEX"
 // varianta má poslední data 2022-02-01 — CFTC kontrakt přejmenovala, stejný
 // cftc_contract_market_code, tj. stejný nástroj).
+// Výběr řádku: name.includes("EURO FX") chytal i křížové kontrakty
+// ("EURO FX/JAPANESE YEN XRATE", "EURO FX/BRITISH POUND XRATE") → 34 týdnů EUR,
+// 35 GBP a 4 JPY ze 121 neslo čísla cizího ~20 tis. kontraktu. Teď: název před
+// " - " musí být přesně ten trh (bez "/" a "XRATE"), a z takových řádků má
+// přednost ten s oficiálním cftc_contract_market_code.
 const COT_MARKETS = {
-  EUR: { name: "EURO FX", exch: "CHICAGO MERCANTILE" },
-  GBP: { name: "BRITISH POUND", exch: "CHICAGO MERCANTILE" },
-  JPY: { name: "JAPANESE YEN", exch: "CHICAGO MERCANTILE" },
-  AUD: { name: "AUSTRALIAN DOLLAR", exch: "CHICAGO MERCANTILE" },
-  CAD: { name: "CANADIAN DOLLAR", exch: "CHICAGO MERCANTILE" },
-  CHF: { name: "SWISS FRANC", exch: "CHICAGO MERCANTILE" },
-  NZD: { name: "NZ DOLLAR", exch: "CHICAGO MERCANTILE" },
-  USD: { name: "USD INDEX", exch: "ICE FUTURES U.S." },
+  EUR: { name: "EURO FX", exch: "CHICAGO MERCANTILE", code: "099741" },
+  GBP: { name: "BRITISH POUND", exch: "CHICAGO MERCANTILE", code: "096742" },
+  JPY: { name: "JAPANESE YEN", exch: "CHICAGO MERCANTILE", code: "097741" },
+  AUD: { name: "AUSTRALIAN DOLLAR", exch: "CHICAGO MERCANTILE", code: "232741" },
+  CAD: { name: "CANADIAN DOLLAR", exch: "CHICAGO MERCANTILE", code: "090741" },
+  CHF: { name: "SWISS FRANC", exch: "CHICAGO MERCANTILE", code: "092741" },
+  NZD: { name: "NZ DOLLAR", exch: "CHICAGO MERCANTILE", code: "112741" },
+  USD: { name: "USD INDEX", exch: "ICE FUTURES U.S.", code: "098662" },
 };
+function cotRowName(r) { return String(r.market_and_exchange_names || r.contract_market_name || "").toUpperCase(); }
+function cotNameIs(nm, market) {
+  if (!nm.includes(market.exch)) return false;
+  const head = nm.split(" - ")[0].trim();
+  return head === market.name || (head.startsWith(market.name + " ") && !/\/|XRATE/.test(head));
+}
+function findCOTRow(rows, market) {
+  const ok = rows.filter((r) => cotNameIs(cotRowName(r), market));
+  return ok.find((r) => String(r.cftc_contract_market_code || "").trim() === market.code) || ok[0] || null;
+}
 const COT_DEFAULT = Object.fromEntries(Object.keys(COT_MARKETS).map((c) => [c, 0]));
 
 function cftcNum(row, names) {
@@ -49,10 +64,7 @@ function cotExtremeFromRatio(r) {
 function scoreWeek(rows) {
   const out = {}, raw = {};
   for (const [ccy, market] of Object.entries(COT_MARKETS)) {
-    const row = rows.find((r) => {
-      const nm = String(r.market_and_exchange_names || r.contract_market_name || "").toUpperCase();
-      return nm.includes(market.name) && nm.includes(market.exch);
-    });
+    const row = findCOTRow(rows, market);
     if (!row) continue;
     const assetLong = cftcNum(row, ["asset_mgr_positions_long", "asset_mgr_positions_long_all"]);
     const assetShort = cftcNum(row, ["asset_mgr_positions_short", "asset_mgr_positions_short_all"]);
@@ -106,6 +118,13 @@ function scoreWeek(rows) {
   for (const [date, weekRows] of Object.entries(byDate)) {
     const w = scoreWeek(weekRows);
     if (w) weeks[date] = { scores: w.scores, raw: w.raw, updatedAt };
+  }
+  // Kontrola kódů proti API (log GitHub Actions): který řádek se pro nejnovější týden vybral.
+  const lastDate = Object.keys(byDate).sort().pop();
+  for (const [ccy, market] of Object.entries(COT_MARKETS)) {
+    const row = findCOTRow(byDate[lastDate], market);
+    const code = row ? String(row.cftc_contract_market_code || "").trim() : "";
+    console.log("COT", lastDate, ccy, row ? cotRowName(row) : "NENALEZENO", "· kód", code || "?", code && code !== market.code ? "· POZOR: očekáván " + market.code : "", "· OI", row ? row.open_interest_all : "?");
   }
   const n = Object.keys(weeks).length;
   if (n < 5) throw new Error("namapováno jen " + n + " týdnů — zdroj/schéma se možná změnilo");
