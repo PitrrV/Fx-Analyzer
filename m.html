@@ -460,9 +460,9 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
   // Confluence verdikt (shoda nezávislých faktorů)
   const fac=[
     {l:"Fundamenty",ok:Math.abs(p.diff)>=2},
-    {l:"CB Policy",ok:Math.abs((b.policy_adj||0)-(q.policy_adj||0))>0.05},
-    {l:"COT",ok:Math.abs((b.cot_score||0)-(q.cot_score||0))>0.3},
-    {l:"Real Yield",ok:Math.abs((b.yield_adj||0)-(q.yield_adj||0))>0.2},
+    // Jen faktor táhnoucí VE SMĚRU páru (dřív Math.abs = i proti biasu).
+    ...[["CB Policy",(b.policy_adj||0)-(q.policy_adj||0),0.05],["COT",(b.cot_score||0)-(q.cot_score||0),0.3],["Real Yield",(b.yield_adj||0)-(q.yield_adj||0),0.2]]
+      .map(([l,v,thr])=>{const s=p.dir==="BUY"?1:-1;return {l,ok:s*v>thr,bad:s*v<-thr};}),
   ];
   const okN=fac.filter(x=>x.ok).length;
   const verdict=okN>=3?{t:"SOUHLASÍ",c:"#2ed3a0",msg:"Většina faktorů shodně "+p.dir+" — silná confluence"}:okN>=2?{t:"ČÁSTEČNĚ",c:"#e8ab3f",msg:"Částečná shoda "+p.dir}:{t:"SLABÉ",c:"#5a6273",msg:"Faktory nesouhlasí — slabý signál"};
@@ -511,7 +511,7 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
             <span className="mono" style={{fontSize:12,fontWeight:700,color:verdict.c}}>{okN}/{fac.length}</span>
           </div>
           <div className="row" style={{gap:6,flexWrap:"wrap"}}>{fac.map(x=>(
-            <span key={x.l} style={{fontSize:10.5,fontWeight:600,padding:"4px 9px",borderRadius:6,background:x.ok?"rgba(46,211,160,.1)":"rgba(120,130,150,.08)",border:"1px solid "+(x.ok?"rgba(46,211,160,.28)":"var(--line2)"),color:x.ok?"#2ed3a0":"#5a6273"}}>{x.ok?"✓ ":"○ "}{x.l}</span>
+            <span key={x.l} style={{fontSize:10.5,fontWeight:600,padding:"4px 9px",borderRadius:6,background:x.ok?"rgba(46,211,160,.1)":x.bad?"rgba(242,96,110,.1)":"rgba(120,130,150,.08)",border:"1px solid "+(x.ok?"rgba(46,211,160,.28)":x.bad?"rgba(242,96,110,.3)":"var(--line2)"),color:x.ok?"#2ed3a0":x.bad?"#f2606e":"#5a6273"}}>{x.ok?"✓ ":x.bad?"✗ ":"○ "}{x.l}{x.bad?" proti":""}</span>
           ))}</div>
         </div>
 
@@ -567,7 +567,7 @@ function PairDetail({p,scores,D,f,cotData,daily,calData,upcoming,retailHist,onCl
             <span className="mono" style={{fontSize:12,fontWeight:700,color:verdict.c}}>{okN}/{fac.length}</span>
           </div>
           <div className="row" style={{gap:6,flexWrap:"wrap"}}>{fac.map(x=>(
-            <span key={x.l} style={{fontSize:10.5,fontWeight:600,padding:"4px 9px",borderRadius:6,background:x.ok?"rgba(46,211,160,.1)":"rgba(120,130,150,.08)",border:"1px solid "+(x.ok?"rgba(46,211,160,.28)":"#222a39"),color:x.ok?"var(--green)":"var(--faint)"}}>{x.ok?"✓":"○"} {x.l}</span>
+            <span key={x.l} style={{fontSize:10.5,fontWeight:600,padding:"4px 9px",borderRadius:6,background:x.ok?"rgba(46,211,160,.1)":x.bad?"rgba(242,96,110,.1)":"rgba(120,130,150,.08)",border:"1px solid "+(x.ok?"rgba(46,211,160,.28)":x.bad?"rgba(242,96,110,.3)":"#222a39"),color:x.ok?"var(--green)":x.bad?"var(--red)":"var(--faint)"}}>{x.ok?"✓":x.bad?"✗":"○"} {x.l}{x.bad?" proti":""}</span>
           ))}</div>
         </div>
 

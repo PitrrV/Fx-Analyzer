@@ -1282,15 +1282,17 @@ function ConvictionSummary({pair,scores,aiAnalyses}){
   const aiDir=ai?(ai.bias==="BULLISH"||ai.entry_setup?.direction==="BUY"?"BUY":"SELL"):null;
   const fundDir=pair.dir;
   const diff=pair.diff||0;
+  const sgnDir=fundDir==="BUY"?1:-1;
   const sb=scores&&scores[pair.base]||{};
   const sq=scores&&scores[pair.quote]||{};
   const factors=[
     {label:"Fundamenty",ok:diff>=2.0,detail:"Score diff "+diff.toFixed(1)+(diff>=2.5?" silny":" slaby")+" signal"},
-    {label:"CB Policy", ok:Math.abs((sb.policy_adj||0)-(sq.policy_adj||0))>0,
+    // Jen faktor táhnoucí VE SMĚRU páru (dřív Math.abs = i proti biasu).
+    {label:"CB Policy", ok:sgnDir*((sb.policy_adj||0)-(sq.policy_adj||0))>0, bad:sgnDir*((sb.policy_adj||0)-(sq.policy_adj||0))<0,
      detail:(CB_POLICY_DATA[pair.base]&&CB_POLICY_DATA[pair.base].label)||"hold"},
-    {label:"COT",       ok:Math.abs((sb.cot_score||0)-(sq.cot_score||0))>0.3,
+    {label:"COT",       ok:sgnDir*((sb.cot_score||0)-(sq.cot_score||0))>0.3, bad:sgnDir*((sb.cot_score||0)-(sq.cot_score||0))<-0.3,
      detail:"COT diff "+((sb.cot_score||0)-(sq.cot_score||0)).toFixed(1)},
-    {label:"Real Yield",ok:Math.abs((sb.yield_adj||0)-(sq.yield_adj||0))>0.2,
+    {label:"Real Yield",ok:sgnDir*((sb.yield_adj||0)-(sq.yield_adj||0))>0.2, bad:sgnDir*((sb.yield_adj||0)-(sq.yield_adj||0))<-0.2,
      detail:"Yield diff "+((sb.yield_adj||0)-(sq.yield_adj||0)).toFixed(2)+"%"},
     {label:"AI Analyza",ok:aiDir===fundDir,
      detail:ai?ai.tf+": "+ai.bias+" "+ai.confidence+"%":"Neni nactena"},
@@ -1319,10 +1321,10 @@ function ConvictionSummary({pair,scores,aiAnalyses}){
         {factors.map(function(f){
           return <span key={f.label} title={f.detail} style={{
             fontSize:10,padding:"3px 8px",borderRadius:4,
-            background:f.ok?"rgba(46,211,160,.12)":"rgba(100,100,100,.1)",
-            border:"1px solid "+(f.ok?"rgba(46,211,160,.3)":"rgba(100,100,100,.2)"),
-            color:f.ok?"#2ed3a0":"#8b949e",
-          }}>{f.ok?"✓":"○"} {f.label}</span>;
+            background:f.ok?"rgba(46,211,160,.12)":f.bad?"rgba(248,81,73,.1)":"rgba(100,100,100,.1)",
+            border:"1px solid "+(f.ok?"rgba(46,211,160,.3)":f.bad?"rgba(248,81,73,.3)":"rgba(100,100,100,.2)"),
+            color:f.ok?"#2ed3a0":f.bad?"#f85149":"#8b949e",
+          }}>{f.ok?"✓":f.bad?"✗":"○"} {f.label}{f.bad?" proti":""}</span>;
         })}
       </div>
     </div>
