@@ -21,7 +21,7 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20261019b"></script>
+<script src="engine.js?v=20261019c"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
@@ -168,10 +168,11 @@ async function loadDataMobile(){
     try{ const fresh=await fetchFFEventsCached(false); calSource="forexfactory"; cal=mergeFFHistory(fresh); }
     catch(e2){ cal=loadFFHistory(); if(cal.length) calSource="forexfactory"; }
   }
+  try{ cal=unionCalHistory(cal,await fetchActionCalendarHist()); }catch(e){} // plná serverová historie (jen v paměti) — viz engine.js
   try{ cal=applyManualActuals(cal); }catch(e){}
   const calScoring=capEventsWindow(cal,FUND_HIST_WINDOW_WEEKS); // stejné okno pro skórování na každém zařízení — viz engine.js
-  if(calSource==="action"||calSource==="fmp"||calSource==="finnhub") g_fundConfidence=1;
-  else if(calSource==="forexfactory") g_fundConfidence=ffConfidence(cal);
+  if(calSource==="fmp"||calSource==="finnhub") g_fundConfidence=1;
+  else if(calSource==="action"||calSource==="forexfactory") g_fundConfidence=ffConfidence(cal); // podle skutečného pokrytí historie
   else g_fundConfidence=FF_FUND_DAMP;
   try{ g_calSource=calSource||"ff-hist"; }catch(e){}
   try{ autoUpdateFromCalendar(cal); }catch(e){}
