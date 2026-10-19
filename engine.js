@@ -2446,42 +2446,56 @@ function getHoursToHighImpact(base,quote,upcoming){
     return Math.max(0,(parseEventTime(rel.sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time))[0].time)-now)/3600000);
   }catch(e){return 999;}
 }
+// Výstup: prob = jistota ve SMĚRU výhledu (dir), 50–75 % symetricky pro BUY i SELL
+// (dřív P(BUY) s nesymetrickým ořezem 35–75 → silný SELL vypadal jako červených
+// „35 %“ a SELL nikdy nepřesáhl 65 %). pBuy = P(BUY) pro forecast_log.
+function _toward50(p,n){ return p>50?Math.max(50,p-n):Math.min(50,p+n); }
 function buildForecastV5(pair,scores,calData,upcoming){
   const{base,quote}=pair;
   const upBase=upcoming.filter(e=>eventRelevance(base,e));
   const upQuote=upcoming.filter(e=>eventRelevance(quote,e));
-  let fwdBase=0,fwdQuote=0;const baseItems=[],quoteItems=[];
-  for(const ev of upBase){const rel=eventRelevance(base,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;const hist=getEventHistoryTrend(ev.event,base,calData);fwdBase+=hist.score*w;baseItems.push({ev,hist,w,rel});}
-  for(const ev of upQuote){const rel=eventRelevance(quote,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;const hist=getEventHistoryTrend(ev.event,quote,calData);fwdQuote+=hist.score*w;quoteItems.push({ev,hist,w,rel});}
+  // Dopředný člen = vážený PRŮMĚR trendu na událost (−1..+1), ne součet: dřív
+  // měna s hodně událostmi (CHF ~58 v 14 dnech, s EUR daty) přebila aktuální
+  // bias (fwdDiff až ±9,5 vs. curDiff ±2).
+  let fwdBaseW=0,fwdBaseT=0,fwdQuoteW=0,fwdQuoteT=0;const baseItems=[],quoteItems=[];
+  for(const ev of upBase){const rel=eventRelevance(base,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;const hist=getEventHistoryTrend(ev.event,base,calData);fwdBaseW+=hist.score*w;fwdBaseT+=w;baseItems.push({ev,hist,w,rel});}
+  for(const ev of upQuote){const rel=eventRelevance(quote,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;const hist=getEventHistoryTrend(ev.event,quote,calData);fwdQuoteW+=hist.score*w;fwdQuoteT+=w;quoteItems.push({ev,hist,w,rel});}
+  const fwdBase=fwdBaseT>0?fwdBaseW/fwdBaseT:0, fwdQuote=fwdQuoteT>0?fwdQuoteW/fwdQuoteT:0;
   const curDiff=(scores[base]?.score||0)-(scores[quote]?.score||0);
   const fwdDiff=fwdBase-fwdQuote;
-  const combined=curDiff*0.70+fwdDiff*3.0*0.30;
+  // ±2 → ±3 (rozsah rozdílu skóre, práh pásma „silný“), váhy 70/30 beze změny.
+  const combined=curDiff*0.70+Math.max(-3,Math.min(3,fwdDiff*1.5))*0.30;
   // Faktor 1: logistická funkce
   let prob=50+(1/(1+Math.exp(-combined*0.5))-0.5)*60;
-  // Faktor 2: momentum
+  // Faktor 2: momentum (směrové, v prostoru P(BUY))
   const momAdj=MOMENTUM_ENABLED?(getCurrencyMomentum(base)-getCurrencyMomentum(quote))*5:0;
   prob+=momAdj;
-  // Faktor 3: news risk discount
+  // Faktor 3: news risk discount — poměrně stáhne jistotu k 50 (dřív −12 bodů
+  // vždy dolů → u SELL jistotu naopak zvýšilo; na poctivé škále ±25 by pevných
+  // −12 navíc smazalo rozdíly mezi páry). newsDiscount = výsledná změna v bodech.
   const hoursToNews=getHoursToHighImpact(base,quote,upcoming);
-  const newsDiscount=hoursToNews<12?-12:hoursToNews<24?-8:hoursToNews<48?-4:0;
-  prob+=newsDiscount;
-  // Faktor 4: COT extreme korekce — SYMETRICKÁ pro base i quote. Dřívější
-  // asymetrie (base ±7/+3, quote jen −5 bez bonusu) neměla žádné zdůvodnění
-  // v kódu ani datech; princip "bez důkazu žádná asymetrie". Přehodnotit na
-  // datech z data/engine_hist.json.
+  const newsKeep=hoursToNews<12?0.5:hoursToNews<24?0.67:hoursToNews<48?0.85:1;
+  const preNews=prob; prob=50+(prob-50)*newsKeep;
+  const newsDiscount=-Math.round(Math.abs(preNews-prob));
+  // Faktor 4: COT extreme korekce — SYMETRICKÁ pro base i quote; cotAdj je změna
+  // JISTOTY ve směru biasu (záporné = méně jistě). Prahy přes else if (dřív nad 88
+  // platilo −7 i +3 zároveň = −4).
   const cotPctB=getCOTPercentile(base);const cotPctQ=getCOTPercentile(quote);
-  let cotAdj=0;
-  if(cotPctB!==null){const d=curDiff>0?1:-1;if(cotPctB>88&&d>0) cotAdj-=7;if(cotPctB<12&&d<0) cotAdj-=7;if(cotPctB>70&&d>0) cotAdj+=3;if(cotPctB<30&&d<0) cotAdj+=3;}
-  if(cotPctQ!==null){const d=curDiff>0?-1:1;if(cotPctQ>88&&d>0) cotAdj-=7;if(cotPctQ<12&&d<0) cotAdj-=7;if(cotPctQ>70&&d>0) cotAdj+=3;if(cotPctQ<30&&d<0) cotAdj+=3;}
-  prob+=cotAdj;
-  prob=Math.round(Math.max(35,Math.min(75,prob)));
-  const dir=combined>0?"BUY":"SELL";
+  const cotAdjFor=(pct,d)=>{ if(pct===null) return 0;
+    if(d>0) return pct>88?-7:pct>70?3:0;
+    return pct<12?-7:pct<30?3:0; };
+  const cotAdj=cotAdjFor(cotPctB,curDiff>0?1:-1)+cotAdjFor(cotPctQ,curDiff>0?-1:1);
+  const biasSign=curDiff>0?1:-1;
+  prob=cotAdj<0?_toward50(prob,-cotAdj):prob+biasSign*cotAdj;
+  const pBuy=Math.round(Math.max(25,Math.min(75,prob)));
+  const dir=pBuy>50?"BUY":pBuy<50?"SELL":(combined>=0?"BUY":"SELL");
+  const conf=dir==="BUY"?pBuy:100-pBuy;
   const bTrend=fwdBase>0.3?"posilovat":fwdBase<-0.3?"oslabovat":"být neutrální";
   const qTrend=fwdQuote>0.3?"posilovat":fwdQuote<-0.3?"oslabovat":"být neutrální";
   const desc=baseItems.length||quoteItems.length?`Nadcházející data naznačují, že ${base} může ${bTrend} a ${quote} může ${qTrend}.`:"Žádné klíčové eventy v příštích 14 dnech.";
   const newsLabel=hoursToNews<48?`⚠ ${Math.round(hoursToNews)}h do high-impact news`:"";
   const cotWarning=cotPctB!==null&&(cotPctB>88||cotPctB<12)?`🚨 COT ${base} na ${cotPctB}.perc. — crowded`:"";
-  return{dir,prob,baseItems,quoteItems,curDiff,fwdDiff,desc,hasEvents:baseItems.length+quoteItems.length>0,newsDiscount,hoursToNews,cotAdj,momAdj,cotWarning,newsLabel};
+  return{dir,prob:conf,pBuy,baseItems,quoteItems,curDiff,fwdDiff,desc,hasEvents:baseItems.length+quoteItems.length>0,newsDiscount,hoursToNews,cotAdj,momAdj,cotWarning,newsLabel};
 }
 
 // ── REAL YIELD = CB rate − CPI ────────────────────────────────
@@ -3362,7 +3376,7 @@ function explainScoreChange(currency,current){
 function logForecastSnapshot(forecasts){
   try{
     const day={};
-    Object.entries(forecasts||{}).forEach(([pair,f])=>{ if(f&&typeof f.prob==="number") day[pair]={p:f.prob,d:f.dir}; });
+    Object.entries(forecasts||{}).forEach(([pair,f])=>{ if(f&&typeof f.prob==="number") day[pair]={p:typeof f.pBuy==="number"?f.pBuy:f.prob,d:f.dir}; });
     if(!Object.keys(day).length) return;
     const today=new Date().toISOString().split("T")[0];
     const log=JSON.parse(localStorage.getItem("forecast_log")||"{}");
@@ -3734,7 +3748,7 @@ const COACH_GLOSSARY=`SLOVNÍČEK POJMŮ APPKY (použij tyhle definice, nevymý�
 - retail sentiment: % retailových traderů long na páru/měně — appka to bere kontrariánsky (hodně long retailu = mírně bearish signál).
 - CBDI (Divergence): 0–100, jak moc se centrální banky světa dnes liší směrem politiky (víc = lepší podmínky pro tenhle typ fundamentální analýzy).
 - real yield: nominální sazba CB minus inflace (CPI); vyšší reálný výnos = přitažlivější měna.
-- 14denní forecast (prob): pravděpodobnost (schválně opatrně omezená na 35–75 %), že se pár pohne ve forecastovaném směru podle nadcházejících dat; může nesouhlasit s dlouhodobým fundamentálním biasem.
+- 14denní forecast (prob): jistota 50–75 % (v praxi většinou 50–60 %, víc data nepodpoří), že se pár pohne ve forecastovaném směru podle nadcházejících dat; může nesouhlasit s dlouhodobým fundamentálním biasem.
 - daily brief / denní konflikt: srovnání dnešních čerstvých dat s 14denním biasem — "conflict" = dnešní data jdou proti dlouhodobému biasu.
 - bias flip: fundamentální bias měny/páru se za posledních 36 h otočil (BUY↔SELL).
 - korelační skupina: páry, co se obvykle hýbou spolu (např. EURUSD/GBPUSD/AUDUSD/NZDUSD) — appka mezi nimi nepočítá duplicitní příležitosti.`;

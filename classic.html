@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20261019a"></script>
+<script src="engine.js?v=20261019b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sync.js?v=20260914a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -502,7 +502,7 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note,isFav,
   const [hovered,setHovered]=useState(false);
   const buy=p.dir==="BUY", ac=buy?"#2ed3a0":"#ff5470";
   const f=forecast||{};
-  const probColor=f.prob>=65?"#2ed3a0":f.prob<=35?"#ff5470":"#d29922";
+  const probColor=f.prob>=60?"#2ed3a0":f.prob>=55?"#d29922":"#8b949e";
   const statusColor=(dailyState&&dailyState.color)||ac;
   // Jednotné prahy s PC/mobilem (dřív tu byly vlastní >=5/>=2.5) — viz BAND_THRESHOLDS v engine.js
   const bandName=(typeof getDiffBand==="function")?getDiffBand(p.diff):null;
@@ -1577,7 +1577,7 @@ function GoldDetailClassic({notes={},onNote=()=>{},aiAnalyses={}}){
 function Detail({pair,scores,forecast,cotMeta,cotData,sentData,aiAnalyses={},calData=[],upcoming=[],positions={},onPosition=()=>{},notes={},onNote=()=>{}}){
   const buy=pair.dir==="BUY",ac=buy?"#2ed3a0":"#ff4d4d";
   const fProb=forecast?.prob||50;
-  const probC=fProb>=65?"#2ed3a0":fProb<=35?"#ff4d4d":"#d29922";
+  const probC=fProb>=60?"#2ed3a0":fProb>=55?"#d29922":"#8b949e";
   const oilSt=getOilStatus();
   const isCADpair=pair.base==="CAD"||pair.quote==="CAD";
   return <div>
@@ -3484,7 +3484,7 @@ function App(){
         <div style={{background:topPair.dir==="BUY"?"#0d2a1a":"#2a0d0d",padding:"8px 16px",borderBottom:"1px solid #30363d",display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"#8b949e"}}>TOP DOPORUČENÍ:</span>
           <span style={{fontWeight:700,fontSize:14,color:topPair.dir==="BUY"?"#2ed3a0":"#f85149"}}>{FLAGS[topPair.base]}{FLAGS[topPair.quote]} {topPair.pair} {topPair.dir}</span>
-          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=65?"#2ed3a0":forecasts[topPair.pair].prob<=35?"#f85149":"#d29922"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}
+          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=60?"#2ed3a0":forecasts[topPair.pair].prob>=55?"#d29922":"#8b949e"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}
           {top[1]&&<span style={{fontSize:11,color:"#8b949e"}}>| #2: {FLAGS[top[1].base]}{FLAGS[top[1].quote]} {top[1].pair} {top[1].dir}{forecasts[top[1].pair]?` ${forecasts[top[1].pair].prob}%`:""}</span>}
           {top[2]&&<span style={{fontSize:11,color:"#8b949e"}}>| #3: {FLAGS[top[2].base]}{FLAGS[top[2].quote]} {top[2].pair} {top[2].dir}{forecasts[top[2].pair]?` ${forecasts[top[2].pair].prob}%`:""}</span>}
         </div>
