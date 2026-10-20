@@ -21,8 +21,8 @@
 <!-- Cloud sync (Supabase) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
-<script src="engine.js?v=20261020d"></script>
-<script src="sync.js?v=20261020a"></script>
+<script src="engine.js?v=20261020e"></script>
+<script src="sync.js?v=20261020b"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -151,7 +151,7 @@ async function loadDataMobile(){
   const fmpKey=(localStorage.getItem("fmp")||"").trim();
   let cal=[],calSource="",fmpErr="";
   // PRIMÁRNÍ: server-side kalendář z GitHub Action (forexfactory web — actual + plné pokrytí)
-  try{ const fresh=await fetchActionCalendar(); cal=mergeFFHistory(fresh); calSource="action"; }catch(e){}
+  try{ const fresh=await fetchActionCalendar(); cal=mergeFFHistory(fresh,{pruneMissing:true}); calSource="action"; }catch(e){}
   const fmpBlocked=!!fmpKey&&localStorage.getItem("fmp_cal_block")===fmpKey;
   if(!cal.length&&fmpKey&&!fmpBlocked){
     try{ cal=await fetchFMPCalendar(fmpKey,15); calSource="fmp"; localStorage.removeItem("fmp_cal_block"); }
@@ -165,7 +165,7 @@ async function loadDataMobile(){
     }
   }
   if(!cal.length){
-    try{ const fresh=await fetchFFEventsCached(false); calSource="forexfactory"; cal=mergeFFHistory(fresh); }
+    try{ const fresh=await fetchFFEventsCached(false); calSource="forexfactory"; cal=mergeFFHistory(fresh,{pruneMissing:true}); }
     catch(e2){ cal=loadFFHistory(); if(cal.length) calSource="forexfactory"; }
   }
   try{ cal=unionCalHistory(cal,await fetchActionCalendarHist()); }catch(e){} // plná serverová historie (jen v paměti) — viz engine.js
@@ -1754,7 +1754,7 @@ function MApp(){
     setCalLiveLoading(true);setCalMsg("");
     try{
       const fr=await fetchFFEventsCached(true);
-      mergeFFHistory(fr);
+      mergeFFHistory(fr,{pruneMissing:true});
       await load();
       setCalMsg("✅ Kalendář obnoven z živého FF feedu ("+new Date().toLocaleTimeString("cs-CZ")+").");
     }catch(e){ setCalMsg("⚠ Live refresh selhal: "+String(e&&e.message||e)); }

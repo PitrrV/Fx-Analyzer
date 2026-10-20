@@ -1757,7 +1757,10 @@ function ffIsTracked(e){const c=(e.country||"").toUpperCase();return FF_TRACKED_
 function ffDateOnly(t){const ms=parseEventTime(t);return isNaN(ms)?String(t||"").slice(0,10):new Date(ms).toISOString().slice(0,10);}
 function ffHistKey(e){return `${(e.country||"").toUpperCase()}|${e.event||""}|${ffDateOnly(e.time)}`;}
 function loadFFHistory(){try{const a=JSON.parse(localStorage.getItem(FF_HIST_KEY)||"[]");return Array.isArray(a)?a:[];}catch(e){return[];}}
-function mergeFFHistory(fresh){
+// opts.pruneMissing: jen pro ÚPLNÝ zdroj (calendar.json, stažení ForexFactory) —
+// import souboru nebo backfill vybraných týdnů nesmí mazat (dřív import 60 řádků
+// smazal 442 z 457 událostí bez actual v rozsahu importu).
+function mergeFFHistory(fresh,opts){
   const map=new Map();
   // Stejná "preferuj kompletnější" logika jako u fresh níže — při přechodu na
   // ffHistKey bez přesného času se tu jednorázově srazí staré duplicitní páry
@@ -1777,7 +1780,7 @@ function mergeFFHistory(fresh){
   }
   // Přeplánované události: záznam bez actual v rozsahu čerstvého kalendáře, který
   // v něm už není, je fantom (NZ CPI 19.10. → 21.10.; German WPI 14.9. → 15.9.).
-  if(freshKeys.size>=50) for(const [k,e] of map){
+  if(opts&&opts.pruneMissing&&freshKeys.size>=50) for(const [k,e] of map){
     const t=new Date(e.time).getTime();
     if(!e.actual&&t>=fMin&&t<=fMax&&!freshKeys.has(k)) map.delete(k);
   }
