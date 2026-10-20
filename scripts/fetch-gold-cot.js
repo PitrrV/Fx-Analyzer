@@ -95,6 +95,7 @@ async function fetchCOTHistory() {
   let store = { updated: "", market: "", hist: {} };
   try { store = JSON.parse(fs.readFileSync("data/gold_cot.json", "utf8")); } catch (e) {}
   if (!store.hist || typeof store.hist !== "object") store.hist = {};
+  const prevHistJson = JSON.stringify(store.hist);
 
   Object.assign(store.hist, cotHist);
   const dates = Object.keys(store.hist).sort().slice(-150);
@@ -104,6 +105,9 @@ async function fetchCOTHistory() {
   store.updated = new Date().toISOString();
 
   fs.mkdirSync("data", { recursive: true });
+  // Zapsat jen při změně týdnů — dřív každý běh přepsal "updated" a vznikl commit
+  // (páteční COT krok v data-refresh by tak commitoval každých 15 min).
+  if (JSON.stringify(store.hist) === prevHistJson) { console.log("data/gold_cot.json: týdny beze změny, nepřepisuji."); process.exit(0); }
   fs.writeFileSync("data/gold_cot.json", JSON.stringify(store));
   console.log("Zapsáno data/gold_cot.json · týdnů:", Object.keys(store.hist).length);
 })().catch((e) => { console.error("FATAL", e.message); process.exit(1); });

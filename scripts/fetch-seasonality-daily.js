@@ -118,8 +118,11 @@ async function fetchPairYahoo(pair) {
   // Výsledek: od dubna do října od 2003 "chyběly pátky" (2025: 22 pátků vs 52 pondělí).
   const tz = res.meta && res.meta.exchangeTimezoneName;
   const gmtoff = res.meta && Number.isFinite(res.meta.gmtoffset) ? res.meta.gmtoffset : 0;
-  const rows = ts.map((t, i) => ({ date: barDate(t, tz, gmtoff), close: closes[i] }))
+  let rows = ts.map((t, i) => ({ date: barDate(t, tz, gmtoff), t, close: closes[i] }))
     .filter((row) => row.close != null && Number.isFinite(row.close) && !isWeekend(row.date));
+  // Neuzavřenou dnešní svíčku (začala před < 24 h) neukládat — soubor má nést jen
+  // uzavřené dny (dřív zůstal "close" z rána, např. XAUUSD z pondělí, FX z 01:10 UTC).
+  if (rows.length && Date.now() / 1000 - rows[rows.length - 1].t < 24 * 3600) rows = rows.slice(0, -1);
   const outDates = rows.map((row) => row.date), outCloses = rows.map((row) => row.close);
   assertDailyResolution(outDates);
   return { pair, dates: outDates, closes: outCloses, updated: new Date().toISOString() };
@@ -153,7 +156,7 @@ async function fetchPair(pair) {
       if (prev && prev.dates && data.dates.length < prev.dates.length * 0.9) {
         failed.push(pair + `: zkrácená odpověď (${data.dates.length} vs ${prev.dates.length} dní), nepřepisuji`);
         console.log("ZKRÁCENO", pair, data.dates.length, "vs", prev.dates.length);
-      } else if (!prev || prevLast !== newLast || prev.dates.length !== data.dates.length || JSON.stringify(prev.dates.slice(-260)) !== JSON.stringify(data.dates.slice(-260))) {
+      } else if (!prev || prevLast !== newLast || prev.dates.length !== data.dates.length || JSON.stringify(prev.dates.slice(-260)) !== JSON.stringify(data.dates.slice(-260)) || JSON.stringify((prev.closes || []).slice(-5)) !== JSON.stringify(data.closes.slice(-5))) {
         fs.writeFileSync(file, JSON.stringify(data));
         changed++;
         console.log("OK", pair, data.dates.length, "dní, poslední", newLast);
