@@ -53,15 +53,21 @@ const EVENT_RULES=[
 
 function getEventMeta(name=""){
   const n=name.toLowerCase();
+  // "MPC Official Bank Rate Votes" (actual "3-0-6") obsahuje "bank rate", ale není to
+  // sazba — parseFloat bral první číslo a skóroval to vahou rozhodnutí o sazbě (3,5).
+  if(/\bvotes?\b/.test(n)) return null;
   for(const r of EVENT_RULES) if(r.keys.some(k=>n.includes(k))) return r;
   return null;
 }
 function getWeight(name=""){
   return getEventMeta(name)?.w||0;
 }
+// FF zapisuje některé hodnoty se znakem (BoJ "<1.25%") — parseFloat("<1.25%") je NaN
+// a překvapení by se tiše ignorovalo.
+function _evNum(x){ return parseFloat(String(x==null?"":x).replace(/^[<>~≈\s]+/,"")); }
 function eventDirection(ev){
   const meta=getEventMeta(ev.event);if(!meta) return 0;
-  const a=parseFloat(ev.actual),e=parseFloat(ev.estimate),prev=parseFloat(ev.prev||ev.previous);
+  const a=_evNum(ev.actual),e=_evNum(ev.estimate),prev=_evNum(ev.prev||ev.previous);
   if(isNaN(a)||isNaN(e)) return 0;
   let dir=0;
   if(meta.dir==="pmi"){
@@ -77,7 +83,7 @@ function eventDirection(ev){
   return dir;
 }
 function surpriseStrength(ev){
-  const a=parseFloat(ev.actual),e=parseFloat(ev.estimate);
+  const a=_evNum(ev.actual),e=_evNum(ev.estimate);
   if(isNaN(a)||isNaN(e)) return 1;
   const denom=Math.max(Math.abs(e),1);
   const pct=Math.min(0.6,Math.abs(a-e)/denom*8); // jemné zvýraznění překvapení, ale bez převrácení celého skóre
@@ -153,7 +159,7 @@ try{const usr=localStorage.getItem("v5_cb_rates");if(usr)CENTRAL_BANK_RATES={...
 // přesné zdroje/data. NZD: Stats NZ sám publikuje roční číslo (4,1 % k
 // červnu 2026) — NEJDE o dopočet z FF čtvrtletního q/q (viz komentář u
 // extractCPIFromCalendar výš/níž, appka se tomu záměrně vyhýbá).
-let REAL_CPI_DATA={USD:2.6,EUR:2.5,GBP:3.1,JPY:1.8,AUD:4.0,NZD:4.1,CAD:1.9,CHF:0.8}; // seed 19.10.2026, viz CENTRAL_BANK_RATES
+let REAL_CPI_DATA={USD:2.6,EUR:2.5,GBP:3.1,JPY:1.8,AUD:4.0,NZD:4.1,CAD:1.9,CHF:1.0}; // seed 19.10.2026, viz CENTRAL_BANK_RATES
 try{const u=localStorage.getItem("v5_real_cpi");if(u)REAL_CPI_DATA={...REAL_CPI_DATA,...JSON.parse(u)};}catch(e){}
 
 // ── CB POLICY CYCLE — nejdůležitější makro faktor ─────────────
@@ -2204,6 +2210,29 @@ function extractCPIFromCalendar(calData){
     const val=parseFloat(ev.actual);
     if(!isNaN(val)&&val>=-2&&val<=20) cpi[cur]=parseFloat(val.toFixed(1));
   }
+  // 3. průchod: měna bez ročního tisku (CH jen m/m, NZ jen q/q) → roční CPI
+  // složením posledních 12 m/m (resp. 4 q/q) celostátních tisků z ~13 měsíců.
+  // Dřív zůstala zamrzlá ruční hodnota (CHF 0,8 / NZD 4,1). Kontrola na NZ:
+  // 1,0/0,6/0,9/1,5 % q/q → 4,06 % vs. oficiální roční 4,1 %.
+  const yearAgo=Date.now()-395*86400000;
+  for(const [kind,re,need] of [["m",/m\/?m|monthly/i,12],["q",/q\/?q|quarterly/i,4]]){
+    const byCur={};
+    for(const ev of sorted){
+      const cur=getDirectCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
+      const name=(ev.event||"").toLowerCase();
+      if(!isCPIName(name)||isRegionalCPI(name)||!re.test(name)||/core|trimmed|median|weighted/i.test(name)) continue;
+      if(evDate(ev).getTime()<yearAgo) continue;
+      const val=parseFloat(ev.actual); if(isNaN(val)||val<-5||val>10) continue;
+      const k=ffDateOnly(ev.time).slice(0,7); // období = měsíc tisku
+      (byCur[cur]=byCur[cur]||{})[k]=(byCur[cur][k]!==undefined)?byCur[cur][k]:val; // nejnovější tisk za období
+    }
+    for(const [cur,m] of Object.entries(byCur)){
+      const vals=Object.keys(m).sort().slice(-need).map(k=>m[k]);
+      if(vals.length<need) continue;
+      const yoy=(vals.reduce((a,v)=>a*(1+v/100),1)-1)*100;
+      if(yoy>=-2&&yoy<=20) cpi[cur]=parseFloat(yoy.toFixed(1));
+    }
+  }
   return cpi;
 }
 
@@ -2421,7 +2450,7 @@ function getCBCycleStage(){
 function calcCBDI(){
   const rates=CURRENCIES.map(c=>CENTRAL_BANK_RATES[c]||0);
   const policies=CURRENCIES.map(c=>CB_POLICY_DATA[c]?.score||0);
-  const cpis=CURRENCIES.map(c=>REAL_CPI_DATA[c]||2);
+  const cpis=CURRENCIES.map(c=>(REAL_CPI_DATA[c]??2));
   const rateSpread=Math.max(...rates)-Math.min(...rates);
   const rateSTD=Math.sqrt(rates.map(r=>{const m=rates.reduce((a,b)=>a+b)/rates.length;return(r-m)**2;}).reduce((a,b)=>a+b)/rates.length);
   const hikingN=policies.filter(p=>p>0).length;
@@ -2432,7 +2461,7 @@ function calcCBDI(){
   // Normalizace na 0-100 (použijeme historické maxima z auditu)
   const n1=Math.min(100,rateSpread/6*100);   // max spread ~6%
   const n2=Math.min(100,rateSTD/2*100);      // max STD ~2
-  const n3=Math.min(100,dirDiv/12*100);      // max dir div = 12
+  const n3=Math.min(100,dirDiv/16*100);      // max dir div = 4×4 = 16
   const n4=Math.min(100,rySpread/8*100);     // max RY spread ~8%
   const cbdi=n1*0.30+n2*0.25+n3*0.25+n4*0.20;
   return Math.round(cbdi);
@@ -2450,7 +2479,7 @@ function calcCBDI(){
 function calcPairCBDI(base,quote){
   const rb=CENTRAL_BANK_RATES[base]||0, rq=CENTRAL_BANK_RATES[quote]||0;
   const pb=(CB_POLICY_DATA[base]&&CB_POLICY_DATA[base].score)||0, pq=(CB_POLICY_DATA[quote]&&CB_POLICY_DATA[quote].score)||0;
-  const cb=REAL_CPI_DATA[base]||2, cq=REAL_CPI_DATA[quote]||2;
+  const cb=(REAL_CPI_DATA[base]??2), cq=(REAL_CPI_DATA[quote]??2);
   const rateDiff=Math.abs(rb-rq);
   const policyDiff=Math.abs(pb-pq); // 0–4 (policy score −2..+2 za měnu)
   const ryDiff=Math.abs((rb-cb)-(rq-cq));
@@ -2479,8 +2508,8 @@ function buildForecastV5(pair,scores,calData,upcoming){
   // měna s hodně událostmi (CHF ~58 v 14 dnech, s EUR daty) přebila aktuální
   // bias (fwdDiff až ±9,5 vs. curDiff ±2).
   let fwdBaseW=0,fwdBaseT=0,fwdQuoteW=0,fwdQuoteT=0;const baseItems=[],quoteItems=[];
-  for(const ev of upBase){const rel=eventRelevance(base,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;const hist=getEventHistoryTrend(ev.event,base,calData);fwdBaseW+=hist.score*w;fwdBaseT+=w;baseItems.push({ev,hist,w,rel});}
-  for(const ev of upQuote){const rel=eventRelevance(quote,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;const hist=getEventHistoryTrend(ev.event,quote,calData);fwdQuoteW+=hist.score*w;fwdQuoteT+=w;quoteItems.push({ev,hist,w,rel});}
+  for(const ev of upBase){const rel=eventRelevance(base,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;const hist=getEventHistoryTrend(ev.event,base,calData,ev.country);fwdBaseW+=hist.score*w;fwdBaseT+=w;baseItems.push({ev,hist,w,rel});}
+  for(const ev of upQuote){const rel=eventRelevance(quote,ev);const w=getWeight(ev.event)*(rel?.factor||1);if(!w) continue;const hist=getEventHistoryTrend(ev.event,quote,calData,ev.country);fwdQuoteW+=hist.score*w;fwdQuoteT+=w;quoteItems.push({ev,hist,w,rel});}
   const fwdBase=fwdBaseT>0?fwdBaseW/fwdBaseT:0, fwdQuote=fwdQuoteT>0?fwdQuoteW/fwdQuoteT:0;
   const curDiff=(scores[base]?.score||0)-(scores[quote]?.score||0);
   const fwdDiff=fwdBase-fwdQuote;
@@ -2522,10 +2551,10 @@ function buildForecastV5(pair,scores,calData,upcoming){
 // ── REAL YIELD = CB rate − CPI ────────────────────────────────
 function getRealYieldScore(currency){
   const nom=CENTRAL_BANK_RATES[currency]||0;
-  const cpi=REAL_CPI_DATA[currency]||2;
+  const cpi=(REAL_CPI_DATA[currency]??2);
   const ry=nom-cpi;
   const n=Object.keys(REAL_CPI_DATA).length;
-  const avgRY=CURRENCIES.reduce((s,cur)=>s+((CENTRAL_BANK_RATES[cur]||0)-(REAL_CPI_DATA[cur]||2)),0)/n;
+  const avgRY=CURRENCIES.reduce((s,cur)=>s+((CENTRAL_BANK_RATES[cur]||0)-((REAL_CPI_DATA[cur]??2))),0)/n;
   return parseFloat(Math.max(-2,Math.min(2,(ry-avgRY)*0.35)).toFixed(2));
 }
 
@@ -2658,15 +2687,15 @@ function calcConvictionScore(pair,scores,aiAnalyses){
   const bPol=CB_POLICY_DATA[pair.base]?.score||0,qPol=CB_POLICY_DATA[pair.quote]?.score||0;
   if((isBuy&&bPol>qPol)||(!isBuy&&bPol<qPol)){stars++;reasons.push("CB: "+CB_POLICY_DATA[pair.base]?.label);}
   // 2. Real yield differential
-  const bRY=(CENTRAL_BANK_RATES[pair.base]||0)-(REAL_CPI_DATA[pair.base]||2);
-  const qRY=(CENTRAL_BANK_RATES[pair.quote]||0)-(REAL_CPI_DATA[pair.quote]||2);
+  const bRY=(CENTRAL_BANK_RATES[pair.base]||0)-((REAL_CPI_DATA[pair.base]??2));
+  const qRY=(CENTRAL_BANK_RATES[pair.quote]||0)-((REAL_CPI_DATA[pair.quote]??2));
   if((isBuy&&bRY>qRY+0.3)||(!isBuy&&bRY<qRY-0.3)){stars++;reasons.push("Real yield: "+pair.base+" "+bRY.toFixed(1)+"% vs "+pair.quote+" "+qRY.toFixed(1)+"%");}
   // 3. Fundamental score strength
   if(pair.diff>=2.0){stars++;reasons.push("Fundamenty: "+(isBuy?"+":"−")+pair.diff.toFixed(1));}
   // 4. COT not crowded against direction
   const cotB=scores[pair.base]?.cot_pct;
   const crowded=cotB!=null&&((isBuy&&cotB>=88)||(!isBuy&&cotB<=12));
-  if(!crowded&&pair.diff>=1){stars++;reasons.push(cotB!=null?"COT "+pair.base+": "+cotB+"p":"COT ok");}
+  if(cotB!=null&&!crowded&&pair.diff>=1){stars++;reasons.push("COT "+pair.base+": "+cotB+"p");} // bez COT dat žádná hvězda
   // 5. AI Analysis confluence
   const ai=aiAnalyses?.[pair.pair];
   if(ai){const ab=ai.bias==="BULLISH"||ai.entry_setup?.direction==="BUY";if(ab===isBuy){stars++;reasons.push("AI "+ai.tf+": "+ai.bias+" "+ai.confidence+"%");}}
@@ -2968,11 +2997,16 @@ function isPairFlipped(pair,hours=36){
 }
 
 // ── FORECAST ─────────────────────────────────────────────
-function getEventHistoryTrend(eventName,currency,calData){
-  const keyword=eventName.toLowerCase().split(" ")[0];
+// Historie STEJNÉ události (celý normalizovaný název + stejná země, je-li známa).
+// Dřív se párovalo jen podle prvního slova názvu → CAD "Core Retail Sales" bral
+// US Core PPI/CPI/PCE; zkreslených bylo 137 ze 168 nadcházejících událostí.
+function _evNameNorm(s){ return String(s||"").toLowerCase().replace(/\s+/g," ").trim(); }
+function getEventHistoryTrend(eventName,currency,calData,country){
+  const name=_evNameNorm(eventName), cc=String(country||"").toUpperCase();
   const history=calData.filter(e=>{
-    const rel=eventRelevance(currency,e);
-    return rel&&(e.event||"").toLowerCase().includes(keyword)&&e.actual&&e.estimate;
+    if(_evNameNorm(e.event)!==name) return false;
+    if(cc&&String(e.country||"").toUpperCase()!==cc) return false;
+    return eventRelevance(currency,e)&&e.actual&&e.estimate;
   }).sort((a,b)=>new Date(b.time)-new Date(a.time)).slice(0,6);
   if(!history.length) return{trend:"neznámý",score:0};
   let wS=0,wT=0;
@@ -3030,7 +3064,7 @@ function buildDailySeries(currency,windowDays){
   const dates=[], values=[];
   for(let t=startMs;t<=endMs;t+=86400000){
     const d=new Date(t);
-    const key=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    const key=new Date(t+12*3600000).toISOString().slice(0,10); // UTC klíč jako saveScoreHistory (místní datum mezi 0–2 h SEČ/SELČ nesedělo)
     const v=hist[key]&&hist[key][currency];
     if(typeof v==="number") last=v;
     dates.push(d); values.push(last==null?0:last);
@@ -3555,7 +3589,8 @@ async function fetchSeasonality(pair,avKey){
   if(!ts){ throw new Error(j.Note||j.Information||j["Error Message"]||"Alpha Vantage nevrátilo měsíční data (limit 25/den?)"); }
   const rows=Object.keys(ts).sort().map(d=>({d,close:parseFloat(ts[d]["4. close"])})).filter(x=>Number.isFinite(x.close));
   const ret={}; // ret[year][month0-11] = % změna během měsíce
-  for(let i=1;i<rows.length;i++){ const dt=new Date(rows[i].d+"T00:00:00"); const y=dt.getFullYear(),m=dt.getMonth(); if(rows[i-1].close>0){ (ret[y]=ret[y]||{})[m]=+(((rows[i].close/rows[i-1].close)-1)*100).toFixed(2); } }
+  const curYM=new Date().toISOString().slice(0,7); // rozpracovaný měsíc nepočítat jako hotový
+  for(let i=1;i<rows.length;i++){ if(rows[i].d.slice(0,7)===curYM) continue; const dt=new Date(rows[i].d+"T00:00:00"); const y=dt.getFullYear(),m=dt.getMonth(); if(rows[i-1].close>0){ (ret[y]=ret[y]||{})[m]=+(((rows[i].close/rows[i-1].close)-1)*100).toFixed(2); } }
   const years=Object.keys(ret).map(Number).sort();
   const avg=[]; for(let m=0;m<12;m++){ const vals=years.map(y=>ret[y][m]).filter(v=>Number.isFinite(v)); avg[m]=vals.length?+(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2):null; }
   const data={from,to,ret,years,avg,asOf:new Date().toISOString()};
@@ -4255,7 +4290,11 @@ function scoreGold(){
   const retailHist=loadGoldRetailHistory();
   const lastRetail=retailHist.length?retailHist[retailHist.length-1]:null;
   const sentScore=lastRetail?(lastRetail.l>=80?-1:lastRetail.l>=70?-0.5:lastRetail.l<=20?1:lastRetail.l<=30?0.5:0):0;
-  const cotScore=cot?cot.score:0;
+  // COT zlata = percentil poměru Managed Money ve vlastní historii, převedený na
+  // −3..+3. Dřív cotNetScore (poměr×6, ořez ±3): MM je u zlata strukturálně net
+  // long (~0,75) → všech 126 týdnů přesně +3 a percentil vždy 100 = konstanta.
+  const gp=getGoldCOTPercentile();
+  const cotScore=gp==null?0:+(((gp-50)/50)*3).toFixed(1);
 
   // USD inverzní — appka už počítá živé USD skóre (score_hist), nulová nová
   // data. Slabý dolar = bonus pro zlato (přímá denominace, stejný směr jako
@@ -4265,7 +4304,8 @@ function scoreGold(){
     const sh=loadScoreHistory()||{};
     const dates=Object.keys(sh).filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
     const last=dates[dates.length-1];
-    if(last&&sh[last]&&typeof sh[last].USD==="number"){ usdRaw=sh[last].USD; usdScore=clamp(-1,1,-0.1*usdRaw); }
+    // Jen informativně — USD skóre se odečítá v páru XAUUSD (buildGoldPair), v makru by se započítalo dvakrát.
+    if(last&&sh[last]&&typeof sh[last].USD==="number"){ usdRaw=sh[last].USD; }
   }catch(e){}
 
   // Risk regime (VIX) — OBRÁCENÉ znaménko oproti US100: zlato je safe-haven,
@@ -4287,8 +4327,11 @@ function scoreGold(){
     if(macro.fedfunds&&typeof macro.fedfunds.chg20d==="number") fedScore=clamp(-0.5,0.5,-1.0*macro.fedfunds.chg20d);
   }
 
-  const macroScore=+(usdScore+riskScore+yieldScore+dxyScore+fedScore).toFixed(2);
-  const score=+(cotScore+sentScore+macroScore).toFixed(1);
+  const macroScore=+(riskScore+yieldScore+dxyScore+fedScore).toFixed(2);
+  // Stejné váhy jako FX (getDynamicWeights: makro = fundament) — dřív prostý
+  // součet (rozsah ~±8 vs. FX ~±3), takže XAU vs USD v páru nebylo srovnatelné.
+  const wt=getDynamicWeights(gp);
+  const score=+(cotScore*wt.cot+sentScore*wt.sent+macroScore*wt.fund).toFixed(2);
   return {
     score,cotScore,sentScore,macroScore,
     usdScore,usdRaw,riskScore,riskRegime,yieldScore,dxyScore,fedScore,
@@ -4349,8 +4392,9 @@ function getGoldScoreChange(days=7){ const d=getGoldScoreChangeDetail(days); ret
 function getGoldCOTPercentile(){
   try{
     const hist=loadGoldCotHistory();
-    const dates=Object.keys(hist).sort();
-    const scores=dates.map(d=>hist[d].score).filter(s=>typeof s==="number");
+    const dates=Object.keys(hist).sort().slice(-COT_PCT_WINDOW);
+    // Percentil z poměru Managed Money (ne z ořezaného skóre, které bylo vždy +3).
+    const scores=dates.map(d=>hist[d].mMoneyRatio).filter(s=>typeof s==="number");
     if(scores.length<12) return null;
     const cur=scores[scores.length-1];
     const hist2=scores.slice(0,-1);

@@ -31,6 +31,25 @@ async function fetchFredVix() {
 
 // Zkouší CBOE (burza, žádný klíč), pak Yahoo Finance. První úspěch vyhrává; když
 // selžou oba, volající prostě zůstane u FRED denní hodnoty (žádný tvrdý pád).
+// Záloha při výpadku FRED (dřív celý běh spadl): denní svíčky Yahoo ^VIX,
+// datum v časové zóně burzy (viz fetch-seasonality-daily.js barDate).
+async function fetchYahooVixDaily() {
+  const r = await fetch("https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=3mo", {
+    signal: AbortSignal.timeout(15000),
+    headers: { "User-Agent": "Mozilla/5.0" },
+  });
+  if (!r.ok) throw new Error("Yahoo ^VIX HTTP " + r.status);
+  const j = await r.json();
+  const res = j && j.chart && j.chart.result && j.chart.result[0];
+  const ts = res && res.timestamp, cl = res && res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close;
+  if (!Array.isArray(ts) || !Array.isArray(cl)) throw new Error("Yahoo ^VIX: neplatná struktura");
+  const tz = (res.meta && res.meta.exchangeTimezoneName) || "America/Chicago";
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" });
+  const rows = ts.map((t, i) => ({ date: fmt.format(new Date(t * 1000)), value: cl[i] })).filter((x) => Number.isFinite(x.value));
+  if (rows.length < 6) throw new Error("Yahoo ^VIX: málo dat");
+  return rows;
+}
+
 async function fetchLiveVix() {
   try {
     const r = await fetch("https://cdn.cboe.com/api/global/delayed_quotes/quotes/_VIX.json", {
@@ -76,13 +95,19 @@ function classifyRegime(rows) {
 }
 
 (async () => {
-  const rows = await fetchFredVix();
+  let rows, histSource = "fred";
+  try { rows = await fetchFredVix(); }
+  catch (e) { console.log("FRED ERR", e.message, "— záloha Yahoo ^VIX"); rows = await fetchYahooVixDaily(); histSource = "yahoo"; }
   const liveVix = await fetchLiveVix();
   if (liveVix !== null) {
-    const today = new Date().toISOString().slice(0, 10);
+    // Obchodní den živé hodnoty: o víkendu = pátek (dřív se přidal sobotní/nedělní
+    // řádek a 5denní změna se počítala přes duplikát pátku).
+    const d = new Date(), wd = d.getUTCDay();
+    if (wd === 6) d.setUTCDate(d.getUTCDate() - 1); else if (wd === 0) d.setUTCDate(d.getUTCDate() - 2);
+    const tradeDate = d.toISOString().slice(0, 10);
     const last = rows[rows.length - 1];
-    if (last.date === today) last.value = liveVix;
-    else rows.push({ date: today, value: liveVix });
+    if (last.date === tradeDate) last.value = liveVix;
+    else if (last.date < tradeDate) rows.push({ date: tradeDate, value: liveVix });
   }
   const { vix, vix5dChange, regime } = classifyRegime(rows);
 
@@ -98,7 +123,8 @@ function classifyRegime(rows) {
     vix,
     vix5dChange,
     regime,
-    liveSource: liveVix !== null ? "cboe/yahoo" : "fred-only",
+    liveSource: liveVix !== null ? "cboe/yahoo" : histSource + "-only",
+    histSource,
   };
   fs.mkdirSync("data", { recursive: true });
   fs.writeFileSync("data/vix.json", JSON.stringify(out));
