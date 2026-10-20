@@ -830,13 +830,21 @@ function loadCOTHistory(){const v=_cachedParse("cot_hist",()=>({}));return (v&&t
 // Záměrně NE loadCOT()/"cot_data": to je per-zařízení live snapshot z fetchCOTAuto(),
 // který si každé zařízení natáhne nezávisle a v jinou dobu → stejný den pak vycházel
 // s jinými čísly (viz PC vs mobil AUD 0.4 vs 0.3 při identickém "3.7." skóre).
-function getLatestCOTScores(){
+// Nejnovější COT týden: lokální cot_hist, ale čerstvě stažený serverový týden
+// z paměti (_cotSrvMem.latest) má přednost — kdyby zápis cot_hist do localStorage
+// selhal (kvóta), dřív by skóre/long-short/JPY četly starý týden.
+function _cotLatestWeek(){
+  let date=null,week=null;
   try{
     const hist=loadCOTHistory();
     const keys=Object.keys(hist).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
-    if(!keys.length) return null;
-    return hist[keys[keys.length-1]].scores||null;
-  }catch(e){return null;}
+    if(keys.length){ date=keys[keys.length-1]; week=hist[date]; }
+  }catch(e){}
+  try{ const m=_cotSrvMem.latest; if(m&&m.week&&(!date||m.date>=date)){ date=m.date; week=m.week; } }catch(e){}
+  return week?{date,week}:null;
+}
+function getLatestCOTScores(){
+  const l=_cotLatestWeek(); return (l&&l.week.scores)||null;
 }
 // Normalizuj jakékoli datum (ISO i textové "June 17, 2026" z CFTC .htm) na klíč YYYY-MM-DD.
 // Bez toho se mixují formáty a Object.keys().sort() řadí abecedně → měsíce prohozené v grafu.
@@ -961,8 +969,11 @@ function _lsSetSafe(key,val){
     }
   }
 }
+// seas_daily_* už se do localStorage neukládá (Cache Storage, fetchFXDailyHistory) —
+// staré kopie (~3,3 M znaků, přesné zrcadlo data/fx_daily) jednorázově uvolnit.
+try{ for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k&&/^seas_daily_/.test(k)) localStorage.removeItem(k); } }catch(e){}
 // Paměťová kopie serverových řad pro percentil (přežije plný localStorage).
-let _cotSrvMem={pct:null,cat:null};
+let _cotSrvMem={pct:null,cat:null,latest:null};
 
 async function fetchActionCOTHistory(){
   try{
@@ -972,6 +983,7 @@ async function fetchActionCOTHistory(){
     if(!j||!j.weeks||typeof j.weeks!=="object") return null;
     // Paměťová serverová řada (nezávislá na kvótě localStorage) — viz _cotPctSeries.
     try{
+      const lk=Object.keys(j.weeks).sort().pop(); if(lk&&j.weeks[lk]) _cotSrvMem.latest={date:cotWeekKey(lk),week:j.weeks[lk]};
       const m={}; Object.entries(j.weeks).forEach(([d,w])=>{ if(w&&w.scores) m[cotWeekKey(d)]=w.scores; });
       const mk=Object.keys(m).sort().slice(-COT_PCT_WINDOW);
       if(mk.length>=12){ _cotSrvMem.pct={}; mk.forEach(k=>_cotSrvMem.pct[k]=m[k]); }
@@ -1468,10 +1480,8 @@ async function loadCOTHistoryFromLocalFiles(fileList){
 function getCOTScore(currency,cotData){
   if(currency==="JPY"){
     try{
-      const hist=loadCOTHistory();
-      const dates=Object.keys(hist).sort((a,b)=>new Date(a)-new Date(b));
-      const last=dates[dates.length-1];
-      const r=last&&hist[last]&&hist[last].raw&&hist[last].raw[currency];
+      const l=_cotLatestWeek();
+      const r=l&&l.week.raw&&l.week.raw[currency];
       if(r&&Number.isFinite(r.assetRatio)) return parseFloat((-Math.max(-3,Math.min(3,r.assetRatio*6))).toFixed(1));
     }catch(e){}
     // Fallback na plošný blend, pokud raw historie (assetRatio) ještě chybí
@@ -1750,22 +1760,31 @@ function mergeFFHistory(fresh){
     if(!prev) map.set(k,e);
     else if((!prev.actual&&e.actual)||(!prev.estimate&&e.estimate)||(!prev.prev&&e.prev)) map.set(k,{...prev,...e});
   }
+  const freshKeys=new Set(); let fMin=Infinity,fMax=-Infinity;
   for(const e of (fresh||[])){
     if(!e||!e.event||!e.time||!ffIsTracked(e)) continue;   // jen sledované měny
     const k=ffHistKey(e),prev=map.get(k);
+    freshKeys.add(k); const t=new Date(e.time).getTime(); if(!isNaN(t)){ if(t<fMin)fMin=t; if(t>fMax)fMax=t; }
     if(!prev) map.set(k,e);
     else if((!prev.actual&&e.actual)||(!prev.estimate&&e.estimate)||(!prev.prev&&e.prev)) map.set(k,{...prev,...e});
+  }
+  // Přeplánované události: záznam bez actual v rozsahu čerstvého kalendáře, který
+  // v něm už není, je fantom (NZ CPI 19.10. → 21.10.; German WPI 14.9. → 15.9.).
+  if(freshKeys.size>=50) for(const [k,e] of map){
+    const t=new Date(e.time).getTime();
+    if(!e.actual&&t>=fMin&&t<=fMax&&!freshKeys.has(k)) map.delete(k);
   }
   let merged=[...map.values()];
   const cutoff=Date.now()-FF_STORE_MONTHS*30*86400000;
   merged=merged.filter(e=>{const t=new Date(e.time).getTime();return isNaN(t)||t>=cutoff;});
   merged.sort((a,b)=>new Date(a.time)-new Date(b.time));
   if(merged.length>FF_HIST_CAP) merged=merged.slice(merged.length-FF_HIST_CAP);
-  // ulož s postupným ořezem nejstarších, když narazíme na localStorage kvótu
+  // ulož: nejdřív uvolni obnovitelnou cache (_lsSetSafe), teprve potom jako poslední
+  // možnost ořez nejstarších — dřív se při plném úložišti hned mazalo 30 % historie.
   let toSave=merged;
-  for(let attempt=0;attempt<6;attempt++){
-    try{localStorage.setItem(FF_HIST_KEY,JSON.stringify(toSave));break;}
-    catch(e){toSave=toSave.slice(Math.floor(toSave.length*0.3));}  // zahoď nejstarších ~30 %
+  if(!_lsSetSafe(FF_HIST_KEY,JSON.stringify(toSave))) for(let attempt=0;attempt<6;attempt++){
+    toSave=toSave.slice(Math.floor(toSave.length*0.3));  // zahoď nejstarších ~30 %
+    try{localStorage.setItem(FF_HIST_KEY,JSON.stringify(toSave));break;}catch(e){}
   }
   return merged;
 }
@@ -3129,7 +3148,10 @@ async function fetchActionCalendarHist(){
 function unionCalHistory(cal,extra){
   if(!Array.isArray(extra)||!extra.length) return cal;
   const map=new Map();
-  for(const e of extra) map.set(ffHistKey(e),e);
+  // Nedávné/budoucí události bez actual bere jen z čerstvého kalendáře (cal), ne ze
+  // serverové historie — tam můžou být fantomy přeplánovaných událostí.
+  const recent=Date.now()-2*86400000;
+  for(const e of extra){ if(!e.actual&&new Date(e.time).getTime()>=recent) continue; map.set(ffHistKey(e),e); }
   for(const e of (cal||[])){
     const k=ffHistKey(e),prev=map.get(k);
     map.set(k,prev?{...prev,...Object.fromEntries(Object.entries(e).filter(([,v])=>v!==""&&v!=null))}:e);
@@ -3592,14 +3614,18 @@ function computeWindowSeasonality(daily,startM,startD,endM,endD,maxYears){
   const rows=daily.dates.map((d,i)=>({d,t:Date.parse(d+"T00:00:00Z"),close:daily.closes[i]})).filter(r=>!isNaN(r.t)&&Number.isFinite(r.close)).sort((a,b)=>a.t-b.t);
   if(rows.length<200) return null;
   const wraps=(endM<startM)||(endM===startM&&endD<startD);
-  const lastY=new Date(rows[rows.length-1].t).getUTCFullYear();
+  const lastT=rows[rows.length-1].t;
+  const lastY=new Date(lastT).getUTCFullYear();
   const dataFirstY=new Date(rows[0].t).getUTCFullYear();
-  const firstY=maxYears?Math.max(dataFirstY,lastY-maxYears+1):dataFirstY;
   const results=[];
-  for(let y=firstY;y<=lastY;y++){
+  // Od nejnovějšího roku dozadu, jen roky, jejichž okno už SKONČILO (dřív se
+  // nedokončený letošní rok započítal, když okno končilo do 7 dní) — maxYears
+  // = N dokončených let (dřív "20 let" = 19 dokončených + rozpracovaný).
+  for(let y=lastY;y>=dataFirstY;y--){
+    if(maxYears&&results.length>=maxYears) break;
     const y2=wraps?y+1:y;
     const startMs=Date.UTC(y,startM-1,startD), endMs=Date.UTC(y2,endM-1,endD);
-    if(endMs<=startMs) continue;
+    if(endMs<=startMs||endMs>lastT) continue;
     let startRow=null; for(const r of rows){ if(r.t>=startMs){ startRow=r; break; } }
     let endRow=null; for(let i=rows.length-1;i>=0;i--){ if(rows[i].t<=endMs){ endRow=rows[i]; break; } }
     if(!startRow||!endRow||endRow.t<=startRow.t) continue;
@@ -3628,31 +3654,41 @@ function computeWindowAvgPath(daily,startM,startD,endM,endD,maxYears){
   const rows=daily.dates.map((d,i)=>({d,t:Date.parse(d+"T00:00:00Z"),close:daily.closes[i]})).filter(r=>!isNaN(r.t)&&Number.isFinite(r.close)).sort((a,b)=>a.t-b.t);
   if(rows.length<200) return null;
   const wraps=(endM<startM)||(endM===startM&&endD<startD);
-  const lastY=new Date(rows[rows.length-1].t).getUTCFullYear();
+  const lastT=rows[rows.length-1].t;
+  const lastY=new Date(lastT).getUTCFullYear();
   const dataFirstY=new Date(rows[0].t).getUTCFullYear();
-  const firstY=maxYears?Math.max(dataFirstY,lastY-maxYears+1):dataFirstY;
-  const paths=[]; let refDates=null;
-  for(let y=lastY;y>=firstY;y--){
+  const yrs=[];
+  // Jen dokončená okna (viz computeWindowSeasonality), nejnovější první.
+  for(let y=lastY;y>=dataFirstY;y--){
+    if(maxYears&&yrs.length>=maxYears) break;
     const y2=wraps?y+1:y;
     const startMs=Date.UTC(y,startM-1,startD), endMs=Date.UTC(y2,endM-1,endD);
-    if(endMs<=startMs) continue;
+    if(endMs<=startMs||endMs>lastT) continue;
     let startIdx=-1; for(let i=0;i<rows.length;i++){ if(rows[i].t>=startMs){ startIdx=i; break; } }
     let endIdx=-1; for(let i=rows.length-1;i>=0;i--){ if(rows[i].t<=endMs){ endIdx=i; break; } }
     if(startIdx<0||endIdx<0||endIdx<=startIdx) continue;
     if(Math.abs(rows[startIdx].t-startMs)>7*86400000||Math.abs(rows[endIdx].t-endMs)>7*86400000) continue;
-    const base=rows[startIdx].close;
-    const path=[]; for(let i=startIdx;i<=endIdx;i++) path.push(((rows[i].close/base)-1)*100);
-    paths.push(path);
-    if(!refDates) refDates=rows.slice(startIdx,endIdx+1).map(r=>r.d); // nejnovější kompletní rok = popisky na ose
+    yrs.push({startMs,startIdx,endIdx});
   }
-  if(!paths.length) return null;
-  const maxLen=Math.max.apply(null,paths.map(p=>p.length));
-  const avg=[];
-  for(let i=0;i<maxLen;i++){
-    const vals=paths.map(p=>p[i]).filter(v=>v!=null);
-    avg.push(vals.length?+((vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(3)):(avg[i-1]!=null?avg[i-1]:0));
+  if(!yrs.length) return null;
+  // Zarovnání podle KALENDÁŘNÍHO dne okna, ne podle pořadí obchodního dne (dřív
+  // svátky/odlišný počet obchodních dní posunuly roky proti sobě o dny). Body =
+  // obchodní dny nejnovějšího dokončeného roku (popisky osy, stejný tvar výstupu);
+  // každý rok přispěje poslední cenou k danému kalendářnímu dni okna.
+  const ref=yrs[0];
+  const refRows=rows.slice(ref.startIdx,ref.endIdx+1);
+  const offs=refRows.map(r=>Math.round((r.t-ref.startMs)/86400000));
+  const sums=new Array(offs.length).fill(0), cnts=new Array(offs.length).fill(0);
+  for(const yr of yrs){
+    const base=rows[yr.startIdx].close; let j=yr.startIdx;
+    for(let k=0;k<offs.length;k++){
+      const target=yr.startMs+offs[k]*86400000;
+      while(j<yr.endIdx&&rows[j+1].t<=target) j++;
+      sums[k]+=((rows[j].close/base)-1)*100; cnts[k]++;
+    }
   }
-  return {avg,n:paths.length,dates:(refDates||[]).slice(0,maxLen)};
+  const avg=sums.map((v,k)=>+((v/cnts[k]).toFixed(3)));
+  return {avg,n:yrs.length,dates:refRows.map(r=>r.d)};
 }
 // COT % long/short z posledního snapshotu (syrové počty kontraktů velkých hráčů)
 // Preferuje cot_hist (chráněné src:"server" merge pravidlem v sync.js — viz
@@ -3663,10 +3699,8 @@ function computeWindowAvgPath(daily,startM,startD,endM,endD,maxYears){
 // opravený byl, ale getCOTLongShort() dál četl neopravený cot_meta).
 function getCOTLongShort(currency){
   try{
-    const hist=loadCOTHistory();
-    const keys=Object.keys(hist).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
-    const lastKey=keys[keys.length-1];
-    const r0=lastKey&&hist[lastKey]&&hist[lastKey].raw&&hist[lastKey].raw[currency];
+    const l=_cotLatestWeek();
+    const r0=l&&l.week.raw&&l.week.raw[currency];
     if(r0){
       const L=(r0.levLong||0)+(r0.assetLong||0), S=(r0.levShort||0)+(r0.assetShort||0), tot=L+S;
       if(tot>0) return {long:Math.round(L/tot*100), short:Math.round(S/tot*100), L,S};
@@ -4035,8 +4069,7 @@ function loadUS100Price(){ try{ const v=JSON.parse(localStorage.getItem("us100_p
 // Vlastní cenová historie (loadUS100Price().series — 130 denních closes).
 function getUS100RangePosition(days=10){
   const gp=loadUS100Price(); if(!gp||!Array.isArray(gp.series)||gp.series.length<2) return null;
-  // Stejný důvod/komentář jako u _dropUnclosedToday výš (viz getRangePosition).
-  const series=_dropUnclosedToday(gp.series,gp.date?new Date(gp.date).toISOString().slice(0,10):null);
+  const series=gp.series; // už jen uzavřené dny (server: CLOSE_GUARD_MS ve fetch-gold/us100-price.js); gp.date = živý čas → druhý _dropUnclosedToday by zahodil uzavřený den
   if(series.length<2) return null;
   const s=series.slice(-days);
   let mn=Infinity,mx=-Infinity,last=null;
@@ -4048,7 +4081,7 @@ function getUS100RangePosition(days=10){
 }
 function getUS100EfficiencyRatio(days=10){
   const gp=loadUS100Price(); if(!gp||!Array.isArray(gp.series)||gp.series.length<days+1) return null;
-  const series=_dropUnclosedToday(gp.series,gp.date?new Date(gp.date).toISOString().slice(0,10):null);
+  const series=gp.series; // už jen uzavřené dny (server: CLOSE_GUARD_MS ve fetch-gold/us100-price.js); gp.date = živý čas → druhý _dropUnclosedToday by zahodil uzavřený den
   if(series.length<days+1) return null;
   const s=series.slice(-(days+1));
   const p0=s[0],p1=s[s.length-1];
@@ -4332,9 +4365,7 @@ function getGoldCOTPercentile(){
 // které jsou čistě z cen, ne z data).
 function getGoldRangePosition(days=10){
   const gp=loadGoldPrice(); if(!gp||!Array.isArray(gp.series)||gp.series.length<2) return null;
-  // Stejný důvod/komentář jako u _dropUnclosedToday výš — gp.series poslední
-  // bod je dnešní ještě neuzavřená (živě tikující) cena, pokud gp.date je dnes.
-  const series=_dropUnclosedToday(gp.series,gp.date?new Date(gp.date).toISOString().slice(0,10):null);
+  const series=gp.series; // už jen uzavřené dny (server: CLOSE_GUARD_MS ve fetch-gold/us100-price.js); gp.date = živý čas → druhý _dropUnclosedToday by zahodil uzavřený den
   if(series.length<2) return null;
   const s=series.slice(-days);
   let mn=Infinity,mx=-Infinity,last=null;
@@ -4346,7 +4377,7 @@ function getGoldRangePosition(days=10){
 }
 function getGoldEfficiencyRatio(days=10){
   const gp=loadGoldPrice(); if(!gp||!Array.isArray(gp.series)||gp.series.length<days+1) return null;
-  const series=_dropUnclosedToday(gp.series,gp.date?new Date(gp.date).toISOString().slice(0,10):null);
+  const series=gp.series; // už jen uzavřené dny (server: CLOSE_GUARD_MS ve fetch-gold/us100-price.js); gp.date = živý čas → druhý _dropUnclosedToday by zahodil uzavřený den
   if(series.length<days+1) return null;
   const s=series.slice(-(days+1));
   const p0=s[0],p1=s[s.length-1];

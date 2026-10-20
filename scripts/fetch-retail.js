@@ -49,6 +49,24 @@
 //
 // Výstup: data/retail_hist.json = { updated, source, points:[ {t, pairs:{EURUSD:{l,s}}, ccy:{USD:..}, source } ] }
 const fs = require("fs");
+// Retence: posledních 3 dní plné rozlišení (~15 min), starší body zhuštěné na
+// 1 za hodinu, max 45 dní. Dřív slice(-1100) = jen ~11 dní při 15min cronu
+// (komentář tvrdil ~45 dní); zhuštění drží velikost souboru zhruba stejnou.
+function compactPoints(points) {
+  const now = Date.now(), FULL = 3 * 86400000, KEEP = 45 * 86400000;
+  const out = [], seenHour = new Set();
+  for (let i = points.length - 1; i >= 0; i--) {
+    const p = points[i], t = Date.parse(p && p.t);
+    if (!Number.isFinite(t)) continue;
+    const age = now - t;
+    if (age > KEEP) break;
+    if (age <= FULL) { out.push(p); continue; }
+    const h = new Date(t).toISOString().slice(0, 13);
+    if (seenHour.has(h)) continue;
+    seenHour.add(h); out.push(p);
+  }
+  return out.reverse();
+}
 const CUR = ["USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD"];
 // Společná hlavička byla dřív JEDNA (UA) sdílená pro Myfxbook, FXSSI i CFTC — a
 // nesla Referer patřící FXSSI ("fxssi.com/tools/current-ratio") i do volání na
@@ -377,7 +395,7 @@ function pairsToCcy(pairs) {
   const point = { t: new Date().toISOString(), pairs, ccy, source };
 
   store.points.push(point);
-  store.points = store.points.slice(-1100); // ~45 dní bodů
+  store.points = compactPoints(store.points);
   store.updated = point.t;
   store.source = source;
   store.myfxbook = myfxState;
@@ -400,7 +418,7 @@ function pairsToCcy(pairs) {
       try { goldStore = JSON.parse(fs.readFileSync("data/gold_retail.json", "utf8")); } catch (e) {}
       if (!Array.isArray(goldStore.points)) goldStore.points = [];
       goldStore.points.push({ t: point.t, l: g.l, s: g.s, source });
-      goldStore.points = goldStore.points.slice(-1100);
+      goldStore.points = compactPoints(goldStore.points);
       goldStore.updated = point.t;
       fs.writeFileSync("data/gold_retail.json", JSON.stringify(goldStore));
       console.log("Zapsáno data/gold_retail.json · bodů:", goldStore.points.length, "· XAUUSD long", g.l + "%");

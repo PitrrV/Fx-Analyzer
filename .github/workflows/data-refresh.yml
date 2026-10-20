@@ -318,6 +318,48 @@ jobs:
       # skriptu). Přesunuto z vlastního workflow, ať se drží stejná zásada jako
       # kalendář/VIX/ropa/AI radar výš — jeden scheduled trigger na účtu, ne
       # další (GitHub s víc registrovanými cronů měl reálně nespolehlivé spouštění).
+      # Nový COT report (úterní data) CFTC zveřejní v pátek 19:30 UTC — vlastní
+      # cot.yml běží denně 13:30 UTC, takže se do appky dostal až ~18–21 h po
+      # zveřejnění (a GitHub cron je navíc nespolehlivý). Tenhle krok běží na
+      # 15min mřížce data-refresh (Supabase) a zapne se JEN když už má být venku
+      # další report: poslední týden v cot_hist.json + 10 dní (= pátek) 19:45 UTC.
+      # Jakmile nový týden dorazí, do dalšího pátku se přeskakuje; při svátku
+      # (zpožděný report) prostě zkouší dál každých 15 min. Skripty jsou
+      # idempotentní (commit jen při změně).
+      - name: "COT: páteční report hned po zveřejnění"
+        id: cotdue
+        run: |
+          node -e '
+          const w=Object.keys(JSON.parse(require("fs").readFileSync("data/cot_hist.json","utf8")).weeks).sort().pop();
+          const due=Date.parse(w+"T19:45:00Z")+10*86400000;
+          console.log("poslední COT týden",w,"· další report očekáván od",new Date(due).toISOString());
+          require("fs").appendFileSync(process.env.GITHUB_OUTPUT,"due="+(Date.now()>=due?"1":"0")+"\n");'
+      - name: "Stáhnout COT (FX, US100, zlato)"
+        if: steps.cotdue.outputs.due == '1'
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          node scripts/fetch-cot.js || true
+          node scripts/fetch-us100-cot.js || true
+          node scripts/fetch-gold-cot.js || true
+      - name: "Commit: COT při změně"
+        if: steps.cotdue.outputs.due == '1'
+        run: |
+          git config user.name "cot-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/cot_hist.json data/us100_cot.json data/gold_cot.json)" ]; then
+            git add data/cot_hist.json data/us100_cot.json data/gold_cot.json
+            git commit -m "chore: update COT history [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "COT beze změny (report ještě nevyšel)."
+          fi
+
       - name: "Snapshot komponent skóre (Vývoj skóre graf, intraday)"
         timeout-minutes: 3
         continue-on-error: true
