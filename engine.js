@@ -984,9 +984,10 @@ let _cotSrvMem={pct:null,cat:null,latest:null};
 async function fetchActionCOTHistory(){
   try{
     const r=await fetch("data/cot_hist.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"});
-    if(!r.ok) return null;
+    if(!r.ok){ _SRC_ERR["COT"]="HTTP "+r.status; return null; }
     const j=await r.json();
-    if(!j||!j.weeks||typeof j.weeks!=="object") return null;
+    if(!j||!j.weeks||typeof j.weeks!=="object"){ _SRC_ERR["COT"]="cot_hist.json prázdné"; return null; }
+    delete _SRC_ERR["COT"];
     // Paměťová serverová řada (nezávislá na kvótě localStorage) — viz _cotPctSeries.
     try{
       const lk=Object.keys(j.weeks).sort().pop(); if(lk&&j.weeks[lk]) _cotSrvMem.latest={date:cotWeekKey(lk),week:j.weeks[lk]};
@@ -1068,7 +1069,7 @@ async function fetchActionCOTHistory(){
       }
     }catch(e){}
     return j;
-  }catch(e){return null;}
+  }catch(e){ _SRC_ERR["COT"]=String(e&&e.message||e); return null; }
 }
 // Stáhne data/bias_alert_state.json — serverový soubor, co scripts/bias-alerts.js
 // (cron) používá k rozhodnutí, kdy poslat Telegram alert (edge-trigger). Appka
@@ -3153,13 +3154,20 @@ function getRetailPairData(pair,sentData={},directPairsData=null){
 
 // ── KALENDÁŘ Z GITHUB ACTION (forexfactory web, má actual + plné pokrytí) ──
 // Soubor data/calendar.json generuje hodinová Action ze serveru (bez proxy/CORS).
+// Chyby klíčových zdrojů při posledním obnovení (štítek „LIVE“ → „CHYBA“); dřív
+// je každý zdroj spolkl a štítek svítil zeleně i při výpadku sítě.
+const _SRC_ERR={};
+let _CAL_RAW=null;
 async function fetchActionCalendar(){
-  const r=await fetch("data/calendar.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"});
-  if(!r.ok) throw new Error("HTTP "+r.status);
-  const j=await r.json();
-  if(!j||!Array.isArray(j.events)||j.events.length<10) throw new Error("calendar.json prázdné");
-  try{if(j.updated)localStorage.setItem("action_cal_updated",j.updated);}catch(e){}
-  return j.events.map(mapFFEvent);
+  try{
+    const r=await fetch("data/calendar.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    const j=await r.json();
+    if(!j||!Array.isArray(j.events)||j.events.length<10) throw new Error("calendar.json prázdné");
+    try{if(j.updated)localStorage.setItem("action_cal_updated",j.updated);}catch(e){}
+    _CAL_RAW=j.events; delete _SRC_ERR["Kalendář"];
+    return j.events.map(mapFFEvent);
+  }catch(e){ _SRC_ERR["Kalendář"]=String(e&&e.message||e); throw e; }
 }
 
 // Serverová historie kalendáře (data/calendar_hist.json, ~9 500 událostí od 12/2024).
@@ -3200,8 +3208,9 @@ let _PRICES=null;
 async function fetchActionPrices(){
   try{
     const r=await fetch("data/prices.json?h="+Math.floor(Date.now()/3600000),{cache:"no-store"});
-    if(r.ok){ const j=await r.json(); if(j&&j.rates&&j.rates.USD){ _PRICES=j; return j; } }
-  }catch(e){}
+    if(r.ok){ const j=await r.json(); if(j&&j.rates&&j.rates.USD){ _PRICES=j; delete _SRC_ERR["Ceny"]; return j; } }
+    _SRC_ERR["Ceny"]="HTTP "+r.status;
+  }catch(e){ _SRC_ERR["Ceny"]=String(e&&e.message||e); }
   return _PRICES;
 }
 // Ropa (WTI) ze serverového cronu (data/oil.json, bez API klíče, refresh ~15 min) —
@@ -3510,8 +3519,30 @@ function getDataFreshness(){
     const h=(now-new Date(ts).getTime())/3600000;
     out.push({label,hours:parseFloat(h.toFixed(1)),level:h<=warnH?"ok":h<=badH?"warn":"bad"});
   };
-  try{push("Kalendář",localStorage.getItem("action_cal_updated"),6,26);}catch(e){push("Kalendář",null,6,26);}
-  try{const m=loadCOTMeta();push("COT",m&&m.asOf,9*24,14*24);}catch(e){push("COT",null,216,336);}
+  // Kalendář: zastaralý = u proběhlých událostí s odhadem chybí výsledek (scraper
+  // nedobíhá). "updated" se od 4.7 mění jen se změnou obsahu → v neděli by bez
+  // tohohle vypadal zastarale, i když je v pořádku.
+  try{
+    if(Array.isArray(_CAL_RAW)){
+      const miss=_CAL_RAW.map(e=>({e,t:Date.parse(e.date||e.time)})).filter(x=>x.e.forecast&&!x.e.actual&&x.t<now-2*3600000&&x.t>now-48*3600000);
+      const h=miss.length?(now-Math.min(...miss.map(x=>x.t)))/3600000:0;
+      out.push({label:"Kalendář",hours:parseFloat(h.toFixed(1)),level:!miss.length?"ok":h<6?"warn":"bad",note:miss.length?miss.length+" událostí bez výsledku":"výsledky aktuální"});
+    } else push("Kalendář",localStorage.getItem("action_cal_updated"),6,26);
+  }catch(e){push("Kalendář",null,6,26);}
+  // COT: proti OČEKÁVANÉMU reportu (úterní data vychází v pátek 19:30 UTC). Dřív
+  // limit 9 dní od úterka → „ZPOŽDĚNO“ ~44 h každý týden do příchodu reportu.
+  try{
+    let asOf=null; try{ const l=_cotLatestWeek(); asOf=l&&l.date; }catch(e){}
+    if(!asOf){ const m=loadCOTMeta(); asOf=m&&m.asOf; }
+    if(!asOf) push("COT",null,0,0);
+    else{
+      const d=new Date(now); d.setUTCHours(0,0,0,0); d.setUTCDate(d.getUTCDate()-((d.getUTCDay()-2+7)%7)); // poslední úterý
+      let exp=d.getTime(); if(now<exp+3*86400000+19.5*3600000+3600000) exp-=7*86400000; // jeho report ještě nevyšel (+1 h rezerva)
+      const have=Date.parse(String(asOf).slice(0,10)+"T00:00:00Z");
+      const late=now-(exp+3*86400000+19.5*3600000);
+      out.push({label:"COT",hours:parseFloat(((now-have)/3600000).toFixed(1)),level:have>=exp?"ok":late<3*86400000?"warn":"bad",note:"poslední report "+String(asOf).slice(0,10)});
+    }
+  }catch(e){push("COT",null,216,336);}
   // Ceny = ECB referenční kurz (Frankfurter), publikuje se 1×/pracovní den kolem 16:00 SEČ
   // a vůbec ne o víkendu — v pondělí dopoledne je tak zcela normální, že "updated" ukazuje
   // ještě páteční hodnotu (~70h stará). Původní práh 4/26h tohle hlásil jako "bad" úplně
@@ -3532,6 +3563,7 @@ function getDataFreshness(){
   // i noční mezeru, a pořád odhalí skutečný vícehodinový výpadek Myfxbooku
   // (FXSSI mezikrok odstraněn 8.9.2026 — viz scripts/fetch-retail.js).
   try{push("Retail",_RETAIL_LATEST&&_RETAIL_LATEST.t,4,12);}catch(e){push("Retail",null,4,12);}
+  out.forEach(x=>{ if(_SRC_ERR[x.label]){ x.err=_SRC_ERR[x.label]; x.level="bad"; } });
   return out;
 }
 
