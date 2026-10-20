@@ -333,7 +333,12 @@ jobs:
           const w=Object.keys(JSON.parse(require("fs").readFileSync("data/cot_hist.json","utf8")).weeks).sort().pop();
           const due=Date.parse(w+"T19:45:00Z")+10*86400000;
           console.log("poslední COT týden",w,"· další report očekáván od",new Date(due).toISOString());
-          require("fs").appendFileSync(process.env.GITHUB_OUTPUT,"due="+(Date.now()>=due?"1":"0")+"\n");'
+          // Hned po zveřejnění, pak ~1× za hodinu (každý 4. běh 15min mřížky), nejdéle 4 dny
+          // (potom převezme denní cot.yml) — dřív každých 15 min, při výpadku CFTC 50 000 řádků.
+          const since=Date.now()-due, slot=Math.floor(since/900000);
+          const run=since>=0&&since<4*86400000&&slot%4===0;
+          console.log("COT krok:",run?"spustit":"přeskočit","(slot "+slot+")");
+          require("fs").appendFileSync(process.env.GITHUB_OUTPUT,"due="+(run?"1":"0")+"\n");'
       - name: "Stáhnout COT (FX, US100, zlato)"
         if: steps.cotdue.outputs.due == '1'
         timeout-minutes: 5

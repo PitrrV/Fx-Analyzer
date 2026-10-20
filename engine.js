@@ -3021,7 +3021,7 @@ function getEventHistoryTrend(eventName,currency,calData,country){
   let wS=0,wT=0;
   history.forEach((ev,idx)=>{
     const rel=eventRelevance(currency,ev);
-    const a=parseFloat(ev.actual),e2=parseFloat(ev.estimate);
+    const a=_evNum(ev.actual),e2=_evNum(ev.estimate); // BoJ "<1.25%" — parseFloat dával NaN a všech 14 rozhodnutí se přeskočilo
     if(isNaN(a)||isNaN(e2)||!rel) return;
     const dir=eventDirection(ev),w=(history.length-idx)*rel.factor;
     wS+=dir*w;wT+=w;
@@ -3186,14 +3186,16 @@ async function fetchActionCalendar(){
 let _calHistMem=null;
 async function fetchActionCalendarHist(){
   if(_calHistMem) return _calHistMem;
+  const use=(j)=>{ if(!j||!Array.isArray(j.events)||j.events.length<100) return null; _calHistMem=j.events.map(mapFFEvent).filter(e=>e&&e.event&&e.time&&ffIsTracked(e)); return _calHistMem; };
   try{
     const r=await fetch("data/calendar_hist.json?h="+Math.floor(Date.now()/3600000));
-    if(!r.ok) return null;
-    const j=await r.json();
-    if(!j||!Array.isArray(j.events)||j.events.length<100) return null;
-    _calHistMem=j.events.map(mapFFEvent).filter(e=>e&&e.event&&e.time&&ffIsTracked(e));
-    return _calHistMem;
-  }catch(e){return null;}
+    if(r.ok){ const j=await r.json(); const out=use(j);
+      // Poslední dobrá kopie do Cache Storage (ne localStorage — kvóta) pro výpadek sítě.
+      if(out){ try{ if(typeof caches!=="undefined"){ const c=await caches.open("cal-hist-v1"); await c.put("/__cal_hist",new Response(JSON.stringify(j),{headers:{"Content-Type":"application/json"}})); } }catch(e){} return out; } }
+  }catch(e){}
+  // Výpadek: dřív spadlo nové zařízení na ~6 týdnů calendar.json a ruční CB seedy.
+  try{ if(typeof caches!=="undefined"){ const c=await caches.open("cal-hist-v1"); const r=await c.match("/__cal_hist"); if(r) return use(await r.json()); } }catch(e){}
+  return null;
 }
 function unionCalHistory(cal,extra){
   if(!Array.isArray(extra)||!extra.length) return cal;
@@ -3688,6 +3690,7 @@ async function fetchFXDailyHistory(pair){
 // dny v měsíci. Okno přesahující přes Nový rok (např. 28.12.-5.1.) se počítá
 // správně (konec spadá do y+1). maxYears (volitelné): omezí se jen na
 // posledních N let dat, ne na celou dostupnou historii.
+function _todayUTC0(){ const d=new Date(); return Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()); }
 function computeWindowSeasonality(daily,startM,startD,endM,endD,maxYears){
   if(!daily||!Array.isArray(daily.dates)||daily.dates.length<200) return null;
   const rows=daily.dates.map((d,i)=>({d,t:Date.parse(d+"T00:00:00Z"),close:daily.closes[i]})).filter(r=>!isNaN(r.t)&&Number.isFinite(r.close)).sort((a,b)=>a.t-b.t);
@@ -3704,7 +3707,7 @@ function computeWindowSeasonality(daily,startM,startD,endM,endD,maxYears){
     if(maxYears&&results.length>=maxYears) break;
     const y2=wraps?y+1:y;
     const startMs=Date.UTC(y,startM-1,startD), endMs=Date.UTC(y2,endM-1,endD);
-    if(endMs<=startMs||endMs>lastT) continue;
+    if(endMs<=startMs||endMs>lastT||endMs>=_todayUTC0()) continue; // okno končící dnes = neuzavřená svíčka, rok ještě není hotový
     let startRow=null; for(const r of rows){ if(r.t>=startMs){ startRow=r; break; } }
     let endRow=null; for(let i=rows.length-1;i>=0;i--){ if(rows[i].t<=endMs){ endRow=rows[i]; break; } }
     if(!startRow||!endRow||endRow.t<=startRow.t) continue;
@@ -3742,7 +3745,7 @@ function computeWindowAvgPath(daily,startM,startD,endM,endD,maxYears){
     if(maxYears&&yrs.length>=maxYears) break;
     const y2=wraps?y+1:y;
     const startMs=Date.UTC(y,startM-1,startD), endMs=Date.UTC(y2,endM-1,endD);
-    if(endMs<=startMs||endMs>lastT) continue;
+    if(endMs<=startMs||endMs>lastT||endMs>=_todayUTC0()) continue; // okno končící dnes = neuzavřená svíčka, rok ještě není hotový
     let startIdx=-1; for(let i=0;i<rows.length;i++){ if(rows[i].t>=startMs){ startIdx=i; break; } }
     let endIdx=-1; for(let i=rows.length-1;i>=0;i--){ if(rows[i].t<=endMs){ endIdx=i; break; } }
     if(startIdx<0||endIdx<0||endIdx<=startIdx) continue;
@@ -3891,7 +3894,7 @@ const COACH_GLOSSARY=`SLOVNÍČEK POJMŮ APPKY (použij tyhle definice, nevymý�
 - retail sentiment: % retailových traderů long na páru/měně — appka to bere kontrariánsky (hodně long retailu = mírně bearish signál).
 - CBDI (Divergence): 0–100, jak moc se centrální banky světa dnes liší směrem politiky (víc = lepší podmínky pro tenhle typ fundamentální analýzy).
 - real yield: nominální sazba CB minus inflace (CPI); vyšší reálný výnos = přitažlivější měna.
-- 14denní forecast (prob): jistota 50–75 % (v praxi většinou 50–60 %, víc data nepodpoří), že se pár pohne ve forecastovaném směru podle nadcházejících dat; může nesouhlasit s dlouhodobým fundamentálním biasem.
+- 14denní forecast (prob): jistota 50–75 % (v praxi většinou 50–60 %, víc data nepodpoří), že se pár pohne ve forecastovaném směru (pole probDir) podle nadcházejících dat; probDir může nesouhlasit s dlouhodobým fundamentálním biasem (dir).
 - daily brief / denní konflikt: srovnání dnešních čerstvých dat s 14denním biasem — "conflict" = dnešní data jdou proti dlouhodobému biasu.
 - bias flip: fundamentální bias měny/páru se za posledních 36 h otočil (BUY↔SELL).
 - korelační skupina: páry, co se obvykle hýbou spolu (např. EURUSD/GBPUSD/AUDUSD/NZDUSD) — appka mezi nimi nepočítá duplicitní příležitosti.`;
@@ -4385,13 +4388,15 @@ function saveGoldScoreHistory(scoreObj){
   const today=new Date().toISOString().split("T")[0];
   try{
     const hist=JSON.parse(localStorage.getItem("gold_score_hist")||"{}");
-    hist[today]={score:scoreObj.score,cot:scoreObj.cotScore,sent:scoreObj.sentScore};
+    hist[today]={score:scoreObj.score,cot:scoreObj.cotScore,sent:scoreObj.sentScore,v:2}; // v:2 = měřítko po PR #292 (vážené jako FX)
     const dates=Object.keys(hist).sort().slice(-260);
     const trimmed={}; dates.forEach(d=>trimmed[d]=hist[d]);
     localStorage.setItem("gold_score_hist",JSON.stringify(trimmed));
   }catch(e){}
 }
-function loadGoldScoreHistory(){ try{ const v=JSON.parse(localStorage.getItem("gold_score_hist")||"{}"); return (v&&typeof v==="object")?v:{}; }catch(e){ return {}; } }
+// Jen záznamy stejného měřítka (v:2). Starší (prostý součet, ~2,8 vs. nově ~0,5)
+// zůstávají uložené, ale do grafu/změny za 7 dní by daly falešný pokles ~−2,3.
+function loadGoldScoreHistory(){ try{ const v=JSON.parse(localStorage.getItem("gold_score_hist")||"{}"); if(!v||typeof v!=="object") return {}; const o={}; Object.keys(v).forEach(k=>{ if(v[k]&&v[k].v===2) o[k]=v[k]; }); return o; }catch(e){ return {}; } }
 // Stejná technika jako getScoreChangeDetail() výš (kalendářní nejbližší den,
 // tolerance ±3 dny) — jen na gold_score_hist místo score_hist, protože zlato
 // s 8 FX měnami historii nesdílí (samostatný nástroj, viz hlavička bloku).

@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20261020f"></script>
+<script src="engine.js?v=20261020g"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0"></script>
 <script src="sync.js?v=20261020b"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -539,7 +539,7 @@ function PairRow({p,rank,selected,onClick,forecast,aiData,dailyState,note,isFav,
         <span style={{fontSize:9,fontWeight:700,letterSpacing:".1em",color:band.c,background:band.bg,borderRadius:5,padding:"3px 7px"}}>{band.l}</span>
         {d24&&<span title="Změna skóre páru za posledních ~24h" style={{...mono,fontSize:9,fontWeight:700,letterSpacing:".04em",color:d24.color,background:d24.color+"1c",border:"1px solid "+d24.color+"44",borderRadius:5,padding:"3px 7px"}}>{d24.label}</span>}
         {(()=>{let px1=null;try{px1=getPriceMomentum(p.pair,1);}catch(e){}if(px1==null)return null;const c=px1>0.03?"#2ed3a0":px1<-0.03?"#ff5470":"#8b93a3";return <span title="Dnešní reakce trhu (změna ceny od posledního denního záznamu)" style={{...mono,fontSize:9,fontWeight:700,letterSpacing:".04em",color:c,background:c+"1c",border:"1px solid "+c+"44",borderRadius:5,padding:"3px 7px"}}>{"px "+(px1>0?"+":"")+px1.toFixed(2)+"%"}</span>;})()}
-        {f.prob&&<span style={{...mono,fontSize:11,color:probColor,marginLeft:"auto"}}>{f.prob+"% 14d"}</span>}
+        {f.prob&&<span style={{...mono,fontSize:11,color:probColor,marginLeft:"auto"}}>{f.prob+"% "+(f.dir||"")+" 14d"}</span>}
       </div>
       <div style={{display:"flex",gap:13,marginTop:10,...mono,fontSize:10,color:"#6b7384",alignItems:"center",flexWrap:"wrap"}}>
         <span>{p.base} <b style={{color:p.s1>=0?"#2ed3a0":"#ff5470",fontWeight:600}}>{(p.s1>0?"+":"")+p.s1.toFixed(1)}</b></span>
@@ -1288,7 +1288,7 @@ function ConvictionSummary({pair,scores,aiAnalyses}){
   const factors=[
     {label:"Fundamenty",ok:diff>=2.0,detail:"Score diff "+diff.toFixed(1)+(diff>=2.5?" silny":" slaby")+" signal"},
     // Jen faktor táhnoucí VE SMĚRU páru (dřív Math.abs = i proti biasu).
-    {label:"CB Policy", ok:sgnDir*((sb.policy_adj||0)-(sq.policy_adj||0))>0, bad:sgnDir*((sb.policy_adj||0)-(sq.policy_adj||0))<0,
+    {label:"CB Policy", ok:sgnDir*((sb.policy_adj||0)-(sq.policy_adj||0))>0.05, bad:sgnDir*((sb.policy_adj||0)-(sq.policy_adj||0))<-0.05, // práh jako index.html
      detail:(CB_POLICY_DATA[pair.base]&&CB_POLICY_DATA[pair.base].label)||"hold"},
     {label:"COT",       ok:sgnDir*((sb.cot_score||0)-(sq.cot_score||0))>0.3, bad:sgnDir*((sb.cot_score||0)-(sq.cot_score||0))<-0.3,
      detail:"COT diff "+((sb.cot_score||0)-(sq.cot_score||0)).toFixed(1)},
@@ -1299,14 +1299,16 @@ function ConvictionSummary({pair,scores,aiAnalyses}){
   ];
   const okCount=factors.filter(function(f){return f.ok;}).length;
   const conflict=aiDir&&aiDir!==fundDir;
-  const boxColor=conflict?"#f85149":okCount>=4?"#2ed3a0":okCount>=3?"#d29922":"#8b949e";
-  const boxBg=conflict?"rgba(248,81,73,.07)":okCount>=4?"rgba(46,211,160,.07)":okCount>=3?"rgba(210,153,34,.07)":"rgba(100,100,100,.05)";
-  const icon=conflict?"KONFLIKT":okCount>=4?"SOUHLASI":"CASTECNE";
-  const emoji=conflict?"⚠️":okCount>=4?"✅":"➡️";
+  // Prahy jako index.html (4 faktory: ≥3 souhlasí, ≥2 částečně); AI se počítá jen když existuje.
+  const agreeN=ai?4:3;
+  const boxColor=conflict?"#f85149":okCount>=agreeN?"#2ed3a0":okCount>=2?"#d29922":"#8b949e";
+  const boxBg=conflict?"rgba(248,81,73,.07)":okCount>=agreeN?"rgba(46,211,160,.07)":okCount>=2?"rgba(210,153,34,.07)":"rgba(100,100,100,.05)";
+  const icon=conflict?"KONFLIKT":okCount>=agreeN?"SOUHLASI":okCount>=2?"CASTECNE":"SLABE";
+  const emoji=conflict?"⚠️":okCount>=agreeN?"✅":okCount>=2?"➡️":"○";
   const mainMsg=conflict
     ?"Fundamenty "+fundDir+" ale AI "+aiDir+" — cekej"
-    :okCount>=4?"Vetsina faktoru shodne "+fundDir+" — silna confluence"
-    :okCount>=3?"Castecna shoda "+fundDir+" — stredni confluence"
+    :okCount>=agreeN?"Vetsina faktoru shodne "+fundDir+" — silna confluence"
+    :okCount>=2?"Castecna shoda "+fundDir
     :"Faktory nesouhlasi — signal je slaby";
   return (
     <div style={{background:boxBg,border:"1.5px solid "+boxColor+"44",borderLeft:"4px solid "+boxColor,borderRadius:10,padding:"12px 16px",marginBottom:14}}>
@@ -2003,7 +2005,7 @@ function CoachContextBar({activePair,pairs,aiAnalyses,forecasts}){
       <span style={{fontWeight:700,color:"#e6edf3",fontSize:12}}>{p.pair}</span>
       <span style={{color:p.dir==="BUY"?"#2ed3a0":"#f85149",fontWeight:700,fontSize:11}}>{p.dir+" diff:"+p.diff}</span>
       <span style={{color:"#f0b429",fontSize:11}}>{"★".repeat(p.conviction||0)+"☆".repeat(5-(p.conviction||0))+" "+(p.conviction||0)+"/5"}</span>
-      {f&&<span style={{fontSize:11,color:"#8b949e"}}>{"Forecast "+f.prob+"%"}</span>}
+      {f&&<span style={{fontSize:11,color:"#8b949e"}}>{"Forecast "+f.prob+"% "+(f.dir||"")}</span>}
       {ai?<span style={{fontSize:11,color:"#2ed3a0"}}>{"AI "+ai.tf+": "+ai.bias+" "+ai.confidence+"%"}</span>
          :<span style={{fontSize:11,color:"#4a6a88"}}>{"⚠ Bez AI analyzy"}</span>}
       <span style={{fontSize:10,color:"#4a6a88",marginLeft:"auto"}}>{"Coach vidi vsechna data"}</span>
@@ -3271,7 +3273,10 @@ function App(){
         g_fundConfidence=ffConfidence(cal);
         const span=ffHistorySpanMonths(cal);
         calWarn="ℹ Kalendář jede z ForexFactory ("+cal.length+" událostí, ~"+span.toFixed(1)+" měs historie, fundamenty "+Math.round(g_fundConfidence*100)+"% — roste s historií; COT/yield/policy drží bias)."+((fmpKey&&(fmpErr||fmpBlocked))?" Pozn.: FMP free tarif ekonomický kalendář nemá (jen placený plán) — proto FF.":"");
-      } else { g_fundConfidence=FF_FUND_DAMP; }
+      } else {
+        g_fundConfidence=ffConfidence(cal); // podle sloučené historie (jako PC); prázdná = FF_FUND_DAMP
+        if(cal.length&&/Žádný zdroj/.test(calWarn)) calWarn="ℹ Živý kalendář nevyšel — skóre jede z uložené historie ("+cal.length+" událostí, fundamenty "+Math.round(g_fundConfidence*100)+"%).";
+      }
       try{ g_calSource=calSource||"ff-hist"; }catch(e){}
       try{ cal=applyManualActuals(cal); }catch(e){}
       const calScoring=capEventsWindow(cal,FUND_HIST_WINDOW_WEEKS); // stejné okno pro skórování na každém zařízení — viz engine.js
@@ -3464,7 +3469,10 @@ function App(){
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:18}}>📊</span>
           <div>
-            <div style={{fontWeight:900,fontSize:18}}>AT Trading FX Command Center <span className="command-live">● LIVE</span></div>
+            <div style={{fontWeight:900,fontSize:18}}>AT Trading FX Command Center {(()=>{ let fr=[]; try{fr=(getDataFreshness()||[]).filter(x=>["Kalendář","COT","Ceny"].includes(x.label));}catch(e){}
+              const err=fr.some(x=>x.err), lv=err||fr.some(x=>x.level==="bad")?"bad":fr.some(x=>x.level==="warn")?"warn":"ok";
+              const col=lv==="ok"?"#2ed3a0":lv==="warn"?"#e8ab3f":"#f2606e";
+              return <span className="command-live" title={fr.map(x=>x.label+": "+(x.err?"chyba ("+x.err+")":x.note||(x.hours==null?"bez dat":Math.round(x.hours)+" h"))).join(" · ")} style={{color:col,borderColor:col+"55",background:col+"1c"}}>{"● "+(err?"CHYBA":lv==="ok"?"LIVE":lv==="warn"?"ZPOŽDĚNO":"ZASTARALÉ")}</span>; })()}</div>
             <div style={{fontSize:12,color:"#8b949e"}}>FX bias engine · score, COT, sentiment, struktura · FX bias engine</div>
           </div>
         </div>
@@ -3488,9 +3496,9 @@ function App(){
         <div style={{background:topPair.dir==="BUY"?"#0d2a1a":"#2a0d0d",padding:"8px 16px",borderBottom:"1px solid #30363d",display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
           <span style={{fontSize:11,color:"#8b949e"}}>TOP DOPORUČENÍ:</span>
           <span style={{fontWeight:700,fontSize:14,color:topPair.dir==="BUY"?"#2ed3a0":"#f85149"}}>{FLAGS[topPair.base]}{FLAGS[topPair.quote]} {topPair.pair} {topPair.dir}</span>
-          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=60?"#2ed3a0":forecasts[topPair.pair].prob>=55?"#d29922":"#8b949e"}}>{forecasts[topPair.pair].prob}% pravděpodobnost (14 dní) V5</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}
-          {top[1]&&<span style={{fontSize:11,color:"#8b949e"}}>| #2: {FLAGS[top[1].base]}{FLAGS[top[1].quote]} {top[1].pair} {top[1].dir}{forecasts[top[1].pair]?` ${forecasts[top[1].pair].prob}%`:""}</span>}
-          {top[2]&&<span style={{fontSize:11,color:"#8b949e"}}>| #3: {FLAGS[top[2].base]}{FLAGS[top[2].quote]} {top[2].pair} {top[2].dir}{forecasts[top[2].pair]?` ${forecasts[top[2].pair].prob}%`:""}</span>}
+          {forecasts[topPair.pair]&&<span style={{fontSize:12,fontWeight:600,color:forecasts[topPair.pair].prob>=60?"#2ed3a0":forecasts[topPair.pair].prob>=55?"#d29922":"#8b949e"}}>{forecasts[topPair.pair].prob}% {forecasts[topPair.pair].dir} výhled (14 dní)</span>}{forecasts[topPair.pair]?.newsLabel&&<span style={{fontSize:10,color:"#d29922",marginLeft:6}}>{forecasts[topPair.pair].newsLabel}</span>}
+          {top[1]&&<span style={{fontSize:11,color:"#8b949e"}}>| #2: {FLAGS[top[1].base]}{FLAGS[top[1].quote]} {top[1].pair} {top[1].dir}{forecasts[top[1].pair]?` ${forecasts[top[1].pair].prob}% ${forecasts[top[1].pair].dir}`:""}</span>}
+          {top[2]&&<span style={{fontSize:11,color:"#8b949e"}}>| #3: {FLAGS[top[2].base]}{FLAGS[top[2].quote]} {top[2].pair} {top[2].dir}{forecasts[top[2].pair]?` ${forecasts[top[2].pair].prob}% ${forecasts[top[2].pair].dir}`:""}</span>}
         </div>
       )}
 
@@ -3544,7 +3552,7 @@ function App(){
                     <span style={{color:p.dir==="BUY"?"#2ed3a0":"#f85149",fontWeight:700,fontSize:11}}>{p.dir}</span>
                     <span style={{color:"#f0b429",fontSize:11}}>{"★".repeat(p.conviction||0)}{"☆".repeat(5-(p.conviction||0))}</span>
                     <span style={{fontSize:9,color:"#8b949e",flex:1}}>{(p.convictionReasons||[]).slice(0,2).join(" · ")}</span>
-                    {forecasts[p.pair]&&<span style={{fontSize:10,color:"#8b949e"}}>{forecasts[p.pair].prob}%</span>}
+                    {forecasts[p.pair]&&<span style={{fontSize:10,color:"#8b949e"}}>{forecasts[p.pair].prob}% {forecasts[p.pair].dir}</span>}
                   </div>
                 ))}
               </div>

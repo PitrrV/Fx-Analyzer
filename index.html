@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0"></script>
-<script src="engine.js?v=20261020f"></script>
+<script src="engine.js?v=20261020g"></script>
 <script src="sync.js?v=20261020b"></script>
 <style>
 *{box-sizing:border-box}
@@ -969,7 +969,7 @@ class FXApp extends React.Component{
         if(ex&&ex.parts&&ex.parts.length) scoreChanges[c]={since:ex.since,totalDelta:ex.totalDelta,parts:ex.parts.map(p=>({label:p.label,delta:p.delta}))};
       });
     }catch(e){}
-    const top=this.PAIRS.slice(0,8).map(p=>({pair:p.pair,dir:p.dir,diff:+p.diff.toFixed(2),conviction:p.conv,prob:p.prob,status:p.status,position:(this.state.pos[p.pair]||'none')}));
+    const top=this.PAIRS.slice(0,8).map(p=>({pair:p.pair,dir:p.dir,diff:+p.diff.toFixed(2),conviction:p.conv,prob:p.prob,probDir:p.fdir,status:p.status, /* prob = jistota ve směru výhledu (probDir), ne biasu */ position:(this.state.pos[p.pair]||'none')}));
     let econEvents=[]; try{ econEvents=buildCoachEventContext(this._cal,this._up); }catch(e){}
     const cb={}; this.CUR.forEach(c=>{ const r=(typeof CENTRAL_BANK_RATES!=='undefined'?CENTRAL_BANK_RATES[c]:null); const p=(typeof CB_POLICY_DATA!=='undefined'?CB_POLICY_DATA[c]:null); cb[c]={rate:r,policy:p&&p.label}; });
     // Zaměřený pár: pokud uživatel napíše symbol páru přímo do zprávy (např. "EURCAD"),
