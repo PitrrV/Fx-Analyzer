@@ -8,7 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="engine.js?v=20261020a"></script>
+<script src="engine.js?v=20261020b"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sync.js?v=20260914a"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -2545,7 +2545,7 @@ function JournalTab({journal,scores,pairs,calData,upcoming,aiAnalyses,selected,o
   const closed=journal.filter(function(t){return t.outcome&&t.outcome!=="open";});
   const all=jStat(closed);
   const byConvHi=jStat(closed.filter(function(t){return (t.ctx&&t.ctx.conviction||0)>=3;}));
-  const byConvLo=jStat(closed.filter(function(t){return (t.ctx&&t.ctx.conviction||0)<3;}));
+  const byConvLo=jStat(closed.filter(function(t){return typeof (t.ctx&&t.ctx.conviction)==="number"&&t.ctx.conviction<3;})); // bez údaje ≠ 0★
   const bandSweet=jStat(closed.filter(function(t){return t.ctx&&t.ctx.band==="sweetspot";}));
   const bandWeak=jStat(closed.filter(function(t){return t.ctx&&t.ctx.band==="slabý";}));
   const bandStrong=jStat(closed.filter(function(t){return t.ctx&&t.ctx.band==="silný";}));
