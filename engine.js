@@ -1077,7 +1077,7 @@ async function fetchActionBiasAlertState(){
     if(!r.ok) return null;
     const j=await r.json();
     if(j&&j.rpEr&&typeof j.rpEr==="object") localStorage.setItem("rp_er_since",JSON.stringify(j.rpEr));
-    if(j&&j.seasonal&&typeof j.seasonal==="object") localStorage.setItem("seasonal_radar_since",JSON.stringify(j.seasonal));
+    if(j&&j.seasonal&&typeof j.seasonal==="object"){ localStorage.setItem("seasonal_radar_since",JSON.stringify(j.seasonal)); localStorage.setItem("seasonal_radar_at",String(Date.now())); }
     return j;
   }catch(e){return null;}
 }
@@ -3484,8 +3484,12 @@ function getDataFreshness(){
   // každý víkend a pondělní dopoledne, i když pipeline běžela v pořádku (viz GH Actions log:
   // "Kurzy beze změny, nepřepisuji." — úspěšný běh, ne pád). 30/100h pokryje běžný víkend
   // i svátek, a pořád odhalí opravdový vícedenní výpadek zdroje.
-  push("Ceny",_PRICES&&_PRICES.updated,30,100);
-  try{const o=JSON.parse(localStorage.getItem("oil_wti_v1")||"null");push("Ropa (WTI)",o&&o.ts,6,50);}catch(e){push("Ropa (WTI)",null,6,50);}
+  // Ceny = Yahoo (fetch-prices.js, ~15 min, záložně ECB). Ve všední den varovat
+  // nad 1 h; o víkendu (FX zavřený) tolerovat páteční hodnotu.
+  { const wd=new Date().getUTCDay(), weekend=wd===0||wd===6||(wd===1&&new Date().getUTCHours()<8);
+    push("Ceny",_PRICES&&_PRICES.updated,weekend?60:1,weekend?100:6); }
+  // Stáří ropy z dat samotných (data/oil.json updated), ne z času stažení (dřív vždy „0 min“).
+  try{const o=JSON.parse(localStorage.getItem("oil_wti_v1")||"null");push("Ropa (WTI)",o&&((o.data&&o.data.updated)||o.ts),6,50);}catch(e){push("Ropa (WTI)",null,6,50);}
   // Retail (data/retail_hist.json, _RETAIL_LATEST z fetchActionRetail) chyběl v
   // hlídači úplně — appka mohla jet týden na zamrzlých datech a semafor zůstal
   // zelený (viz FX Analyzer audit 8.9.2026, §12 bod 3). Cron je nominálně po 30

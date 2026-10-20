@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="engine.js?v=20261020a"></script>
+<script src="engine.js?v=20261020b"></script>
 <script src="sync.js?v=20260914a"></script>
 <style>
 *{box-sizing:border-box}
@@ -58,7 +58,8 @@ function captureContext(pairSym,pairs,scores,calData,upcoming,aiAnalyses){
   try{ cbdi=calcCBDI(); }catch(e){}
   try{ cbStage=getCBCycleStage().stage; }catch(e){}
   const ai=(aiAnalyses||{})[pairSym]||null;
-  return {diff:diff,dir:p?p.dir:null,conviction:p?p.conviction:null,band:band,dailyLevel:dailyLevel,flip:flip,cbdi:cbdi,cbStage:cbStage,aiBias:ai?ai.bias:null,aiConf:ai?ai.confidence:null,listType:PAIR_LIST_TYPE[pairSym]||'other'};
+  return {diff:diff,dir:p?p.dir:null,conviction:p?(p.conviction??p.conv??null):null, // PC páry mají pole conv (dřív se ukládalo null)
+    band:band,dailyLevel:dailyLevel,flip:flip,cbdi:cbdi,cbStage:cbStage,aiBias:ai?ai.bias:null,aiConf:ai?ai.confidence:null,listType:PAIR_LIST_TYPE[pairSym]||'other'};
 }
 function jStat(list){
   const w=list.filter(t=>t.outcome==='win').length, l=list.filter(t=>t.outcome==='loss').length, be=list.filter(t=>t.outcome==='be').length;
@@ -212,7 +213,13 @@ class FXApp extends React.Component{
     this.smooth=(pts)=>{ if(pts.length<2) return pts.length?`M ${pts[0][0]} ${pts[0][1]}`:''; let d=`M ${pts[0][0]} ${pts[0][1]}`; for(let i=0;i<pts.length-1;i++){ const p0=pts[i-1]||pts[i],p1=pts[i],p2=pts[i+1],p3=pts[i+2]||p2; const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6,c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6; d+=` C ${c1x} ${c1y} ${c2x} ${c2y} ${p2[0]} ${p2[1]}`; } return d; };
     this.buildGauge(); this.buildCotModal(); this.buildHoverChart(); this.buildChartModal(); this.buildPriceMeasureChart(); this.buildWinChartModal(); this.buildSeasonalCurveChart(); this.buildSeasYearChartModal();
   }
-  componentDidMount(){ this.refreshData(); this._t=setInterval(()=>this.refreshData(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000);
+  // Výchozí sezónní okno = aktuální měsíc; při přelomu měsíce v otevřené appce ho
+  // posuň (jen pokud ho uživatel neměnil). Pravidla AI alertů obnov s daty (ne jen 1× při startu).
+  periodicTick(){ this.refreshData();
+    try{ const st=this.state, m=new Date().getMonth()+1, a=this._winAutoMonth;
+      if(a&&m!==a&&st.winFromM===a&&st.winToM===a&&st.winFromD===1){ this._winAutoMonth=m; this.setState({winFromM:m,winToM:m,winToD:new Date(new Date().getFullYear(),m,0).getDate()}); } }catch(e){}
+    try{ if(!this.state.smartDraft&&!this.state.smartEditingId&&!this.state.smartBusy) this.loadSmartAlerts(); }catch(e){} }
+  componentDidMount(){ this._winAutoMonth=new Date().getMonth()+1; this.refreshData(); this._t=setInterval(()=>this.periodicTick(),5*60*1000); this._clk=setInterval(()=>this.forceUpdate(),1000);
     this.maybeLoadFullYearSeasonality();
     this.loadSmartAlerts();
     this.loadSeasonalRadarFromCache();
@@ -296,9 +303,10 @@ class FXApp extends React.Component{
         // nemusí ručně klikat "Spočítat", aby viděl, co appka už dávno ví
         // z historické křivky — jen když ještě nic nemá (ruční/cache výsledek
         // se nepřepisuje). Viz audit 2026-10-05.
-        if(!this.state.seasRadarResults){
+        if(!(this.state.seasRadarResults||[]).length){ // výchozí stav je [] — dřív !results na prázdném poli nikdy neplatil
           const srv=getSeasonalRadarServerState();
-          if(srv) this.setState({seasRadarResults:srv,seasRadarAt:Date.now(),seasRadarSource:'server'});
+          let at=null; try{ at=+localStorage.getItem('seasonal_radar_at')||null; }catch(e){}
+          if(srv) this.setState({seasRadarResults:srv,seasRadarAt:at||Date.now(),seasRadarSource:'server'});
         }
       }catch(e){}
       try{ await fetchActionVix(); }catch(e){}
@@ -326,7 +334,7 @@ class FXApp extends React.Component{
       this.CUR.forEach(c=>{ const s=sc[c]||{}; this.D[c]={
         score:+(s.score||0), fund:+(s.fund_score||0), policy:+(s.policy_adj||0), yield:+(s.yield_adj||0),
         cot:+(s.cot_score||0), sent:+(s.sent_score||0), season:+(s.season_score||0),
-        cotPct:(()=>{try{return getCOTPercentile(c);}catch(e){return 50;}})()||50,
+        cotPct:(()=>{try{return getCOTPercentile(c);}catch(e){return 50;}})()??50, // ?? — 0. percentil je platná hodnota (|| ho měnil na 50)
         cotPctDelta:(()=>{try{return getCOTPercentileChange(c);}catch(e){return null;}})(),
         chg7:(()=>{try{return getScoreChange(c,7);}catch(e){return 0;}})()||0,
         chg7d:(()=>{try{return (typeof getScoreChangeDetail==='function')?getScoreChangeDetail(c,7):null;}catch(e){return null;}})(),
@@ -420,11 +428,12 @@ class FXApp extends React.Component{
       this.buildJournal();
       // prices — živé ze serverového cronu (data/prices.json); statické jen jako fallback
       const STATIC_PX={USDJPY:157.2,EURUSD:1.084,GBPUSD:1.271,AUDUSD:0.664,NZDUSD:0.612,USDCAD:1.372,USDCHF:0.888,CHFJPY:177,GBPJPY:199.8,EURJPY:170.4,GBPAUD:1.914,EURAUD:1.632,XAUUSD:4300};
-      try{ const lp=getLivePrices(); this.PRICES=Object.assign({},STATIC_PX,lp); }catch(e){ this.PRICES=STATIC_PX; }
+      this.PRICES_LIVE={}; // jen skutečně živé ceny — pro AI Vision (STATIC_PX je pouze záložní zobrazení)
+      try{ const lp=getLivePrices(); this.PRICES_LIVE=Object.assign({},lp||{}); this.PRICES=Object.assign({},STATIC_PX,lp); }catch(e){ this.PRICES=STATIC_PX; }
       // XAUUSD NENÍ v STANDARD_PAIRS (viz engine.js) → getLivePrices() ho
       // nikdy nevrátí, vlastní zdroj (data/gold_price.json, viz výš).
-      try{ const gp=loadGoldPrice(); if(gp&&Number.isFinite(gp.current)) this.PRICES.XAUUSD=gp.current; }catch(e){}
-      this.setState({loaded:Date.now()});
+      try{ const gp=loadGoldPrice(); if(gp&&Number.isFinite(gp.current)){ this.PRICES.XAUUSD=gp.current; this.PRICES_LIVE.XAUUSD=gp.current; } }catch(e){}
+      this.setState({loaded:Date.now(),err:''});
     }catch(e){ console.error('refreshData',e); this.setState({loaded:Date.now(),err:String(e&&e.message||e)}); }
   }
   // Vyžádaný refresh přímo z živého ForexFactory feedu (bez GitHub cronu) —
@@ -505,7 +514,7 @@ class FXApp extends React.Component{
     // EVENT_RULES) — stejné kritérium jako getImminentHigh/status tečka ("Dnes proběhlo").
     // Bez téhle druhé podmínky mohla tečka zmodrat kvůli eventu, co FF označí Low (žlutě),
     // ale Daily Brief/Dnešní přehled ho mlčky vynechaly — tečka bez vysvětlení.
-    return ev.filter(x=>{const t=parseEventTime(x.time);if(!(t>=s.getTime()&&t<=e.getTime()))return false;const im=impUp(x.impact);return im==='HIGH'||im==='MEDIUM'||(typeof evIsHighImpact==='function'&&evIsHighImpact(x));})
+    return ev.filter(x=>{const t=parseEventTime(x.time);if(!(t>=s.getTime()&&t<=e.getTime()))return false;const im=impUp(x.impact);if(ev2ccy(x)==='CNY'&&im!=='HIGH')return false; /* CNY jen nepřímo (AUD/NZD) — střední čínská data jsou šum */ return im==='HIGH'||im==='MEDIUM'||(typeof evIsHighImpact==='function'&&evIsHighImpact(x));})
       .sort((a,b)=>parseEventTime(a.time)-parseEventTime(b.time))
       .map(x=>{ let dir=0; try{ dir=(typeof eventDirection==='function')?eventDirection(x):0; }catch(e){}
         const act=(x.actual!=null&&String(x.actual).trim()!=='')?String(x.actual).trim():'';
@@ -542,7 +551,7 @@ class FXApp extends React.Component{
     // Ověření edge podle kontextu appky (stejná logika jako Classic) — jen na uzavřených obchodech s ctx
     this.journalEdge={
       byConvHi: jStat(closed.filter(t=>(t.ctx&&t.ctx.conviction||0)>=3)),
-      byConvLo: jStat(closed.filter(t=>(t.ctx&&t.ctx.conviction||0)<3)),
+      byConvLo: jStat(closed.filter(t=>typeof (t.ctx&&t.ctx.conviction)==='number'&&t.ctx.conviction<3)), // bez údaje ≠ 0★
       bandSweet: jStat(closed.filter(t=>t.ctx&&t.ctx.band==='sweetspot')),
       bandStrong: jStat(closed.filter(t=>t.ctx&&t.ctx.band==='silný')),
       bandWeak: jStat(closed.filter(t=>t.ctx&&t.ctx.band==='slabý')),
@@ -785,7 +794,10 @@ class FXApp extends React.Component{
       if(after&&after===before) this.setState({dataMsg:'✅ COT zkontrolováno — novější report zatím není (CFTC vydává týdně v pátek; kolem US svátků se zpozdí). Datum: '+after});
       else this.setState({dataMsg:'✅ COT aktualizováno na '+(after||'nyní')}); }
     catch(e){ this.setState({dataMsg:'⚠ COT stažení selhalo: '+(e&&e.message||e)+' — zkus za chvíli (CORS/proxy).'}); } this.setState({cotBusy:false}); }
-  async fetchRetailNow(){ this.setState({retailBusy:true,dataMsg:'⏳ Stahuji retail sentiment…'}); try{ const res=await fetchRetailSentiment(); const rs=res&&res.sentData||res; saveSentiment(rs); try{saveRetailSnapshot(rs);}catch(e){} await this.refreshData(); this.setState({dataMsg:'✅ Retail aktualizován · '+((res&&res.method)||'CFTC')}); }catch(e){ try{const d=deriveRetailFromCOTData();saveSentiment(d);saveRetailSnapshot(d);await this.refreshData();}catch(e2){} this.setState({dataMsg:'⚠ Retail auto selhal, použita záloha z COT.'}); } this.setState({retailBusy:false}); }
+  // Skóre čte serverový retail (data/retail_hist.json, stejný pro všechna zařízení) —
+  // dřív tlačítko stahovalo vlastní lokální retail, který skóre ignorovalo, takže
+  // kliknutí nic nezměnilo. Teď znovu načte serverový bod a ukáže jeho stáří.
+  async fetchRetailNow(){ this.setState({retailBusy:true,dataMsg:'⏳ Načítám retail sentiment ze serveru…'}); try{ await this.refreshData(); const t=(typeof _RETAIL_LATEST!=='undefined'&&_RETAIL_LATEST)?Date.parse(_RETAIL_LATEST.t):NaN; this.setState({dataMsg:Number.isFinite(t)?('✅ Retail ze serveru · bod z '+new Date(t).toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})+' ('+Math.round((Date.now()-t)/60000)+' min) · obnova každých ~15 min'):'⚠ Serverový retail se nepodařilo načíst.'}); }catch(e){ this.setState({dataMsg:'⚠ Retail se nepodařilo načíst.'}); } this.setState({retailBusy:false}); }
   jSet(k,v){ this.setState(s=>({jForm:Object.assign({},s.jForm,{[k]:v})})); }
   // Vynutí znaménko R podle Výsledku (win/loss jsou jednoznačné) — chrání proti
   // překlepu typu "Ztráta" + R "1" místo "-1", který by equity křivku ukázal obráceně.
@@ -1006,7 +1018,7 @@ class FXApp extends React.Component{
     this.setState({aiBusy:true,aiErr:'',aiResult:null});
     try{
       const b64=await fileToBase64(file); const mt=file.type||'image/png'; const p=this.pairObj(this.state.sel)||{};
-      const _cp=((this.state.aiPrice||'').trim())||(this.PRICES[p.pair]!=null?String(this.PRICES[p.pair]):'');
+      const _cp=((this.state.aiPrice||'').trim())||((this.PRICES_LIVE||{})[p.pair]!=null?String(this.PRICES_LIVE[p.pair]):''); // bez živé ceny raději nic než napevno zadaná stará cena
       const ctx=['Pair: '+(p.pair||'?')+', Timeframe: '+this.state.aiTf2, _cp?('Current price: '+_cp+' — THIS IS THE ANCHOR. Read every price level directly from the chart price axis. All key_levels, entry_zone, stop_loss and take_profit MUST be numerically close to this current price and use the same decimal scale. Never output levels far from the current price.'):'Read every price level directly from the chart price axis; never invent levels that are far from what the axis shows.', p.pair?('Fundamental bias from FX Analyzer: '+p.dir+', diff '+(+p.diff).toFixed(2)):null,'Return ONLY the JSON.'].filter(Boolean).join('\n');
       const manual=(localStorage.getItem('or_model')||'').trim();
       const qrank=id=>{ id=(id||'').toLowerCase(); let s=0; if(id.includes('gemini'))s+=50; if(id.includes('qwen')&&id.includes('vl'))s+=30; if(id.includes('90b'))s+=40; if(id.includes('72b'))s+=38; if(id.includes('32b'))s+=20; if(id.includes('11b'))s+=8; if(id.includes('7b'))s+=4; return s; };
@@ -1663,7 +1675,7 @@ class FXApp extends React.Component{
     const stanceLabel=ps=>ps>0?'JESTŘÁBÍ +'+ps:ps<0?'HOLUBIČÍ '+ps:'NEUTRÁLNÍ';
     return h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('🏦 Centrální banky — postoj & sazby','Auto z kalendáře (rozhodnutí o sazbách) · ruční override možný'),
       h('div',{style:{fontSize:11,color:T.dim,background:'rgba(46,211,160,.07)',border:'1px solid rgba(46,211,160,.2)',borderRadius:9,padding:'9px 11px',marginBottom:13,lineHeight:1.5}},'🔄 Sazby, CPI i policy cyklus se aktualizují ',h('b',{style:{color:T.green}},'automaticky'),' z kalendáře, jakmile vyjde výsledek zasedání (actual). Ručně přepisuj jen když chceš předběhnout kalendář.',
-        h('div',{style:{marginTop:6}},'Poslední update: '+new Date().toLocaleDateString('cs-CZ')+(nextDec.length?' · Další významná rozhodnutí: '+nextDec.join(', '):'')),
+        h('div',{style:{marginTop:6}},'Poslední automatická změna: '+(last&&last.at?new Date(last.at).toLocaleString('cs-CZ',{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'})+(last.items&&last.items.length?' ('+last.items.slice(0,3).join(', ')+')':''):'zatím žádná')+(nextDec.length?' · Další významná rozhodnutí: '+nextDec.join(', '):'')),
         last&&last.items&&last.items.length?h('div',{style:{marginTop:4,color:T.green}},'Naposledy auto: '+last.items.join(', ')+' · '+new Date(last.at).toLocaleDateString('cs-CZ')):null),
       h('div',{style:{display:'grid',gridTemplateColumns:'46px 88px 128px 1fr 84px',gap:10,padding:'0 0 8px',borderBottom:'1px solid #1b2130',fontSize:9.5,fontWeight:700,letterSpacing:'.06em',color:T.faint}},['MĚNA','SAZBA','POSTOJ','KOMENTÁŘ','SÍLA POSTOJE'].map(x=>h('span',{key:x},x))),
       h('div',{style:{display:'flex',flexDirection:'column',gap:2}},this.CUR.map(c=>{ const ps=(pol[c]&&pol[c].score)||0; const pc=ps>0?T.green:ps<0?T.red:T.amber;
@@ -2666,7 +2678,7 @@ class FXApp extends React.Component{
     let cotMeta={},histN=0; try{cotMeta=loadCOTMeta()||{};}catch(e){} try{histN=Object.keys(loadCOTHistory()||{}).length;}catch(e){}
     const cotAge=cotMeta&&cotMeta.asOf?Math.round((Date.now()-new Date(cotMeta.asOf).getTime())/86400000):null;
     const retailPt=(this._retailHist||[]).slice(-1)[0]||null;
-    const retailAgeH=(retailPt&&retailPt.t)?Math.round((Date.now()-retailPt.t)/3600000):null;
+    const retailAgeH=(retailPt&&retailPt.t&&Number.isFinite(Date.parse(retailPt.t)))?Math.round((Date.now()-Date.parse(retailPt.t))/3600000):null; // t je ISO text (dřív „před NaN h“)
     const cal=this._cal||[],up=this._up||[]; let full=[]; try{full=mergeEvents(cal,up)||[];}catch(e){full=up;}
     const weekEnd=Date.now()+7*86400000;
     const nextHigh=full.filter(e=>{const t=parseEventTime(e.time);return !isNaN(t)&&t>=Date.now()&&t<=weekEnd&&impUp(e.impact)==='HIGH';}).length;
@@ -2691,7 +2703,7 @@ class FXApp extends React.Component{
         h('div',{style:self.mono({fontSize:12.5,fontWeight:700,color:T.text,paddingLeft:13})},r.value))),
       h('div',{style:{fontSize:9.5,color:T.faint,lineHeight:1.5,marginTop:10,paddingTop:10,borderTop:'1px solid #161b27'}},'Přesně tohle (skóre, COT, retail, kalendář, pozice a deník) jde do promptu při každé zprávě — Coach neodpovídá z obecných znalostí.'));
   }
-  renderBiasCard(){ const self=this,h=this.h,T=this.tok; const top=this.PAIRS[0]; if(!top) return null; const conf=Math.min(100,Math.round(top.diff/12*100)); const posEntries=Object.entries(this.state.pos).filter(([,s])=>s&&s!=='none'); const dc=top.dir==='BUY'?T.green:T.red;
+  renderBiasCard(){ const self=this,h=this.h,T=this.tok; const top=this.PAIRS[0]; if(!top) return null; const conf=Math.min(100,Math.round(top.diff/4*100)); /* měřítko z pásem skóre (silný ≥ 3 → 75 %); dřív /12 → max ~17 % */ const posEntries=Object.entries(this.state.pos).filter(([,s])=>s&&s!=='none'); const dc=top.dir==='BUY'?T.green:T.red;
     // Risk regime tile — VIX (primární zdroj, viz computeAutoRiskSentiment v
     // engine.js) s fallbackem na cenové momentum, když VIX data ještě nedorazila.
     let vixData=null; try{ vixData=(typeof _VIX_LATEST!=='undefined')?_VIX_LATEST:null; }catch(e){}
@@ -3014,7 +3026,7 @@ class FXApp extends React.Component{
         if(!fr.length) return null;
         const col=l=>l==='ok'?T.green:l==='warn'?T.amber:T.red;
         const fmt=x=>x.hours==null?'bez dat':x.hours<1?Math.round(x.hours*60)+' min':x.hours<48?x.hours.toFixed(0)+' h':(x.hours/24).toFixed(0)+' dní';
-        const hint={'Ceny':'ECB kurz (Frankfurter) — 1× za pracovní den kolem 16:00 SEČ, o víkendu se nepublikuje. Přes víkend/v pondělí dopoledne je tak zcela normální ukazovat páteční hodnotu.'};
+        const hint={'Ceny':'Yahoo Finance, obnova každých ~15 min (záložně ECB/Frankfurter). Ve všední den je víc než 1 h stáří varování; o víkendu je FX zavřený a páteční hodnota je normální.'};
         let dg=null; try{dg=getEngineDiagnostics();}catch(e){}
         return h('div',{style:self.card({padding:'16px 20px',marginBottom:16})},self.ptitle('📡 Stav dat','Stáří zdrojů · zelená čerstvé, jantar pozor, červená zastaralé'),
           h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(110px,1fr))',gap:8}},fr.map(x=>h('div',{key:x.label,title:hint[x.label]||'',style:{display:'flex',alignItems:'center',gap:7,fontSize:11.5}},h('span',{style:{width:8,height:8,borderRadius:'50%',background:col(x.level),flex:'none'}}),h('span',{style:{color:T.dim}},x.label),h('b',{style:self.mono({fontSize:11,color:col(x.level),marginLeft:'auto'})},fmt(x))))),
@@ -3277,7 +3289,13 @@ class FXApp extends React.Component{
           }),style:{position:'relative',display:'flex',alignItems:'center',gap:11,width:'100%',border:0,background:on?'rgba(94,124,251,.10)':'transparent',color:on?'#eef1f6':'#9aa3b2',borderRadius:10,padding:'10px 12px 10px 15px',fontFamily:'inherit',fontSize:13,fontWeight:600,cursor:'pointer',textAlign:'left'}},h('span',{style:{position:'absolute',left:0,top:'50%',transform:'translateY(-50%)',width:3,height:15,borderRadius:'0 3px 3px 0',background:on?T.accent:'transparent'}}),h('svg',{width:15,height:15,viewBox:'0 0 24 24',fill:'none',stroke:on?T.accent:'#454f63',strokeWidth:1.9,strokeLinecap:'round',strokeLinejoin:'round',style:{flex:'none'},dangerouslySetInnerHTML:{__html:NAV_ICONS[t.id]||''}}),t.label);})))),
       h('div',{style:{marginTop:'auto'}},this.renderBiasCard()));
     const header=h('header',{style:{position:'sticky',top:0,zIndex:8,display:'flex',alignItems:'center',justifyContent:'space-between',gap:14,flexWrap:'wrap',padding:'14px 22px',background:'rgba(7,8,12,.72)',backdropFilter:'blur(14px)',boxShadow:'0 1px 0 #161b27,0 14px 30px rgba(0,0,0,.18)'}},
-      h('div',null,h('div',{style:{display:'flex',alignItems:'center',gap:11}},h('h1',{style:{margin:0,fontSize:19,fontWeight:800,letterSpacing:'-.01em'}},titles[st.tab]),h('span',{style:{display:'inline-flex',alignItems:'center',gap:6,fontFamily:"'JetBrains Mono',monospace",fontSize:10,fontWeight:600,color:'#2ed3a0',background:'rgba(46,211,160,.1)',border:'1px solid rgba(46,211,160,.22)',borderRadius:999,padding:'3px 9px'}},h('span',{style:{width:6,height:6,borderRadius:'50%',background:'#2ed3a0',animation:'fxpulse 1.8s infinite'}}),'LIVE')),h('div',{style:{fontSize:12,color:T.dim,marginTop:3}},subs[st.tab])),
+      h('div',null,h('div',{style:{display:'flex',alignItems:'center',gap:11}},h('h1',{style:{margin:0,fontSize:19,fontWeight:800,letterSpacing:'-.01em'}},titles[st.tab]),(()=>{ // „LIVE“ podle stáří klíčových zdrojů a chyby obnovení (dřív napevno zelené)
+        let fr=[]; try{fr=(getDataFreshness()||[]).filter(x=>['Kalendář','COT','Ceny'].includes(x.label));}catch(e){}
+        const lv=st.err?'bad':fr.some(x=>x.level==='bad')?'bad':fr.some(x=>x.level==='warn')?'warn':'ok';
+        const c=lv==='ok'?'#2ed3a0':lv==='warn'?'#e8ab3f':'#f2606e', rgb=lv==='ok'?'46,211,160':lv==='warn'?'232,171,63':'242,96,110';
+        const txt=st.err?'CHYBA':lv==='ok'?'LIVE':lv==='warn'?'ZPOŽDĚNO':'ZASTARALÉ';
+        const tip=(st.err?'Obnovení dat selhalo: '+st.err+'\n':'')+fr.map(x=>x.label+': '+(x.hours==null?'bez dat':x.hours<1?Math.round(x.hours*60)+' min':x.hours.toFixed(0)+' h')).join(' · ');
+        return h('span',{title:tip,style:{display:'inline-flex',alignItems:'center',gap:6,fontFamily:"'JetBrains Mono',monospace",fontSize:10,fontWeight:600,color:c,background:'rgba('+rgb+',.1)',border:'1px solid rgba('+rgb+',.22)',borderRadius:999,padding:'3px 9px'}},h('span',{style:{width:6,height:6,borderRadius:'50%',background:c,animation:lv==='ok'?'fxpulse 1.8s infinite':'none'}}),txt); })()),h('div',{style:{fontSize:12,color:T.dim,marginTop:3}},subs[st.tab])),
       h('div',{style:{display:'flex',alignItems:'center',gap:10}},h('div',{style:{textAlign:'right',fontFamily:"'JetBrains Mono',monospace",lineHeight:1.25}},h('div',{style:{fontSize:13,fontWeight:600,color:'#cfd6e2'}},clock),h('div',{style:{fontSize:10,color:T.faint}},this.today()+' · Praha')),h('button',{type:'button',onClick:()=>this.refreshData(),style:{display:'flex',alignItems:'center',gap:7,border:'1px solid #232b3d',background:'linear-gradient(180deg,#12151d,#0d0f16)',color:'#cfd6e2',borderRadius:10,padding:'9px 14px',fontFamily:'inherit',fontSize:12.5,fontWeight:700,cursor:'pointer'}},'↻ Refresh')));
     // Malá skóre-diff historie (base−quote), sdílená pro mini-sparkline u všech
     // řádků seznamu — spočtená jednou pro celý render, ne per-řádek.
