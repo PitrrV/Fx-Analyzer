@@ -2320,7 +2320,7 @@ function autoDetectCBPolicy(currency,rateHistory){
 // Volá se automaticky při každém načtení kalendáře (bez extra API)
 function autoUpdateFromCalendar(calData){
   if(!calData||!calData.length) return{updated:[]};
-  const updated=[];
+  const updated=[]; const changedCur=new Set();
 
   // 1. CB Sazby z Interest Rate Decision eventů
   const{rates:cbRates,histories:cbHistories}=extractCBRatesFromCalendar(calData);
@@ -2329,7 +2329,7 @@ function autoUpdateFromCalendar(calData){
     for(const [cur,rate] of Object.entries(cbRates)){
       if(CENTRAL_BANK_RATES[cur]!==rate){
         CENTRAL_BANK_RATES[cur]=rate;
-        ratesChanged=true;
+        ratesChanged=true; changedCur.add(cur);
       }
     }
     if(ratesChanged){
@@ -2369,9 +2369,11 @@ function autoUpdateFromCalendar(calData){
     if(history.length>=2){
       const detected=autoDetectCBPolicy(cur,history);
       const current=CB_POLICY_DATA[cur]||{};
-      if(current.score!==detected.score||detected.auto){
+      // Dřív "||detected.auto" (vždy true) → změna se hlásila při každém obnovení
+      // a "Poslední automatická změna" ukazovala čas obnovení.
+      if(current.score!==detected.score||current.label!==detected.label){
         CB_POLICY_DATA[cur]={...current,...detected};
-        policyChanged=true;
+        policyChanged=true; changedCur.add(cur);
       }
     }
   }
@@ -2390,7 +2392,10 @@ function autoUpdateFromCalendar(calData){
   try{localStorage.setItem("auto_update_ts",new Date().toISOString());
       localStorage.setItem("auto_update_log",JSON.stringify(updated));}catch(e){}
 
-  return{updated,cbRates,cpiData};
+  // Datum rozhodnutí CB (čas události), ne čas obnovení — pro „Poslední automatickou změnu“.
+  let decisionAt=null, decisionCur=null;
+  for(const cur of changedCur){ const h=cbHistories[cur]; const t=h&&h.length?h[h.length-1].date:null; if(t&&(!decisionAt||parseEventTime(t)>parseEventTime(decisionAt))){ decisionAt=t; decisionCur=cur; } }
+  return{updated,cbRates,cpiData,decisionAt,decisionCur};
 }
 
 function getAutoUpdateStatus(){

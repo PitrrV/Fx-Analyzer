@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0"></script>
-<script src="engine.js?v=20261020e"></script>
+<script src="engine.js?v=20261020f"></script>
 <script src="sync.js?v=20261020b"></script>
 <style>
 *{box-sizing:border-box}
@@ -295,7 +295,7 @@ class FXApp extends React.Component{
       const calScoring=capEventsWindow(cal,FUND_HIST_WINDOW_WEEKS); // stejné okno pro skórování na každém zařízení — viz engine.js
       if(calSource==='fmp'||calSource==='finnhub') g_fundConfidence=1; else g_fundConfidence=ffConfidence(cal); // action: podle skutečného pokrytí historie
       try{ g_calSource=calSource||'ff-hist'; }catch(e){}
-      try{ const upd=autoUpdateFromCalendar(cal); const list=(upd&&upd.updated)||[]; if(list.some(x=>/CB Sazby|CPI|Policy/i.test(x))){ try{ const prev=JSON.parse(localStorage.getItem('cb_last_auto')||'null')||{}; localStorage.setItem('cb_last_auto',JSON.stringify({items:list,at:new Date().toISOString()})); }catch(e){} } }catch(e){}
+      try{ const upd=autoUpdateFromCalendar(cal); const list=(upd&&upd.updated)||[]; if(list.some(x=>/CB Sazby|CPI|Policy/i.test(x))){ try{ const prev=JSON.parse(localStorage.getItem('cb_last_auto')||'null')||{}; const at=upd.decisionAt?new Date(parseEventTime(upd.decisionAt)).toISOString():(prev.at||new Date().toISOString()); localStorage.setItem('cb_last_auto',JSON.stringify({items:list,at,cur:upd.decisionCur||prev.cur||null})); }catch(e){} } }catch(e){}
       const av=(localStorage.getItem('av')||'').trim(); if(av){ try{ await fetchOilPrice(av); }catch(e){} }
       try{ await fetchActionOil(); }catch(e){}
       try{ await fetchActionPrices(); }catch(e){}
@@ -1677,7 +1677,7 @@ class FXApp extends React.Component{
     const stanceLabel=ps=>ps>0?'JESTŘÁBÍ +'+ps:ps<0?'HOLUBIČÍ '+ps:'NEUTRÁLNÍ';
     return h('div',{style:self.card({padding:'18px 20px'})},self.ptitle('🏦 Centrální banky — postoj & sazby','Auto z kalendáře (rozhodnutí o sazbách) · ruční override možný'),
       h('div',{style:{fontSize:11,color:T.dim,background:'rgba(46,211,160,.07)',border:'1px solid rgba(46,211,160,.2)',borderRadius:9,padding:'9px 11px',marginBottom:13,lineHeight:1.5}},'🔄 Sazby, CPI i policy cyklus se aktualizují ',h('b',{style:{color:T.green}},'automaticky'),' z kalendáře, jakmile vyjde výsledek zasedání (actual). Ručně přepisuj jen když chceš předběhnout kalendář.',
-        h('div',{style:{marginTop:6}},'Poslední automatická změna: '+(last&&last.at?new Date(last.at).toLocaleString('cs-CZ',{day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'})+(last.items&&last.items.length?' ('+last.items.slice(0,3).join(', ')+')':''):'zatím žádná')+(nextDec.length?' · Další významná rozhodnutí: '+nextDec.join(', '):'')),
+        h('div',{style:{marginTop:6}},'Poslední automatická změna: '+(last&&last.at?(last.cur?last.cur+' rozhodnutí ':'')+new Date(last.at).toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric',year:'numeric'})+(last.items&&last.items.length?' ('+last.items.slice(0,3).join(', ')+')':''):'zatím žádná')+(nextDec.length?' · Další významná rozhodnutí: '+nextDec.join(', '):'')),
         last&&last.items&&last.items.length?h('div',{style:{marginTop:4,color:T.green}},'Naposledy auto: '+last.items.join(', ')+' · '+new Date(last.at).toLocaleDateString('cs-CZ')):null),
       h('div',{style:{display:'grid',gridTemplateColumns:'46px 88px 128px 1fr 84px',gap:10,padding:'0 0 8px',borderBottom:'1px solid #1b2130',fontSize:9.5,fontWeight:700,letterSpacing:'.06em',color:T.faint}},['MĚNA','SAZBA','POSTOJ','KOMENTÁŘ','SÍLA POSTOJE'].map(x=>h('span',{key:x},x))),
       h('div',{style:{display:'flex',flexDirection:'column',gap:2}},this.CUR.map(c=>{ const ps=(pol[c]&&pol[c].score)||0; const pc=ps>0?T.green:ps<0?T.red:T.amber;
