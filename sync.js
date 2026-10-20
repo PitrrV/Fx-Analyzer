@@ -57,6 +57,12 @@
       });
       return Object.values(m);
     }
+    if(key==="us100_retail_hist"){
+      // Body {t,l,s} nemají country/event/time — ffKey dával všem stejný klíč a
+      // sync slil celou historii do jednoho bodu. Dedupe podle času t.
+      const m=new Map();[...a,...b].forEach(p=>{ if(p&&p.t&&!m.has(p.t)) m.set(p.t,p); });
+      return [...m.values()].sort((x,y)=>Date.parse(x.t)-Date.parse(y.t)).slice(-1100);
+    }
     const m=new Map();[...a,...b].forEach(e=>{const k=ffKey(e);const p=m.get(k);if(!p||(!p.actual&&e.actual))m.set(k,e);});return [...m.values()]; // v5_ff_hist: dedupe, preferuj s actual
   }
   function mergeObj(key,a,b){

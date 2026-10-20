@@ -106,6 +106,18 @@ function norm(e) {
     if (!p || (!p.actual && n.actual)) map.set(k, n);
   }
   const events = [...map.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
+  // Scrape občas vrátí událost bez actual, kterou předchozí běh už měl (počet
+  // actual mezi běhy "blikal" 407→402→405→402) — převzít dřív známé hodnoty.
+  let prevCal = null;
+  try { prevCal = JSON.parse(fs.readFileSync("data/calendar.json", "utf8")); } catch (e) {}
+  if (prevCal && Array.isArray(prevCal.events)) {
+    const pk = new Map(prevCal.events.map((e) => [e.title + "|" + e.country + "|" + e.date, e]));
+    for (const e of events) {
+      const p = pk.get(e.title + "|" + e.country + "|" + e.date);
+      if (!p) continue;
+      for (const f of ["actual", "forecast", "previous"]) if (!e[f] && p[f]) e[f] = p[f];
+    }
+  }
   const withActual = events.filter((e) => e.actual).length;
   console.log("=== VÝSLEDEK ===  událostí:", events.length, "· s actual:", withActual);
   console.log("ukázka s actual:", JSON.stringify(events.find((e) => e.actual) || {}));
@@ -120,8 +132,14 @@ function norm(e) {
   if (prevCount && events.length < prevCount * 0.7) { console.error(`Neúplné stažení: ${events.length} vs předchozích ${prevCount} — nepřepisuju.`); process.exit(1); }
   if (!inRange(nowMs, nowMs + WEEK) || !inRange(nowMs + WEEK, nowMs + 2 * WEEK)) { console.error("Chybí příští 1–2 týdny — nepřepisuju."); process.exit(1); }
   fs.mkdirSync("data", { recursive: true });
-  fs.writeFileSync("data/calendar.json", JSON.stringify({ updated: new Date().toISOString(), source: "forexfactory-web", count: events.length, withActual, events }));
-  console.log("Zapsáno data/calendar.json");
+  // Zapsat jen při skutečné změně událostí — dřív se každých 15 min commitovalo
+  // jen kvůli poli "updated" (audit 4.7: ~5 400 commitů týdně).
+  if (prevCal && JSON.stringify(prevCal.events) === JSON.stringify(events)) {
+    console.log("calendar.json: události beze změny, nepřepisuji.");
+  } else {
+    fs.writeFileSync("data/calendar.json", JSON.stringify({ updated: new Date().toISOString(), source: "forexfactory-web", count: events.length, withActual: events.filter((e) => e.actual).length, events }));
+    console.log("Zapsáno data/calendar.json");
+  }
 
   // ── Akumulovaná historie (data/calendar_hist.json) ──────────────────────
   // data/calendar.json je jen ROLLING okno (~8 týdnů, tenhle cron ho každý běh
@@ -161,6 +179,7 @@ function norm(e) {
   histEvents = histEvents.filter((e) => { const t = new Date(e.date).getTime(); return isNaN(t) || t >= cutoff; });
   histEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
   if (histEvents.length > HIST_CAP) histEvents = histEvents.slice(histEvents.length - HIST_CAP);
+  if (JSON.stringify(hist.events) === JSON.stringify(histEvents)) { console.log("calendar_hist.json: beze změny, nepřepisuji."); return; }
   hist.events = histEvents;
   hist.updated = new Date().toISOString();
   hist.eventsTotal = histEvents.length;
