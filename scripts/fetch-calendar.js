@@ -79,7 +79,7 @@ function norm(e) {
 
 (async () => {
   const now = new Date();
-  let rawEvents = [];
+  let rawEvents = [], okWeeks = 0;
   // Širší zpětné okno: rozhodnutí CB o sazbách (á ~6 týdnů) zůstanou v kalendáři
   // dostatečně dlouho, aby je auto-update stihl zachytit a uložit do v5_cb_rates.
   for (const off of [-42, -35, -28, -21, -14, -7, 0, 7, 14]) {
@@ -90,6 +90,7 @@ function norm(e) {
       const days = extractDays(html);
       let n = 0;
       for (const d of days) for (const e of (d.events || [])) if (e && e.name) { e._dd = d.dateline; rawEvents.push(e); n++; }
+      if (n > 0) okWeeks++;
       console.log(`FF ${wp}: status=${r.status} days=${days.length} events=${n}`);
     } catch (e) { console.log(`FF ${wp}: ERR ${e.message}`); }
     await sleep(1500);
@@ -110,6 +111,14 @@ function norm(e) {
   console.log("ukázka s actual:", JSON.stringify(events.find((e) => e.actual) || {}));
 
   if (events.length < 20) { console.error("Příliš málo událostí — nepřepisuju."); process.exit(1); }
+  // Pojistka proti neúplnému stažení (dřív jen "aspoň 20", běžně ~886): nezapisovat,
+  // když počet klesne pod 70 % předchozího nebo chybí některý z příštích 2 týdnů.
+  let prevCount = 0;
+  try { prevCount = (JSON.parse(fs.readFileSync("data/calendar.json", "utf8")).events || []).length; } catch (e) {}
+  const inRange = (a, b) => events.some((e) => { const t = new Date(e.date).getTime(); return t >= a && t < b; });
+  const nowMs = now.getTime(), WEEK = 7 * 86400000;
+  if (prevCount && events.length < prevCount * 0.7) { console.error(`Neúplné stažení: ${events.length} vs předchozích ${prevCount} — nepřepisuju.`); process.exit(1); }
+  if (!inRange(nowMs, nowMs + WEEK) || !inRange(nowMs + WEEK, nowMs + 2 * WEEK)) { console.error("Chybí příští 1–2 týdny — nepřepisuju."); process.exit(1); }
   fs.mkdirSync("data", { recursive: true });
   fs.writeFileSync("data/calendar.json", JSON.stringify({ updated: new Date().toISOString(), source: "forexfactory-web", count: events.length, withActual, events }));
   console.log("Zapsáno data/calendar.json");
@@ -137,6 +146,16 @@ function norm(e) {
     const k = evKey(e), prev = histMap.get(k);
     if (!prev || (!prev.actual && e.actual) || (!prev.forecast && e.forecast) || (!prev.previous && e.previous)) histMap.set(k, e);
   }
+  // Přeplánované události: budoucí/nedávný záznam bez actual, který čerstvé okno
+  // (všech 9 týdnů staženo) už neobsahuje, je fantom (NZ CPI 19.10. → 21.10.).
+  const freshKeys = new Set(events.map(evKey));
+  const fMin = Math.min(...events.map((e) => new Date(e.date).getTime())), fMax = Math.max(...events.map((e) => new Date(e.date).getTime()));
+  let phantoms = 0;
+  if (okWeeks === 9) for (const [k, e] of histMap) {
+    const t = new Date(e.date).getTime();
+    if (!e.actual && t >= fMin && t <= fMax && !freshKeys.has(k)) { histMap.delete(k); phantoms++; }
+  }
+  console.log("Fantomové (přeplánované) události odstraněny:", phantoms, okWeeks === 9 ? "" : "(přeskočeno — nestaženy všechny týdny)");
   let histEvents = [...histMap.values()];
   const cutoff = Date.now() - HIST_MONTHS * 30 * 86400000;
   histEvents = histEvents.filter((e) => { const t = new Date(e.date).getTime(); return isNaN(t) || t >= cutoff; });

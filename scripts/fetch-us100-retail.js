@@ -10,6 +10,24 @@
 // jen přesně 6 velkých písmen, "NAS100" má číslice) — tenhle skript ten filtr
 // nemá, protože cílí přímo na jeden konkrétní symbol.
 const fs = require("fs");
+// Retence: posledních 3 dní plné rozlišení (~15 min), starší body zhuštěné na
+// 1 za hodinu, max 45 dní. Dřív slice(-1100) = jen ~11 dní při 15min cronu
+// (komentář tvrdil ~45 dní); zhuštění drží velikost souboru zhruba stejnou.
+function compactPoints(points) {
+  const now = Date.now(), FULL = 3 * 86400000, KEEP = 45 * 86400000;
+  const out = [], seenHour = new Set();
+  for (let i = points.length - 1; i >= 0; i--) {
+    const p = points[i], t = Date.parse(p && p.t);
+    if (!Number.isFinite(t)) continue;
+    const age = now - t;
+    if (age > KEEP) break;
+    if (age <= FULL) { out.push(p); continue; }
+    const h = new Date(t).toISOString().slice(0, 13);
+    if (seenHour.has(h)) continue;
+    seenHour.add(h); out.push(p);
+  }
+  return out.reverse();
+}
 
 const UA = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -60,7 +78,7 @@ async function fetchRetail() {
   }
 
   store.points.push({ t: new Date().toISOString(), l: retail.l, s: retail.s });
-  store.points = store.points.slice(-1100); // ~45 dní bodů po 30 min, stejná retence jako data/retail_hist.json
+  store.points = compactPoints(store.points); // stejná retence jako data/retail_hist.json
   store.symbol = "NAS100";
   store.updated = new Date().toISOString();
 
