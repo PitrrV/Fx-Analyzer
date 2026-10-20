@@ -105,7 +105,12 @@ function norm(e) {
     const p = map.get(k);
     if (!p || (!p.actual && n.actual)) map.set(k, n);
   }
-  const events = [...map.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
+  // Pevné okno podle UTC dne (−41 až +21 dní): okraje stahovaných týdnů se mezi běhy
+  // posouvaly o den (jednou události z 8. 9., podruhé z 10. 11.) → 878/879 událostí
+  // a commit dvakrát za hodinu. Okno se mění jen o půlnoci UTC.
+  const day0 = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const winFrom = day0 - 41 * 86400000, winTo = day0 + 21 * 86400000;
+  const events = [...map.values()].filter((e) => { const t = new Date(e.date).getTime(); return t >= winFrom && t < winTo; }).sort((a, b) => new Date(a.date) - new Date(b.date));
   // Scrape občas vrátí událost bez actual, kterou předchozí běh už měl (počet
   // actual mezi běhy "blikal" 407→402→405→402) — převzít dřív známé hodnoty.
   let prevCal = null;
@@ -145,7 +150,19 @@ function norm(e) {
   fs.mkdirSync("data", { recursive: true });
   // Zapsat jen při skutečné změně událostí — dřív se každých 15 min commitovalo
   // jen kvůli poli "updated" (audit 4.7: ~5 400 commitů týdně).
-  if (prevCal && JSON.stringify(prevCal.events) === JSON.stringify(events)) {
+  // Za "beze změny" se počítá i případ, kdy jediný rozdíl je budoucí událost bez actual,
+  // jejíž datum ForexFactory mezi stránkami přeskakuje (JPY Final Manufacturing PMI
+  // 2. vs 5. 11. → commit dvakrát za hodinu). Skutečné přeplánování se zapíše s
+  // nejbližší jinou změnou.
+  const flipOnly = (() => {
+    if (!prevCal || !Array.isArray(prevCal.events)) return false;
+    const key = (e) => JSON.stringify(e), A = new Set(prevCal.events.map(key)), B = new Set(events.map(key));
+    const onlyNew = events.filter((e) => !A.has(key(e))), onlyOld = prevCal.events.filter((e) => !B.has(key(e)));
+    if (!onlyNew.length || onlyNew.length !== onlyOld.length) return false;
+    return onlyNew.every((n) => !n.actual && Date.parse(n.date) > now.getTime() && onlyOld.some((o) => o.title === n.title && o.country === n.country && !o.actual && Math.abs(Date.parse(o.date) - Date.parse(n.date)) <= 7 * 86400000));
+  })();
+  if (flipOnly) console.log("calendar.json: jen přeskakující datum budoucí události, nepřepisuji.");
+  if (prevCal && (flipOnly || JSON.stringify(prevCal.events) === JSON.stringify(events))) {
     console.log("calendar.json: události beze změny, nepřepisuji.");
   } else {
     fs.writeFileSync("data/calendar.json", JSON.stringify({ updated: new Date().toISOString(), source: "forexfactory-web", count: events.length, withActual: events.filter((e) => e.actual).length, events }));
@@ -184,7 +201,17 @@ function norm(e) {
     const t = new Date(e.date).getTime();
     if (!e.actual && t >= fMin && t <= fMax && !freshKeys.has(k)) { histMap.delete(k); phantoms++; }
   }
-  console.log("Fantomové (přeplánované) události odstraněny:", phantoms, okWeeks === 9 ? "" : "(přeskočeno — nestaženy všechny týdny)");
+  // Starší fantomy mimo čerstvé okno: proběhlá událost bez actual, ke které existuje
+  // stejná událost s actual do ±3 dnů (French Trade Balance 7. 9. vs 8. 9.). ±3 dny
+  // < týden, ať se nesmažou týdenní události (Unemployment Claims).
+  const withAct = new Map();
+  for (const e of histMap.values()) if (e.actual) { const k = e.title + "|" + e.country; (withAct.get(k) || withAct.set(k, []).get(k)).push(Date.parse(e.date)); }
+  let oldPh = 0;
+  for (const [k, e] of histMap) {
+    const t = Date.parse(e.date), sib = withAct.get(e.title + "|" + e.country);
+    if (!e.actual && t < Date.now() && sib && sib.some((x) => x !== t && Math.abs(x - t) <= 3 * 86400000)) { histMap.delete(k); oldPh++; }
+  }
+  console.log("Fantomové (přeplánované) události odstraněny:", phantoms, okWeeks === 9 ? "" : "(přeskočeno — nestaženy všechny týdny)", "· starší dvojice:", oldPh);
   let histEvents = [...histMap.values()];
   const cutoff = Date.now() - HIST_MONTHS * 30 * 86400000;
   histEvents = histEvents.filter((e) => { const t = new Date(e.date).getTime(); return isNaN(t) || t >= cutoff; });

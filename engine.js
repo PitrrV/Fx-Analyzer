@@ -1804,9 +1804,12 @@ function ffHistorySpanMonths(events){
   for(const e of (events||[])){const t=new Date(e.time).getTime();if(!isNaN(t)&&t<=now){if(t<min)min=t;if(t>max)max=t;}}
   return isFinite(min)?(max-min)/(30*86400000):0;
 }
+// Podíl TÝDNŮ v okně FF_CONF_MONTHS, které mají aspoň jednu proběhlou událost — dřív
+// rozpětí nejstarší↔nejnovější, takže jedna stará událost + 6 týdnů dat dala 1,0.
 function ffConfidence(events){
-  const months=ffHistorySpanMonths(events);
-  const frac=Math.max(0,Math.min(1,months/FF_CONF_MONTHS));
+  const now=Date.now(), nW=Math.round(FF_CONF_MONTHS*4.345), from=now-nW*7*86400000, wk=new Set();
+  for(const e of (events||[])){ const t=new Date(e.time).getTime(); if(!isNaN(t)&&t<=now&&t>=from) wk.add(Math.floor((now-t)/(7*86400000))); }
+  const frac=Math.max(0,Math.min(1,wk.size/nW));
   return parseFloat((FF_FUND_DAMP+(1-FF_FUND_DAMP)*frac).toFixed(2));
 }
 
@@ -2535,7 +2538,7 @@ function buildForecastV5(pair,scores,calData,upcoming){
   const hoursToNews=getHoursToHighImpact(base,quote,upcoming);
   const newsKeep=hoursToNews<12?0.5:hoursToNews<24?0.67:hoursToNews<48?0.85:1;
   const preNews=prob; prob=50+(prob-50)*newsKeep;
-  const newsDiscount=-Math.round(Math.abs(preNews-prob));
+  const newsDiscount=-Math.round(Math.abs(preNews-prob))||0; // ||0: bez −0
   // Faktor 4: COT extreme korekce — SYMETRICKÁ pro base i quote; cotAdj je změna
   // JISTOTY ve směru biasu (záporné = méně jistě). Prahy přes else if (dřív nad 88
   // platilo −7 i +3 zároveň = −4).
@@ -3183,9 +3186,10 @@ async function fetchActionCalendar(){
 // skórovalo jen z ~8 týdnů calendar.json → reálný nález 19.10.2026: opačný bias
 // u 7 z 28 párů proti serveru/Telegram alertům. Drží se JEN v paměti (1,4 MB do
 // localStorage by narazilo na kvótu, viz _lsSetSafe), stahuje se 1× za načtení.
-let _calHistMem=null;
+let _calHistMem=null, _calHistAt=0;
 async function fetchActionCalendarHist(){
-  if(_calHistMem) return _calHistMem;
+  if(_calHistMem&&Date.now()-_calHistAt<6*3600000) return _calHistMem; // v dlouho otevřeném okně obnovit po 6 h
+  _calHistAt=Date.now();
   const use=(j)=>{ if(!j||!Array.isArray(j.events)||j.events.length<100) return null; _calHistMem=j.events.map(mapFFEvent).filter(e=>e&&e.event&&e.time&&ffIsTracked(e)); return _calHistMem; };
   try{
     const r=await fetch("data/calendar_hist.json?h="+Math.floor(Date.now()/3600000));
@@ -3206,7 +3210,9 @@ function unionCalHistory(cal,extra){
   for(const e of extra){ if(!e.actual&&new Date(e.time).getTime()>=recent) continue; map.set(ffHistKey(e),e); }
   for(const e of (cal||[])){
     const k=ffHistKey(e),prev=map.get(k);
-    map.set(k,prev?{...prev,...Object.fromEntries(Object.entries(e).filter(([,v])=>v!==""&&v!=null))}:e);
+    // Lokál doplní chybějící pole, ale u "actual" má přednost server (revize, např.
+    // ADP 29,0K lokálně vs. 30,5K na serveru — dřív vyhrával lokál).
+    map.set(k,prev?{...prev,...Object.fromEntries(Object.entries(e).filter(([f,v])=>v!==""&&v!=null&&!(f==="actual"&&prev.actual))),}:e);
   }
   return [...map.values()].sort((a,b)=>new Date(a.time)-new Date(b.time));
 }
@@ -3750,7 +3756,7 @@ function computeWindowAvgPath(daily,startM,startD,endM,endD,maxYears){
     let endIdx=-1; for(let i=rows.length-1;i>=0;i--){ if(rows[i].t<=endMs){ endIdx=i; break; } }
     if(startIdx<0||endIdx<0||endIdx<=startIdx) continue;
     if(Math.abs(rows[startIdx].t-startMs)>7*86400000||Math.abs(rows[endIdx].t-endMs)>7*86400000) continue;
-    yrs.push({startMs,startIdx,endIdx});
+    yrs.push({y,startMs,startIdx,endIdx});
   }
   if(!yrs.length) return null;
   // Zarovnání podle KALENDÁŘNÍHO dne okna, ne podle pořadí obchodního dne (dřív
@@ -3759,13 +3765,17 @@ function computeWindowAvgPath(daily,startM,startD,endM,endD,maxYears){
   // každý rok přispěje poslední cenou k danému kalendářnímu dni okna.
   const ref=yrs[0];
   const refRows=rows.slice(ref.startIdx,ref.endIdx+1);
-  const offs=refRows.map(r=>Math.round((r.t-ref.startMs)/86400000));
-  const sums=new Array(offs.length).fill(0), cnts=new Array(offs.length).fill(0);
+  // Zarovnání podle MĚSÍCE/DNE referenčního data (ne posunu ve dnech — v přestupných
+  // letech by body po únoru ujely o den); první bod = 0 pro každý rok (dřív při
+  // začátku okna o víkendu křivka začínala např. na −0,151).
+  const refMD=refRows.map(r=>({yOff:+r.d.slice(0,4)-ref.y,m:+r.d.slice(5,7)-1,d:+r.d.slice(8,10)}));
+  const sums=new Array(refMD.length).fill(0), cnts=new Array(refMD.length).fill(0);
   for(const yr of yrs){
-    const base=rows[yr.startIdx].close; let j=yr.startIdx;
-    for(let k=0;k<offs.length;k++){
-      const target=yr.startMs+offs[k]*86400000;
+    let j=yr.startIdx, base=null;
+    for(let k=0;k<refMD.length;k++){
+      const target=Date.UTC(yr.y+refMD[k].yOff,refMD[k].m,refMD[k].d);
       while(j<yr.endIdx&&rows[j+1].t<=target) j++;
+      if(base==null) base=rows[j].close;
       sums[k]+=((rows[j].close/base)-1)*100; cnts[k]++;
     }
   }
@@ -4108,7 +4118,7 @@ async function fetchActionUS100Retail(){
   if(!j||!Array.isArray(j.points)) throw new Error("us100_retail.json: chybí points");
   let local=[]; try{ const v=JSON.parse(localStorage.getItem("us100_retail_hist")||"[]"); if(Array.isArray(v)) local=v; }catch(e){}
   const seen=new Set(local.map(p=>p.t));
-  const merged=local.concat(j.points.filter(p=>!seen.has(p.t))).sort((a,b)=>new Date(a.t)-new Date(b.t)).slice(-1100);
+  const merged=_compactRetailPoints(local.concat(j.points.filter(p=>!seen.has(p.t))).sort((a,b)=>new Date(a.t)-new Date(b.t)));
   localStorage.setItem("us100_retail_hist",JSON.stringify(merged));
   return merged;
 }
@@ -4272,6 +4282,15 @@ function loadUS100ScoreHistory(){ try{ const v=JSON.parse(localStorage.getItem("
    us100_*, co používá US100). */
 const GOLD_INSTRUMENT={symbol:"XAUUSD",base:"XAU",quote:"USD",name:"Zlato",retailSymbol:"XAUUSD"};
 
+// Stejná retence jako serverové zhušťování (scripts/fetch-retail.js compactPoints):
+// 3 dny plné rozlišení, starší 1 bod za hodinu, max 45 dní. Dřív slice(-1100) ≈ 11 dní.
+function _compactRetailPoints(points){
+  const now=Date.now(),FULL=3*86400000,KEEP=45*86400000,out=[],seen=new Set();
+  for(let i=points.length-1;i>=0;i--){ const p=points[i],t=Date.parse(p&&p.t); if(!Number.isFinite(t)) continue;
+    const age=now-t; if(age>KEEP) break; if(age<=FULL){ out.push(p); continue; }
+    const h=new Date(t).toISOString().slice(0,13); if(seen.has(h)) continue; seen.add(h); out.push(p); }
+  return out.reverse();
+}
 async function fetchActionGoldCot(){
   const r=await fetch("data/gold_cot.json?t="+Date.now());
   if(!r.ok) throw new Error("gold_cot.json HTTP "+r.status);
@@ -4293,7 +4312,7 @@ async function fetchActionGoldRetail(){
   if(!j||!Array.isArray(j.points)) throw new Error("gold_retail.json: chybí points");
   let local=[]; try{ const v=JSON.parse(localStorage.getItem("gold_retail_hist")||"[]"); if(Array.isArray(v)) local=v; }catch(e){}
   const seen=new Set(local.map(p=>p.t));
-  const merged=local.concat(j.points.filter(p=>!seen.has(p.t))).sort((a,b)=>new Date(a.t)-new Date(b.t)).slice(-1100);
+  const merged=_compactRetailPoints(local.concat(j.points.filter(p=>!seen.has(p.t))).sort((a,b)=>new Date(a.t)-new Date(b.t)));
   localStorage.setItem("gold_retail_hist",JSON.stringify(merged));
   return merged;
 }

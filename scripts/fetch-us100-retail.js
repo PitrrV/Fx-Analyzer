@@ -13,6 +13,15 @@ const fs = require("fs");
 // Retence: posledních 3 dní plné rozlišení (~15 min), starší body zhuštěné na
 // 1 za hodinu, max 45 dní. Dřív slice(-1100) = jen ~11 dní při 15min cronu
 // (komentář tvrdil ~45 dní); zhuštění drží velikost souboru zhruba stejnou.
+// Jednorázový doplněk historie z gitu (data/*_backfill.json, viz soubor) — přimíchat
+// body, které v souboru chybí (podle t). Po 45 dnech je zhušťování samo vyřadí.
+function mergeBackfill(points, file) {
+  let bf = null; try { bf = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { return points; }
+  if (!bf || !Array.isArray(bf.points)) return points;
+  const have = new Set(points.map((p) => p && p.t));
+  const add = bf.points.filter((p) => p && p.t && !have.has(p.t));
+  return add.length ? points.concat(add).sort((a, b) => Date.parse(a.t) - Date.parse(b.t)) : points;
+}
 function compactPoints(points) {
   const now = Date.now(), FULL = 3 * 86400000, KEEP = 45 * 86400000;
   const out = [], seenHour = new Set();
@@ -78,7 +87,7 @@ async function fetchRetail() {
   }
 
   store.points.push({ t: new Date().toISOString(), l: retail.l, s: retail.s });
-  store.points = compactPoints(store.points); // stejná retence jako data/retail_hist.json
+  store.points = compactPoints(mergeBackfill(store.points, "data/us100_retail_backfill.json")); // stejná retence jako data/retail_hist.json
   store.symbol = "NAS100";
   store.updated = new Date().toISOString();
 
