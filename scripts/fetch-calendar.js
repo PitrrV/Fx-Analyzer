@@ -127,10 +127,21 @@ function norm(e) {
   // když počet klesne pod 70 % předchozího nebo chybí některý z příštích 2 týdnů.
   let prevCount = 0;
   try { prevCount = (JSON.parse(fs.readFileSync("data/calendar.json", "utf8")).events || []).length; } catch (e) {}
-  const inRange = (a, b) => events.some((e) => { const t = new Date(e.date).getTime(); return t >= a && t < b; });
-  const nowMs = now.getTime(), WEEK = 7 * 86400000;
+  // Úplnost po KALENDÁŘNÍCH týdnech ForexFactory (neděle–sobota, čas New Yorku):
+  // dřív plovoucí okno 7–14 dní zasahovalo do přespříštího týdne, takže výpadek
+  // příštího týdne prošel (simulace zapsala 764 událostí) a prohlížeče by pak
+  // budoucí události toho týdne smazaly jako "fantomy".
+  const nyWeek = (t) => { const ny = new Date(new Date(t).toLocaleString("en-US", { timeZone: "America/New_York" })); ny.setHours(0, 0, 0, 0); ny.setDate(ny.getDate() - ny.getDay()); return ny.toISOString().slice(0, 10); };
+  const perWeek = {}; for (const e of events) { const k = nyWeek(e.date); perWeek[k] = (perWeek[k] || 0) + 1; }
+  // Stejné týdny, jaké se stahují (weekParam bere UTC datum) — poledne UTC daného dne.
+  const atNoon = (off) => { const d = new Date(now.getTime() + off * 86400000); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 12); };
+  const wks = [0, 7, 14].map((off) => nyWeek(atNoon(off))), w0 = wks[0];
+  const past = Object.keys(perWeek).filter((k) => k < w0).sort().slice(1).map((k) => perWeek[k]).sort((a, b) => a - b); // bez nejstaršího (neúplného) týdne
+  const typical = past.length ? past[Math.floor(past.length / 2)] : 80;
+  const thin = wks.filter((k) => (perWeek[k] || 0) < Math.max(20, typical * 0.5));
+  console.log("Týdny FF (ne–so NY):", wks.map((k) => k + "=" + (perWeek[k] || 0)).join(", "), "· běžně ~" + typical);
+  if (thin.length) { console.error("Neúplný týden " + thin.join(", ") + " (< polovina běžného počtu) — nepřepisuju."); process.exit(1); }
   if (prevCount && events.length < prevCount * 0.7) { console.error(`Neúplné stažení: ${events.length} vs předchozích ${prevCount} — nepřepisuju.`); process.exit(1); }
-  if (!inRange(nowMs, nowMs + WEEK) || !inRange(nowMs + WEEK, nowMs + 2 * WEEK)) { console.error("Chybí příští 1–2 týdny — nepřepisuju."); process.exit(1); }
   fs.mkdirSync("data", { recursive: true });
   // Zapsat jen při skutečné změně událostí — dřív se každých 15 min commitovalo
   // jen kvůli poli "updated" (audit 4.7: ~5 400 commitů týdně).
