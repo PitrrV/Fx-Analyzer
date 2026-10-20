@@ -40,7 +40,9 @@
     KEYS_OBJ.forEach(k=>{const v=rdJSON(k); if(v&&typeof v==="object"&&Object.keys(v).length) d._obj[k]=v;});
     return d;
   }
-  const ffKey=e=>`${(e.country||"").toUpperCase()}|${e.event||""}|${e.time||""}`;
+  // Stejný klíč jako ffHistKey v engine.js (den, ne přesný čas) — jinak se tatáž
+  // událost s posunutým časem slučovala jako dvě a z cloudu se vracely duplicity.
+  const ffKey=e=>(typeof ffHistKey==="function")?ffHistKey(e):`${(e.country||"").toUpperCase()}|${e.event||""}|${String(e.time||"").slice(0,10)}`;
   function mergeArr(key,a,b){
     a=Array.isArray(a)?a:[]; b=Array.isArray(b)?b:[];
     if(key==="journal"){

@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0"></script>
-<script src="engine.js?v=20261020d"></script>
-<script src="sync.js?v=20261020a"></script>
+<script src="engine.js?v=20261020e"></script>
+<script src="sync.js?v=20261020b"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -285,11 +285,11 @@ class FXApp extends React.Component{
     try{
       const key=(localStorage.getItem('fh')||'').trim(), fmpKey=(localStorage.getItem('fmp')||'').trim();
       let cal=[],calSource='';
-      try{ const fresh=await fetchActionCalendar(); cal=mergeFFHistory(fresh); calSource='action'; }catch(e){}
+      try{ const fresh=await fetchActionCalendar(); cal=mergeFFHistory(fresh,{pruneMissing:true}); calSource='action'; }catch(e){}
       if(!cal.length&&fmpKey){ try{ cal=await fetchFMPCalendar(fmpKey,15); calSource='fmp'; }catch(e){} }
       // Finnhub záloha (stejně jako m.html/classic.html); placený kalendář → free klíč se zablokuje, ať nezdržuje.
       if(!cal.length&&key&&localStorage.getItem('fh_cal_block')!==key){ try{ cal=await fetchCalendar(key,15); calSource='finnhub'; localStorage.removeItem('fh_cal_block'); }catch(e){ if(/Error Message|Restricted|not available|Invalid|premium|subscription|access|plan|HTTP 40/i.test(String(e&&e.message||e))) localStorage.setItem('fh_cal_block',key); } }
-      if(!cal.length){ try{ const fr=await fetchFFEventsCached(false); cal=mergeFFHistory(fr); calSource='ff'; }catch(e){ cal=loadFFHistory(); } }
+      if(!cal.length){ try{ const fr=await fetchFFEventsCached(false); cal=mergeFFHistory(fr,{pruneMissing:true}); calSource='ff'; }catch(e){ cal=loadFFHistory(); } }
       try{ cal=unionCalHistory(cal,await fetchActionCalendarHist()); }catch(e){} // plná serverová historie (jen v paměti) — viz engine.js
       try{ cal=applyManualActuals(cal); }catch(e){}
       const calScoring=capEventsWindow(cal,FUND_HIST_WINDOW_WEEKS); // stejné okno pro skórování na každém zařízení — viz engine.js
@@ -444,7 +444,7 @@ class FXApp extends React.Component{
     this.setState({calBusy:true,calMsg:''});
     try{
       const fr=await fetchFFEventsCached(true);
-      mergeFFHistory(fr);
+      mergeFFHistory(fr,{pruneMissing:true});
       await this.refreshData();
       this.setState({calMsg:'✅ Kalendář obnoven z živého FF feedu ('+new Date().toLocaleTimeString('cs-CZ')+').'});
     }catch(e){
