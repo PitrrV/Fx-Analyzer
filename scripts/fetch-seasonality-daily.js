@@ -65,6 +65,13 @@ function assertDailyResolution(dates) {
   if (!(median <= 10)) throw new Error(`data nejsou denní granularita (medián mezery mezi dny: ${median})`);
 }
 
+function barDate(t, tz, gmtoff) {
+  if (tz) {
+    try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t * 1000)); } catch (e) {}
+  }
+  return new Date((t + gmtoff) * 1000).toISOString().slice(0, 10);
+}
+
 async function fetchPairStooq(pair) {
   const sym = pair.toLowerCase();
   const today = new Date();
@@ -105,7 +112,13 @@ async function fetchPairYahoo(pair) {
   const res = j && j.chart && j.chart.result && j.chart.result[0];
   const ts = res && res.timestamp, closes = res && res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close;
   if (!Array.isArray(ts) || !Array.isArray(closes)) throw new Error("neplatná struktura");
-  const rows = ts.map((t, i) => ({ date: new Date(t * 1000).toISOString().slice(0, 10), close: closes[i] }))
+  // Datum svíčky v časové zóně burzy, ne v UTC: Yahoo FX v letním čase označuje
+  // denní svíčku 23:00 UTC předchozího dne (= půlnoc Londýn) → UTC datum posunulo
+  // každý den o den dřív a pondělní svíčku (neděle) smazal víkendový filtr.
+  // Výsledek: od dubna do října od 2003 "chyběly pátky" (2025: 22 pátků vs 52 pondělí).
+  const tz = res.meta && res.meta.exchangeTimezoneName;
+  const gmtoff = res.meta && Number.isFinite(res.meta.gmtoffset) ? res.meta.gmtoffset : 0;
+  const rows = ts.map((t, i) => ({ date: barDate(t, tz, gmtoff), close: closes[i] }))
     .filter((row) => row.close != null && Number.isFinite(row.close) && !isWeekend(row.date));
   const outDates = rows.map((row) => row.date), outCloses = rows.map((row) => row.close);
   assertDailyResolution(outDates);
@@ -128,12 +141,19 @@ async function fetchPair(pair) {
   for (const pair of STANDARD_PAIRS) {
     try {
       const data = await fetchPair(pair);
+      const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+      const dow = [0, 0, 0, 0, 0, 0, 0]; data.dates.filter((d) => d >= yearAgo).forEach((d) => dow[new Date(d + "T12:00:00Z").getUTCDay()]++);
+      console.log("Po–Pá za rok", pair, dow.slice(1, 6).join("/"));
       const file = path.join("data/fx_daily", pair + ".json");
       let prev = null;
       try { prev = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) {}
       const prevLast = prev && prev.dates && prev.dates[prev.dates.length - 1];
       const newLast = data.dates[data.dates.length - 1];
-      if (!prev || prevLast !== newLast || prev.dates.length !== data.dates.length) {
+      // Pojistka: zdroj občas vrátí zkrácenou historii — nepřepisovat delší soubor.
+      if (prev && prev.dates && data.dates.length < prev.dates.length * 0.9) {
+        failed.push(pair + `: zkrácená odpověď (${data.dates.length} vs ${prev.dates.length} dní), nepřepisuji`);
+        console.log("ZKRÁCENO", pair, data.dates.length, "vs", prev.dates.length);
+      } else if (!prev || prevLast !== newLast || prev.dates.length !== data.dates.length || JSON.stringify(prev.dates.slice(-260)) !== JSON.stringify(data.dates.slice(-260))) {
         fs.writeFileSync(file, JSON.stringify(data));
         changed++;
         console.log("OK", pair, data.dates.length, "dní, poslední", newLast);
