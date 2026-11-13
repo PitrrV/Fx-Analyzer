@@ -1,0 +1,158 @@
+<title>Trading deník MT5 ukázka</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Rozložení: horní lišta s přepínačem účtů a období, pás KPI, graf equity, pak záložky Obchody / Rozbory; detail obchodu pod tabulkou. */
+:root{--bg:#f4f3ef;--panel:#fff;--panel2:#f0eee8;--line:#dedbd1;--fg:#1d1b16;--dim:#6d685b;--accent:#a67c00;--accent-bg:#f3e6bd;--green:#0f8a63;--red:#c4384a;--amber:#b8741a;
+--sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1114;--panel:#171a1f;--panel2:#1e2229;--line:#2a2f38;--fg:#e8e6df;--dim:#8d8f97;--accent:#d4a72c;--accent-bg:#3a3018;--green:#2ed3a0;--red:#f2606e;--amber:#e8ab3f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1114;--panel:#171a1f;--panel2:#1e2229;--line:#2a2f38;--fg:#e8e6df;--dim:#8d8f97;--accent:#d4a72c;--accent-bg:#3a3018;--green:#2ed3a0;--red:#f2606e;--amber:#e8ab3f;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--sans);padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px));padding-block:18px 40px}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between}
+h1{font-size:20px;margin:0;letter-spacing:.01em;text-wrap:balance}
+.demo{background:var(--accent-bg);color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;letter-spacing:.08em;margin-left:10px;vertical-align:3px}
+.note{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);padding:10px 14px;color:var(--dim);font-size:12.5px;border-radius:4px;max-width:90ch}
+.ctrls{display:flex;flex-wrap:wrap;gap:10px}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--panel)}
+.seg button{background:none;border:0;color:var(--dim);padding:7px 12px;font:600 12.5px var(--sans);cursor:pointer;min-height:34px}
+.seg button[aria-pressed=true]{background:var(--accent-bg);color:var(--accent)}
+.seg button:focus-visible,.row:focus-visible,.tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px;min-width:0}
+.kpi .l{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
+.kpi .v{font:600 20px var(--mono);overflow-wrap:anywhere}
+.kpi .s{font-size:11.5px;color:var(--dim);margin-top:4px}
+.pos{color:var(--green)}.neg{color:var(--red)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 16px;min-width:0}
+.panel h2{font-size:13px;margin:0 0 10px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;font-weight:600}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--dim);margin-bottom:6px;flex-wrap:wrap}
+.legend i{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:3px;margin-right:6px}
+svg{display:block;width:100%;height:auto;max-width:100%}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--dim);padding:9px 14px;font:600 13px var(--sans);cursor:pointer;margin-bottom:-1px}
+.tab[aria-selected=true]{color:var(--accent);border-color:var(--accent)}
+.scroll{overflow:auto;max-height:560px}
+th{position:sticky;top:0;background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);font-weight:600;white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td.num,th.num{text-align:right}
+.row{cursor:pointer}.row:hover,.row[aria-selected=true]{background:var(--panel2)}
+.pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;letter-spacing:.04em}
+.pill.open{background:var(--accent-bg);color:var(--accent)}.pill.buy{color:var(--green);border:1px solid var(--green)}.pill.sell{color:var(--red);border:1px solid var(--red)}
+.pill.na{color:var(--dim);border:1px dashed var(--dim);font-weight:500}
+.detail{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.tl li{display:grid;grid-template-columns:118px 1fr;gap:10px;font-size:13px}
+.tl time{color:var(--dim);font:12px var(--mono)}
+.kv{display:grid;grid-template-columns:minmax(0,150px) 1fr;gap:6px 12px;font-size:13px}
+.kv dt{color:var(--dim)}.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.small{color:var(--amber);font-size:11.5px}
+.grids{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+@media(max-width:420px){.kpi .v{font-size:18px}.grids{grid-template-columns:1fr}}
+</style>
+<div class="wrap">
+  <header>
+    <h1>Trading deník<span class="demo">DEMO · FALEŠNÁ DATA</span></h1>
+    <div class="ctrls">
+      <div class="seg" id="acc" role="group" aria-label="Účet"></div>
+      <div class="seg" id="per" role="group" aria-label="Období"></div>
+    </div>
+  </header>
+  <div class="note">Ukázka, jak by deník vypadal po napojení na MT5. Všechny obchody, ceny i snapshoty Analyzeru jsou vymyšlené generátorem. Čísla se počítají stejným kódem, jaký poběží ve skutečném deníku. Zavřený a otevřený (floating) výsledek jsou odděleně.</div>
+  <section class="kpis" id="kpis" aria-label="Statistiky"></section>
+  <section class="panel"><h2>Equity a balance</h2>
+    <div class="legend"><span><i style="border-color:var(--accent)"></i>Equity (včetně otevřených)</span><span><i style="border-color:var(--dim);border-top-style:dashed"></i>Balance (jen uzavřené)</span><span id="ddnote"></span></div>
+    <svg id="chart" viewBox="0 0 900 250" role="img" aria-label="Graf equity a balance"></svg>
+  </section>
+  <div>
+    <div class="tabs" role="tablist"><button class="tab" role="tab" id="t-trades" aria-selected="true">Obchody</button><button class="tab" role="tab" id="t-break" aria-selected="false">Rozbory</button></div>
+    <div id="pane" class="panel" style="border-top:0;border-radius:0 0 6px 6px"></div>
+  </div>
+  <section id="detail"></section>
+</div>
+<script src="journal-stats.js"></script>
+<script src="demo-data.js"></script>
+<script>
+(function(){
+const D=window.DEMO,S=window.JournalStats,NOW=Date.parse(D.now),DAY=86400000;
+const st={acc:'ALL',per:'all',tab:'trades',sel:null};
+const $=id=>document.getElementById(id), fmt=(n,d)=>n==null?'—':n.toLocaleString('cs-CZ',{minimumFractionDigits:d||0,maximumFractionDigits:d||0});
+const money=n=>n==null?'—':(n>0?'+':'')+fmt(n,2)+' $', cls=n=>n==null?'':n>0?'pos':n<0?'neg':'';
+const pct=n=>n==null?'—':fmt(n*100,1)+' %', dt=s=>{const d=new Date(s);return d.toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric'})+' '+d.toISOString().slice(11,16)};
+const WD=['Ne','Po','Út','St','Čt','Pá','So'];
+function btns(el,items,key){el.innerHTML=items.map(i=>`<button data-v="${i[0]}" aria-pressed="${st[key]===i[0]}">${i[1]}</button>`).join('');
+  el.onclick=e=>{const b=e.target.closest('button');if(!b)return;st[key]=b.dataset.v;st.sel=null;render();};}
+function sel(){const from=st.per==='all'?null:new Date(NOW-(+st.per)*DAY).toISOString();
+  return S.filter(D.trades,{accounts:st.acc==='ALL'?null:[st.acc],from});}
+function series(){const ids=st.acc==='ALL'?D.accounts.map(a=>a.id):[st.acc], cut=st.per==='all'?0:NOW-(+st.per)*DAY;
+  const base=D.equity[ids[0]].map((p,i)=>({t:p.t,equity:ids.reduce((s,id)=>s+D.equity[id][i].equity,0),balance:ids.reduce((s,id)=>s+D.equity[id][i].balance,0)}));
+  return base.filter(p=>Date.parse(p.t)>=cut);}
+function kpis(sum,dd){
+  const k=(l,v,s,c)=>`<div class="kpi"><div class="l">${l}</div><div class="v ${c||''}">${v}</div><div class="s">${s||''}</div></div>`;
+  $('kpis').innerHTML=
+    k('Zavřený výsledek',money(sum.netProfit),sum.n+' zavřených obchodů',cls(sum.netProfit))+
+    k('Otevřený (floating)',money(sum.floating),sum.nOpen+' otevřených · není v statistikách',cls(sum.floating))+
+    k('Win rate',pct(sum.winRate),sum.wins+' výher / '+sum.losses+' ztrát / '+sum.breakeven+' BE')+
+    k('Profit factor',sum.profitFactor==null?'—':fmt(sum.profitFactor,2),'výhry ÷ |ztráty|')+
+    k('Expectancy',money(sum.expectancy),'průměr net na obchod',cls(sum.expectancy))+
+    k('Průměr v R',sum.avgR==null?'—':fmt(sum.avgR,2)+' R','z '+sum.nWithR+' obchodů'+(sum.nWithoutR?' · '+sum.nWithoutR+' bez SL se nepočítá':''))+
+    k('Prům. výhra / ztráta',fmt(sum.avgWin,0)+' / '+fmt(sum.avgLoss,0),'v $ po nákladech')+
+    k('Max drawdown',dd.abs?'−'+fmt(dd.abs,0)+' $':'—',dd.pct!=null?'−'+fmt(dd.pct*100,1)+' % z maxima equity':'');
+}
+function chart(pts,dd){
+  const W=900,H=250,L=62,R=14,T=12,B=26; if(pts.length<2){$('chart').innerHTML='';return;}
+  const all=pts.flatMap(p=>[p.equity,p.balance]), lo=Math.min(...all), hi=Math.max(...all), pad=(hi-lo)*0.08||1, y0=lo-pad, y1=hi+pad;
+  const X=i=>L+i*(W-L-R)/(pts.length-1), Y=v=>T+(y1-v)*(H-T-B)/(y1-y0);
+  const line=k=>pts.map((p,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(p[k]).toFixed(1)).join('');
+  let g='';for(let i=0;i<=4;i++){const v=y0+(y1-y0)*i/4,y=Y(v);g+=`<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${L-8}" y="${y+4}" text-anchor="end" font-size="11" font-family="var(--mono)" fill="var(--dim)">${fmt(v/1000,1)}k</text>`;}
+  for(let i=0;i<=3;i++){const idx=Math.round(i*(pts.length-1)/3);g+=`<text x="${X(idx)}" y="${H-6}" text-anchor="${i===0?'start':i===3?'end':'middle'}" font-size="11" font-family="var(--mono)" fill="var(--dim)">${new Date(pts[idx].t).toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric'})}</text>`;}
+  const li=pts.length-1;
+  $('chart').innerHTML=g+`<path d="${line('balance')}" fill="none" stroke="var(--dim)" stroke-width="1.5" stroke-dasharray="5 4"/><path d="${line('equity')}" fill="none" stroke="var(--accent)" stroke-width="2"/><circle cx="${X(li)}" cy="${Y(pts[li].equity)}" r="4" fill="var(--accent)"/>`;
+  $('ddnote').textContent=dd.abs?'Max drawdown: −'+fmt(dd.abs,0)+' $ ('+new Date(dd.from).toLocaleDateString('cs-CZ')+' → '+new Date(dd.to).toLocaleDateString('cs-CZ')+')':'';
+}
+function tradesPane(list){
+  const rows=list.slice().sort((a,b)=>Date.parse(b.openTime)-Date.parse(a.openTime));
+  $('pane').innerHTML=`<div class="scroll"><table><thead><tr><th>Účet</th><th>Otevřeno</th><th>Pár</th><th>Směr</th><th class="num">Lot</th><th class="num">Vstup</th><th class="num">Výstup</th><th class="num">Net</th><th class="num">R</th><th>Stav</th></tr></thead><tbody>${rows.map(t=>{const n=S.netOf(t),r=S.rOf(t);
+    return `<tr class="row" tabindex="0" data-id="${t.id}" aria-selected="${st.sel===t.id}"><td>${t.account}</td><td class="mono">${dt(t.openTime)}</td><td>${t.symbol}</td><td><span class="pill ${t.side.toLowerCase()}">${t.side}</span></td><td class="num mono">${t.volume.toFixed(2)}</td><td class="num mono">${t.openPrice}</td><td class="num mono">${t.closePrice??'—'}</td><td class="num mono ${cls(n)}">${money(n)}</td><td class="num mono">${r==null?'<span class="pill na">bez SL</span>':fmt(r,2)}</td><td>${t.closeTime?'zavřeno':'<span class="pill open">OTEVŘENO</span>'}</td></tr>`;}).join('')}</tbody></table></div>`;
+  const open=e=>{const r=e.target.closest('.row');if(r&&(e.type==='click'||e.key==='Enter')){st.sel=r.dataset.id;render();$('detail').scrollIntoView({block:'nearest'});}};
+  $('pane').onclick=open;$('pane').onkeydown=open;
+}
+function combo(t){const s=t.snapshot;if(!s)return 'Bez snapshotu (před zahájením ukládání)';
+  const agree=s.cotLevBias===(t.side==='BUY'?'LONG':'SHORT');
+  const contra=s.retailLongPct==null?null:(t.side==='BUY'?s.retailLongPct<=40:s.retailLongPct>=60);
+  return 'COT '+(agree?'souhlasí':'proti')+' · retail '+(contra==null?'neznámý (NULL)':contra?'je proti davu':'není proti davu');}
+function breakPane(list){
+  const closed=list.filter(t=>t.closeTime);
+  const tbl=(title,keyFn,sortFn)=>{const g=S.groupBy(closed,keyFn);g.sort(sortFn||((a,b)=>b.n-a.n));
+    return `<div class="panel"><h2>${title}</h2><div class="scroll"><table style="min-width:0"><thead><tr><th></th><th class="num">n</th><th class="num">Win</th><th class="num">PF</th><th class="num">Net</th><th class="num">Ø R</th></tr></thead><tbody>${g.map(x=>`<tr><td>${x.key}${x.n<10?' <span class="small">malý vzorek</span>':''}</td><td class="num mono">${x.n}</td><td class="num mono">${pct(x.winRate)}</td><td class="num mono">${x.profitFactor==null?'—':fmt(x.profitFactor,2)}</td><td class="num mono ${cls(x.netProfit)}">${x.netProfit==null?'—':fmt(x.netProfit,0)}</td><td class="num mono">${x.avgR==null?'—':fmt(x.avgR,2)}</td></tr>`).join('')}</tbody></table></div></div>`;};
+  const months=(t)=>t.closeTime.slice(0,7);
+  $('pane').innerHTML=`<div class="grids">${tbl('Podle instrumentu',t=>t.symbol)}${tbl('Podle směru',t=>t.side)}${tbl('Podle dne v týdnu',t=>WD[new Date(t.closeTime).getUTCDay()],(a,b)=>WD.indexOf(a.key)-WD.indexOf(b.key))}${tbl('Podle měsíce',months,(a,b)=>a.key<b.key?-1:1)}${tbl('Podle kombinace faktorů Analyzeru',combo)}</div><p class="small" style="margin:12px 0 0">Korelace není příčina. Skupiny pod 10 obchodů jsou statisticky nespolehlivé. Obchody bez snapshotu zůstávají zvlášť, nic se nedopočítává.</p>`;
+}
+function detail(){
+  const t=D.trades.find(x=>x.id===st.sel); if(!t){$('detail').innerHTML='';return;}
+  const s=t.snapshot,n=S.netOf(t),r=S.rOf(t),acc=D.accounts.find(a=>a.id===t.account);
+  const nul=v=>v==null?'<span class="pill na">NULL · nedostupné</span>':v;
+  $('detail').innerHTML=`<div class="panel"><h2>Detail obchodu ${t.id} · ${acc.label}</h2><div class="detail">
+  <div><dl class="kv"><dt>Pár / směr</dt><dd>${t.symbol} ${t.side} ${t.volume.toFixed(2)} lot</dd><dt>Vstup / výstup</dt><dd class="mono">${t.openPrice} → ${t.closePrice??'otevřeno'}</dd><dt>Původní SL</dt><dd class="mono">${nul(t.initialSL)}</dd>
+  <dt>Hrubý výsledek</dt><dd class="mono">${money(t.profit)}</dd><dt>Komise / swap</dt><dd class="mono">${fmt(t.commission,2)} / ${fmt(t.swap,2)}</dd><dt>Net</dt><dd class="mono ${cls(n)}">${money(n)}</dd><dt>Výsledek v R</dt><dd class="mono">${r==null?'<span class="pill na">bez SL → R se nepočítá</span>':fmt(r,2)+' R'}</dd>
+  <dt>MT5 ID</dt><dd class="mono">pozice ${t.mt5.position_id} · deal ${t.mt5.deal_in}${t.mt5.deal_out?' / '+t.mt5.deal_out:''}</dd></dl></div>
+  <div><h2 style="margin-top:0">Historie pozice</h2><ul class="tl">${(D.events[t.id]||[]).map(e=>`<li><time>${dt(e.time)}</time><span>${e.text}</span></li>`).join('')}</ul></div>
+  <div><h2 style="margin-top:0">Analyzer při otevření</h2>${s?`<dl class="kv"><dt>Stav z</dt><dd class="mono">${dt(s.asof)} (−${s.lagMinutes} min před vstupem)</dd><dt>COT lev. fondy</dt><dd>${s.cotLevBias} · net ${s.cotLevNetPctOI} % OI <span class="mono" style="color:var(--dim)">(report ${s.cotReportDate})</span></dd><dt>COT asset mgr</dt><dd>${s.cotAssetMgrBias}</dd><dt>Retail long</dt><dd>${nul(s.retailLongPct==null?null:s.retailLongPct+' %')}</dd><dt>Rozdíl skóre</dt><dd class="mono">${s.scoreDiff}</dd><dt>Sezónnost</dt><dd>${nul(s.seasonality)}</dd><dt>Reverzní signál</dt><dd>${s.reverseSignal?'ano':'ne'}</dd></dl>`:`<span class="pill na">NULL · obchod je z doby před ukládáním stavu Analyzeru</span><p class="small">Zpětně se nic nedoplňuje.</p>`}</div>
+  </div></div>`;
+}
+function render(){
+  btns($('acc'),[['ALL','Souhrn'],...D.accounts.map(a=>[a.id,a.label])],'acc');
+  btns($('per'),[['7','7 dní'],['30','30 dní'],['all','Vše']],'per');
+  const list=sel(), sum=S.summarize(list), pts=series(), dd=S.drawdown(pts.map(p=>({t:p.t,equity:p.equity})));
+  kpis(sum,dd);chart(pts,dd);
+  $('t-trades').setAttribute('aria-selected',st.tab==='trades');$('t-break').setAttribute('aria-selected',st.tab==='break');
+  (st.tab==='trades'?tradesPane:breakPane)(list);detail();
+}
+$('t-trades').onclick=()=>{st.tab='trades';render();};$('t-break').onclick=()=>{st.tab='break';render();};
+render();
+})();
+</script>
