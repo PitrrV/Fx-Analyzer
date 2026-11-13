@@ -23,6 +23,12 @@ FORBIDDEN = ("order_send", "order_check", "order_calc_margin", "order_calc_profi
              "login", "market_book_add", "symbol_select")
 
 
+def open_real():
+    """Jediné místo, kde se načítá balíček MetaTrader5 (Windows). Vrací už jen čtecí obálku."""
+    import importlib
+    return ReadOnlyMT5(importlib.import_module("MetaTrader5"))
+
+
 class ReadOnlyViolation(RuntimeError):
     pass
 

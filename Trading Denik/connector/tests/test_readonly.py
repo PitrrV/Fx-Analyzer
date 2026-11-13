@@ -40,6 +40,9 @@ def test_connector_source_never_mentions_trading_calls_or_imports_mt5_directly()
             continue
         src = f.read_text(encoding="utf-8")
         for bad in FORBIDDEN + ("position_close", "order_modify"):
-            assert not re.search(r"\b" + bad + r"\b", src), f"{f.name} obsahuje {bad}"
+            if bad == "login":  # slovo "login" je legitimní pole v datech účtu; zakázané je jen VOLÁNÍ login(...)
+                assert not re.search(r"\blogin\s*\(", src), f"{f.name} volá login()"
+            else:
+                assert not re.search(r"\b" + bad + r"\b", src), f"{f.name} obsahuje {bad}"
         assert not re.search(r"^\s*import MetaTrader5|^\s*from MetaTrader5", src, re.M), \
             f"{f.name} importuje MetaTrader5 přímo; použij ReadOnlyMT5"

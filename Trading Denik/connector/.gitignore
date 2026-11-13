@@ -1,0 +1,5 @@
+config.json
+state*.json
+*.token
+__pycache__/
+.pytest_cache/
