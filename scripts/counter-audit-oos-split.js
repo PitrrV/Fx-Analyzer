@@ -54,10 +54,14 @@ function expandingZ(values) {
 }
 
 (async () => {
-  const cal = JSON.parse(fs.readFileSync("/tmp/claude-0/cr.json", "utf8"));
-  const fred = JSON.parse(fs.readFileSync("/tmp/claude-0/fred.json", "utf8"));
-  const cotLegacy = JSON.parse(fs.readFileSync("/tmp/claude-0/cot_legacy.json", "utf8"));
-  const cotTff = JSON.parse(fs.readFileSync("/tmp/claude-0/cot_tff.json", "utf8"));
+  // POZN. (2026-08-15): tenhle skript dřív ukazoval na /tmp/claude-0/*.json —
+  // scratch cesty z jiné Claude session, které v tomhle repu nikdy neexistovaly
+  // a skript tak nešel spustit nikým jiným. Appka má stejná data trvale
+  // committnutá — přepnuto na ně, ať je skript reálně reprodukovatelný.
+  const cal = JSON.parse(fs.readFileSync(path.join(ROOT, "data/calibration_replay.json"), "utf8"));
+  const fred = JSON.parse(fs.readFileSync(path.join(ROOT, "data/research/fred.json"), "utf8"));
+  const cotLegacy = JSON.parse(fs.readFileSync(path.join(ROOT, "data/research/cot_legacy.json"), "utf8"));
+  const cotTff = JSON.parse(fs.readFileSync(path.join(ROOT, "data/research/cot_tff.json"), "utf8"));
 
   const days = cal.dailyScores;
   const pxDays = cal.prices.days, pxRates = cal.prices.rates;
