@@ -98,6 +98,8 @@ AI Coache (`mt5Journal`). Statistiky v `Trading Denik/journal-stats.js` (definic
 `scripts/snapshot-analyzer-state.js` (krok v data-refresh.yml) + edge funkce `analyzer-state-capture`. Podrobnosti:
 `Trading Denik/README.md`. Zdrojáky edge funkcí jsou verzovaná kopie; nasazují se ručně do Supabase.
 
+**Úkol „Deník MT5“:** když uživatel řekne „vrátíme se k Deníku MT5“, přečti `Trading Denik/STAV.md` (hotovo, otevřené body, zásady) a naváž na něj.
+
 ### Cloud sync (`sync.js`)
 
 Optional Supabase-backed sync, loaded by all three frontends. Merge policy: history-shaped
