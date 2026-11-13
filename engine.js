@@ -159,7 +159,7 @@ try{const usr=localStorage.getItem("v5_cb_rates");if(usr)CENTRAL_BANK_RATES={...
 // přesné zdroje/data. NZD: Stats NZ sám publikuje roční číslo (4,1 % k
 // červnu 2026) — NEJDE o dopočet z FF čtvrtletního q/q (viz komentář u
 // extractCPIFromCalendar výš/níž, appka se tomu záměrně vyhýbá).
-let REAL_CPI_DATA={USD:2.6,EUR:2.5,GBP:3.1,JPY:1.8,AUD:4.0,NZD:4.1,CAD:1.9,CHF:1.0}; // seed 19.10.2026, viz CENTRAL_BANK_RATES
+let REAL_CPI_DATA={USD:3.7,EUR:4.0,GBP:3.5,JPY:2.1,AUD:4.3,NZD:3.7,CAD:3.0,CHF:1.5}; // seed 13.11.2026, viz CENTRAL_BANK_RATES
 try{const u=localStorage.getItem("v5_real_cpi");if(u)REAL_CPI_DATA={...REAL_CPI_DATA,...JSON.parse(u)};}catch(e){}
 
 // ── CB POLICY CYCLE — nejdůležitější makro faktor ─────────────
@@ -2173,65 +2173,37 @@ function extractCPIFromCalendar(calData){
   });
   const cpi={};
   const sorted=past.sort((a,b)=>new Date(b.time)-new Date(a.time));
-  // Kategorie "Inflation" (EVENT_RULES) záměrně zahrnuje i PPI/PCE pro účely
-  // skórování fundamentu — ale REAL_CPI_DATA má být VÝHRADNĚ spotřebitelská
-  // inflace (CPI/HICP), ne producent (PPI) ani jiná míra (PCE). Bez tohohle
-  // filtru níže popsaný 2. průchod u měny bez kalendářní "CPI y/y" události
-  // (např. NZ, kde ForexFactory hlásí inflaci jen čtvrtletně) sáhl po
-  // nejbližší jiné "Inflation" události — reálně to byl "PPI Input q/q" —
-  // a uložil číslo výrobců jako by to byla roční spotřebitelská inflace.
+  // REAL_CPI_DATA = spotřebitelská inflace (CPI/HICP), ne PPI/PCE; regionální dílčí
+  // tisky (Spanish Flash, Tokyo…) jen jako poslední záloha.
   const isCPIName=name=>/cpi|consumer price|hicp/i.test(name)&&!/ppi|producer|pce|personal consumption/i.test(name);
-  // Členské/regionální dílčí zprávy — mají v názvu "cpi"/"y/y" stejně jako
-  // ta skutečná celoblok/celonárodní, ale hlásí JEN jednu zemi/oblast uvnitř
-  // měnového bloku (např. "Spanish Flash CPI y/y" pro EUR — Španělsko samo,
-  // ne celá eurozóna; "Tokyo Core CPI y/y" pro JPY — jen Tokio, leading
-  // indikátor, ne celonárodní číslo). Country/currency mapping (getCurrencyFromEvent)
-  // je správně bere jako EUR/JPY (jsou to legitimní eventy toho bloku), ale
-  // bez tohohle filtru vyhraje kterákoli z nich nad skutečným celoblokovým
-  // tiskem jen tím, že vyjde později — reálný nález: Španělská flash CPI
-  // (4,3 %, 28.8.) porazila eurozónovou "Final CPI y/y" (2,9 %, 19.8.).
   const isRegionalCPI=name=>/\b(german|france|french|spanish|spain|italian|italy|tokyo)\b/i.test(name);
-  // 1. průchod: preferuj YoY události (pozor: CPI 0.0 je falsy — nutný "in" test)
+  // Jádrové míry — dřív se braly rovnocenně s hlavní inflací a při stejném čase
+  // vydání vyhrála ta, co byla v seznamu dřív: USD Core 2,6 % místo CPI 3,7 %,
+  // EUR Core Flash 2,5 % místo Flash 4,0 %, CAD Median 1,9 % (FF hlavní y/y nemá).
+  const isCore=name=>/core|trimmed|median|weighted|common|underlying/i.test(name);
+  const isYoY=name=>/yoy|y\/y|annual|year/i.test(name);
+  const val=ev=>{ const v=_evNum(ev.actual); return (!isNaN(v)&&v>=-2&&v<=20)?parseFloat(v.toFixed(1)):null; };
+  // 1. hlavní roční CPI (celostátní)
   for(const ev of sorted){
     const cur=getDirectCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
     const name=(ev.event||"").toLowerCase();
-    if(!isCPIName(name)||isRegionalCPI(name)) continue;
-    const isYoY=name.includes("yoy")||name.includes("y/y")||name.includes("annual")||name.includes("year");
-    if(!isYoY) continue;
-    const val=parseFloat(ev.actual);
-    if(!isNaN(val)&&val>=-2&&val<=20) cpi[cur]=parseFloat(val.toFixed(1));
+    if(!isCPIName(name)||isRegionalCPI(name)||isCore(name)||!isYoY(name)) continue;
+    const v=val(ev); if(v!=null) cpi[cur]=v;
   }
-  // 2. průchod: doplň zbývající — ale NE měsíční (m/m) ani čtvrtletní (q/q)
-  // čísla; REAL_CPI_DATA je roční inflace a m/m či q/q hodnota (např. CH
-  // 0,0 % m/m, nebo NZ 1,5 % q/q) by rozbila real yield. Bez ročního CPI
-  // v kalendáři se drží stávající/ruční hodnota — to je záměr, ne mezera:
-  // lepší žádná aktualizace než dosazení špatné veličiny. Regionální (viz
-  // isRegionalCPI) se v NÁHRADNÍM průchodu výjimečně TOLERUJE — je to pořád
-  // lepší přiblížení než ponechat úplně starou/výchozí hodnotu, když měna
-  // nemá žádnou celoblokovou roční CPI zprávu vůbec.
-  for(const ev of sorted){
-    const cur=getDirectCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
-    const name=(ev.event||"").toLowerCase();
-    if(!isCPIName(name)) continue;
-    if(/m\/?m|monthly|q\/?q|quarterly/i.test(name)) continue;
-    const val=parseFloat(ev.actual);
-    if(!isNaN(val)&&val>=-2&&val<=20) cpi[cur]=parseFloat(val.toFixed(1));
-  }
-  // 3. průchod: měna bez ročního tisku (CH jen m/m, NZ jen q/q) → roční CPI
-  // složením posledních 12 m/m (resp. 4 q/q) celostátních tisků z ~13 měsíců.
-  // Dřív zůstala zamrzlá ruční hodnota (CHF 0,8 / NZD 4,1). Kontrola na NZ:
-  // 1,0/0,6/0,9/1,5 % q/q → 4,06 % vs. oficiální roční 4,1 %.
+  // 2. bez ročního tisku (CH jen m/m, NZ jen q/q, CA v FF jen m/m + jádrové y/y) → roční
+  // hlavní CPI složením posledních 12 m/m (resp. 4 q/q) celostátních tisků z ~13 měsíců.
+  // Kontrola na NZ: 1,0/0,6/0,9/1,5 % q/q → 4,06 % vs. oficiální roční 4,1 %.
   const yearAgo=Date.now()-395*86400000;
   for(const [kind,re,need] of [["m",/m\/?m|monthly/i,12],["q",/q\/?q|quarterly/i,4]]){
     const byCur={};
     for(const ev of sorted){
       const cur=getDirectCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
       const name=(ev.event||"").toLowerCase();
-      if(!isCPIName(name)||isRegionalCPI(name)||!re.test(name)||/core|trimmed|median|weighted/i.test(name)) continue;
+      if(!isCPIName(name)||isRegionalCPI(name)||!re.test(name)||isCore(name)) continue;
       if(evDate(ev).getTime()<yearAgo) continue;
-      const val=parseFloat(ev.actual); if(isNaN(val)||val<-5||val>10) continue;
+      const v=_evNum(ev.actual); if(isNaN(v)||v<-5||v>10) continue;
       const k=ffDateOnly(ev.time).slice(0,7); // období = měsíc tisku
-      (byCur[cur]=byCur[cur]||{})[k]=(byCur[cur][k]!==undefined)?byCur[cur][k]:val; // nejnovější tisk za období
+      (byCur[cur]=byCur[cur]||{})[k]=(byCur[cur][k]!==undefined)?byCur[cur][k]:v; // nejnovější tisk za období
     }
     for(const [cur,m] of Object.entries(byCur)){
       const vals=Object.keys(m).sort().slice(-need).map(k=>m[k]);
@@ -2239,6 +2211,20 @@ function extractCPIFromCalendar(calData){
       const yoy=(vals.reduce((a,v)=>a*(1+v/100),1)-1)*100;
       if(yoy>=-2&&yoy<=20) cpi[cur]=parseFloat(yoy.toFixed(1));
     }
+  }
+  // 3. jen jádrová roční (JP: FF hlásí jen core; přednost "National" před BOJ core)
+  for(const pref of [/national/i,/./]) for(const ev of sorted){
+    const cur=getDirectCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
+    const name=(ev.event||"").toLowerCase();
+    if(!isCPIName(name)||isRegionalCPI(name)||!isYoY(name)||!pref.test(name)) continue;
+    const v=val(ev); if(v!=null) cpi[cur]=v;
+  }
+  // 4. poslední záloha: jakýkoli ne-m/m ne-q/q CPI tisk (i regionální)
+  for(const ev of sorted){
+    const cur=getDirectCurrencyFromEvent(ev); if(!cur||(cur in cpi)) continue;
+    const name=(ev.event||"").toLowerCase();
+    if(!isCPIName(name)||/m\/?m|monthly|q\/?q|quarterly/i.test(name)) continue;
+    const v=val(ev); if(v!=null) cpi[cur]=v;
   }
   return cpi;
 }

@@ -213,7 +213,8 @@ function norm(e) {
   }
   console.log("Fantomové (přeplánované) události odstraněny:", phantoms, okWeeks === 9 ? "" : "(přeskočeno — nestaženy všechny týdny)", "· starší dvojice:", oldPh);
   let histEvents = [...histMap.values()];
-  const cutoff = Date.now() - HIST_MONTHS * 30 * 86400000;
+  const _dn = new Date(); // cutoff zaokrouhlen na UTC den, ať se soubor nemění každou minutu (dřív ~24 commitů denně)
+  const cutoff = Date.UTC(_dn.getUTCFullYear(), _dn.getUTCMonth(), _dn.getUTCDate()) - HIST_MONTHS * 30 * 86400000;
   histEvents = histEvents.filter((e) => { const t = new Date(e.date).getTime(); return isNaN(t) || t >= cutoff; });
   histEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
   if (histEvents.length > HIST_CAP) histEvents = histEvents.slice(histEvents.length - HIST_CAP);
