@@ -22,7 +22,9 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0"></script>
 <!-- SDÍLENÝ ENGINE (plain script → běží před babel scriptem, funkce jsou globální) -->
 <script src="engine.js?v=20261113a"></script>
-<script src="sync.js?v=20261020c"></script>
+<script src="sync.js?v=20261113a"></script>
+<script src="Trading%20Denik/journal-stats.js?v=20261113a"></script>
+<script src="Trading%20Denik/mt5-journal-ui.js?v=20261113a"></script>
 <style>
   /* Paleta sjednocená s PC verzí (index.html tok) */
   :root{
@@ -1451,6 +1453,25 @@ function StrengthTab({data}){
   );
 }
 // ── ZÁLOŽKA: DENÍK ──────────────────────────────────────────
+// ── MT5 deník (automatický) — UI i data žijí ve složce "Trading Denik/" (mt5-journal-ui.js). Tady jen tenký adaptér
+// na React hooky; stejný kód jako PC. Stav drží sdílený objekt, aby k němu měl přístup i AI Coach.
+const MT5M={self:null,subs:new Set(),get(){
+  if(!this.self){ const me=this; this.self={h:React.createElement,
+    tok:{green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',accent:'#5e7cfb',dim:'#8b93a3',faint:'#5a6273',text:'#eaedf3'},
+    card(x){return Object.assign({background:'linear-gradient(180deg,#0f121a,#0b0d13)',border:'1px solid #1b2130',borderRadius:16},x||{});},
+    mono(x){return Object.assign({fontFamily:"'JetBrains Mono',monospace"},x||{});},
+    ptitle(t,s){return React.createElement('div',{style:{marginBottom:6}},React.createElement('div',{style:{fontSize:14,fontWeight:800}},t),s&&React.createElement('div',{style:{fontSize:10.5,color:'#5a6273',marginTop:3}},s));},
+    state:{},setState(f){ const p=typeof f==='function'?f(this.state):f; this.state=Object.assign({},this.state,p); me.subs.forEach(fn=>fn()); }}; }
+  return this.self; }};
+function MT5JournalM(){
+  const [,bump]=useState(0);
+  useEffect(()=>{ if(!window.MT5JournalUI) return; const fn=()=>bump(n=>n+1); MT5M.subs.add(fn);
+    try{window.MT5JournalUI.load(MT5M.get());}catch(e){}
+    const iv=setInterval(()=>{ try{ if(!document.hidden) window.MT5JournalUI.load(MT5M.get()); }catch(e){} },60000);
+    return ()=>{ MT5M.subs.delete(fn); clearInterval(iv); }; },[]);
+  if(!window.MT5JournalUI) return null;
+  try{ return window.MT5JournalUI.render(MT5M.get()); }catch(e){ return <div className="card" style={{color:'var(--red)',fontSize:12}}>MT5 deník: chyba zobrazení ({String(e&&e.message||e)})</div>; }
+}
 function JournalTab({data}){
   const [list,setList]=useState(()=>{try{return JSON.parse(localStorage.getItem("journal")||"[]");}catch(e){return[];}});
   const pairOpts=(typeof STANDARD_PAIRS!=="undefined"?STANDARD_PAIRS.map(p=>p.pair):["EURUSD"]);
@@ -1494,6 +1515,7 @@ function JournalTab({data}){
   }:null;
   return (
     <div>
+      <MT5JournalM/>
       {je&&<div className="card">
         <div style={{fontWeight:800,marginBottom:8,fontSize:13}}>🎯 Ověření edge — WR podle kontextu</div>
         <SliceBarM label="Conviction ★3+" s={je.byConvHi}/><SliceBarM label="Conviction ★0–2" s={je.byConvLo}/>
@@ -1539,7 +1561,7 @@ function JournalTab({data}){
   );
 }
 // ── AI COACH (chat napojený na živá data) ───────────────────
-function buildCoachContextM(data,activePair){
+function buildCoachContextM(data,activePair,focusText){
   const D=(data&&data.D)||{}, sc={};
   CURRENCIES.forEach(c=>{const d=D[c]||{};sc[c]={score:+(+d.score||0).toFixed(2),fund:+(+d.fund||0).toFixed(2),cot:+(+d.cot||0).toFixed(2),cotPct:d.cotPct,policy:+(+d.policy||0).toFixed(2),cb:d.cb,inst:d.inst,retail:d.retail};});
   let pos={}; try{pos=JSON.parse(localStorage.getItem("positions")||"{}");}catch(e){}
@@ -1547,12 +1569,13 @@ function buildCoachContextM(data,activePair){
   const cb={}; CURRENCIES.forEach(c=>{const r=(typeof CENTRAL_BANK_RATES!=="undefined"?CENTRAL_BANK_RATES[c]:null);const pl=(typeof CB_POLICY_DATA!=="undefined"?CB_POLICY_DATA[c]:null);cb[c]={rate:r,policy:pl&&pl.label};});
   let cbdi=null; try{cbdi=calcCBDI();}catch(e){}
   let econEvents=[]; try{ econEvents=buildCoachEventContext((data&&data.cal)||[],(data&&data.upcoming)||[]); }catch(e){}
-  return {timestamp:new Date().toISOString(),cbdi,activePair:activePair||"none",centralBanks:cb,currencyScores:sc,topPairs:top,econEvents:econEvents};
+  let mt5Journal=null; try{ mt5Journal=window.MT5JournalUI?window.MT5JournalUI.coachContext(MT5M.get(),focusText):null; }catch(e){}
+  return {timestamp:new Date().toISOString(),cbdi,activePair:activePair||"none",centralBanks:cb,currencyScores:sc,topPairs:top,econEvents:econEvents,mt5Journal};
 }
 async function coachReply(ctx,history){
   const orKey=(localStorage.getItem("or_key")||"").trim();
   if(!orKey) throw new Error("Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).");
-  const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce (mimo strukturovanou odpověď na ekonomický report, viz pravidla níže); vždy zmiň invalidaci; jsi mentor ne signální služba.\n\n'+COACH_ECON_REPORT_RULES;
+  const sys='Jsi zkušený FX trading mentor (ICT/SMC, fundamenty, COT, risk management). Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\nPRAVIDLA: pokud activePair není "none", zaměř odpověď hlavně na tento pár; nikdy "kup/prodej teď" bez podmínek; formát bias→scénář→vstup→invalidace→riziko; vysvětli konflikty; max 3–4 odstavce (mimo strukturovanou odpověď na ekonomický report, viz pravidla níže); vždy zmiň invalidaci; jsi mentor ne signální služba.\n\n'+COACH_ECON_REPORT_RULES+(window.MT5JournalUI&&ctx.mt5Journal&&ctx.mt5Journal.available?'\n\n'+window.MT5JournalUI.COACH_MT5_RULES:'');
   const apiMsgs=history.slice(-10).map(m=>({role:m.role==="user"?"user":"assistant",content:m.text}));
   const head={"Content-Type":"application/json","Authorization":"Bearer "+orKey,"HTTP-Referer":"https://pitrrv.github.io","X-Title":"AT Trading AI Coach"};
   const body=m=>JSON.stringify({model:m,messages:[{role:"system",content:sys}].concat(apiMsgs),max_tokens:900,temperature:0.4});
@@ -1574,7 +1597,7 @@ function CoachTab({data}){
   async function send(text){
     const t=(text==null?input:text).trim(); if(!t||busy)return;
     const hist=msgs.concat([{role:"user",text:t}]); setInput("");setMsgs(hist);persist(hist);setBusy(true);
-    try{ const ctx=buildCoachContextM(data,pair); const reply=await coachReply(ctx,hist); const m=hist.concat([{role:"coach",text:reply}]);setMsgs(m);persist(m); }
+    try{ try{ if(window.MT5JournalUI) await window.MT5JournalUI.prepareForCoach(MT5M.get(),t); }catch(e){} const ctx=buildCoachContextM(data,pair,t); const reply=await coachReply(ctx,hist); const m=hist.concat([{role:"coach",text:reply}]);setMsgs(m);persist(m); }
     catch(e){ const m=hist.concat([{role:"coach",text:"⚠ "+(e&&e.message||e)}]);setMsgs(m);persist(m); }
     setBusy(false);
   }

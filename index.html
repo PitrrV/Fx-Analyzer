@@ -13,7 +13,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0"></script>
 <script src="engine.js?v=20261113a"></script>
-<script src="sync.js?v=20261020c"></script>
+<script src="sync.js?v=20261113a"></script>
+<script src="Trading%20Denik/journal-stats.js?v=20261113a"></script>
+<script src="Trading%20Denik/mt5-journal-ui.js?v=20261113a"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -888,8 +890,9 @@ class FXApp extends React.Component{
     const openaiKey=(localStorage.getItem('openai_key')||'').trim();
     if(!orKey&&!openaiKey){ this.updateThread(tid,{msgs:hist.concat([{role:'coach',text:'⚠ Chybí API klíč — přidej OpenAI nebo OpenRouter klíč v záložce Nastavení ⚙.'}]),busy:false}); return; }
     try{
+      try{ if(window.MT5JournalUI) await window.MT5JournalUI.prepareForCoach(this,t); }catch(e){}
       const ctx=this.buildCoachContext(t,th.pair);
-      const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_TEACHING_PRINCIPLES+'\n\n'+COACH_PERSONA+'\n\n'+COACH_GUARDRAILS+'\n\n'+COACH_PERSONALIZATION+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB;
+      const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_TEACHING_PRINCIPLES+'\n\n'+COACH_PERSONA+'\n\n'+COACH_GUARDRAILS+'\n\n'+COACH_PERSONALIZATION+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB+(window.MT5JournalUI&&ctx.mt5Journal&&ctx.mt5Journal.available?'\n\n'+window.MT5JournalUI.COACH_MT5_RULES:'');
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
       const msgs=[{role:'system',content:sys}].concat(apiMsgs);
       let reply='',fallback='';
@@ -1015,7 +1018,7 @@ class FXApp extends React.Component{
     let pairNote=null; try{ if(focusPair&&this.state.notes&&this.state.notes[focusPair]) pairNote=this.state.notes[focusPair]; }catch(e){}
     let riskSentiment='NEUTRÁLNÍ'; try{ riskSentiment=g_riskSentiment>0?'RISK-ON':g_riskSentiment<0?'RISK-OFF':'NEUTRÁLNÍ'; }catch(e){}
     let vix=null; try{ if(typeof _VIX_LATEST!=='undefined'&&_VIX_LATEST) vix={value:_VIX_LATEST.vix,change5d:_VIX_LATEST.vix5dChange,regime:_VIX_LATEST.regime,asOf:_VIX_LATEST.updated}; }catch(e){}
-    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:threadPair||'none',riskSentiment,vix,centralBanks:cb,currencyScores:sc,scoreChanges:scoreChanges,topPairs:top,econEvents:econEvents,focusPairDossier:focusPairDossier,pairNote:pairNote,journalEdge:journalEdgeSummary,openPositions:openPositions}; }
+    return {timestamp:new Date().toISOString(),cbdi:this.cbdi,activePair:threadPair||'none',riskSentiment,vix,centralBanks:cb,currencyScores:sc,scoreChanges:scoreChanges,topPairs:top,econEvents:econEvents,focusPairDossier:focusPairDossier,pairNote:pairNote,journalEdge:journalEdgeSummary,openPositions:openPositions,mt5Journal:(()=>{ try{ return window.MT5JournalUI?window.MT5JournalUI.coachContext(this,focusText):null; }catch(e){ return null; } })()}; }
   async runVision(){ const file=this._aiFile; if(!file){ this.setState({aiErr:'Nejprve nahrej screenshot grafu.'}); return; }
     const orKey=(localStorage.getItem('or_key')||'').trim(); if(!orKey){ this.setState({aiErr:'Chybí OpenRouter API klíč — přidej ho v Nastavení ⚙ (zdarma na openrouter.ai).'}); return; }
     this.setState({aiBusy:true,aiErr:'',aiResult:null});
@@ -2463,7 +2466,11 @@ class FXApp extends React.Component{
     const inp={background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'9px 11px',fontSize:12.5,fontFamily:"'Manrope',sans-serif",outline:'none',width:'100%'};
     const lab=t=>h('div',{style:{fontSize:10,color:T.faint,marginBottom:4}},t);
     const pairOpts=this.PAIRS.map(p=>p.pair); const curPair=f.pair||pairOpts[0]||'EURUSD';
-    return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},h('div',{style:{display:'flex',gap:14,flexWrap:'wrap'}},kpi('Win Rate',j.wr+'%',T.green),kpi('Profit Factor',(j.pf||0).toFixed(1),T.green),kpi('Obchodů',j.trades),kpi('Průměr R',self.sgn(j.avgR,2),T.green),kpi('Nejlepší R','+'+(j.bestR||0).toFixed(1),T.accent)),
+    // MT5 deník (automatický): data + UI žijí ve složce "Trading Denik/". Načtení jednou při otevření záložky + obnova co minutu.
+    if(window.MT5JournalUI&&!this._mt5Started){ this._mt5Started=true; setTimeout(()=>{ try{window.MT5JournalUI.load(this);}catch(e){} },0);
+      this._mt5Timer=setInterval(()=>{ try{ if(this.state.tab==='journal'&&!document.hidden) window.MT5JournalUI.load(this); }catch(e){} },60000); }
+    const mt5Card=window.MT5JournalUI?(()=>{ try{ return window.MT5JournalUI.render(this); }catch(e){ return h('div',{style:self.card({padding:'14px 18px',color:T.red,fontSize:12})},'MT5 deník: chyba zobrazení ('+(e&&e.message||e)+')'); } })():null;
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:16}},mt5Card,h('div',{style:{display:'flex',gap:14,flexWrap:'wrap'}},kpi('Win Rate',j.wr+'%',T.green),kpi('Profit Factor',(j.pf||0).toFixed(1),T.green),kpi('Obchodů',j.trades),kpi('Průměr R',self.sgn(j.avgR,2),T.green),kpi('Nejlepší R','+'+(j.bestR||0).toFixed(1),T.accent)),
       h('div',{style:self.card({padding:'18px 20px'})},
         h('div',{onClick:()=>self.setState(s=>({jImportOpen:!s.jImportOpen})),style:{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer',marginBottom:st.jImportOpen?14:0}},
           h('div',null,h('div',{style:{fontSize:13.5,fontWeight:800,letterSpacing:'-.01em'}},'Import obchodů (JSON)'),h('div',{style:self.mono({fontSize:10.5,color:T.faint,marginTop:3,letterSpacing:'.02em'})},'Zpětné doplnění z brokerského reportu — bez duplicit')),

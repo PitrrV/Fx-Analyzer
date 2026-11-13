@@ -90,6 +90,14 @@ the user's local history on load (e.g. `fetchActionCOTHistory` merges `data/cot_
 `cot_hist` in `localStorage`) — this is what lets COT/calendar/price/retail history self-heal
 even if a user hasn't opened the app in a while, without any manual import step.
 
+### MT5 Trading deník (`Trading Denik/`)
+
+Automatický deník obchodů z MT5 (jen čtení). Python konektor → Supabase edge funkce `mt5-ingest` → tabulky `mt5_*` (RLS) →
+sekce „MT5 deník“ v záložce Trading deník (`Trading Denik/mt5-journal-ui.js`, načítá ji `index.html` i `m.html`) a kontext
+AI Coache (`mt5Journal`). Statistiky v `Trading Denik/journal-stats.js` (definice v hlavičce). Stav Analyzeru v čase plní
+`scripts/snapshot-analyzer-state.js` (krok v data-refresh.yml) + edge funkce `analyzer-state-capture`. Podrobnosti:
+`Trading Denik/README.md`. Zdrojáky edge funkcí jsou verzovaná kopie; nasazují se ručně do Supabase.
+
 ### Cloud sync (`sync.js`)
 
 Optional Supabase-backed sync, loaded by all three frontends. Merge policy: history-shaped

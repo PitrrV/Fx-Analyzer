@@ -1,0 +1,9 @@
+{
+  "api_url": "https://wdcvxfbhauwvwzbatkfh.supabase.co/functions/v1/mt5-ingest",
+  "token_env": "MT5_JOURNAL_TOKEN",
+  "token_file": "",
+  "terminal_path": "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
+  "poll_seconds": 10,
+  "history_days_initial": 365,
+  "state_file": "state_ucet1.json"
+}

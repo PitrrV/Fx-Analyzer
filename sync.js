@@ -160,6 +160,6 @@
     return stats;
   }
 
-  window.Sync={ ready:!!sb, session, signIn, verifyCode, signInPassword, signUpPassword, resetPassword, signOut, syncNow,
+  window.Sync={ ready:!!sb, client:()=>sb, session, signIn, verifyCode, signInPassword, signUpPassword, resetPassword, signOut, syncNow,
     onAuth:(cb)=>{ if(sb) sb.auth.onAuthStateChange((event,sess)=>cb(sess,event)); } };
 })();
