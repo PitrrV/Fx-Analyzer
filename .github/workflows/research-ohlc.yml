@@ -1,0 +1,40 @@
+name: Research OHLC (Reversal edge research)
+
+# Jednorázový sběr H4/D1 OHLC pro výzkum Reverzál signálu. Dispatch-only, nic z produkce se nemění.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: research-ohlc
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Stáhnout OHLC (Yahoo 60m → H4/D1)
+        run: node scripts/research-fetch-ohlc.js
+      - name: Commit
+        run: |
+          git config user.name "research-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain data/research/ohlc)" ]; then
+            git add data/research/ohlc
+            git commit -m "chore: research OHLC (H4/D1) [skip ci]"
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main
+              git push && break
+              echo "Push selhal (pokus $i/5), čekám a zkouším znovu…"
+              sleep $((i*2))
+            done
+          else
+            echo "Beze změny."
+          fi
