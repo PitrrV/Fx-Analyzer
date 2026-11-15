@@ -5,7 +5,11 @@ Trading deníku v Analyzeru. **Nikdy neobchoduje, nemění SL/TP ani nezavírá 
 `mt5_readonly.py`, která pustí pouze čtecí funkce MT5 (test `tests/test_readonly.py` hlídá, že se obchodní funkce nikde
 neobjeví). Hesla k účtu nepotřebuje: připojí se k terminálu, který už je přihlášený.
 
-## Instalace (Windows)
+## Rychlá instalace (Windows, skriptem)
+`install_windows.ps1` udělá všechno níže sám (Python, balíček, soubory, token do souboru jen pro tebe, config, diagnostika, úloha Plánovače). Postup pro Cowork je v `../cowork/COWORK_MT5_SETUP.md`.
+Samotnou diagnostiku (nic se neodesílá) spustíš `python diagnose.py --config config.json`; vznikne `diag_report.json`, který jde offline přehrát příkazem `node tests/replay_diag.mjs diag_report.json` (ze složky `Trading Denik`).
+
+## Instalace (Windows, ručně)
 1. Nainstaluj Python 3.9+ a v příkazové řádce `pip install MetaTrader5`.
 2. V Analyzeru otevři **Trading deník → MT5 deník → + Přidat MT5 účet**, zadej název a vytvoř účet. Zobrazí se **token (jen jednou)**.
 3. Ulož token do proměnné prostředí (nikam jinam): `setx MT5_JOURNAL_TOKEN "mt5_…"` a otevři nové okno příkazové řádky.

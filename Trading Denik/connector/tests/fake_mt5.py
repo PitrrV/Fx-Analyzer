@@ -10,6 +10,8 @@ class FakeMT5:
 
     # čtecí funkce, které obálka propustí
     def account_info(self): return self.acc
+    def terminal_info(self): return NS(trade_allowed=True, connected=True, tradeapi_disabled=False, company='Fake Broker')
+    def version(self): return (500, 4500, '01 Jan 2026')
     def positions_get(self, **k): return list(self.positions)
     def orders_get(self, **k): return list(self.pending)
     def symbol_info(self, s): return NS(trade_tick_size=0.00001, trade_tick_value=1.0, trade_contract_size=100000, digits=5)
