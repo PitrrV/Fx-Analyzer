@@ -2713,7 +2713,7 @@ class FXApp extends React.Component{
         h('div',{style:self.mono({fontSize:12.5,fontWeight:700,color:T.text,paddingLeft:13})},r.value))),
       h('div',{style:{fontSize:9.5,color:T.faint,lineHeight:1.5,marginTop:10,paddingTop:10,borderTop:'1px solid #161b27'}},'Přesně tohle (skóre, COT, retail, kalendář, pozice a deník) jde do promptu při každé zprávě — Coach neodpovídá z obecných znalostí.'));
   }
-  renderBiasCard(){ const self=this,h=this.h,T=this.tok; const top=this.PAIRS[0]; if(!top) return null; const conf=Math.min(100,Math.round(top.diff/4*100)); /* měřítko z pásem skóre (silný ≥ 3 → 75 %); dřív /12 → max ~17 % */ const posEntries=Object.entries(this.state.pos).filter(([,s])=>s&&s!=='none'); const dc=top.dir==='BUY'?T.green:T.red;
+  renderBiasCard(){ const self=this,h=this.h,T=this.tok; /* karta sleduje otevřený pár (state.sel); bez něj nejlepší pár */ const top=(this.state.sel&&this.PAIRS.find(x=>x.pair===this.state.sel))||this.PAIRS[0]; if(!top) return null; const conf=Math.min(100,Math.round(top.diff/4*100)); /* měřítko z pásem skóre (silný ≥ 3 → 75 %); dřív /12 → max ~17 % */ const posEntries=Object.entries(this.state.pos).filter(([,s])=>s&&s!=='none'); const dc=top.dir==='BUY'?T.green:T.red;
     // Risk regime tile — VIX (primární zdroj, viz computeAutoRiskSentiment v
     // engine.js) s fallbackem na cenové momentum, když VIX data ještě nedorazila.
     let vixData=null; try{ vixData=(typeof _VIX_LATEST!=='undefined')?_VIX_LATEST:null; }catch(e){}
