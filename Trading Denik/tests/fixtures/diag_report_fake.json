@@ -1,0 +1,237 @@
+{
+ "generated": "2026-11-15T10:15:27.366663+00:00",
+ "mt5_package_version": null,
+ "terminal_version": [
+  500,
+  4500,
+  "01 Jan 2026"
+ ],
+ "terminal": {
+  "connected": true,
+  "trade_allowed": true,
+  "tradeapi_disabled": false,
+  "company": "Fake Broker"
+ },
+ "account": {
+  "login": "***789",
+  "currency": "USD",
+  "balance": 100679,
+  "equity": 100000.0,
+  "margin": 0.0,
+  "free_margin": 100000.0,
+  "profit": 0.0,
+  "margin_mode": "hedging"
+ },
+ "window": {
+  "from": "2025-11-13T12:00:00+00:00",
+  "to": "2026-11-14T12:00:00+00:00"
+ },
+ "counts": {
+  "deals": 6,
+  "orders": 1,
+  "open_positions": 1
+ },
+ "deal_types": {
+  "BALANCE": 1,
+  "BUY": 3,
+  "SELL": 2
+ },
+ "deal_entries": {
+  "IN": 4,
+  "OUT": 2
+ },
+ "raw_shapes": {
+  "deal": [
+   "comment",
+   "commission",
+   "entry",
+   "fee",
+   "magic",
+   "order",
+   "position_id",
+   "price",
+   "profit",
+   "reason",
+   "swap",
+   "symbol",
+   "ticket",
+   "time_msc",
+   "type",
+   "volume"
+  ],
+  "order": [
+   "position_id",
+   "price_open",
+   "sl",
+   "state",
+   "symbol",
+   "ticket",
+   "time_done_msc",
+   "time_setup_msc",
+   "tp",
+   "type",
+   "volume_current",
+   "volume_initial"
+  ],
+  "position": [
+   "price_open",
+   "profit",
+   "sl",
+   "swap",
+   "symbol",
+   "ticket",
+   "time_msc",
+   "time_update_msc",
+   "tp",
+   "type",
+   "volume"
+  ]
+ },
+ "warnings": [
+  "V termin\u00e1lu je zapnut\u00e9 Algo Trading. Konektor ho nepot\u0159ebuje; doporu\u010deno vypnout."
+ ],
+ "deals": [
+  {
+   "ticket": 1,
+   "position_id": 0,
+   "order": 1001,
+   "time_msc": 1794474000000,
+   "symbol": "EURUSD",
+   "type": "BALANCE",
+   "entry": "IN",
+   "volume": 0,
+   "price": 0,
+   "profit": 100000.0,
+   "commission": 0.0,
+   "swap": 0.0,
+   "fee": 0.0,
+   "reason": "0",
+   "magic": 0
+  },
+  {
+   "ticket": 2,
+   "position_id": 7,
+   "order": 1002,
+   "time_msc": 1794560400000,
+   "symbol": "EURUSD",
+   "type": "BUY",
+   "entry": "IN",
+   "volume": 1.0,
+   "price": 1.1,
+   "profit": 0.0,
+   "commission": -7.0,
+   "swap": 0.0,
+   "fee": 0.0,
+   "reason": "0",
+   "magic": 0
+  },
+  {
+   "ticket": 4,
+   "position_id": 8,
+   "order": 1004,
+   "time_msc": 1794560400000,
+   "symbol": "EURUSD",
+   "type": "SELL",
+   "entry": "IN",
+   "volume": 1.0,
+   "price": 1.1,
+   "profit": 0.0,
+   "commission": -7.0,
+   "swap": 0.0,
+   "fee": 0.0,
+   "reason": "0",
+   "magic": 0
+  },
+  {
+   "ticket": 3,
+   "position_id": 7,
+   "order": 1003,
+   "time_msc": 1794564000000,
+   "symbol": "EURUSD",
+   "type": "SELL",
+   "entry": "OUT",
+   "volume": 1.0,
+   "price": 1.105,
+   "profit": 500.0,
+   "commission": -7.0,
+   "swap": 0.0,
+   "fee": 0.0,
+   "reason": "0",
+   "magic": 0
+  },
+  {
+   "ticket": 5,
+   "position_id": 8,
+   "order": 1005,
+   "time_msc": 1794567600000,
+   "symbol": "EURUSD",
+   "type": "BUY",
+   "entry": "OUT",
+   "volume": 1.0,
+   "price": 1.098,
+   "profit": 200.0,
+   "commission": -7.0,
+   "swap": 0.0,
+   "fee": 0.0,
+   "reason": "0",
+   "magic": 0
+  },
+  {
+   "ticket": 6,
+   "position_id": 9,
+   "order": 1006,
+   "time_msc": 1794569400000,
+   "symbol": "EURUSD",
+   "type": "BUY",
+   "entry": "IN",
+   "volume": 1.0,
+   "price": 1.1,
+   "profit": 0.0,
+   "commission": -7.0,
+   "swap": 0.0,
+   "fee": 0.0,
+   "reason": "0",
+   "magic": 0
+  }
+ ],
+ "orders": [
+  {
+   "ticket": 1002,
+   "position_id": 7,
+   "symbol": "EURUSD",
+   "type": "BUY",
+   "state": "FILLED",
+   "is_pending": false,
+   "time_setup_msc": 1794560400000,
+   "time_done_msc": 1794560400000,
+   "volume_initial": 1.0,
+   "volume_current": 0.0,
+   "price_open": 1.1,
+   "sl": 1.095,
+   "tp": 1.11
+  }
+ ],
+ "positions": [
+  {
+   "ticket": 9,
+   "symbol": "EURUSD",
+   "type": "BUY",
+   "volume": 1.0,
+   "price_open": 1.1,
+   "sl": 1.095,
+   "tp": 1.11,
+   "profit": 10.0,
+   "swap": 0.0,
+   "time_msc": 1794569400000,
+   "time_update_msc": 1794569400001
+  }
+ ],
+ "specs": {
+  "EURUSD": {
+   "tick_size": 1e-05,
+   "tick_value": 1.0,
+   "contract_size": 100000,
+   "digits": 5
+  }
+ }
+}
