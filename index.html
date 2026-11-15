@@ -1706,7 +1706,7 @@ class FXApp extends React.Component{
   }
 
   buildGauge(){ const self=this,h=this.h;
-    this.Gauge=({val})=>{ const T=self.tok, R=64, cx=80, cy=80, sw=11;
+    this.Gauge=({val,label})=>{ const T=self.tok, R=64, cx=80, cy=80, sw=11;
       const polar=(deg)=>{ const a=(deg-180)*Math.PI/180; return [cx+R*Math.cos(a),cy+R*Math.sin(a)]; };
       const arc=(d0,d1)=>{ const [x0,y0]=polar(d0),[x1,y1]=polar(d1); const large=(d1-d0)>180?1:0; return `M ${x0} ${y0} A ${R} ${R} 0 ${large} 1 ${x1} ${y1}`; };
       const bands=[{a:0,b:63,c:T.red},{a:63,b:108,c:T.amber},{a:108,b:180,c:T.green}];
@@ -1717,7 +1717,7 @@ class FXApp extends React.Component{
           bands.map((bd,i)=>h('path',{key:i,d:arc(bd.a+(i?2:0),bd.b-(i<2?2:0)),fill:'none',stroke:bd.c,strokeWidth:sw,strokeLinecap:'round',opacity:.92})),
           h('line',{x1:cx,y1:cy,x2:nx,y2:ny,stroke:'#eef1f6',strokeWidth:2.4,strokeLinecap:'round'}),
           h('circle',{cx:cx,cy:cy,r:4.5,fill:'#0b0d13',stroke:'#eef1f6',strokeWidth:2})),
-        h('div',{style:{position:'absolute',bottom:0,left:0,right:0,textAlign:'center'}},h('div',{style:self.mono({fontSize:26,fontWeight:700,color:col,lineHeight:1})},val),h('div',{style:{fontSize:9.5,color:T.faint,letterSpacing:'.1em',marginTop:2}},'DIVERGENCE')));
+        h('div',{style:{position:'absolute',bottom:0,left:0,right:0,textAlign:'center'}},h('div',{style:self.mono({fontSize:26,fontWeight:700,color:col,lineHeight:1})},val),h('div',{style:{fontSize:9.5,color:T.faint,letterSpacing:'.1em',marginTop:2}},label||'DIVERGENCE')));
     };
   }
   StrengthChart(){ const self=this,h=this.h,T=this.tok; const rows=this.CUR.map(c=>Object.assign({c},this.D[c])).sort((a,b)=>b.score-a.score); const max=10;
@@ -2721,7 +2721,13 @@ class FXApp extends React.Component{
     const rRegime=vixData?vixData.regime:(rVal>0?'RISK_ON':rVal<0?'RISK_OFF':'NEUTRAL');
     const rCol=rRegime==='RISK_ON'?T.green:rRegime==='RISK_OFF'?T.red:T.amber;
     const rLabel=rRegime==='RISK_ON'?'RISK-ON':rRegime==='RISK_OFF'?'RISK-OFF':'NEUTRÁLNÍ';
-    return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},h('div',{style:self.card({padding:'15px 16px'})},h('div',{style:{fontSize:10,color:T.faint,letterSpacing:'.1em',marginBottom:8}},'OVERALL FX BIAS'),h('div',{style:{display:'flex',alignItems:'baseline',gap:10}},h('span',{style:self.mono({fontSize:22,fontWeight:700,color:dc})},top.dir),h('span',{style:self.mono({fontSize:13,fontWeight:700,color:T.text})},top.pair)),h('div',{style:{display:'flex',alignItems:'center',gap:9,marginTop:10}},h('span',{style:self.mono({fontSize:13,fontWeight:700,color:dc})},conf+'%'),h('div',{style:{flex:1,height:6,background:'#0a0d13',borderRadius:4,overflow:'hidden'}},h('div',{style:{height:'100%',width:conf+'%',background:'linear-gradient(90deg,'+dc+'66,'+dc+')',borderRadius:4}}))),h('div',{style:{borderTop:'1px solid #161b27',marginTop:13,paddingTop:12}},this.Gauge({val:this.cbdi}))),
+    return h('div',{style:{display:'flex',flexDirection:'column',gap:14}},h('div',{style:self.card({padding:'15px 16px'})},h('div',{style:{fontSize:10,color:T.faint,letterSpacing:'.1em',marginBottom:8}},'OVERALL FX BIAS'),h('div',{style:{display:'flex',alignItems:'baseline',gap:10}},h('span',{style:self.mono({fontSize:22,fontWeight:700,color:dc})},top.dir),h('span',{style:self.mono({fontSize:13,fontWeight:700,color:T.text})},top.pair)),h('div',{style:{display:'flex',alignItems:'center',gap:9,marginTop:10}},h('span',{style:self.mono({fontSize:13,fontWeight:700,color:dc})},conf+'%'),h('div',{style:{flex:1,height:6,background:'#0a0d13',borderRadius:4,overflow:'hidden'}},h('div',{style:{height:'100%',width:conf+'%',background:'linear-gradient(90deg,'+dc+'66,'+dc+')',borderRadius:4}}))),h('div',{style:{borderTop:'1px solid #161b27',marginTop:13,paddingTop:12}},(()=>{ /* Divergence: pro otevřený pár (state.sel) párové CBDI, jinak pár z karty; globální číslo jako popisek */
+          const selP=this.state.sel?this.PAIRS.find(x=>x.pair===this.state.sel):null, dp=selP||top;
+          let pv=null; try{ pv=calcPairCBDI(dp.base,dp.quote); }catch(e){}
+          const gl=Math.round(this.cbdi);
+          if(typeof pv!=='number'||isNaN(pv)) return this.Gauge({val:gl,label:'DIVERGENCE · GLOBÁLNÍ'});
+          return h('div',null,this.Gauge({val:pv,label:'DIVERGENCE · '+dp.pair}),h('div',{style:{textAlign:'center',fontSize:10,color:T.faint,marginTop:6}},'globální (všech 8 měn): '+gl));
+        })())),
       h('div',{style:self.card({padding:'14px 16px'})},h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}},h('span',{style:{fontSize:10,color:T.faint,letterSpacing:'.1em'}},'RISK REGIME'),h('span',{style:self.mono({fontSize:9.5,fontWeight:800,letterSpacing:'.03em',color:rCol,background:rCol+'1c',border:'1px solid '+rCol+'44',borderRadius:6,padding:'2px 7px'})},rLabel)),
         vixData?h('div',null,
           h('div',{style:{display:'flex',alignItems:'baseline',gap:8}},h('span',{style:self.mono({fontSize:22,fontWeight:700,color:T.text})},vixData.vix.toFixed(1)),h('span',{style:{fontSize:10.5,color:T.faint}},'VIX'),h('span',{style:self.mono({fontSize:11.5,fontWeight:700,color:vixData.vix5dChange>=0?T.red:T.green,marginLeft:'auto'})},(vixData.vix5dChange>=0?'+':'')+vixData.vix5dChange+' · 5d')),
