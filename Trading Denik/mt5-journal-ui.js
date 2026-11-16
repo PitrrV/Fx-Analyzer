@@ -149,11 +149,21 @@
     // equity křivka
     const ids=st.selAcc==='ALL'?st.accounts.map(a=>a.id):[st.selAcc];
     const mixed=new Set(ids.map(i=>(st.accounts.find(a=>a.id===i)||{}).currency)).size>1;
+    // Křivka se rekonstruuje z uzavřených obchodů (balance po každém uzavření); koncový bod = aktuální balance účtu.
+    // Equity vzorky konektoru se nepoužívají: bez otevřených obchodů jsou všechny stejné (rovná čára).
+    const pdays=PER_DAYS[st.per], since=pdays?Date.now()-pdays*86400000:0;
     let series=[];
     if(!mixed){
-      const ser=ids.map(i=>st.equity[i]||[]).filter(s=>s.length);
-      if(ser.length){const start=Math.max(...ser.map(s=>Date.parse(s[0].t))),ts=[...new Set(ser.flatMap(s=>s.map(p=>Date.parse(p.t))))].filter(t=>t>=start).sort((a,b)=>a-b);
-        series=ts.map(t=>{let e=0,b=0;ser.forEach(s=>{let last=s[0];for(const p of s){if(Date.parse(p.t)<=t)last=p;else break;}e+=last.equity;b+=last.balance;});return{t:new Date(t).toISOString(),equity:e,balance:b};});}
+      const accSel=st.accounts.filter(a=>ids.indexOf(a.id)>=0), endBal=accSel.reduce((q,a)=>q+(+a.balance||0),0);
+      const closedAll=trades(st).filter(t=>t.closeTime&&ids.indexOf(t.account)>=0).sort((a,b)=>Date.parse(a.closeTime)-Date.parse(b.closeTime));
+      if(closedAll.length&&accSel.length){
+        const total=closedAll.reduce((q,t)=>q+(S.netOf(t)||0),0); let bal=endBal-total;
+        const pts=[{t:closedAll[0].openTime||closedAll[0].closeTime,balance:bal,equity:bal}];
+        closedAll.forEach(t=>{bal+=S.netOf(t)||0;pts.push({t:t.closeTime,balance:bal,equity:bal});});
+        pts.push({t:new Date().toISOString(),balance:endBal,equity:endBal});
+        series=pts.filter(p=>Date.parse(p.t)>=since);
+        if(series.length<pts.length&&series.length){const prev=pts[pts.length-series.length-1];series.unshift({t:new Date(since).toISOString(),balance:prev.balance,equity:prev.balance});}
+      }
     }
     const dd=S.drawdown(series.map(p=>({t:p.t,equity:p.equity})));
     const kpis=h('div',{style:{display:'flex',gap:12,flexWrap:'wrap',marginBottom:14}},
@@ -164,16 +174,24 @@
       k('Expectancy',money(sum.expectancy,cur),'průměrný net na obchod',col(sum.expectancy)),
       k('Průměr v R',sum.avgR==null?'—':fm(sum.avgR,2)+' R','z '+sum.nWithR+' obchodů'+(sum.nWithoutR?' · '+sum.nWithoutR+' bez SL se nepočítá':'')),
       k('Ø výhra / ztráta',sum.mixedCurrencies?'—':fm(sum.avgWin,0)+' / '+fm(sum.avgLoss,0),'po nákladech'),
-      k('Max drawdown',dd.abs?'−'+fm(dd.abs,0)+' '+cur:'—',dd.abs&&dd.pct!=null?'−'+fm(dd.pct*100,1)+' % z maxima equity (z equity vzorků)':'z equity vzorků konektoru'));
+      k('Max drawdown',dd.abs?'−'+fm(dd.abs,0)+' '+cur:'—',dd.abs&&dd.pct!=null?'−'+fm(dd.pct*100,1)+' % z maxima (z rekonstruované křivky)':'z rekonstruované křivky'));
     const chart=(()=>{
       if(mixed) return h('div',{style:{fontSize:12,color:T.faint,padding:'10px 0'}},'Souhrnná křivka se nesčítá pro účty s různou měnou — vyber jeden účet.');
-      if(series.length<2) return h('div',{style:{fontSize:12,color:T.faint,padding:'10px 0'}},'Equity křivka se zobrazí, jakmile konektor pošle aspoň dva vzorky.');
-      const W=900,H=240,L=64,R=14,Tp=12,B=26,all=series.flatMap(p=>[p.equity,p.balance]),lo=Math.min(...all),hi=Math.max(...all),pad=(hi-lo)*0.08||1,y0=lo-pad,y1=hi+pad;
-      const X=i=>L+i*(W-L-R)/(series.length-1),Y=v=>Tp+(y1-v)*(H-Tp-B)/(y1-y0),line=kk=>series.map((p,i)=>(i?'L':'M')+X(i).toFixed(1)+' '+Y(p[kk]).toFixed(1)).join('');
-      const g=[];for(let i=0;i<=4;i++){const v=y0+(y1-y0)*i/4,y=Y(v);g.push(h('line',{key:'l'+i,x1:L,x2:W-R,y1:y,y2:y,stroke:'#1b2130'}),h('text',{key:'t'+i,x:L-8,y:y+4,textAnchor:'end',fontSize:11,fontFamily:"'JetBrains Mono',monospace",fill:T.faint},fm(v/1000,1)+'k'));}
-      for(let i=0;i<=3;i++){const ix=Math.round(i*(series.length-1)/3);g.push(h('text',{key:'x'+i,x:X(ix),y:H-6,textAnchor:i===0?'start':i===3?'end':'middle',fontSize:11,fontFamily:"'JetBrains Mono',monospace",fill:T.faint},new Date(series[ix].t).toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric'})));}
-      const li=series.length-1;
-      return h('svg',{viewBox:'0 0 '+W+' '+H,style:{width:'100%',height:'auto',display:'block'},role:'img','aria-label':'Equity a balance'},g,h('path',{d:line('balance'),fill:'none',stroke:T.dim,strokeWidth:1.5,strokeDasharray:'5 4'}),h('path',{d:line('equity'),fill:'none',stroke:T.accent,strokeWidth:2}),h('circle',{cx:X(li),cy:Y(series[li].equity),r:4,fill:T.accent}));
+      if(series.length<2) return h('div',{style:{fontSize:12,color:T.faint,padding:'10px 0'}},'Křivka se zobrazí po prvním uzavřeném obchodu v tomto období.');
+      const vals=series.map(p=>p.balance),lo=Math.min(...vals),hi=Math.max(...vals),pad=(hi-lo)*0.12||Math.max(1,Math.abs(hi)*0.002),y0=lo-pad,y1=hi+pad;
+      const t0=Date.parse(series[0].t),t1=Date.parse(series[series.length-1].t),span=Math.max(1,t1-t0);
+      const X=p=>((Date.parse(p.t)-t0)/span*1000).toFixed(1),Yp=v=>(y1-v)/(y1-y0)*100,Y=v=>Yp(v).toFixed(2),CH=130;
+      const d=series.map((p,i)=>(i?'L':'M')+X(p)+' '+Y(p.balance)).join(''),up=series[series.length-1].balance>=series[0].balance,lc=up?T.green:T.red;
+      const ticks=[0,1,2].map(i=>y1-(y1-y0)*(i+0.5)/3), dec=(hi-lo)<50?1:0, last=series[series.length-1];
+      return h('div',{style:{display:'flex',gap:8,height:CH+20,marginBottom:4}},
+        h('div',{style:{position:'relative',width:54,height:CH,flex:'none'}},ticks.map((v,i)=>h('span',{key:i,style:mono({position:'absolute',right:0,top:Yp(v)+'%',transform:'translateY(-50%)',fontSize:10.5,color:T.faint})},fm(v,dec)))),
+        h('div',{style:{flex:1,minWidth:0}},
+          h('div',{style:{position:'relative',height:CH,marginRight:6}},
+            h('svg',{viewBox:'0 0 1000 100',preserveAspectRatio:'none',style:{position:'absolute',inset:0,width:'100%',height:'100%'},role:'img','aria-label':'Vývoj balance'},
+              ticks.map((v,i)=>h('line',{key:i,x1:0,x2:1000,y1:Y(v),y2:Y(v),stroke:'#1b2130',strokeWidth:1,vectorEffect:'non-scaling-stroke'})),
+              h('path',{d:d,fill:'none',stroke:lc,strokeWidth:2,strokeLinejoin:'round',vectorEffect:'non-scaling-stroke'})),
+            h('span',{style:{position:'absolute',right:-4,top:'calc('+Yp(last.balance)+'% - 4px)',width:8,height:8,borderRadius:'50%',background:lc}})),
+          h('div',{style:{display:'flex',justifyContent:'space-between',marginTop:5,marginRight:6}},[0,1,2,3].map(i=>h('span',{key:i,style:mono({fontSize:10.5,color:T.faint})},new Date(t0+span*i/3).toLocaleDateString('cs-CZ',{day:'numeric',month:'numeric'}))))));
     })();
     const accTabs=h('div',{style:{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}},
       ghost('Souhrn všech účtů',()=>{set(self,{selAcc:'ALL',sel:null});},st.selAcc==='ALL'),
@@ -209,7 +227,7 @@
               h('td',{style:mono({textAlign:'right',padding:'5px 6px',color:col(x.netProfit)})},x.netProfit==null?'—':fm(x.netProfit,0)),h('td',{style:mono({textAlign:'right',padding:'5px 6px'})},x.avgR==null?'—':fm(x.avgR,2))))))));}),
         h('div',{style:{gridColumn:'1/-1',fontSize:11,color:T.amber,lineHeight:1.5}},'Korelace není příčina: rozbory ukazují, co se v tvých obchodech historicky stalo, ne že to výsledek způsobilo. Skupiny pod 10 obchodů jsou statisticky nespolehlivé. Obchody bez snapshotu zůstávají zvlášť, nic se nedopočítává.'));};
     return h('div',{style:card({padding:'18px 20px'})},head,tokenBox,addBox,msg,accPanel,accTabs,kpis,
-      h('div',{style:{marginBottom:6,fontSize:11,color:T.faint}},'Equity (plná čára) včetně otevřených obchodů · balance (čárkovaně) jen uzavřené'),chart,tabs,
+      h('div',{style:{marginBottom:6,fontSize:11,color:T.faint}},'Vývoj balance (rekonstruováno z uzavřených obchodů, bez vkladů/výběrů; konec = aktuální balance)'),chart,tabs,
       st.tab==='trades'?tradeRows():breakdown(),detail(self,st,list));
   }
 
