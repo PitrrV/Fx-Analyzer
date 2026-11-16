@@ -180,7 +180,7 @@
       if(series.length<2) return h('div',{style:{fontSize:12,color:T.faint,padding:'10px 0'}},'Křivka se zobrazí po prvním uzavřeném obchodu v tomto období.');
       const vals=series.map(p=>p.balance),lo=Math.min(...vals),hi=Math.max(...vals),pad=(hi-lo)*0.12||Math.max(1,Math.abs(hi)*0.002),y0=lo-pad,y1=hi+pad;
       const t0=Date.parse(series[0].t),t1=Date.parse(series[series.length-1].t),span=Math.max(1,t1-t0);
-      const X=p=>((Date.parse(p.t)-t0)/span*1000).toFixed(1),Yp=v=>(y1-v)/(y1-y0)*100,Y=v=>Yp(v).toFixed(2),CH=175;
+      const X=p=>((Date.parse(p.t)-t0)/span*1000).toFixed(1),Yp=v=>(y1-v)/(y1-y0)*100,Y=v=>Yp(v).toFixed(2),CH=260;
       const d=series.map((p,i)=>(i?'L':'M')+X(p)+' '+Y(p.balance)).join(''),up=series[series.length-1].balance>=series[0].balance,lc=up?T.green:T.red;
       const ticks=[0,1,2].map(i=>y1-(y1-y0)*(i+0.5)/3), dec=(hi-lo)<50?1:0, last=series[series.length-1];
       return h('div',{style:{display:'flex',gap:8,height:CH+20,marginBottom:4}},
