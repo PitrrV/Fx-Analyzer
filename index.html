@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0"></script>
-<script src="engine.js?v=20261113a"></script>
+<script src="engine.js?v=20261118a"></script>
 <script src="sync.js?v=20261113a"></script>
 <script src="Trading%20Denik/journal-stats.js?v=20261113a"></script>
 <script src="Trading%20Denik/mt5-journal-ui.js?v=20261116c"></script>
@@ -892,7 +892,7 @@ class FXApp extends React.Component{
     try{
       try{ if(window.MT5JournalUI) await window.MT5JournalUI.prepareForCoach(this,t); }catch(e){}
       const ctx=this.buildCoachContext(t,th.pair);
-      const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_TEACHING_PRINCIPLES+'\n\n'+COACH_PERSONA+'\n\n'+COACH_GUARDRAILS+'\n\n'+COACH_PERSONALIZATION+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB+(window.MT5JournalUI&&ctx.mt5Journal&&ctx.mt5Journal.available?'\n\n'+window.MT5JournalUI.COACH_MT5_RULES:'');
+      const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_TEACHING_PRINCIPLES+'\n\n'+COACH_COUNTERCASE_RULES+'\n\n'+COACH_PERSONA+'\n\n'+COACH_GUARDRAILS+'\n\n'+COACH_PERSONALIZATION+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB+(window.MT5JournalUI&&ctx.mt5Journal&&ctx.mt5Journal.available?'\n\n'+window.MT5JournalUI.COACH_MT5_RULES:'');
       const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
       const msgs=[{role:'system',content:sys}].concat(apiMsgs);
       let reply='',fallback='';
