@@ -14,7 +14,7 @@
   // localStorage klíče k synchronizaci
   const KEYS_SCALAR=["fh","av","fmp","or_key","or_model","or_coach_model","openai_key","openai_coach_model","oanda_token","oanda_env","cot_data","cot_meta","sent_data","positions_ts","v5_fav_pairs_ts","fx_user_name","fx_welcome_enabled","fx_welcome_freq"];
   const KEYS_ARR=["v5_ff_hist","journal","v5_fav_pairs","us100_retail_hist"];           // pole → sloučit (v5_fav_pairs viz výjimka ve smartMerge)
-  const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","pair_notes","pair_notes_ts","positions","bias_state","engine_log","forecast_log","v5_cb_rates","us100_cot_hist","us100_score_hist"]; // objekty → sloučit
+  const KEYS_OBJ=["cot_hist","retail_hist","score_hist","ai_analyses_v1","ai_analyses_del","pair_notes","pair_notes_ts","positions","bias_state","engine_log","forecast_log","v5_cb_rates","us100_cot_hist","us100_score_hist"]; // objekty → sloučit
   // TRANSIENT klíče se NIKDY nesynchronizují — a stripTransient() je navíc aktivně
   // odstraňuje ze slitých dat (applyLocal by jinak zapsal i staré kopie z cloudu
   // zpátky do zařízení a při push by se vracely do cloudu donekonečna):
@@ -70,6 +70,7 @@
   }
   function mergeObj(key,a,b){
     a=a||{}; b=b||{}; let out={...b,...a}; // lokál (a) přepíše cloud (b)
+    if(key==="ai_analyses_del"){ Object.keys(b).forEach(k=>{ if((+b[k]||0)>(+a[k]||0)) out[k]=b[k]; }); } // smazání (tombstone): novější čas vyhrává
     if(key==="ai_analyses_v1"){ Object.keys(b).forEach(k=>{ if(b[k]&&(!a[k]||(b[k].savedAt||0)>(a[k].savedAt||0))) out[k]=b[k]; }); } // novější savedAt
     if(key==="cot_hist"&&typeof cotWeekKey==="function"){
       // Starší cloud kopie mohla mít fantomový klíč z opraveného cotDateKey bugu
@@ -123,6 +124,10 @@
       if(k==="positions"){ out._obj[k]= lpt>=cpt ? ((local._obj||{})[k]||{}) : ((cloud._obj||{})[k]||{}); }
       else out._obj[k]=mergeObj(k,(local._obj||{})[k],(cloud._obj||{})[k]);
     });
+    // Smazaná AI analýza se nesmí vrátit z cloudu (union merge by ji oživil): tombstone
+    // ai_analyses_del[pár] = čas smazání; analýza se zahodí, jen když je starší nebo stejně stará.
+    try{ const del=out._obj.ai_analyses_del, an=out._obj.ai_analyses_v1;
+      if(del&&an) Object.keys(del).forEach(k=>{ if(an[k]&&(an[k].savedAt||0)<=(+del[k]||0)) delete an[k]; }); }catch(e){}
     return out;
   }
   function applyLocal(d){
