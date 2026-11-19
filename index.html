@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0"></script>
-<script src="engine.js?v=20261118b"></script>
-<script src="sync.js?v=20261113a"></script>
+<script src="engine.js?v=20261119a"></script>
+<script src="sync.js?v=20261119a"></script>
 <script src="Trading%20Denik/journal-stats.js?v=20261113a"></script>
 <script src="Trading%20Denik/mt5-journal-ui.js?v=20261116c"></script>
 <style>
@@ -881,19 +881,45 @@ class FXApp extends React.Component{
   // Vstupní pole je per-vlákno, ale NEukládá se (viz saveCoachThreads) — obyčejný
   // setState na každý úhoz klávesy by jinak zbytečně psal do localStorage.
   setThreadInput(id,val){ this.setState(s=>({coachThreads:s.coachThreads.map(t=>t.id===id?Object.assign({},t,{input:val}):t)})); }
+  // Příloha do Coache: screenshot grafu (TradingView). Zmenší se (max 1400 px, JPEG) kvůli
+  // velikosti requestu; do uložených zpráv jde jen malý náhled, plný obrázek se pošle
+  // modelu jen s touhle jednou zprávou.
+  async coachAttach(file,tid){
+    const id=tid||this.state.coachActiveId;
+    if(!file||!/^image\//.test(file.type||'')){ this.updateThread(id,{imgErr:'Nahraj obrázek (PNG/JPG/WebP).'}); return; }
+    try{
+      const src=await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(file); });
+      const im=await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; });
+      const scale=(w)=>{ const k=Math.min(1,w/Math.max(im.width,im.height)); const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(im.width*k)); c.height=Math.max(1,Math.round(im.height*k)); const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height); return c; };
+      this.updateThread(id,{img:{url:scale(1400).toDataURL('image/jpeg',0.85),thumb:scale(240).toDataURL('image/jpeg',0.6)},imgErr:''});
+    }catch(e){ this.updateThread(id,{imgErr:'Obrázek se nepodařilo načíst.'}); }
+  }
+  onCoachPaste(e,tid){ try{ const items=(e.clipboardData&&e.clipboardData.items)||[]; for(const it of items){ if(it.type&&it.type.indexOf('image/')===0){ const f=it.getAsFile(); if(f){ e.preventDefault(); this.coachAttach(f,tid); return; } } } }catch(err){} }
+  // Vision modely pro Coache (OpenRouter free) — stejný princip výběru jako u AI Analýzy.
+  async coachVisionModels(orKey){
+    const manual=(localStorage.getItem('or_model')||'').trim();
+    const qrank=id=>{ id=(id||'').toLowerCase(); let s=0; if(id.includes('gemini'))s+=50; if(id.includes('qwen')&&id.includes('vl'))s+=30; if(id.includes('90b'))s+=40; if(id.includes('72b'))s+=38; if(id.includes('32b'))s+=20; if(id.includes('11b'))s+=8; if(id.includes('7b'))s+=4; return s; };
+    let vis=[]; if(!manual){ try{ const mr=await fetch('https://openrouter.ai/api/v1/models',{headers:{'Authorization':'Bearer '+orKey}}); const md=await mr.json(); vis=(md.data||[]).filter(m=>m.id.endsWith(':free')&&((m.architecture&&m.architecture.modality)||'').includes('image')).sort((a,b)=>(qrank(b.id)-qrank(a.id))||((b.context_length||0)-(a.context_length||0))).map(m=>m.id); }catch(e){} }
+    const FALLBACK=['google/gemini-2.0-flash-exp:free','meta-llama/llama-3.2-90b-vision-instruct:free','qwen/qwen2.5-vl-72b-instruct:free','meta-llama/llama-3.2-11b-vision-instruct:free'];
+    return [manual].concat(vis,FALLBACK).filter((v,i,a)=>v&&a.indexOf(v)===i);
+  }
   async sendCoach(text,threadId){
     const tid=threadId||this.state.coachActiveId;
     const th=(this.state.coachThreads||[]).find(t=>t.id===tid); if(!th) return;
-    const t=(text==null?th.input:text).trim(); if(!t||th.busy) return;
-    const hist=th.msgs.concat([{role:'user',text:t}]); this.updateThread(tid,{msgs:hist,input:'',busy:true});
+    const img=th.img||null; let t=(text==null?th.input:text).trim(); if(!t&&img) t='Zhodnoť aktuální technickou situaci na tomto grafu.'; if(!t||th.busy) return;
+    const hist=th.msgs.concat([img?{role:'user',text:t,thumb:img.thumb}:{role:'user',text:t}]); this.updateThread(tid,{msgs:hist,input:'',img:null,busy:true});
     const orKey=(localStorage.getItem('or_key')||'').trim();
     const openaiKey=(localStorage.getItem('openai_key')||'').trim();
     if(!orKey&&!openaiKey){ this.updateThread(tid,{msgs:hist.concat([{role:'coach',text:'⚠ Chybí API klíč — přidej OpenAI nebo OpenRouter klíč v záložce Nastavení ⚙.'}]),busy:false}); return; }
     try{
       try{ if(window.MT5JournalUI) await window.MT5JournalUI.prepareForCoach(this,t); }catch(e){}
       const ctx=this.buildCoachContext(t,th.pair);
-      const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_TEACHING_PRINCIPLES+'\n\n'+COACH_COUNTERCASE_RULES+'\n\n'+COACH_PERSONA+'\n\n'+COACH_GUARDRAILS+'\n\n'+COACH_PERSONALIZATION+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB+(window.MT5JournalUI&&ctx.mt5Journal&&ctx.mt5Journal.available?'\n\n'+window.MT5JournalUI.COACH_MT5_RULES:'');
-      const apiMsgs=hist.slice(-10).map(m=>({role:m.role==='user'?'user':'assistant',content:m.text}));
+      const chartPair=(ctx.focusPairDossier&&ctx.focusPairDossier.pair)||th.pair||''; let chartPx=''; try{ const v=(this.PRICES_LIVE||{})[chartPair]; if(v!=null) chartPx=String(v); }catch(e){}
+      const sys='Mluvíš česky. Data z FX Analyzeru:\n'+JSON.stringify(ctx)+'\n\n'+COACH_TEACHING_PRINCIPLES+'\n\n'+COACH_COUNTERCASE_RULES+'\n\n'+COACH_PERSONA+'\n\n'+COACH_GUARDRAILS+'\n\n'+COACH_PERSONALIZATION+'\n\n'+COACH_ECON_REPORT_RULES+'\n\n'+COACH_GROUNDING_RULES+'\n\n'+COACH_GLOSSARY+'\n\n'+COACH_KB+(window.MT5JournalUI&&ctx.mt5Journal&&ctx.mt5Journal.available?'\n\n'+window.MT5JournalUI.COACH_MT5_RULES:'')+(img?'\n\n'+COACH_CHART_RULES+(chartPx?'\nAKTUÁLNÍ ŽIVÁ CENA '+chartPair+' z dat Analyzeru: '+chartPx+' (kotva: úrovně z grafu musí být řádově blízko této ceně).':''):'');
+      const recent=hist.slice(-10);
+      const apiMsgs=recent.map((m,i)=>{ const role=m.role==='user'?'user':'assistant';
+        if(img&&i===recent.length-1) return {role,content:[{type:'image_url',image_url:{url:img.url}},{type:'text',text:m.text}]};
+        return {role,content:m.thumb?(m.text+' [ke zprávě byl přiložen graf — teď už ho nevidíš, vycházej z své předchozí odpovědi]'):m.text}; });
       const msgs=[{role:'system',content:sys}].concat(apiMsgs);
       let reply='',fallback='';
       // Vlastní OpenAI klíč (Nastavení ⚙) má absolutní přednost, pokud je vyplněný —
@@ -920,7 +946,7 @@ class FXApp extends React.Component{
         // reasoning mód) — ty proto zkoušíme až jako poslední záchranu. Žádný
         // "openrouter/free" (není to platné model ID, jen to plýtvalo prvním pokusem).
         const custom=(localStorage.getItem('or_coach_model')||'').trim();
-        const models=[custom,'google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
+        const models=img?(await this.coachVisionModels(orKey)):[custom,'google/gemma-3-12b-it:free','meta-llama/llama-4-scout:free','deepseek/deepseek-chat-v3-0324:free','qwen/qwen3-8b:free'].filter((v,i,a)=>v&&a.indexOf(v)===i);
         for(const m of models){
           try{
             const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:head,body:body(m)});
@@ -1051,7 +1077,7 @@ class FXApp extends React.Component{
   // Smaže uloženou AI analýzu pro daný pár (ai_analyses_v1 v localStorage —
   // mimo React state, proto po smazání prázdný setState jen vynutí re-render,
   // ať se karta hned přepne zpátky na "Zatím bez analýzy").
-  deleteAIAnalysis(pair){ try{ let store={}; try{store=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){} delete store[pair]; localStorage.setItem('ai_analyses_v1',JSON.stringify(store)); }catch(e){} this.setState({}); }
+  deleteAIAnalysis(pair){ try{ let store={}; try{store=JSON.parse(localStorage.getItem('ai_analyses_v1')||'{}')||{};}catch(e){} delete store[pair]; localStorage.setItem('ai_analyses_v1',JSON.stringify(store)); let del={}; try{del=JSON.parse(localStorage.getItem('ai_analyses_del')||'{}')||{};}catch(e){} del[pair]=Date.now(); localStorage.setItem('ai_analyses_del',JSON.stringify(del)); /* tombstone: cloud sync (union merge) by ji jinak po otevření appky vrátil */ }catch(e){} this.setState({}); }
   setCBRate(c,v){ const n=parseFloat(v); if(isNaN(n))return; try{ const cur=JSON.parse(localStorage.getItem('v5_cb_rates')||'{}'); cur[c]=n; localStorage.setItem('v5_cb_rates',JSON.stringify(cur)); }catch(e){} try{ if(typeof CENTRAL_BANK_RATES!=='undefined')CENTRAL_BANK_RATES[c]=n; }catch(e){} this.refreshData(); }
   async loadSeasonality(pair){ const p=pair||this.state.seasPair||(this.PAIRS[0]&&this.PAIRS[0].pair)||'EURUSD'; this.setState({seasPair:p,seasBusy:true,seasErr:'',seasData:null});
     try{ const av=(localStorage.getItem('av')||'').trim(); const data=await fetchSeasonality(p,av); this.setState({seasData:data,seasBusy:false}); }
@@ -2669,7 +2695,7 @@ class FXApp extends React.Component{
   renderAICoach(){ const self=this,h=this.h,T=this.tok,st=this.state; const chips=['Top setupy dnes?','Co dnes změnilo skóre?','Rozeber nejbližší velký report','Otočil se dnes někde bias?','Co s mými otevřenými pozicemi?'];
     const threads=st.coachThreads||[]; const active=threads.find(t=>t.id===st.coachActiveId)||threads[0];
     const send=text=>self.sendCoach(text,active.id);
-    const chatCard=h('div',{style:self.card({padding:0,overflow:'hidden',display:'flex',flexDirection:'column',height:'calc(100vh - 150px)',minHeight:520,flex:1,minWidth:0})},
+    const chatCard=h('div',{onDragOver:e=>{ if(e.dataTransfer&&Array.from(e.dataTransfer.types||[]).indexOf('Files')>=0) e.preventDefault(); },onDrop:e=>{ const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f&&/^image\//.test(f.type)){ e.preventDefault(); self.coachAttach(f,active.id); } },style:self.card({padding:0,overflow:'hidden',display:'flex',flexDirection:'column',height:'calc(100vh - 150px)',minHeight:520,flex:1,minWidth:0})},
       h('div',{style:{display:'flex',alignItems:'center',gap:12,padding:'15px 20px',borderBottom:'1px solid #1b2130'}},h('div',{style:self.mono({width:38,height:38,borderRadius:11,background:'linear-gradient(150deg,#10131c,#0a0c12)',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:13})},'AT'),h('div',{style:{flex:1,minWidth:0}},
         h('div',{style:{display:'flex',alignItems:'center',gap:6}},
           h('span',{style:{fontSize:14,fontWeight:800,color:T.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:220}},active.name),
@@ -2677,8 +2703,8 @@ class FXApp extends React.Component{
         h('div',{style:{fontSize:11,color:T.green,display:'flex',alignItems:'center',gap:6,marginTop:2}},h('span',{style:{width:6,height:6,borderRadius:50,background:T.green}}),'Vidí tvé živé skóre, COT a pozice')),
         h('select',{value:active.pair,onChange:e=>self.updateThread(active.id,{pair:e.target.value}),title:'Zaměřit tohle vlákno na pár',style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'8px 10px',fontSize:12,cursor:'pointer',fontFamily:"'JetBrains Mono',monospace"}},[h('option',{key:'',value:''},'Všechny páry')].concat(this.PAIRS.map(p=>h('option',{key:p.pair,value:p.pair},p.pair)))),
         h('button',{type:'button',onClick:()=>self.clearCoachThread(active.id),title:'Vymazat historii tohohle chatu (jméno a pár zůstanou)',style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:9,padding:'8px 11px',fontFamily:'inherit',fontSize:12,fontWeight:700,cursor:'pointer'}},'🗑 Vymazat')),
-      h('div',{ref:self.setCoachScrollEl,style:{flex:1,overflow:'auto',padding:'20px',display:'flex',flexDirection:'column',gap:14}},active.msgs.map((m,i)=>{const me=m.role==='user';return h('div',{key:i,style:{display:'flex',justifyContent:me?'flex-end':'flex-start'}},h('div',{style:{maxWidth:me?'76%':780,display:'flex',gap:10,flexDirection:me?'row-reverse':'row',alignItems:'flex-end'}},!me&&h('div',{style:self.mono({width:28,height:28,borderRadius:9,background:'#10131c',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:10,flex:'none',color:T.dim})},'AT'),h('div',{style:{fontSize:13,lineHeight:1.55,padding:'11px 14px',borderRadius:me?'14px 14px 4px 14px':'14px 14px 14px 4px',whiteSpace:'pre-wrap',color:me?'#eaf0ff':T.text,background:me?'linear-gradient(180deg,rgba(94,124,251,.22),rgba(94,124,251,.12))':'linear-gradient(180deg,#0f131c,#0b0e14)',border:'1px solid '+(me?'rgba(94,124,251,.32)':'#1b2130')}},me?m.text:self.formatCoachMsg(m.text))));}),active.busy&&h('div',{style:{fontSize:12,color:T.faint,paddingLeft:38}},'⏳ Coach přemýšlí…')),
-      h('div',{style:{padding:'12px 16px',borderTop:'1px solid #1b2130'}},h('div',{style:{display:'flex',gap:7,flexWrap:'wrap',marginBottom:11}},chips.map(c=>h('button',{key:c,type:'button',onClick:()=>send(c),style:{fontSize:11,color:T.dim,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:999,padding:'6px 12px',cursor:'pointer',fontFamily:'inherit'}},c))),h('div',{style:{display:'flex',gap:9}},h('input',{value:active.input,onChange:e=>self.setThreadInput(active.id,e.target.value),onKeyDown:e=>{if(e.key==='Enter')send(null);},placeholder:'Zeptej se na setup, riziko, korelace…',style:{flex:1,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:11,color:T.text,padding:'12px 14px',fontSize:13,fontFamily:"'Manrope',sans-serif",outline:'none'}}),h('button',{type:'button',disabled:active.busy,onClick:()=>send(null),style:{border:'none',borderRadius:11,padding:'0 18px',fontFamily:'inherit',fontSize:13,fontWeight:800,color:'#06140f',cursor:active.busy?'default':'pointer',opacity:active.busy?.6:1,background:'linear-gradient(180deg,#4be0a8,'+T.green+')'}},'Odeslat'))));
+      h('div',{ref:self.setCoachScrollEl,style:{flex:1,overflow:'auto',padding:'20px',display:'flex',flexDirection:'column',gap:14}},active.msgs.map((m,i)=>{const me=m.role==='user';return h('div',{key:i,style:{display:'flex',justifyContent:me?'flex-end':'flex-start'}},h('div',{style:{maxWidth:me?'76%':780,display:'flex',gap:10,flexDirection:me?'row-reverse':'row',alignItems:'flex-end'}},!me&&h('div',{style:self.mono({width:28,height:28,borderRadius:9,background:'#10131c',border:'1px solid #232b3d',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:10,flex:'none',color:T.dim})},'AT'),h('div',{style:{fontSize:13,lineHeight:1.55,padding:'11px 14px',borderRadius:me?'14px 14px 4px 14px':'14px 14px 14px 4px',whiteSpace:'pre-wrap',color:me?'#eaf0ff':T.text,background:me?'linear-gradient(180deg,rgba(94,124,251,.22),rgba(94,124,251,.12))':'linear-gradient(180deg,#0f131c,#0b0e14)',border:'1px solid '+(me?'rgba(94,124,251,.32)':'#1b2130')}},me&&m.thumb&&h('img',{src:m.thumb,alt:'graf',style:{display:'block',maxWidth:240,borderRadius:8,marginBottom:8,border:'1px solid rgba(255,255,255,.12)'}}),me?m.text:self.formatCoachMsg(m.text))));}),active.busy&&h('div',{style:{fontSize:12,color:T.faint,paddingLeft:38}},'⏳ Coach přemýšlí…')),
+      h('div',{style:{padding:'12px 16px',borderTop:'1px solid #1b2130'}},h('div',{style:{display:'flex',gap:7,flexWrap:'wrap',marginBottom:11}},chips.map(c=>h('button',{key:c,type:'button',onClick:()=>send(c),style:{fontSize:11,color:T.dim,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:999,padding:'6px 12px',cursor:'pointer',fontFamily:'inherit'}},c))),active.img&&h('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:9}},h('img',{src:active.img.thumb,alt:'graf',style:{height:54,borderRadius:8,border:'1px solid #232b3d'}}),h('span',{style:{fontSize:11.5,color:T.dim}},'Graf je přiložen — Coach ho uvidí s další zprávou.'),h('button',{type:'button',title:'Odebrat graf',onClick:()=>self.updateThread(active.id,{img:null}),style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:7,width:24,height:24,cursor:'pointer',fontSize:12,lineHeight:1,padding:0}},'✕')),active.imgErr&&h('div',{style:{fontSize:11.5,color:T.red,marginBottom:8}},active.imgErr),h('div',{style:{display:'flex',gap:9}},h('input',{type:'file',accept:'image/*',style:{display:'none'},ref:el=>{self._coachFileEl=el;},onChange:e=>{ const f=e.target.files&&e.target.files[0]; if(f) self.coachAttach(f,active.id); e.target.value=''; }}),h('button',{type:'button',title:'Přiložit screenshot grafu z TradingView (nebo ho vlož Ctrl+V)',onClick:()=>{ if(self._coachFileEl) self._coachFileEl.click(); },style:{border:'1px solid #232b3d',background:'#0c0f16',color:T.dim,borderRadius:11,padding:'0 14px',fontSize:16,cursor:'pointer'}},'📎'),h('input',{value:active.input,onChange:e=>self.setThreadInput(active.id,e.target.value),onPaste:e=>self.onCoachPaste(e,active.id),onKeyDown:e=>{if(e.key==='Enter')send(null);},placeholder:active.img?'Napiš dotaz ke grafu, nebo rovnou Odeslat…':'Zeptej se na setup, riziko, korelace… (graf vlož Ctrl+V nebo 📎)',style:{flex:1,background:'#0a0d13',border:'1px solid #1b2130',borderRadius:11,color:T.text,padding:'12px 14px',fontSize:13,fontFamily:"'Manrope',sans-serif",outline:'none'}}),h('button',{type:'button',disabled:active.busy,onClick:()=>send(null),style:{border:'none',borderRadius:11,padding:'0 18px',fontFamily:'inherit',fontSize:13,fontWeight:800,color:'#06140f',cursor:active.busy?'default':'pointer',opacity:active.busy?.6:1,background:'linear-gradient(180deg,#4be0a8,'+T.green+')'}},'Odeslat'))));
     return h('div',{style:{display:'flex',gap:16,alignItems:'flex-start'}},self.renderCoachThreadRail(threads,active.id),chatCard,self.renderCoachContextPanel(active));
   }
   // Panel "Co Coach právě vidí" — stejný kontext, jaký se posílá do promptu

@@ -3935,6 +3935,17 @@ CB POLITIKA: o směru sazeb (zvyšuje/snižuje/drží) smíš psát jen to, co j
 COT: skóre COT je směrové pro měnu (záporné = pozicování proti té měně). "Přeplněnost"/riziko obratu uváděj jen tehdy, když to data výslovně říkají (cotPercentile, crowdedLate); jinak jen popiš, že COT nesouhlasí nebo souhlasí se směrem páru, a nepřidávej vlastní výklad.
 5) Na konec jedna věta: co by tezi zneplatnilo (invalidace). Žádné doporučení koupit/prodat (viz princip 2).`;
 
+// Graf přiložený ke zprávě v Coachovi (screenshot z TradingView). Přidává se do promptu jen,
+// když uživatel obrázek skutečně přiložil. Neanalyzuje nic mimo to, co je na obrázku.
+const COACH_CHART_RULES=`PŘILOŽENÝ GRAF (screenshot grafu z TradingView ke zprávě uživatele):
+Dívej se jen na to, co je na obrázku vidět; nic nedomýšlej.
+1) NEJDŘÍV PŘEČTI: instrument, timeframe a viditelný rozsah ceny/času. Pokud něco z toho z obrázku nejde přečíst, řekni to a neodhaduj.
+2) CENY ČTI VÝHRADNĚ Z CENOVÉ OSY. Pokud je níže uvedená živá cena a graf s ní řádově nesedí (jiný pár, jiný rozsah), upozorni na to a graf nehodnoť.
+3) POPIŠ TECHNICKOU SITUACI: trend a struktura (vyšší maxima/minima, range, prolomení), nejbližší podpory/rezistence a zóny s přibližnými hodnotami, viditelné svíčkové formace a indikátory. Indikátor, který na obrázku není, nezmiňuj.
+4) PROPOJ S ANALYZEREM: souhlasí technický obraz s fundamentálním biasem páru z dat (focusPairDossier)? Uveď soulad nebo konflikt a který faktor nesouhlasí.
+5) STRUKTURA ODPOVĚDI: Co vidím na grafu → Úrovně ke sledování → Soulad s fundamenty → Co by tezi zneplatnilo → Alternativní scénář.
+6) Zóny a úrovně jsou OBLASTI KE SLEDOVÁNÍ, ne pokyn ke vstupu — žádné "kup/prodej" ani hotové SL/TP (platí princip 2). Jeden screenshot jednoho timeframe nestačí na jistý závěr: řekni, co by pomohl vidět (vyšší TF, širší kontext).`;
+
 // Role a chování AI Coache — kdo je, jak učí, jak reaguje na krátké/obchodní/nejisté
 // dotazy. Doplňuje (nenahrazuje) COACH_TEACHING_PRINCIPLES, COACH_GUARDRAILS,
 // COACH_ECON_REPORT_RULES a COACH_GROUNDING_RULES.
