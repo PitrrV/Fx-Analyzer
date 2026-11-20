@@ -67,7 +67,7 @@ r = 1
 for d in sorted(days):
     ex = days[d]["extras"]; rv = ex.get("reversal_active") or {}
     for p in ex.get("pairs", []):
-        sig = rv.get(p["pair"]); row = [d, typ(d), p["pair"], p["dir"], p["diff"], p["stars"], p["outlook_dir"], p["outlook_prob_pct"], p["RP10"], p["ER10"], p["cot_pct_base"], p["cot_pct_quote"], (sig["type"] + " od " + sig["since"][:16]) if sig else None]
+        sig = rv.get(p["pair"]); row = [d, typ(d), p["pair"], p["dir"], p["diff"], p["stars"], p["outlook_dir"], p["outlook_prob_pct"], p["RP10"], p["ER10"], p["cot_pct_base"], p["cot_pct_quote"], ((sig["type"] + " od " + str(sig.get("since") or "")[:16]) if isinstance(sig, dict) else str(sig)) if sig else None]
         for j, x in enumerate(row): ws.write(r, j, x)
         r += 1
     u = ex.get("us100")
