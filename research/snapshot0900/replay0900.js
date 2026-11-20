@@ -155,23 +155,23 @@ try {
   if (J("data/us100_price.json")) store["us100_price"] = JSON.stringify(J("data/us100_price.json"));
   const RealDate = Date; class RD extends RealDate { constructor(...a) { if (a.length === 0) super(effMs); else super(...a); } static now() { return effMs; } } RD.parse = RealDate.parse; RD.UTC = RealDate.UTC;
   const names = "CURRENCIES,FUND_HIST_WINDOW_WEEKS,mapFFEvent,capEventsWindow,scoreCurrency,rankPairs,getLatestCOTScores,loadCOT,loadSentiment,autoUpdateFromCalendar,applyAutoRiskSentiment,buildGoldPair,scoreGold,scoreUS100,deriveUpcomingFromEvents,buildForecastV5,getRangePosition,getEfficiencyRatio,getGoldRangePosition,getGoldEfficiencyRatio,getUS100RangePosition,getUS100EfficiencyRatio";
-  const F = new Function("window", "localStorage", "__prices", "__vix", "Date", fs.readFileSync(path.join(tmp, "engine.js"), "utf8") + "\n;if(__prices){_PRICES=__prices;}\nif(__vix){_VIX_LATEST=__vix;}\nreturn {" + names + "};");
-  const E = F({}, ls, pr, vix, RD);
+  const F = new Function("window", "localStorage", "__prices", "__vix", "Date", fs.readFileSync(path.join(tmp, "engine.js"), "utf8") + "\n;if(__prices){_PRICES=__prices;}\nif(__vix){_VIX_LATEST=__vix;}\nreturn {" + names.split(",").map((n) => `${n}:(typeof ${n}!=="undefined"?${n}:undefined)`).join(",") + "};");
+  const E = F({}, ls, pr, vix, RD); // starší engine nemusí mít všechny funkce (zlato/US100) — ty se pak přeskočí
   const rawEvents = (cal && cal.events && cal.events.length) ? cal.events : ((J("data/calendar.json") || { events: [] }).events || []);
   const evs = rawEvents.map(E.mapFFEvent); try { E.autoUpdateFromCalendar(evs); } catch (e) {} try { E.applyAutoRiskSentiment(); } catch (e) {}
   const calScoring = E.capEventsWindow(evs, E.FUND_HIST_WINDOW_WEEKS), cotScores = E.getLatestCOTScores() || E.loadCOT();
   const sent = (rl && rl.ccy) || E.loadSentiment(); const sc = {}; for (const c of E.CURRENCIES) sc[c] = E.scoreCurrency(calScoring, c, cotScores, sent);
   store["score_hist"] = JSON.stringify({ [new Date(effMs).toISOString().slice(0, 10)]: Object.fromEntries(E.CURRENCIES.map((c) => [c, sc[c].score])) });
-  let ranked = E.rankPairs(sc, {}); let gold = null; try { gold = E.scoreGold(); } catch (e) {} if (gold) ranked = ranked.concat([E.buildGoldPair(gold)]);
+  let ranked = E.rankPairs(sc, {}); let gold = null; try { gold = E.scoreGold(); } catch (e) {} try { if (gold && E.buildGoldPair) ranked = ranked.concat([E.buildGoldPair(gold)]); } catch (e) {}
   const up = E.deriveUpcomingFromEvents(rawEvents);
   extras.pairs = ranked.map((p) => {
     let rp = null, er = null, fc = null;
-    try { if (p.isGold) { rp = E.getGoldRangePosition(10); er = E.getGoldEfficiencyRatio(10); } else { rp = E.getRangePosition(p.pair, 10); er = E.getEfficiencyRatio(p.pair, 10); } } catch (e) {}
+    try { if (p.isGold) { rp = E.getGoldRangePosition && E.getGoldRangePosition(10); er = E.getGoldEfficiencyRatio && E.getGoldEfficiencyRatio(10); } else { rp = E.getRangePosition(p.pair, 10); er = E.getEfficiencyRatio(p.pair, 10); } } catch (e) {}
     if (!p.isGold) { try { fc = E.buildForecastV5(p, sc, calScoring, up); } catch (e) {} }
     return { pair: p.pair, dir: p.dir, diff: +(+p.diff).toFixed(3), stars: p.conviction ?? p.conv ?? null, outlook_dir: fc ? fc.dir : null, outlook_prob_pct: fc ? fc.prob : null,
       RP10: rp ? rp.rp : null, ER10: er ? er.er : null, cot_pct_base: (sc[p.base] && sc[p.base].cot_pct) ?? null, cot_pct_quote: (sc[p.quote] && sc[p.quote].cot_pct) ?? null };
   });
-  try { const u = E.scoreUS100(); if (u) { const rpu = E.getUS100RangePosition(10), eru = E.getUS100EfficiencyRatio(10); extras.us100 = { score: u.score, dir: u.score > 0 ? "BUY" : "SELL", RP10: rpu ? rpu.rp : null, ER10: eru ? eru.er : null }; } } catch (e) {}
+  try { const u = E.scoreUS100 && E.scoreUS100(); if (u && E.getUS100RangePosition) { const rpu = E.getUS100RangePosition(10), eru = E.getUS100EfficiencyRatio(10); extras.us100 = { score: u.score, dir: u.score > 0 ? "BUY" : "SELL", RP10: rpu ? rpu.rp : null, ER10: eru ? eru.er : null }; } } catch (e) {}
 } catch (e) { extras.pairs_error = String(e.message).slice(0, 300); }
 const res = { provenance: prov, audit, extras, state };
 if (outFile) fs.writeFileSync(outFile, JSON.stringify(res, null, 1));
