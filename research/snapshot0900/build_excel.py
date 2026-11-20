@@ -46,10 +46,14 @@ lines = [("Snímek Analyzeru k 09:00 Europe/Prague (s letním časem) — zpětn
  ("LIMITY: DXY se nikam neukládá (sloupec prázdný). VIX před 2026-08-02, ropa před 2026-06-29 a retail před 2026-06-22 v repu nejsou → složky risk/ropa/sentiment jsou před tím 0 a skóre je zkreslené. Kalendář před 2026-06-19 má finální (revidované) hodnoty, ne první otisk. Pro dny typu C engine.js z té doby neexistuje (CB sazby konvergují z defaultů ~12 týdnů). Výhled % a RP/ER nejsou v žádném záznamu (přepočet z cen). Hvězdy/směr/rozdíl párů u C jsou jen přepočet.", W),
  ("COT: list COT má datum REPORTU (úterý), datum ZVEŘEJNĚNÍ dle pravidla CFTC (pátek 15:30 New York; po svátku později) a kdy se týden poprvé objevil v repu (jen od 2026-06-27). V denních listech se použije jen to, co bylo do 09:00 zveřejněno/staženo.", W),
  ("Kalendář: jen události dne (pražského) vydané před 09:00, s actual. BEAT/MISS je směr, který počítá engine; bez forecastu nebo mimo pravidla enginu nejde určit (např. Philly Fed).", W),
+ ("SLOUPEC „skóre záznam (server: data/engine_hist.json)“ = serverový záznam enginu z cronu: soubor data/engine_hist.json ve verzi POSLEDNÍHO commitu s časem <= 09:00 Praha, záznam s nejnovějším ts v tom souboru (stáří viz list Spolehlivost). NENÍ to engine_log z prohlížeče. Záznam z prohlížeče (engine_log v cloudu) je v Excelu jen v listu Spolehlivost_0803_1018 (sloupce „prohlížeč…“).", W),
+ ("ODCHYLKY 2026-08-03..2026-10-18: přepočet se produceru z té doby shoduje se záznamem na 77/77 dní (rozdíl 0,00). Rozdíl proti záznamu tedy NENÍ chyba vstupů ani času, ale rozdílná logika serverového producera: do 20. 8. rolling ~8týdenní kalendář (oprava #172), do 24. 9. bez VIX (oprava „snapshot-engine bez VIX“). Přepočet v tomto Excelu používá dnešní logiku (akumulovaná historie + VIX). Od 24. 9. 2026 se logiky shodují (rozdíl ≤ 0,01).", W),
+ ("SPOLEHLIVOST DNŮ: list Spolehlivost_0803_1018 (SPOLEHLIVÉ = přepočet i záznam sedí do 0,05; S VÝHRADOU = do 0,5 a extrémy sedí; NESPOLEHLIVÉ = jinak). Pozor: i spolehlivé dny před 19. 10. 2026 nemusely odpovídat tomu, co ukázal prohlížeč — ten tehdy počítal z lokální historie zařízení (oprava #288).", W),
+ ("Plán_po_09h: události pražského dne po 09:00 z kalendáře známého v 09:00 (čas, měna, událost, dopad, forecast, previous). Hodnota actual ani BEAT/MISS tam záměrně není; ověřeno, že žádná z těchto událostí nemá ve ranním snímku actual.", W),
  ("Reprodukce: research/snapshot0900/replay0900.js <YYYY-MM-DD>; složení: build_excel.py. Párů je 28 FX + XAUUSD + US100 (zvlášť).", W)]
-for i, (t, f) in enumerate(lines): ws.write(i, 0, t, f); ws.set_row(i, 62 if len(t) > 140 else 20)
+for i, (t, f) in enumerate(lines): ws.write(i, 0, t, f); ws.set_row(i, max(20, 16 * (-(-len(t) // 115))))
 # Měny
-ws = sheet("Měny_09h", ["datum", "typ", "měna", "pořadí", "skóre", "COT", "risk", "ropa", "politika bank", "fundamenty (kalendář)", "reálný výnos", "retail sentiment", "sezónnost", "COT percentil", "skóre záznam (server)", "ts záznamu (UTC)", "rozdíl přepočet−záznam"], [11, 5, 7, 7, 8, 8, 8, 8, 10, 12, 10, 10, 9, 9, 11, 22, 11])
+ws = sheet("Měny_09h", ["datum", "typ", "měna", "pořadí", "skóre", "COT", "risk", "ropa", "politika bank", "fundamenty (kalendář)", "reálný výnos", "retail sentiment", "sezónnost", "COT percentil", "skóre záznam (server: data/engine_hist.json)", "ts záznamu (UTC)", "rozdíl přepočet−záznam"], [11, 5, 7, 7, 8, 8, 8, 8, 10, 12, 10, 10, 9, 9, 11, 22, 11])
 r = 1
 for d in sorted(days):
     cur = days[d]["state"]["cur"]; order = sorted(CUR, key=lambda c: -cur[c]["score"]); rec = real.get(d)
@@ -114,4 +118,25 @@ for i, d in enumerate(sorted(days)):
     notes = "; ".join(f"{k.split('/')[-1]}: {v['fallback']}" for k, v in fl.items() if v and v.get("fallback"))
     ws.write_row(i + 1, 0, [d, typ(d), p["cutoff_utc"], p["engine_mode"], g("engine.js"), g("data/cot_hist.json"), g("data/calendar.json") if fl.get("data/calendar.json") else g("data/calendar_hist.json"), g("data/retail_hist.json"), g("data/prices.json"), g("data/vix.json"), g("data/oil.json"), a.get("cot_newest_report_week"), a.get("cot_latest_publication_by_cftc_rule"), a.get("retail_newest_point"), a.get("calendar_events_with_actual_after_cutoff"), a.get("lookahead_free"), notes])
 ws.autofilter(0, 0, len(days), 16)
+# ── Plán událostí po 09:00 (jen to, co bylo ráno známé; BEZ actual a BEAT/MISS) ──
+plan = json.load(open("/tmp/plan.json"))
+ws = sheet("Plán_po_09h", ["datum", "čas (Praha)", "měna", "událost", "dopad", "forecast (ráno známý)", "previous (ráno známý)", "snímek kalendáře (UTC)"], [11, 10, 7, 38, 8, 14, 14, 22])
+for i, row in enumerate(plan["rows"]): ws.write_row(i + 1, 0, row)
+ws.autofilter(0, 0, len(plan["rows"]), 7)
+# ── Odchylky přepočtu od serverového záznamu 2026-08-03..2026-10-18 ──
+summ = {r["d"]: r for r in json.load(open("/tmp/an/summary.json"))}
+brw = json.load(open("/tmp/an/browser.json")); recs = json.load(open("/tmp/an/rec.json"))
+def producer(ts):
+    return "P1 (do 20.8. 15:20Z): server skóroval z rolling ~8týd. kalendáře" if ts < "2026-08-20T15:20" else ("P2 (20.8.–24.9.): bez VIX (risk z momenta AUDJPY/NZDJPY)" if ts < "2026-09-24T06:15" else "P3 (od 24.9.): shodná logika s přepočtem")
+def verdict(r):
+    if r["dA"] <= 0.05: return "SPOLEHLIVÉ", "přepočet = serverový záznam (rozdíl ≤ 0,05)"
+    if r["dA"] <= 0.5 and r["extok"]: return "S VÝHRADOU", "rozdíl 0,05–0,5, nejsilnější i nejslabší měna sedí"
+    return "NESPOLEHLIVÉ", "rozdíl > 0,5 nebo se liší nejsilnější/nejslabší měna"
+ws = sheet("Spolehlivost_0803_1018", ["datum", "verdikt", "důvod verdiktu", "ts záznamu (UTC)", "stáří záznamu proti 09:00 (min)", "max rozdíl přepočet−záznam (měna)", "průměr rozdílu (8 měn)", "nejsilnější+nejslabší měna sedí", "max rozdíl při STEJNÉM čase", "max rozdíl s producerem z té doby", "hlavní složka rozdílu", "VIX režim (přepočet)", "verze producera záznamu", "prohlížeč: ts posledního zápisu (UTC)", "prohlížeč vs přepočet (průměr)", "prohlížeč vs server záznam (průměr)", "blíž prohlížeči"], [11, 15, 40, 22, 11, 13, 11, 12, 12, 13, 13, 11, 50, 22, 12, 12, 12])
+for i, d in enumerate(sorted(summ)):
+    r = summ[d]; v, why = verdict(r); b = brw.get(d); cut = dt.datetime.fromisoformat(days[d]["provenance"]["cutoff_utc"].replace("Z", "+00:00"))
+    age = round((cut - dt.datetime.fromisoformat(r["ts"].replace("Z", "+00:00"))).total_seconds() / 60)
+    ws.write_row(i + 1, 0, [d, v, why, r["ts"], age, round(r["dA"], 2), round(r["mA"], 2), "ano" if r["extok"] else "ne", round(r["dB"], 2), round(r["dC"], 2), r["drv"], r["vix"], producer(r["ts"]),
+                           b["ts"] if b else None, round(b["m_rep"], 2) if b else None, round(b["m_rec"], 2) if b else None, ("přepočet" if b["m_rep"] < b["m_rec"] - 0.005 else "stejně" if abs(b["m_rep"] - b["m_rec"]) <= 0.005 else "záznam server") if b else None])
+ws.autofilter(0, 0, len(summ), 16)
 wb.close(); print("OK", OUT, len(days), "dní")
