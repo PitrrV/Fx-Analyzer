@@ -125,3 +125,18 @@ def test_uploader_requires_https_and_does_not_retry_auth_errors():
         calls.append(1); raise OSError("down")
     with pytest.raises(UploadError): post_batch(URL, TOKEN, {}, opener=flaky, sleep=lambda s: None)
     assert len(calls) == 3
+
+
+def test_late_arriving_close_deal_is_found_by_deep_rescan(tmp_path):
+    """Regrese (GBPJPY): závěrečný deal se v historii terminálu objeví až po tom, co kurzor ušel dál."""
+    f, c = mk(); sp = str(tmp_path / "s.json"); srv = Server()
+    f.deals = [deal(1, 7, T0)]                                     # jen vstup; SL deal terminál ještě nemá
+    state = load_state(sp)
+    run_cycle(c, state, sp, URL, TOKEN, post=srv, log=lambda *_: None)
+    f.deals.append(deal(2, 7, T0 + 3600000, typ=1, entry=1, price=1.09, profit=-60.0))   # čas dealu < kurzor (kurzor šel na "teď")
+    state["cursor_ms"] = int(NOW.timestamp() * 1000)               # kurzor je za časem pozdního dealu
+    run_cycle(c, state, sp, URL, TOKEN, post=srv, log=lambda *_: None)   # hodina ještě neuplynula => deal se nenačte
+    assert {k[1] for k in srv.deals} == {1}
+    c.now = lambda: NOW + dt.timedelta(hours=1, minutes=1)         # uplynula hodina => hluboký rescan
+    run_cycle(c, state, sp, URL, TOKEN, post=srv, log=lambda *_: None)
+    assert {k[1] for k in srv.deals} == {1, 2}

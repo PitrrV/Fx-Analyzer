@@ -56,12 +56,13 @@
     const am={}; st.accounts.forEach(a=>{am[a.id]=a;});
     return st.positions.filter(p=>am[p.account_id]).map(p=>{
       const open=p.status==='open', fl=open&&p.flags&&p.flags.floating!=null?+p.flags.floating:0;
+      const pendingClose=open&&!!(p.flags&&p.flags.close_deal_missing); // v MT5 už zavřená, závěrečný deal zatím nedorazil
       const sn=st.snaps[p.account_id+'|'+p.position_key]||null;
       return {id:p.account_id+'|'+p.position_key,position_key:p.position_key,position_id:p.position_id,account:p.account_id,currency:am[p.account_id].currency,
         symbol:p.symbol,side:p.side,openTime:p.opened_at,closeTime:open?null:(p.closed_at||p.opened_at),volume:+p.volume_in,openPrice:p.open_price,closePrice:p.close_price,
         profit:(+p.profit||0)+fl,commission:+p.commission||0,swap:+p.swap||0,fee:+p.fee||0,riskMoney:p.risk_money==null?null:+p.risk_money,
         initialSL:p.initial_sl,initialSLSource:p.initial_sl_source,currentSL:p.current_sl,currentTP:p.current_tp,initialTP:p.initial_tp,
-        status:p.status,flags:p.flags||{},snap:sn,summary:sn&&sn.summary||null};
+        status:p.status,pendingClose,flags:p.flags||{},snap:sn,summary:sn&&sn.summary||null};
     });
   }
   function selected(st){
@@ -143,7 +144,7 @@
     if(!st.accounts.length) return h('div',{style:card({padding:'18px 20px'})},head,tokenBox,addBox,msg,
       h('div',{style:{fontSize:12.5,color:T.dim,lineHeight:1.7,maxWidth:760}},'Zatím tu není žádný MT5 účet. Klikni na „+ Přidat MT5 účet“, dostaneš token, ten vložíš do konektoru na počítači s MT5 (Trading Denik/connector/README.md) a obchody se začnou zapisovat samy. Konektor MT5 jen čte, nikdy neobchoduje ani nemění SL/TP.'));
 
-    const list=selected(st),S=J(),sum=S.summarize(list),cur=sum.currency||'';
+    const list=selected(st),S=J(),statList=list.filter(t=>!t.pendingClose),nPend=list.length-statList.length,sum=S.summarize(statList),cur=sum.currency||'';
     const k=(l,v,s,c)=>h('div',{key:l,style:card({padding:'14px 16px',flex:'1 1 150px',minWidth:150})},h('div',{style:{fontSize:10.5,color:T.faint,marginBottom:7}},l),h('div',{style:mono({fontSize:19,fontWeight:700,color:c||T.text,overflowWrap:'anywhere'})},v),s&&h('div',{style:{fontSize:10.5,color:T.faint,marginTop:5,lineHeight:1.4}},s));
     const col=n=>n==null?T.text:n>0?T.green:n<0?T.red:T.text;
     // equity křivka
@@ -205,16 +206,16 @@
       const hd=['ÚČET','OTEVŘENO','PÁR','SMĚR','LOT','VSTUP','SL (poč./nyní)','TP','NET','R','STAV'];
       return h('div',{style:{overflowX:'auto'}},h('div',{style:{minWidth:980}},
         h('div',{style:{display:'grid',gridTemplateColumns:cols,gap:8,padding:'8px 0',borderBottom:'1px solid #1b2130',fontSize:9.5,color:T.faint,letterSpacing:'.06em',fontWeight:700}},hd.map(x=>h('span',{key:x},x))),
-        h('div',{style:{maxHeight:520,overflowY:'auto'}},rows.length?rows.map(t=>{const n=S.netOf(t),r=S.rOf(t),open=!t.closeTime,sl=t.initialSL!=null||t.currentSL!=null?(t.initialSL??'—')+' / '+(open?(t.currentSL??'—'):'—'):'—';
+        h('div',{style:{maxHeight:520,overflowY:'auto'}},rows.length?rows.map(t=>{const n=S.netOf(t),r=S.rOf(t),open=!t.closeTime&&!t.pendingClose,pend=!!t.pendingClose,sl=t.initialSL!=null||t.currentSL!=null?(t.initialSL??'—')+' / '+(open?(t.currentSL??'—'):'—'):'—';
           return h('div',{key:t.id,onClick:()=>{set(self,{sel:t.id});loadEvents(self,t);},style:{display:'grid',gridTemplateColumns:cols,gap:8,alignItems:'center',padding:'9px 0',cursor:'pointer',background:st.sel===t.id?'rgba(94,124,251,.08)':'transparent',boxShadow:'0 1px 0 #14182333'}},
             h('span',{style:{fontSize:11,color:T.dim,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},(am[t.account]||{}).label||'?'),
             h('span',{style:mono({fontSize:11,color:T.dim})},dtf(t.openTime)),h('span',{style:mono({fontSize:12,fontWeight:700})},t.symbol),
             h('span',{style:{fontSize:11,fontWeight:700,color:t.side==='BUY'?T.green:T.red}},t.side),h('span',{style:mono({fontSize:11,color:T.dim})},fm(t.volume,2)),
             h('span',{style:mono({fontSize:11,color:T.dim})},t.openPrice==null?'—':String(t.openPrice)),h('span',{style:mono({fontSize:10.5,color:T.dim})},sl),h('span',{style:mono({fontSize:11,color:T.dim})},(open?t.currentTP:t.initialTP)??'—'),
-            h('span',{style:mono({fontSize:12,fontWeight:700,color:col(n)})},money(n)+(open?' ◦':'')),
+            h('span',{style:mono({fontSize:12,fontWeight:700,color:col(n)})},pend?'—':money(n)+(open?' ◦':'')),
             h('span',{style:mono({fontSize:11.5,color:T.dim})},open?'—':(r==null?'bez SL':fm(r,2))),
-            h('span',{style:{fontSize:11,fontWeight:700,color:open?T.amber:T.faint}},open?'OTEVŘENO':'zavřeno'));}):h('div',{style:{fontSize:12,color:T.faint,padding:'14px 0'}},'Žádné obchody v tomto výběru.'))),
-        h('div',{style:{fontSize:10.5,color:T.faint,marginTop:6}},'◦ = floating (neuzavřený) výsledek, není součástí statistik.'));};
+            h('span',{title:pend?'V MT5 už zavřeno, ale závěrečný obchod konektor zatím nedoručil. Do statistik se nepočítá, doplní se sám.':'',style:{fontSize:11,fontWeight:700,color:pend?T.red:open?T.amber:T.faint}},pend?'ZAVŘENO? (čeká na data)':open?'OTEVŘENO':'zavřeno'));}):h('div',{style:{fontSize:12,color:T.faint,padding:'14px 0'}},'Žádné obchody v tomto výběru.'))),
+        h('div',{style:{fontSize:10.5,color:T.faint,marginTop:6}},'◦ = floating (neuzavřený) výsledek, není součástí statistik.'+(nPend?(' Obchody „ZAVŘENO? (čeká na data)“ ('+nPend+') jsou v MT5 zavřené, závěrečný obchod konektor zatím nedoručil — do statistik se nepočítají a doplní se samy.'):'')));};
     const breakdown=()=>{const closed=list.filter(t=>t.closeTime);
       return h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(360px,1fr))',gap:14}},Object.entries(bucketBy).map(([title,fn])=>{
         let g=[];try{g=S.groupBy(closed.filter(t=>t.closeTime),fn).sort((a,b)=>a.key<b.key?-1:1);}catch(e){}

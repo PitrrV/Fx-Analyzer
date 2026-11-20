@@ -45,6 +45,8 @@ def run_cycle(collector, state, state_path, url, token, post=post_batch, log=pri
         state["cursor_ms"] = new_cursor
         save_state(state_path, state)
         log(f"OK deals={len(payload['deals'])} -> {json.dumps({k: res.get(k) for k in ('positions', 'events', 'sl_tp_changes', 'snapshots', 'snapshots_pending')})}")
+    if hasattr(collector, "mark_deep_done"):
+        collector.mark_deep_done()
     return state
 
 
