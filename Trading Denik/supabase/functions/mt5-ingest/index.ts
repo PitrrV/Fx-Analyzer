@@ -84,7 +84,8 @@ Deno.serve(async (req) => {
     const rows: any[] = positions.map((p: any) => {
       const prev = prevMap.get(p.position_key); const o = p.status === "open" ? obs.get(p.position_id) : undefined;
       const flags: any = { ...(prev?.flags || {}), ...p.flags }; delete flags.from_observation;
-      if (o) flags.floating = Math.round((o.profit + o.swap) * 100) / 100; else delete flags.floating;
+      if (p.status === "closed") delete flags.close_deal_missing; // skutečný závěrečný deal dorazil => dohad už neplatí
+      if (o) { flags.floating = Math.round((o.profit + o.swap) * 100) / 100; delete flags.close_deal_missing; } else delete flags.floating; // viditelná v MT5 => není zavřená
       return { account_id: A, ...p, current_sl: o ? (o.sl > 0 ? o.sl : null) : prev?.current_sl ?? null, current_tp: o ? (o.tp > 0 ? o.tp : null) : prev?.current_tp ?? null, flags, updated_at: now };
     });
     for (const o of obsList) { // pozorovaná otevřená pozice bez dealů v DB (konektor je pošle při dalším průchodu) => zatím jen "stub"
@@ -95,6 +96,17 @@ Deno.serve(async (req) => {
         current_sl: o.sl > 0 ? o.sl : null, current_tp: o.tp > 0 ? o.tp : null, flags: { from_observation: true, floating: o.profit + o.swap }, updated_at: now });
     }
     for (const c of chunk(rows, 300)) must(await db.from("mt5_positions").upsert(c, { onConflict: "account_id,position_key" }), "positions");
+
+    // 5b) pojistka: pozice, kterou DB drží jako otevřenou, ale konektor ji už >10 min nevidí mezi otevřenými v MT5,
+    // je v MT5 zavřená a jen k ní chybí závěrečný deal (např. SL sepnul, když terminál neměl hotovou historii).
+    // Nic se nedopočítává (žádný výsledek, žádné uzavření): jen se označí flagem, ať UI neukazuje "OTEVŘENO".
+    // Skutečný deal přijde z konektoru (hluboký rescan) a flag se při přepočtu smaže.
+    if (Array.isArray(b.positions)) {
+      const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const stale = await db.from("mt5_positions").select("position_key,position_id,flags").eq("account_id", A).eq("status", "open").lt("updated_at", cutoff); must(stale, "stale open");
+      const gone = (stale.data || []).filter((r: any) => !obs.has(Number(r.position_id)) && !(r.flags && r.flags.close_deal_missing));
+      for (const r of gone) must(await db.from("mt5_positions").update({ flags: { ...(r.flags || {}), close_deal_missing: true }, updated_at: now }).eq("account_id", A).eq("position_key", r.position_key), "mark missing close");
+    }
 
     // 6) události (idempotentní klíče) + změny SL/TP pozorované při běžícím konektoru
     const evRows: any[] = events.map((e: any) => ({ account_id: A, ...e }));

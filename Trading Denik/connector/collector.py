@@ -26,9 +26,14 @@ def _g(o, name, default=None):
 
 
 class Collector:
+    DEEP_DAYS = 14          # hluboký rescan: znovu poslat dealy z posledních 14 dní (idempotentní upsert)
+    DEEP_EVERY_S = 3600     # při startu a pak max 1x za hodinu
+
     def __init__(self, mt5, initial_days=365, now_fn=None):
         self.mt5 = mt5
         self.initial_days = initial_days
+        self._last_deep = None      # kdy naposledy proběhl (potvrzený) hluboký rescan
+        self._deep_pending = False  # aktuální průchod používá hluboké okno
         self.now = now_fn or (lambda: dt.datetime.now(dt.timezone.utc))
         self._spec_cache = {}
         self._last_eq = None  # equity vzorek nejvýš 1× za EQUITY_EVERY_S (jinak by tabulka rostla zbytečně)
@@ -83,9 +88,22 @@ class Collector:
         now = self.now()
         if cursor_ms is None:
             start = now - dt.timedelta(days=self.initial_days)
+            self._deep_pending = True   # první průchod čte celou historii => počítá se jako hluboký rescan
         else:
             start = dt.datetime.fromtimestamp((cursor_ms - OVERLAP_MS) / 1000, tz=dt.timezone.utc)
+            # Kurzor se posouvá i bez nových dealů; závěrečný deal, který terminál doručil do historie
+            # AŽ POZDĚJI (např. SL sepnul při vypnutém PC), by pak ležel před kurzorem a nikdy by se nenačetl.
+            # Proto při startu a pak jednou za hodinu přečteme znovu posledních DEEP_DAYS dní.
+            if self._last_deep is None or (now - self._last_deep).total_seconds() >= self.DEEP_EVERY_S:
+                start = min(start, now - dt.timedelta(days=self.DEEP_DAYS))
+                self._deep_pending = True
         return start, now + dt.timedelta(days=1)
+
+    def mark_deep_done(self):
+        """Volat až po potvrzení serverem — jinak by se neúspěšný rescan považoval za hotový."""
+        if self._deep_pending:
+            self._last_deep = self.now()
+            self._deep_pending = False
 
     # --- sestavení dávek --------------------------------------------------
     def batches(self, cursor_ms):
