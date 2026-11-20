@@ -39,6 +39,8 @@ function cftcFriday(reportWeek) {
 
 const FILES = ["data/gold_cot.json", "data/gold_retail.json", "data/gold_price.json", "data/us100_cot.json", "data/us100_retail.json", "data/us100_macro.json", "data/us100_price.json", "data/cot_hist.json", "data/calendar_hist.json", "data/calendar.json", "data/oil.json", "data/retail_hist.json", "data/prices.json", "data/vix.json", "data/bias_alert_state.json"];
 const commitsCache = {};
+const CACHE_FILE = process.env.COMMITS_CACHE; // volitelné: předpočítané seznamy commitů (urychlí dávkové běhy)
+if (CACHE_FILE && fs.existsSync(CACHE_FILE)) Object.assign(commitsCache, JSON.parse(fs.readFileSync(CACHE_FILE, "utf8")));
 function commitsOf(f) { return commitsCache[f] ||= sh(`git log origin/main --format='%H %ct' -- ${f}`).trim().split("\n").filter(Boolean).map((l) => { const [h, t] = l.split(" "); return { h, ts: +t * 1000 }; }); }
 const pick = (f, ms) => commitsOf(f).find((c) => c.ts <= ms) || null;
 
