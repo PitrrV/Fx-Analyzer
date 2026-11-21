@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Složí denní snímky k 09:00 Praha (výstupy replay0900.js v /tmp/days) do jednoho Excelu."""
-import json, glob, os, subprocess, datetime as dt, sys
+import json, glob, os, subprocess, datetime as dt, sys, collections
 import xlsxwriter
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "export-0900", "Analyzer_snapshot_0900_Praha.xlsx")
@@ -132,11 +132,29 @@ def verdict(r):
     if r["dA"] <= 0.05: return "SPOLEHLIVÉ", "přepočet = serverový záznam (rozdíl ≤ 0,05)"
     if r["dA"] <= 0.5 and r["extok"]: return "S VÝHRADOU", "rozdíl 0,05–0,5, nejsilnější i nejslabší měna sedí"
     return "NESPOLEHLIVÉ", "rozdíl > 0,5 nebo se liší nejsilnější/nejslabší měna"
-ws = sheet("Spolehlivost_0803_1018", ["datum", "verdikt", "důvod verdiktu", "ts záznamu (UTC)", "stáří záznamu proti 09:00 (min)", "max rozdíl přepočet−záznam (měna)", "průměr rozdílu (8 měn)", "nejsilnější+nejslabší měna sedí", "max rozdíl při STEJNÉM čase", "max rozdíl s producerem z té doby", "hlavní složka rozdílu", "VIX režim (přepočet)", "verze producera záznamu", "prohlížeč: ts posledního zápisu (UTC)", "prohlížeč vs přepočet (průměr)", "prohlížeč vs server záznam (průměr)", "blíž prohlížeči"], [11, 15, 40, 22, 11, 13, 11, 12, 12, 13, 13, 11, 50, 22, 12, 12, 12])
-for i, d in enumerate(sorted(summ)):
-    r = summ[d]; v, why = verdict(r); b = brw.get(d); cut = dt.datetime.fromisoformat(days[d]["provenance"]["cutoff_utc"].replace("Z", "+00:00"))
-    age = round((cut - dt.datetime.fromisoformat(r["ts"].replace("Z", "+00:00"))).total_seconds() / 60)
-    ws.write_row(i + 1, 0, [d, v, why, r["ts"], age, round(r["dA"], 2), round(r["mA"], 2), "ano" if r["extok"] else "ne", round(r["dB"], 2), round(r["dC"], 2), r["drv"], r["vix"], producer(r["ts"]),
-                           b["ts"] if b else None, round(b["m_rep"], 2) if b else None, round(b["m_rec"], 2) if b else None, ("přepočet" if b["m_rep"] < b["m_rec"] - 0.005 else "stejně" if abs(b["m_rep"] - b["m_rec"]) <= 0.005 else "záznam server") if b else None])
-ws.autofilter(0, 0, len(summ), 16)
+COLS = ["datum", "verdikt", "důvod verdiktu", "ts záznamu (UTC)", "stáří záznamu proti 09:00 (min)", "max rozdíl přepočet−záznam (měna)", "průměr rozdílu (8 měn)", "nejsilnější+nejslabší měna sedí", "max rozdíl při STEJNÉM čase", "max rozdíl s producerem z té doby", "hlavní složka rozdílu", "VIX režim (přepočet)", "verze producera záznamu", "prohlížeč: ts posledního zápisu (UTC)", "prohlížeč vs přepočet (průměr)", "prohlížeč vs server záznam (průměr)", "blíž prohlížeči", "týden (pondělí)"]
+ws = sheet("Spolehlivost_0803_1018", COLS, [11, 15, 40, 22, 11, 13, 11, 12, 12, 13, 13, 11, 50, 22, 12, 12, 12, 13])
+target = []
+d0 = dt.date(2026, 8, 3)
+while d0 <= dt.date(2026, 11, 20):
+    if d0 <= dt.date(2026, 10, 18) or d0.isoweekday() < 6: target.append(d0.isoformat())  # od 19. 10. jen pracovní dny
+    d0 += dt.timedelta(days=1)
+monday = lambda d: (dt.date.fromisoformat(d) - dt.timedelta(days=dt.date.fromisoformat(d).weekday())).isoformat()
+wk = collections.defaultdict(lambda: [0, 0, 0, 0])   # spolehlivé, nespolehlivé, s výhradou, není záznam (jen pracovní dny)
+for i, d in enumerate(target):
+    if d not in summ:  # serverový záznam chybí => neodhadovat
+        v, why, vals = "NENÍ ZÁZNAM", "serverový záznam k 09:00 Praha neexistuje (nic se neodhaduje)", [None] * 14
+    else:
+        r = summ[d]; v, why = verdict(r); b = brw.get(d); cut = dt.datetime.fromisoformat(days[d]["provenance"]["cutoff_utc"].replace("Z", "+00:00"))
+        age = round((cut - dt.datetime.fromisoformat(r["ts"].replace("Z", "+00:00"))).total_seconds() / 60)
+        vals = [r["ts"], age, round(r["dA"], 2), round(r["mA"], 2), "ano" if r["extok"] else "ne", round(r["dB"], 2), round(r["dC"], 2), r["drv"], r["vix"], producer(r["ts"]),
+                b["ts"] if b else None, round(b["m_rep"], 2) if b else None, round(b["m_rec"], 2) if b else None, ("přepočet" if b["m_rep"] < b["m_rec"] - 0.005 else "stejně" if abs(b["m_rep"] - b["m_rec"]) <= 0.005 else "záznam server") if b else None]
+    ws.write_row(i + 1, 0, [d, v, why] + vals + [monday(d)])
+    if dt.date.fromisoformat(d).isoweekday() < 6 and d >= "2026-10-12":
+        wk[monday(d)][{"SPOLEHLIVÉ": 0, "NESPOLEHLIVÉ": 1, "S VÝHRADOU": 2, "NENÍ ZÁZNAM": 3}[v]] += 1
+ws.autofilter(0, 0, len(target), len(COLS) - 1)
+for j, (c, w) in enumerate(zip(["týden (pondělí)", "spolehlivých", "nespolehlivých", "s výhradou", "není záznam", "plně spolehlivý (5/5)"], [14, 12, 14, 11, 12, 18])):
+    ws.write(0, len(COLS) + 1 + j, c, H); ws.set_column(len(COLS) + 1 + j, len(COLS) + 1 + j, w)
+for i, m in enumerate(sorted(wk)):
+    a = wk[m]; ws.write_row(i + 1, len(COLS) + 1, [m, a[0], a[1], a[2], a[3], "ANO" if a[0] == 5 else "ne"])
 wb.close(); print("OK", OUT, len(days), "dní")
