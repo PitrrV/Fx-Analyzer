@@ -1890,7 +1890,16 @@ const WELCOME_QUOTES=[
   "Klid je konkurenční výhoda."
 ];
 function pickWelcomeQuote(){ return WELCOME_QUOTES[Math.floor(Math.random()*WELCOME_QUOTES.length)]; }
-function getWelcomeName(){ try{ return (localStorage.getItem('fx_user_name')||'').trim(); }catch(e){ return ''; } }
+// ── Přístup (uzavřený test) a výchozí uvítací jméno ──────────────────────────
+// ADMIN zůstává jen v ADMIN_EMAIL v jednotlivých HTML (admin skin, GitHub token…). Tady je jen seznam,
+// kdo se smí přihlásit; přidaný uživatel NENÍ admin. Gate v appce kontroluje na klientu (není to server-side bezpečnost).
+const FX_EXTRA_ALLOWED_EMAILS=["martas.vlcek@email.cz"];
+const FX_DEFAULT_WELCOME_NAMES={"martas.vlcek@email.cz":"Martine"}; // 5. pád ("Ahoj, Martine")
+function fxIsAllowedEmail(email,adminEmail){ const e=String(email||"").trim().toLowerCase(); return !!e&&(e===String(adminEmail||"").trim().toLowerCase()||FX_EXTRA_ALLOWED_EMAILS.indexOf(e)>=0); }
+// Jméno pro pozdrav: co si uživatel sám uložil (i prázdné = "bez jména"); jen pokud NIC neuložil (klíč neexistuje),
+// použije se výchozí pro přihlášený e-mail. Výchozí se nikam neukládá ani nesynchronizuje, takže nepřepíše jméno z cloudu.
+function getWelcomeName(){ try{ const raw=localStorage.getItem('fx_user_name'); if(raw!==null) return String(raw).trim();
+  const em=String((typeof window!=="undefined"&&window.__fxAuthEmail)||"").trim().toLowerCase(); return FX_DEFAULT_WELCOME_NAMES[em]||""; }catch(e){ return ''; } }
 function setWelcomeName(v){ try{ localStorage.setItem('fx_user_name',String(v||'').trim()); }catch(e){} }
 function getWelcomeSettings(){
   // Výchozí 'always' (dokud si uživatel v Nastavení nevybere '1× denně') —

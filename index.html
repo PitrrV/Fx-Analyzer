@@ -12,8 +12,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0"></script>
-<script src="engine.js?v=20261119a"></script>
-<script src="sync.js?v=20261119a"></script>
+<script src="engine.js?v=20261123a"></script>
+<script src="sync.js?v=20261123a"></script>
 <script src="Trading%20Denik/journal-stats.js?v=20261113a"></script>
 <script src="Trading%20Denik/mt5-journal-ui.js?v=20261120a"></script>
 <style>
@@ -79,6 +79,8 @@ function jStat(list){
 // uvidí jen ten, kdo se přihlásí přesně pod tímhle e-mailem; ostatní appku vidí
 // beze změny.
 const ADMIN_EMAIL='p.vospalek@gmail.com';
+// Barevná schémata pro ostatní uživatele (admin má vlastní přepínač "Admin skin" beze změny). Mění accent + violet.
+const FX_PALETTES={modra:{label:'Modrá (výchozí)',accent:'#5e7cfb',violet:'#9d7bff'},tyrkys:{label:'Tyrkysová',accent:'#2cb5c9',violet:'#7b8cff'},fialova:{label:'Fialová',accent:'#9d7bff',violet:'#5e7cfb'},ruzova:{label:'Růžová',accent:'#e5589a',violet:'#9d7bff'},oranz:{label:'Oranžová',accent:'#f08a3c',violet:'#e5589a'},stribrna:{label:'Stříbrná',accent:'#9aa5b8',violet:'#6f7b92'}};
 
 // ── AI Smart Alerts — no-code natural-language monitoring ──────────────────
 // Admin napíše větu ("Upozorni mě, až retail sentiment na AUDUSD klesne z 80 %
@@ -175,6 +177,7 @@ class FXApp extends React.Component{
     const h=React.createElement; this.h=h;
     this.state={ tab:'dashboard', sel:null, filter:'all', favs:new Set(loadFavoritePairs()), hoverFav:null, aiTf:'H4', pos:(()=>{try{return getAllPositions();}catch(e){return {};}})(), notes:(()=>{try{return loadNotes();}catch(e){return {};}})(), notesTs:(()=>{try{return JSON.parse(localStorage.getItem('pair_notes_ts')||'{}');}catch(e){return {};}})(), coachThreads:loadCoachThreads(), coachActiveId:(()=>{try{return localStorage.getItem('fx_coach_active')||'';}catch(e){return '';}})(), loaded:false, syncSess:null, syncEmail:'', syncPw:'', syncMsg:'', syncBusy:false, chartRange:'14D',
       adminSkin:(()=>{try{return localStorage.getItem('fx_admin_skin')!=='0';}catch(e){return true;}})(),
+      colorScheme:(()=>{try{const v=localStorage.getItem('fx_color_scheme');return FX_PALETTES[v]?v:'modra';}catch(e){return 'modra';}})(),
       welcomeName:(()=>{try{return getWelcomeName();}catch(e){return '';}})(),
       welcomeEnabled:(()=>{try{return getWelcomeSettings().enabled;}catch(e){return true;}})(),
       welcomeFreq:(()=>{try{return getWelcomeSettings().freq;}catch(e){return 'daily';}})(),
@@ -575,6 +578,8 @@ class FXApp extends React.Component{
     // (výchozí zapnuto). Mění accent/violet — ty se používají napříč grafy,
     // tlačítky i zvýrazněními, takže i tahle malá změna přebarví appku jako celek.
     if(this.isAdmin&&this.state.adminSkin) return this._tokens({green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:'#d4a72c',violet:'#ff6b9d'});
+    const pal=(!this.isAdmin&&FX_PALETTES[this.state.colorScheme])||null;
+    if(pal&&this.state.colorScheme!=='modra') return this._tokens({green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:pal.accent,violet:pal.violet});
     const a=this.props.accent||'#5e7cfb'; return this._tokens({green:'#2ed3a0',red:'#f2606e',amber:'#e8ab3f',yellow:'#e3d21f',accent:a,violet:'#9d7bff'});
   }
   // Design-token systém — App Background → Section → Card (surface) → Nested
@@ -595,6 +600,7 @@ class FXApp extends React.Component{
       glowTeal:'rgba(46,211,160,.18)', glowPurple:'rgba(157,123,255,.18)'};
   }
   toggleAdminSkin(){ const on=!this.state.adminSkin; try{localStorage.setItem('fx_admin_skin',on?'1':'0');}catch(e){} this.setState({adminSkin:on}); }
+  setColorScheme(k){ if(!FX_PALETTES[k]) return; try{localStorage.setItem('fx_color_scheme',k);}catch(e){} this.setState({colorScheme:k}); }
   setWelcomeNameField(v){ try{setWelcomeName(v);}catch(e){} this._splashName=v.trim(); this.setState({welcomeName:v}); }
   toggleWelcomeEnabled(){ const on=!this.state.welcomeEnabled; try{setWelcomeSetting('fx_welcome_enabled',on?'1':'0');}catch(e){} this.setState({welcomeEnabled:on}); }
   setWelcomeFreqField(v){ try{setWelcomeSetting('fx_welcome_freq',v);}catch(e){} this.setState({welcomeFreq:v}); }
@@ -3094,6 +3100,9 @@ class FXApp extends React.Component{
           h('div',null,h('div',{style:{fontSize:12,fontWeight:700,color:T.text}},'Frekvence'),h('div',{style:{fontSize:10.5,color:T.faint,marginTop:2}},'„1× denně“ = plná verze jen při prvním otevření dne, jinak appka nezdržuje.')),
           h('select',{value:st.welcomeFreq,onChange:e=>self.setWelcomeFreqField(e.target.value),style:{background:'#0a0d13',border:'1px solid #1b2130',borderRadius:9,color:T.text,padding:'7px 10px',fontSize:12,cursor:'pointer',fontFamily:'inherit'}},
             h('option',{value:'daily'},'1× denně'),h('option',{value:'always'},'Vždy')))),
+      !self.isAdmin&&h('div',{style:self.card({padding:'22px 24px',marginBottom:16})},
+        self.ptitle('🎨 Barevné schéma','Zvýrazňovací barva appky — ukládá se k účtu'),
+        h('div',{style:{display:'flex',gap:8,flexWrap:'wrap'}},Object.entries(FX_PALETTES).map(([k,p])=>{const on=st.colorScheme===k;return h('button',{key:k,type:'button',onClick:()=>self.setColorScheme(k),style:{display:'flex',alignItems:'center',gap:8,border:'1px solid '+(on?p.accent:'#1b2130'),background:on?p.accent+'24':'#0c0f16',color:on?T.text:T.dim,borderRadius:9,padding:'8px 12px',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}},h('span',{style:{width:12,height:12,borderRadius:'50%',background:'linear-gradient(135deg,'+p.accent+','+p.violet+')',flex:'none'}}),p.label);}))),
       h('div',{style:self.card({padding:'22px 24px'})},
         self.ptitle('☁️ Cloud sync'+(sess?' · přihlášen':''),'E-mail + heslo · stejné na PC i v mobilu'),
         !avail&&h('div',{style:{fontSize:12,color:T.faint}},'Nedostupné (internet / Supabase se nenačetl).'),
@@ -3446,7 +3455,7 @@ class AppGate extends React.Component{
   constructor(p){ super(p); this.state={checking:true,authorized:false,email:'',pw:'',code:'',mode:'password',busy:false,msg:''}; this.login=this.login.bind(this); this.sendCode=this.sendCode.bind(this); this.confirmCode=this.confirmCode.bind(this); }
   componentDidMount(){
     if(!(window.Sync&&window.Sync.ready)){ this.setState({checking:false,authorized:false,msg:'⚠ Přihlašovací systém se nenačetl (internet/Supabase). Zkus obnovit stránku.'}); return; }
-    const check=(s)=>{ const email=s&&s.user&&s.user.email?String(s.user.email).trim().toLowerCase():null; this.setState({checking:false,authorized:email===ADMIN_EMAIL}); };
+    const check=(s)=>{ const email=s&&s.user&&s.user.email?String(s.user.email).trim().toLowerCase():null; window.__fxAuthEmail=email; this.setState({checking:false,authorized:fxIsAllowedEmail(email,ADMIN_EMAIL)}); };
     window.Sync.session().then(check).catch(()=>this.setState({checking:false,authorized:false}));
     window.Sync.onAuth((s)=>check(s));
   }
@@ -3483,7 +3492,7 @@ class AppGate extends React.Component{
       h('input',{key:'e',value:st.email,onChange:e=>this.setState({email:e.target.value}),placeholder:'e-mail',type:'email',autoCapitalize:'off',autoCorrect:'off',style:fld}),
       h('input',{key:'p',value:st.pw,onChange:e=>this.setState({pw:e.target.value}),placeholder:'heslo',type:'password',onKeyDown:e=>{if(e.key==='Enter')this.login();},style:fld}),
       h('button',{key:'b',type:'button',disabled:st.busy,onClick:this.login,style:btn},'Přihlásit'),
-      h('button',{key:'l',type:'button',onClick:()=>this.setState({mode:'otp-request',msg:''}),style:linkBtn},'Zapomenuté heslo? Přihlásit se kódem z e-mailu →')];
+      h('button',{key:'l',type:'button',onClick:()=>this.setState({mode:'otp-request',msg:''}),style:linkBtn},'Nový uživatel nebo zapomenuté heslo? Přihlásit se kódem z e-mailu →')];
     const otpRequestForm=[
       h('input',{key:'e',value:st.email,onChange:e=>this.setState({email:e.target.value}),placeholder:'e-mail',type:'email',autoCapitalize:'off',autoCorrect:'off',onKeyDown:e=>{if(e.key==='Enter')this.sendCode();},style:fld}),
       h('button',{key:'b',type:'button',disabled:st.busy,onClick:this.sendCode,style:btn},'Poslat přihlašovací kód'),
@@ -3496,7 +3505,7 @@ class AppGate extends React.Component{
     return h('div',{style:Object.assign({},wrap,{padding:20})},
       h('div',{style:{width:'100%',maxWidth:360,background:'#0c0f16',border:'1px solid #1b2130',borderRadius:14,padding:'28px 26px',boxSizing:'border-box'}},
         h('div',{style:{fontSize:16,fontWeight:800,color:'#eaedf3',marginBottom:4}},'🔒 AT Trading FX'),
-        h('div',{style:{fontSize:12,color:'#8b93a3',marginBottom:18,lineHeight:1.5}},'Analyzer je zatím v uzavřeném testu. Přihlas se svým účtem.'),
+        h('div',{style:{fontSize:12,color:'#8b93a3',marginBottom:18,lineHeight:1.5}},'Analyzer je zatím v uzavřeném testu. Přihlas se svým účtem (nový uživatel: kód z e-mailu, účet se při prvním přihlášení vytvoří).'),
         st.mode==='otp-request'?otpRequestForm:st.mode==='otp-verify'?otpVerifyForm:passwordForm,
         st.msg&&h('div',{style:{fontSize:11.5,marginTop:12,color:/^⚠/.test(st.msg)?'#f2606e':'#8b93a3',lineHeight:1.5}},st.msg)));
   }
